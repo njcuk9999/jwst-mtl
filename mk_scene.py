@@ -29,11 +29,11 @@ def parse_args():
                         default=45.0,
                         help='rotate the position angle of the disk')
     parser.add_argument('--star_to_disk_ratio', dest='star_to_disk_ratio',
-                        nargs=1, type=float, default=1.0,
+                        type=float, default=1.0,
                         help='star is brighter than disk by this factor')
     
     parser.add_argument('--disk', dest='disk',
-                        nargs=1, type=bool, default=False,
+                        type=bool, default=False,
                         help='True to have a uniform disk instead of a ring')
 
     parser.add_argument('--oversampling', dest='oversampling',
