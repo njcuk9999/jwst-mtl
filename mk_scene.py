@@ -30,11 +30,16 @@ def parse_args():
     parser.add_argument('--star_to_disk_ratio', dest='star_to_disk_ratio',
                         nargs=1, type=float, default=1.0,
                         help='star is brighter than disk by this factor')
+    
+    parser.add_argument('--disk', dest='disk',
+                        nargs=1, type=bool, default=False,
+                        help='True to have a uniform disk instead of a ring')
+
     parser.add_argument('--oversampling', dest='oversampling',
                         type=float,
                         default=11, help='oversampling factor')
+    
     parser.add_argument('--doplot', dest='doplot', type=bool,
-
                         default=True,
                         help=('set to True if you want to see the image '
                               'of the disk'))
@@ -44,7 +49,7 @@ def parse_args():
 
 def mk_disk_images(box_width=77, rdisk=7.5, wdisk=3.0, tilt=45.0,
                    sky_angle=45.0, star_to_disk_ratio=1.0,
-                   oversampling=11, doplot=False):
+                   oversampling=11, disk = False, doplot=False):
     # create a scene with a central star and a disk. The disk has some
     # forward scattering an can be tilted in sky plane and line-of-sight angle
     #
@@ -84,11 +89,18 @@ def mk_disk_images(box_width=77, rdisk=7.5, wdisk=3.0, tilt=45.0,
     # radius in disk coordinates
     r = np.sqrt(x2 ** 2 + y2 ** 2)
 
-    # forward scattering function
-    scatter = np.sin(np.arctan2(x2, y2)) * np.cos(tilt / (180 / np.pi)) + 1
 
-    # flux of disk
-    disk = np.exp(-.5 * (r - rdisk) ** 2 / wdisk * 2) * scatter
+    # flux of disk / ring
+    
+    if disk == False:
+        # forward scattering function
+        scatter = np.sin(np.arctan2(x2, y2)) * np.cos(tilt / (180 / np.pi)) + 1
+        expo = 2
+    else:
+        scatter = 1.0
+        # makes a steep falloff for the disk to simulate a flat ring
+        expo = 20
+    disk = np.exp(-.5 * ((r - rdisk)/ wdisk) ** expo) * scatter
 
     # we add a bright star in the middle
     star_flux = np.sum(disk) * star_to_disk_ratio
@@ -116,6 +128,7 @@ if __name__ == "__main__":
                         wdisk=args.wdisk, tilt=args.tilt,
                         sky_angle=args.sky_angle,
                         star_to_disk_ratio=args.star_to_disk_ratio,
+                        disk = args.disk,
                         oversampling=args.oversampling,
                         doplot=args.doplot)
     # save to file
