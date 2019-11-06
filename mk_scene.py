@@ -1,7 +1,9 @@
 import numpy as np
+import matplotlib.pyplot as plt
+
 
 def mk_disk_images(box_width = 79, rdisk = 7.5, wdisk = 3.0, tilt = 45.0, 
-                   sky_angle = 45.0, star_to_disk_ratio = 1.0):
+                   sky_angle = 45.0, star_to_disk_ratio = 1.0,doplot = False):
 
     # create a scene with a central star and a disk. The disk has some 
     # forward scattering an can be tilted in sky plane and line-of-sight angle
@@ -18,6 +20,9 @@ def mk_disk_images(box_width = 79, rdisk = 7.5, wdisk = 3.0, tilt = 45.0,
     # sky_angle : rotate the position angle of the disk
     #    
     # star_to_disk_ratio : star is brighter than disk by this factor
+    #
+    # doplot : set to True if you want to see the image of the disk
+    #
     
     # create the box
     im = np.zeros([box_width,box_width])
@@ -44,7 +49,12 @@ def mk_disk_images(box_width = 79, rdisk = 7.5, wdisk = 3.0, tilt = 45.0,
     # adding disk to star
     im = im+disk
     
+    disk /= np.sum(im)
     # normalize image to unity
     im /= np.sum(im)
+    
+    if doplot:
+        plt.imshow(im,vmin = np.min(im),vmax = np.max(disk)*1.2)
+        plt.show()
 
     return im
