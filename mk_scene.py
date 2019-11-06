@@ -99,21 +99,25 @@ def mk_disk_images(box_width=77, rdisk=7.5, wdisk=3.0, tilt=45.0,
         scatter = 1.0
         # makes a steep falloff for the disk to simulate a flat ring
         expo = 20
-    disk = np.exp(-.5 * ((r - rdisk)/ wdisk) ** expo) * scatter
+    im_disk = np.exp(-.5 * ((r - rdisk)/ wdisk) ** expo) * scatter
+
+    if disk:
+        im_disk = np.array(im_disk > (np.max(im_disk)*.9),dtype = float)
+
 
     # we add a bright star in the middle
-    star_flux = np.sum(disk) * star_to_disk_ratio
+    star_flux = np.sum(im_disk) * star_to_disk_ratio
     im[(box_width * oversampling) // 2, (box_width * oversampling) // 2] = star_flux
 
     # adding disk to star
-    im = im + disk
+    im = im + im_disk
 
-    disk /= np.sum(im)
+    im_disk /= np.sum(im)
     # normalize image to unity
     im /= np.sum(im)
 
     if doplot:
-        plt.imshow(im, vmin=np.min(im), vmax=np.max(disk) * 1.2)
+        plt.imshow(im, vmin=np.min(im), vmax=np.max(im_disk) * 1.2)
         plt.show()
 
     return im
