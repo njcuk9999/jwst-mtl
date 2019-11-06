@@ -106,7 +106,7 @@ def mk_disk_images(box_width=77, rdisk=7.5, wdisk=3.0, tilt=45.0,
         # makes a steep falloff for the disk to simulate a flat ring
         expo = 20
 
-        im_disk = np.exp(-.5 * ((r - rdisk)/ wdisk) ** expo) * scatter
+        im_disk = np.exp(-.5 * ((r - rdisk)/ wdisk) ** expo)
         im_disk = np.array(im_disk > (np.max(im_disk)*.9),dtype = float)
 
 
