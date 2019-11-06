@@ -11,7 +11,6 @@ def parse_args():
                         help=('size of the box. NATIVE pixels, the final '
                               'image will be oversampling*box_width in size'))
     parser.add_argument('--rdisk', dest='rdisk', type=float,
-
                         default=7.5,
                         help=('radius of disk in pixels. Can be fractional. '
                               'This is in NATIVE pixels, NOT oversampled'))
@@ -34,7 +33,6 @@ def parse_args():
                         type=float,
                         default=11, help='oversampling factor')
     parser.add_argument('--doplot', dest='doplot', type=bool,
-
                         default=True,
                         help=('set to True if you want to see the image '
                               'of the disk'))
