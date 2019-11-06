@@ -6,4 +6,6 @@ def psf(outputname='myPSF.fits'):
 	nis.filter='F430M'
 	nis.calc_psf(outputname, oversample=11)
 
-psf()    
+
+if __name__ == '__main__':
+	psf()

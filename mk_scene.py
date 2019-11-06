@@ -58,8 +58,9 @@ def mk_disk_images(box_width = 79, rdisk = 7.5, wdisk = 3.0, tilt = 45.0,
         plt.show()
 
     return im
-  
-  if __name__ == "__main__":
+
+
+if __name__ == "__main__":
     # get disk image
     im = mk_disk_images(doplot=True)
     # save to file
