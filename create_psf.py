@@ -4,7 +4,8 @@ import webbpsf
 def psf(outputname='myPSF.fits'):
 	nis = webbpsf.NIRISS()
 	nis.filter='F430M'
-	nis.calc_psf(outputname, oversample=11)
+	nis.pupil_mask='MASK_NRM'
+	nis.calc_psf(outputname, fov_pixels=77, oversample=11)
 
 
 if __name__ == '__main__':
