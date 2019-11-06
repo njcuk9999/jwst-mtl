@@ -1,5 +1,6 @@
 import webbpsf
 
+
 # Create a PSF with WebbPSF for the driver_scene.py input
 def psf(outputname='myPSF.fits'):
 	nis = webbpsf.NIRISS()
