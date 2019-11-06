@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from astropy.io import fits
 
-def mk_disk_images(box_width = 76, rdisk = 7.5, wdisk = 3.0, tilt = 45.0, 
+def mk_disk_images(box_width = 77, rdisk = 7.5, wdisk = 3.0, tilt = 45.0, 
                    sky_angle = 45.0, star_to_disk_ratio = 1.0, 
                    oversampling = 11, doplot = False):
 
