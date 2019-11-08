@@ -28,6 +28,7 @@ def parse_args():
     parser.add_argument('--sky_angle', dest='sky_angle', type=float,
                         default=45.0,
                         help='rotate the position angle of the disk')
+
     parser.add_argument('--star_to_disk_ratio', dest='star_to_disk_ratio',
                         type=float, default=1.0,
                         help='star is brighter than disk by this factor')
@@ -97,13 +98,15 @@ def mk_disk_images(box_width=77, rdisk=7.5, wdisk=3.0, tilt=45.0,
         # forward scattering function
         scatter = np.sin(np.arctan2(x2, y2)) * np.cos(tilt / (180 / np.pi)) + 1
         expo = 2
+
+        im_disk = np.exp(-.5 * ((r - rdisk)/ wdisk) ** expo) * scatter
+
     else:
         scatter = 1.0
         # makes a steep falloff for the disk to simulate a flat ring
         expo = 20
-    im_disk = np.exp(-.5 * ((r - rdisk)/ wdisk) ** expo) * scatter
 
-    if disk:
+        im_disk = np.exp(-.5 * ((r - rdisk)/ wdisk) ** expo)
         im_disk = np.array(im_disk > (np.max(im_disk)*.9),dtype = float)
 
 
