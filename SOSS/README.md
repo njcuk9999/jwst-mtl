@@ -49,8 +49,9 @@ tso256_clear = TSO(ngrps=3, nints=5, star=STAR_DATA)
 tso256_clear.simulate()
 tso256_clear.plot()
 ```
-Notes: In Linux this loads up in the default browser (using Bokeh) I need to figure out how to change the default browser for this. 
-Notes: For full functionality requires the JWST pipeline installed (this is done above) - thus you get the pipeline as a by-product.
+Note: In Linux this loads up in the default browser (using Bokeh) I need to figure out how to change the default browser for this. 
+
+Note: For full functionality requires the JWST pipeline installed (this is done above) - thus you get the pipeline as a by-product.
 
 
 ---
