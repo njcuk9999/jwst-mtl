@@ -24,3 +24,9 @@ Some explanation here?
 ## Stage 3: 
 
 - Not used by us
+
+
+## Header information
+
+Currently the most-useful information is at this link to the JWST Keyword Dictionary, which documents details on each FITS header keyword:
+https://mast.stsci.edu/portal/Mashup/Clients/jwkeywords/index.html
