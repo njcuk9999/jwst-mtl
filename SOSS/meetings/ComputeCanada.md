@@ -1,0 +1,42 @@
+To request a Compute Canada account, instructions are here:
+
+[https://www.computecanada.ca/research-portal/accessing-resources/]
+
+
+Essentially, you first request for an account by clicking the “Register” link in the bottom right of this page:
+
+[https://ccdb.computecanada.ca/security/login]
+
+Click “agree” on the first 2 forms and “yes” to the consent and finally “agree” to the terms of use. Then submit the form electronically.
+
+In the next form, click no if this is the first time you apply for a CC account. Then fill your information.
+
+Institution - Calcul Québec: Université de Montréal
+Department - Departement De Physique
+
+Then hit the Submit button.
+
+Next you will need (may have to be after they send you a confirmation email, I don't remember) to tell who your godfather is for the account. It is David Lafreniere: uns-623
+
+￼
+
+The servers available to you are listed here:
+
+[https://www.computecanada.ca/research-portal/accessing-resources/available-resources/]
+
+beluga is one available (in Quebec I suppose)
+
+ssh lalbert@beluga.computecanada.ca
+
+
+Then you will need to read documentation in order to learn how to use python or other software on the server:
+
+[https://docs.computecanada.ca/wiki/Compute_Canada_Documentation]
+
+For python, one needs to load modules:
+
+[https://docs.computecanada.ca/wiki/Utiliser_des_modules/en]
+
+For example:
+
+[lalbert@beluga4 ~]$ module load python/3.8 numpy
