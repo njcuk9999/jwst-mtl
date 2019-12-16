@@ -39,6 +39,10 @@ For python, one needs to load modules:
 
 [https://docs.computecanada.ca/wiki/Utiliser_des_modules/en]
 
+A python-specific guide is here:
+
+[https://docs.computecanada.ca/wiki/Python]
+
 For example:
 
 [lalbert@beluga4 ~]$ module load python/3.8 numpy
