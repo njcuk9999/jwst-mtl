@@ -26,7 +26,7 @@ The servers available to you are listed here:
 
 beluga is one available (in Quebec I suppose)
 
-ssh lalbert@beluga.computecanada.ca
+ssh lalbert@beluga.computecanada.ca (Use you account name, not the CC identity such as emp-999)
 
 
 Then you will need to read documentation in order to learn how to use python or other software on the server:
