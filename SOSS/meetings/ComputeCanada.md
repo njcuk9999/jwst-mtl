@@ -18,7 +18,7 @@ Then hit the Submit button.
 
 Next you will need (may have to be after they send you a confirmation email, I don't remember) to tell who your godfather is for the account. It is David Lafreniere: uns-623
 
-￼
+CC will wait for David to confirm you as a valid user. Ping him if there is no email from CC for a long time. Then, CC will send an email stating that you are a registered user.
 
 The servers available to you are listed here:
 
