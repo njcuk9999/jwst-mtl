@@ -16,6 +16,8 @@ Department - Departement De Physique
 
 Then hit the Submit button.
 
+You will need to confirm your user name for that account.
+
 Next you will need (may have to be after they send you a confirmation email, I don't remember) to tell who your godfather is for the account. It is David Lafreniere: uns-623
 
 CC will wait for David to confirm you as a valid user. Ping him if there is no email from CC for a long time. Then, CC will send an email stating that you are a registered user.
@@ -26,7 +28,7 @@ The servers available to you are listed here:
 
 beluga is one available (in Quebec I suppose)
 
-ssh lalbert@beluga.computecanada.ca (Use you account name, not the CC identity such as emp-999)
+ssh lalbert@beluga.computecanada.ca (Use you user name, not the CC account identity such as emp-999)
 
 
 Then you will need to read documentation in order to learn how to use python or other software on the server:
