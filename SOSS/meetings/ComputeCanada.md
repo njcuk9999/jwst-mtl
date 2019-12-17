@@ -2,7 +2,7 @@
 
 To request a Compute Canada account, instructions are here:
 
-[Asscessing-resources](https://www.computecanada.ca/research-portal/accessing-resources/)
+[Accessing-resources](https://www.computecanada.ca/research-portal/accessing-resources/)
 
 
 Essentially, you first request for an account by clicking the “Register” link in the bottom right of this page:
