@@ -24,6 +24,10 @@ Next you will need (may have to be after they send you a confirmation email, I d
 
 CC will wait for David to confirm you as a valid user. Ping him if there is no email from CC for a long time. Then, CC will send an email stating that you are a registered user.
 
+### If you already have a Compute Canada Account
+
+If you already have a Compute Canada account, you will need to change your account sponsor (godfather). To do this, select the 'Apply for a New Role' option under the 'My Account' dropdown menu. Then fill in this form in the same manner as above.
+
 ## Using Compute Canada
 
 The servers available to you are listed here:
@@ -32,7 +36,7 @@ The servers available to you are listed here:
 
 beluga is one available (in Quebec I suppose)
 ```bash
-ssh lalbert@beluga.computecanada.ca 
+ssh lalbert@beluga.computecanada.ca
 ```
 (Use you user name, not the CC account identity such as emp-999)
 
