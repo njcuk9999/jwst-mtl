@@ -1,6 +1,4 @@
-# The Montreal group JWST/NIRISS github
-
-misc tools from irex for JWST
+# The iREx Montreal group JWST/NIRISS github
 
 ## Contents:
 
