@@ -6,8 +6,8 @@
 
  - [Meetings](https://github.com/njcuk9999/jwst-mtl/tree/master/SOSS/meetings)
 
- - [Installation Guides](https://github.com/njcuk9999/jwst-mtl/new/master/SOSS/)
+ - [Installation Guides](https://github.com/njcuk9999/jwst-mtl/blob/master/SOSS/)
 
  - [AWESIMSOSS Demo](https://github.com/njcuk9999/jwst-mtl/blob/master/SOSS/demo_awesimsoss.ipynb)
 
- - [JWST Pipeline information](https://github.com/njcuk9999/jwst-mtl/new/master/SOSS/JWST_Pipeline.md)
+ - [JWST Pipeline information](https://github.com/njcuk9999/jwst-mtl/blob/master/SOSS/JWST_Pipeline.md)
