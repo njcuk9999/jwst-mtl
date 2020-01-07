@@ -19,15 +19,15 @@ Simulations need to include the effects of:
   - Input stellar spectra.
 - Detector noise.
   - CV3 darks.
-  - HxRG noise genrator (Rauscher 2015)
+  - HxRG noise generator (Rauscher 2015)
+  - Include superbias.
   - Cosmic rays.
   - *Brighter-Fatter effect.* 
 - *Jitter.*
 - *Filter wheel positions.*
 
 - To be pipeline ready need:
- - Correct headers.
- - Include bias.
+  - Correct headers.
 
 # Pipeline
 
