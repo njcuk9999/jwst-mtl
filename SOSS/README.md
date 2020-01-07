@@ -6,6 +6,8 @@
 
  - [Meetings](https://github.com/njcuk9999/jwst-mtl/tree/master/SOSS/meetings)
 
+ - [Roadmap](https://github.com/njcuk9999/jwst-mtl/tree/master/SOSS/roadmap.md)
+
  - [Installation Guides](https://github.com/njcuk9999/jwst-mtl/blob/master/SOSS/)
 
  - [AWESIMSOSS Demo](https://github.com/njcuk9999/jwst-mtl/blob/master/SOSS/demo_awesimsoss.ipynb)
