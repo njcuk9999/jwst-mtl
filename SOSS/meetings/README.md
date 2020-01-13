@@ -4,7 +4,7 @@
 
 - [Minutes 2019-12-11](https://github.com/njcuk9999/jwst-mtl/edit/master/SOSS/meetings/minutes_20191211.md)
 
-
+- [Minutes 2020-01-13](https://github.com/njcuk9999/jwst-mtl/edit/master/SOSS/meetings/minutes_20200113.md)
 
 
 ## Compute Canada
