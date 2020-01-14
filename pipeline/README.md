@@ -46,13 +46,17 @@ Either one can visit the website and browse for a specific file ([here](https://
 or one can use the command line tools.
 
 Last update: 2020-01-14
+
 Current pmap:  jwst_0579.pmap
+
 Current NIRISS imap: jwst_niriss_0123.imap
+
 Reference maps:
-- area, dark, distortion, drizpars, extract1d, flat, gain, ipc, linearity, mask, pathloss, persat, photom, readnoise, saturation
-- specwcs, superbias, throughput, trapdensity, trappars, wavelengthrange, wfssbkg
+```
+area, dark, distortion, drizpars, extract1d, flat, gain, ipc, linearity, mask, pathloss, persat, photom, readnoise, saturation, specwcs, superbias, throughput, trapdensity, trappars, wavelengthrange, wfssbkg
+```
 
-
+#### Using the command line
 
 The following command will download all the context files 
 (see [here](https://jwst-crds.stsci.edu/static/users_guide/overview.html#kinds-of-crds-files))
