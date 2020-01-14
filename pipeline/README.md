@@ -4,6 +4,14 @@
 Here is a collection of all the documentation related to the pipeline 
 specifically those related to NIRISS.
 
+---
+
+## Contents
+
+1. [Pipeline installation](#pipeline-installation)
+2. [Getting Calibrations](#setting-up-the-calibration-reference-data-system-crds)
+
+---
 
 ## Pipeline installation
 
@@ -28,6 +36,13 @@ Then install the jwst pipeline from github via pip
 ```
 pip install git+https://github.com/spacetelescope/jwst
 ```
+
+[Back to top](#jwst-pipeline)
+---
+
+
+
+
 
 ## Setting up the Calibration Reference Data System (CRDS)
 
@@ -87,8 +102,8 @@ crds sync --contexts jwst_niriss_0123.imap --all
 This will download the fits files into the `{CRDS_PATH}/references/jwst/niriss/` if you followed all steps above
 note the total file size is around 11.9 GB
 
-
-
+[Back to top](#jwst-pipeline)
+---
 
 
 
