@@ -10,6 +10,6 @@
 
  - [Installation Guides](https://github.com/njcuk9999/jwst-mtl/blob/master/SOSS/awesimsoss/installation_guides.md)
 
- - [AWESIMSOSS Demo](https://github.com/njcuk9999/jwst-mtl/blob/master/SOSS/awesimsoss/demo_awesimsoss.ipynb)
+ - [AWESimSOSS](https://github.com/njcuk9999/jwst-mtl/tree/master/SOSS/awesimsoss) - AWESimSOSS resources, including demo notebook and example simulations.
 
  - [JWST Pipeline information](https://github.com/njcuk9999/jwst-mtl/blob/master/SOSS/JWST_Pipeline.md)
