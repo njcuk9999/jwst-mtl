@@ -113,7 +113,7 @@ Then one can download a single one of these context files
 
 after choosing one (or many) map files to sync, type the following
 ```
-crds sync --contexts jwst_niriss_0123.imap --all
+crds sync --contexts jwst_niriss_0123.imap --fetch-references
 ```
 This will download the fits files into the `{CRDS_PATH}/references/jwst/niriss/` if you followed all steps above
 note the total file size is around 11.9 GB
