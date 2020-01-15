@@ -11,3 +11,9 @@ This is intended as an overview of all of the AWESimSOSS information currently a
 -[ng4ni3.fits](https://github.com/njcuk9999/jwst-mtl/blob/master/SOSS/awesimsoss/ng4ni3.fits) - A second, awesimsoss simulation of scaled_spectrum.txt, with four groups and three integrations.
 
 -[scaled_spectrum.txt](https://github.com/njcuk9999/jwst-mtl/blob/master/SOSS/awesimsoss/scaled_spectrum.txt) - the input spectrum to create the ng2ni1.fits simulation.
+
+Note: the current version of awesimsoss does not produce headers that are compatible with the (Stage 1) STSci pipeline. To succesfully run the piplien on awesimsoss files you need to change/add the following keywords:
+
+DATE-OBS is currently given as MM/DD/YYYY but the pipeline expects DD/MM/YYYY.
+NRSTSTRT the number of resets at the start of the exposure, was missing.
+NRESETS the number of resets between integrations, was missing.
