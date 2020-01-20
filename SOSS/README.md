@@ -7,6 +7,8 @@
  - [Meetings](https://github.com/njcuk9999/jwst-mtl/tree/master/SOSS/meetings)
 
  - [Roadmap](https://github.com/njcuk9999/jwst-mtl/tree/master/SOSS/roadmap.md)
+ 
+ - [Tasks, Deadlines and Priorities] (https://github.com/njcuk9999/jwst-mtl/tree/master/SOSS/Tasks.md)
 
  - [Installation Guides](https://github.com/njcuk9999/jwst-mtl/blob/master/SOSS/awesimsoss/installation_guides.md)
 
