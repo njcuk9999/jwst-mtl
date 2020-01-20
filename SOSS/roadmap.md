@@ -48,8 +48,9 @@ STSci pipeline:
 Methods of extraction:
 - Aperture extraction.
 - **Antoine's extraction.**
-  - wavelength_2Dmap_generator. Takes order and trace solution as input. Generates a fits image of the wavelength value at each pixel center.
+  - wavelength_2Dmap_generator. Takes order and trace solution as input. Generates a fits image of the wavelength value at each pixel center. For later, envision ConsiderTilt = True/False as input to function.
 - *Differential extraction.*
+  - Loic proposes to hire iREx summer intern to explore that avenue.
 - *AI extraction.*
 
 Common components/steps:
