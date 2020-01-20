@@ -49,6 +49,7 @@ Methods of extraction:
 - Aperture extraction.
 - **Antoine's extraction.**
   - wavelength_2Dmap_generator. Takes order and trace solution as input. Generates a fits image of the wavelength value at each pixel center. For later, envision ConsiderTilt = True/False as input to function.
+  - trace_profile_2Dmap_generator. Input is order and oversampling. Output is an ovsersampled 2D fits image of the trace profile as a function of wavelength.
 - *Differential extraction.*
   - Loic proposes to hire iREx summer intern to explore that avenue.
 - *AI extraction.*
