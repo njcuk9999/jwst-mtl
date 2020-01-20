@@ -1,2 +1,2 @@
--Litterature review of GTO targets
--Generating 2d maps for Antoine (GJT, very high priority)
+-[Litterature review of GTO targets]
+-[Generating 2d maps for Antoine (GJT, very high priority)]
