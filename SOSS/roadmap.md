@@ -12,6 +12,7 @@ Needed:
 Simulations need to include the effects of:
 - Different orders (m=-2,-1,0,1,2,3).
 - Field background.
+- Simulate non-linearity (check in JWST pipeline - CRDS - for the actual fits reference files)
 - Field contamination (adapt from David's code).
   - Input catalog.
   - Transformation to x, y.
