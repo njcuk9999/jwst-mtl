@@ -1,3 +1,6 @@
 - Litterature review of GTO targets
 - Generating 2d maps for Antoine (GJT, very high priority)
-- more to fill during meeting
+- Add non-linearity to the simulated data (CP)
+- Give access to the simulation code - not the python wrapper (JR)
+- Learn to use ADB's extraction code (MR)
+- Run the ComputeCanada-installed pipeline with Michael's awesimsoss images (NC and GJT)
