@@ -1,4 +1,4 @@
-- Litterature review of GTO targets
+- Literature review of GTO targets: **please contribute to the Overleaf document [here](https://www.overleaf.com/3776911865xbtcpnxbgkww)!**
 - Generating 2d maps for Antoine (GJT, very high priority)
 - Add non-linearity to the simulated data (CP)
 - Give access to the simulation code - not the python wrapper (JR)
