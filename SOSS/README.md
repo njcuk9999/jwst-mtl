@@ -9,7 +9,8 @@
  - [Roadmap](https://github.com/njcuk9999/jwst-mtl/tree/master/SOSS/roadmap.md)
 
  - [Tasks, Deadlines and Priorities](https://github.com/njcuk9999/jwst-mtl/tree/master/SOSS/Tasks.md)
-  - [Literature Review of GTO Targets](https://www.overleaf.com/3776911865xbtcpnxbgkww)
+
+    - [Literature Review of GTO Targets](https://www.overleaf.com/3776911865xbtcpnxbgkww)
 
  - [Installation Guides](https://github.com/njcuk9999/jwst-mtl/blob/master/SOSS/awesimsoss/installation_guides.md)
 
