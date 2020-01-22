@@ -15,8 +15,9 @@ specifically those related to NIRISS.
 ## Contents
 
 1. [Pipeline installation](#pipeline-installation)
-2. [Getting Calibrations](#setting-up-the-calibration-reference-data-system-crds)
-
+2. [Running the pipeline](#running-the-pipeline)
+3. [Getting Calibrations](#setting-up-the-calibration-reference-data-system-crds)
+4. [Pipeline at compute canada](#pipeline-compute-canada)
 
 
 
@@ -144,7 +145,49 @@ note the total file size is around 11.9 GB
 
 [Back to top](#jwst-pipeline)
 
+
+
+
 ---
+
+
+
+
+## Pipeline Compute Canada
+
+Currently the pipeline is set up on the beluga server at compute canada.
+
+### Step 1: Logging into beluga
+
+```
+ssh {USER}@beluga.computecanada.ca
+```
+where `{USER}` is your compute canada user name
+
+### Step 2: Setup for pipeline use
+
+We have created a file to source in order to get up everything needed to run the pipeline.
+
+It is located here:
+```
+~/projects/def-dlafre/pipeline/setup/jwstpipe.sh
+```
+
+We suggest adding an alias in your bashrc file:
+```
+nano ~/.bashrc
+```
+then add the following line:
+```
+alias jwstpipe="source ~/projects/def-dlafre/pipeline/setup/jwstpipe.sh"
+```
+to run this command every time you log in to beluga type:
+```
+jwstpipe
+```
+
+#### IMPORTANT: Do not source this in your ~/.bashrc (will lead to an infinite loop)
+
 
 
 
