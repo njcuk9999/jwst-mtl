@@ -54,6 +54,30 @@ pip install git+https://github.com/spacetelescope/jwst
 
 
 
+
+---
+
+
+
+
+
+## Running the pipeline
+
+To run the stage 1 pileline on a (simulated) fits file type
+
+```
+strun jwst.pipeline.Detector1Pipeline ng4ni3_uncal.fits
+```
+
+For more information on running the pipeline from [terminal](https://jwst-pipeline.readthedocs.io/en/latest/jwst/introduction.html#running-from-the-command-line) or from [python](https://jwst-pipeline.readthedocs.io/en/latest/jwst/introduction.html#running-from-within-python) see the documentation.
+
+
+[Back to top](#jwst-pipeline)
+
+
+
+
+
 ---
 
 
@@ -119,9 +143,6 @@ This will download the fits files into the `{CRDS_PATH}/references/jwst/niriss/`
 note the total file size is around 11.9 GB
 
 [Back to top](#jwst-pipeline)
-
-
-
 
 ---
 
