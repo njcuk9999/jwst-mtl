@@ -164,37 +164,23 @@ ssh {USER}@beluga.computecanada.ca
 ```
 where `{USER}` is your compute canada user name
 
-### Step 2: Setup for pipeline use
+### Step 2: First time setup 
 
-We have created a file to source in order to get up everything needed to run the pipeline.
-
-It is located here:
+Run the first time setup script
 ```
-~/projects/def-dlafre/pipeline/setup/jwstpipe.sh
+source ~/projects/def-dlafre/pipeline/setup/firsttime.sh
 ```
 
-We suggest adding an alias in your bashrc file:
-```
-nano ~/.bashrc
-```
-then add the following line:
-```
-alias jwstpipe="source ~/projects/def-dlafre/pipeline/setup/jwstpipe.sh"
-```
+### Step 3: Setup for pipeline use
+
 to run this command every time you log in to beluga type:
 ```
 jwstpipe
 ```
 
+Note it is located here:`~/projects/def-dlafre/pipeline/setup/jwstpipe.sh`
+
 #### IMPORTANT: Do not source this in your ~/.bashrc (will lead to an infinite loop)
-
-
-
-
-
-
-
-
 
 
 
