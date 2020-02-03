@@ -1,7 +1,7 @@
 # JWST Pipeline
 
 
-Here is a collection of all the documentation related to the pipeline 
+Here is a collection of all the documentation related to the pipeline
 specifically those related to NIRISS.
 
 
@@ -28,7 +28,7 @@ specifically those related to NIRISS.
 
 ## Pipeline installation
 
-In the future the jwst pipeline will be part of astroconda. However for now it 
+In the future the jwst pipeline will be part of astroconda. However for now it
 is not officially supported.
 
 Installation documentation is [here](https://github.com/spacetelescope/jwst).
@@ -45,7 +45,7 @@ conda activate {NAME}
 ```
 where {NAME} is the environment name (e.g. "jwstpipe")
 
-Then install the jwst pipeline from github via pip 
+Then install the jwst pipeline from github via pip
 ```
 pip install git+https://github.com/spacetelescope/jwst
 ```
@@ -64,7 +64,7 @@ pip install git+https://github.com/spacetelescope/jwst
 
 ## Running the pipeline
 
-To run the stage 1 pileline on a (simulated) fits file type
+To run the stage 1 pipeline on a (simulated) fits file type
 
 ```
 strun jwst.pipeline.Detector1Pipeline ng4ni3_uncal.fits
@@ -114,7 +114,7 @@ area, dark, distortion, drizpars, extract1d, flat, gain, ipc, linearity, mask, p
 
 #### Using the command line
 
-The following command will download all the context files 
+The following command will download all the context files
 (see [here](https://jwst-crds.stsci.edu/static/users_guide/overview.html#kinds-of-crds-files))
 
 i.e. downloads:
@@ -123,7 +123,7 @@ i.e. downloads:
 - Reference Type Mapping (.rmap)
 
 ```
-crds sync --all 
+crds sync --all
 ```
 into the path set by `CRDS_PATH` above.
 
@@ -164,7 +164,7 @@ ssh {USER}@beluga.computecanada.ca
 ```
 where `{USER}` is your compute canada user name
 
-### Step 2: First time setup 
+### Step 2: First time setup
 
 Run the first time setup script
 ```
@@ -181,8 +181,3 @@ jwstpipe
 Note it is located here:`~/projects/def-dlafre/pipeline/setup/jwstpipe.sh`
 
 #### IMPORTANT: Do not source this in your ~/.bashrc (will lead to an infinite loop)
-
-
-
-
-

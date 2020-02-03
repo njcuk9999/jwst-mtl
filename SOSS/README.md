@@ -2,7 +2,7 @@
 
 [SOSS](https://github.com/njcuk9999/jwst-mtl/tree/master/SOSS):  JWST NIRISS single object slitless spectroscopy ([JDocs](https://jwst-docs.stsci.edu/near-infrared-imager-and-slitless-spectrograph/niriss-observing-modes/niriss-single-object-slitless-spectroscopy))
 
- ## Contents:
+## Contents:
 
  - [Meetings](https://github.com/njcuk9999/jwst-mtl/tree/master/SOSS/meetings)
 
@@ -14,6 +14,13 @@
 
  - [Installation Guides](https://github.com/njcuk9999/jwst-mtl/blob/master/SOSS/awesimsoss/installation_guides.md)
 
- - [AWESimSOSS](https://github.com/njcuk9999/jwst-mtl/tree/master/SOSS/awesimsoss) - AWESimSOSS resources, including demo notebook and example simulations.
+ - [AWESimSOSS](https://github.com/njcuk9999/jwst-mtl/tree/master/SOSS/awesimsoss)
 
  - [JWST Pipeline information](https://github.com/njcuk9999/jwst-mtl/blob/master/SOSS/JWST_Pipeline.md)
+
+
+## Miscellaneous Resources:
+
+- Calibration reference files can be obtained [here](https://jwst-crds.stsci.edu). Or you can refer to the pipeline notes [here](https://github.com/njcuk9999/jwst-mtl/tree/master/pipeline) for other options
+
+- Documentation for sources of IR error for WFC3 can be found [here](https://hst-docs.stsci.edu/display/WFC3DHB/Chapter+7%3A+WFC3+IR+Sources+of+Error)
