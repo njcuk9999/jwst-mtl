@@ -130,8 +130,8 @@ def main(argv):
     
     
     fwd_coeffs = calc_forward_coeffs_array(correc_coeffs,range_calibration=range_calibration,npoints=npoints,poly_deg=poly_deg)
-    np.save(crdsPath[:-5].replace('/','_')+'_range_'+str(range_calibration[0])\
-            +'_'+str(range_calibration[0])+'_npoints_'+str(npoints)+'_polydeg_'\
+    np.save('files/'+crdsPath[:-5].replace('/','_')+'_range_'+str(int(range_calibration[0]))\
+            +'_'+str(int(range_calibration[0]))+'_npoints_'+str(npoints)+'_polydeg_'\
             +str(poly_deg)+'.npy',fwd_coeffs)
     
     

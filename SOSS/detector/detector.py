@@ -46,7 +46,7 @@ def main(argv):
         # File path containing the forward coefficients for the fit 
         
         # forward coefficients calculated using non-linearity data from CRDS website
-        non_linearity = np.load('files_jwst_niriss_linearity_0011_range_0.0_0.0_npoints_100_polydeg_4.npy')
+        non_linearity = np.load('files_jwst_niriss_linearity_0011_range_0_100000_npoints_100_polydeg_4.npy')
                 
         ts.addNonLinearity(non_linearity)
             
