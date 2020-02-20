@@ -117,7 +117,7 @@ def bounds_check(array, lower, upper):
 def wavelength2x(wavelength, tracepars, m=1):
     """ Convert wavelength to x-position for order m. """
 
-    x = np.polyval(tracepars[m]['x'], wavelength)
+    x = np.polyval(tracepars[m]['xpar'], wavelength)
     mask = bounds_check(wavelength, tracepars[m]['wmin'], tracepars[m]['wmax'])
 
     return x, mask
@@ -125,7 +125,7 @@ def wavelength2x(wavelength, tracepars, m=1):
 def wavelength2y(wavelength, tracepars, m=1):
     """ Convert wavelength to y-position for order m. """
 
-    y = np.polyval(tracepars[m]['y'], wavelength)
+    y = np.polyval(tracepars[m]['ypar'], wavelength)
     mask = bounds_check(wavelength, tracepars[m]['wmin'], tracepars[m]['wmax'])
 
     return y, mask
@@ -133,7 +133,7 @@ def wavelength2y(wavelength, tracepars, m=1):
 def y2wavelength(y, tracepars, m=1):
     """ Convert y-position to wavelength for order m. """
 
-    wavelength = np.polyval(tracepars[m]['w'], y)
+    wavelength = np.polyval(tracepars[m]['wpar'], y)
     mask = bounds_check(y, tracepars[m]['ymin'], tracepars[m]['ymax'])
 
     return wavelength, mask
