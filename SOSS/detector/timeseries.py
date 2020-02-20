@@ -17,29 +17,39 @@ from pkg_resources import resource_filename
 from copy import deepcopy
 import pdb
 from scipy.optimize import minimize
+import numpy.random as rdm
 
 #%%
 class TimeSeries(object):
-    def __init__(self,imaPath,singleImage=True):
+    def __init__(self,imaPath):
         '''
         Make a TimeSeries object from a single synthetic detector image 
         '''
         
-        if singleImage:
-            self.imaPath    = imaPath
-            
-            hdu_ideal   = fits.open(imaPath) # read in fits file
-            header      = hdu_ideal[1].header
-            
-            self.hdu_ideal  = hdu_ideal
-            self.data       = hdu_ideal[1].data # image to be altered
-            self.nrows      = header['NAXIS1']
-            self.ncols      = header['NAXIS2']
-            self.ngroups    = header['NAXIS3'] # number of groups per integration
-            self.nintegs    = header['NAXIS4'] # number of integrations in time series observations
-            
-            self.modifStr   = '_mod' # string encoding the modifications
+        self.imaPath    = imaPath
+        
+        hdu_ideal   = fits.open(imaPath) # read in fits file
+        header      = hdu_ideal[1].header
+        
+        self.hdu_ideal  = hdu_ideal
+        self.data       = hdu_ideal[1].data # image to be altered
+        
+        self.nrows      = header['NAXIS1']
+        self.ncols      = header['NAXIS2']
+        self.ngroups    = header['NAXIS3'] # number of groups per integration
+        self.nintegs    = header['NAXIS4'] # number of integrations in time series observations
+        
+        self.modifStr   = '_mod' # string encoding the modifications
 
+    def addPoissonNoise(self):
+        
+        for i in range(self.nintegs):
+            for g in range(self.ngroups):
+                self.data[i,g,:,:][np.where(self.data[i,g,:,:]<0.)]=0. # sanity check
+                noisy_frame = rdm.poisson(self.data[i,g,:,:])
+                self.data[i,g,:,:] = deepcopy(noisy_frame)
+                
+        self.modifStr =  '_poissonNoise'
         
     def addNonLinearity(self,non_linearity):
         '''
@@ -66,8 +76,6 @@ class TimeSeries(object):
                     corr = corr + non_linearity[-k-1,:,:] * frame**k
                 
                 new_integ[g,:,:]    = corr
-
-            new_integ[np.where(new_integ<0.)]==0.
             
             self.data[i,:,:,:] = deepcopy(new_integ)
 

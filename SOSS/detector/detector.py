@@ -32,7 +32,7 @@ def main(argv):
         addNonLinearity = bool(int(argv[2]))        # include effect of non-linearity in detector response if True
 
     else: # if not called from the command line
-        imaPath         = '/Users/caroline/Research/GitHub/SOSS/data/jw00001001001_0110100001_NISRAPID_cal_c.fits'
+        imaPath         = '/Users/caroline/Research/GitHub/SOSS/jwst-mtl/SOSS/detector/data/jw00001001001_0110100001_NISRAPID_cal_c.fits'
         addNonLinearity = True
     
         print(imaPath,addNonLinearity)
@@ -40,13 +40,16 @@ def main(argv):
     
     ts = timeseries.TimeSeries(imaPath)
     
+    # adding Poisson noise to the images prior to non-linearity correction
+    ts.addPoissonNoise()
+    
     # modify time series for non-linearity effects
     if addNonLinearity:
         
         # File path containing the forward coefficients for the fit 
         
         # forward coefficients calculated using non-linearity data from CRDS website
-        non_linearity = np.load('files_jwst_niriss_linearity_0011_range_0_100000_npoints_100_polydeg_4.npy')
+        non_linearity = np.load('files/files_jwst_niriss_linearity_0011_range_0_100000_npoints_100_polydeg_4.npy')
                 
         ts.addNonLinearity(non_linearity)
             
