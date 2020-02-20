@@ -35,7 +35,7 @@ def trace_polynomial(trace, m=1, method=None):
 
     # Determine trace parameters
     if method is None or method == 'wavelength':
-        # Compute pixel positions of trace from wavelength data
+        # Compute x and y pixel positions of trace from wavelength data
         order = 0
         while True:
             xpars = np.polyfit(wave, xpos, order)
@@ -69,8 +69,8 @@ def trace_polynomial(trace, m=1, method=None):
 
     # Compute the transform back to wavelength.
     wavegrid = wmin + (wmax - wmin)*np.linspace(0., 1., 501)  # ~10x oversampled
-    ygrid = np.polyval(ypars, wavegrid)
-    wpars = np.polyfit(ygrid, wavegrid, order)
+    xgrid = np.polyval(xpars, wavegrid)
+    wpars = np.polyfit(xgrid, wavegrid, order)
 
     # Add the common parameters to a dictionary.
     pars['ypar'] = ypars
@@ -130,11 +130,11 @@ def wavelength2y(wavelength, tracepars, m=1):
 
     return y, mask
 
-def y2wavelength(y, tracepars, m=1):
-    """ Convert y-position to wavelength for order m. """
+def x2wavelength(x, tracepars, m=1):
+    """ Convert x-position to wavelength for order m. """
 
-    wavelength = np.polyval(tracepars[m]['wpar'], y)
-    mask = bounds_check(y, tracepars[m]['ymin'], tracepars[m]['ymax'])
+    wavelength = np.polyval(tracepars[m]['wpar'], x)
+    mask = bounds_check(x, tracepars[m]['xmin'], tracepars[m]['xmax'])
 
     return wavelength, mask
 
