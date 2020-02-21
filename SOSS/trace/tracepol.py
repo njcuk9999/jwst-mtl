@@ -9,13 +9,12 @@ Created on Mon Feb 17 13:31:58 2020
 import numpy as np
 from astropy.io import ascii
 
-def trace_polynomial(trace, m=1, method=None):
+def trace_polynomial(trace, m=1):
     """ Fit a polynomial to the trace of order m and return a
     dictionary containing the parameters and validity intervals.
     _________________________________________________
     Inputs: trace - csv file with trace data
             m - trace order
-            method - wavelength or pixel
     Outputs: Dictionary containing trace parameters
     """
 
@@ -34,45 +33,28 @@ def trace_polynomial(trace, m=1, method=None):
     xmax = np.amax(xpos)
 
     # Determine trace parameters
-    if method is None or method == 'wavelength':
-        # Compute x and y pixel positions of trace from wavelength data
-        order = 0
-        while True:
-            xpars = np.polyfit(wave, xpos, order)
-            ypars = np.polyfit(wave, ypos, order)
+    order = 0
+    while True:
+        xpars = np.polyfit(wave, xpos, order)
+        ypars = np.polyfit(wave, ypos, order)
 
-            x = np.polyval(xpars, wave)
-            y = np.polyval(ypars, wave)
+        x = np.polyval(xpars, wave)
+        y = np.polyval(ypars, wave)
 
-            # If better than half micron (wavelength step size)
-            if np.all(np.abs(xpos - x) < 0.5) & np.all(np.abs(ypos - y) < 0.5):
-                pars = dict()  # Initialize the results dictionary
-                pars['xpar'] = xpars
-                break
+        # If better than half micron (wavelength step size)
+        if np.all(np.abs(xpos - x) < 0.5) & np.all(np.abs(ypos - y) < 0.5):
+            break
 
-            order += 1
-
-    if method == 'pixel':
-        # Compute y pixel position of trace from x positions
-        order = 0
-        while True:
-            ypars = np.polyfit(xpos, ypos, order)
-
-            y = np.polyval(ypars, xpos)
-
-            # If better than half micron (wavelength step size)
-            if np.all(np.abs(ypos - y) < 0.5):
-                pars = dict()  # Initialize the results dictionary
-                break
-
-            order += 1
+        order += 1
 
     # Compute the transform back to wavelength.
     wavegrid = wmin + (wmax - wmin)*np.linspace(0., 1., 501)  # ~10x oversampled
     xgrid = np.polyval(xpars, wavegrid)
     wpars = np.polyfit(xgrid, wavegrid, order)
 
-    # Add the common parameters to a dictionary.
+    # Add the parameters to a dictionary.
+    pars = dict()
+    pars['xpar'] = xpars
     pars['ypar'] = ypars
     pars['xmin'] = xmin
     pars['xmax'] = xmax
@@ -82,12 +64,11 @@ def trace_polynomial(trace, m=1, method=None):
 
     return pars
 
-def get_tracepars(filename=None, method=None):
+def get_tracepars(filename=None):
     """ Read a file containing the trace profile and generate
     polynomial parameters for each order.
     _________________________________________________
     Inputs: filename - path to csv file with trace data
-            method - wavelength or pixel
     Outputs: Dictionary containing trace parameters
     """
 
@@ -102,7 +83,7 @@ def get_tracepars(filename=None, method=None):
     # Compute polynomial parameters for different orders.
     tracepars = dict()
     for m in np.unique(trace['order']):
-        pars = trace_polynomial(trace, m=m, method=method)
+        pars = trace_polynomial(trace, m=m)
         tracepars[m] = pars
 
     return tracepars
