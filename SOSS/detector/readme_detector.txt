@@ -17,7 +17,7 @@ then you should modify the imaPath variable to point to Jason's fits file
 at line ~35 and run the file 
 
 OUTPUT: Same as Jason's fits file (saved to the same name with _nonlin appended to it),
-with the data modified to account for non-linearity effects
+with the data modified to account for (1) Poisson noise and (2) non-linearity effects (if set to True)
 
 ** Calculating forward coefficients for non-linearity simulation **
 
