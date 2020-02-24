@@ -42,11 +42,32 @@ class TimeSeries(object):
         self.modifStr   = '_mod' # string encoding the modifications
 
     def addPoissonNoise(self):
+        '''
+        Adds Poisson noise to each group, looping over integrations
+        '''
         
+
         for i in range(self.nintegs):
+            # for each integration, re-initialize Poisson Noise
+            # to remember the previous frame for Poisson noise calculations
+            prevFrame_theo  = None # counts in previous image for noise-free case
+            prevFrame_noisy = None 
+        
             for g in range(self.ngroups):
-                self.data[i,g,:,:][np.where(self.data[i,g,:,:]<0.)]=0. # sanity check
-                noisy_frame = rdm.poisson(self.data[i,g,:,:])
+                frame = deepcopy(self.data[i,g,:,:])
+                frame[np.where(frame<0.)]=0. # sanity check
+                
+                if prevFrame_theo is not None:
+                    diff_theo   = frame-prevFrame_theo
+                    noisy_frame = prevFrame_noisy + rdm.poisson(diff_theo)
+                
+                else:
+                    noisy_frame = rdm.poisson(frame)
+                
+                # store for next step
+                prevFrame_theo   = deepcopy(frame)
+                prevFrame_noisy  = noisy_frame
+                
                 self.data[i,g,:,:] = deepcopy(noisy_frame)
                 
         self.modifStr =  '_poissonNoise'
