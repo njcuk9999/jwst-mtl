@@ -1,7 +1,7 @@
 import numpy as np
 
 # Local imports
-from .custom_numpy import is_sorted, first_change, arange_2d
+from custom_numpy import is_sorted, first_change, arange_2d
 
 
 class _BaseOverlap():
@@ -96,15 +96,21 @@ class _BaseOverlap():
         self.T_list = T
         
         # Define masks
-        mask_P = [P < tresh for P in zip(P_list, )]
+        mask_P = [P * T_n(lam_n)  < tresh
+                  for P, T_n, lam_n in zip(P_list, T_list, lam_list)]
         mask_lam = [self._get_mask_lam(n) for n in range(self.n_ord)]
         if mask is None:
             mask_ord = np.any([mask_P, mask_lam], axis=0)
         else:
             mask_ord = np.any([mask_P, mask_lam, [mask, mask]], axis=0)
-        self.mask_ord = mask_ord
-        self.mask = np.any(mask_ord, axis=0)
+        self.mask = np.all(mask_ord, axis=0)
+        # Mask if mask_P not masked but mask_lam is.
+        # This means that an order is contaminated by another
+        # order, but the wavelength range is not taken into account.
+        self.mask |= (np.any(mask_lam, axis=0) 
+                      & (~np.array(mask_P)).all(axis=0))
         
+        self.mask_ord = np.any([mask_lam, self.mask[None,:,:]], axis=0)
         
         # Find the lowest (L) and highest (H) index 
         # of lam_grid for each pixels and orders
@@ -220,9 +226,9 @@ class _BaseOverlap():
 class TrpzOverlap(_BaseOverlap):
     ''' Version oversampled with trapezoidal integration '''
     
-    def __init__(self, **kwargs):
+    def __init__(self, *args, **kwargs):
         
-        super().__init__(**kwargs):
+        super().__init__(*args, **kwargs)
              
     def _get_LH(self, n):
         print('Compute LH')
