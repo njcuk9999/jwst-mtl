@@ -15,6 +15,8 @@ import matplotlib.pyplot as plt
 from astropy.io import fits
 from copy import deepcopy
 import numpy.random as rdm
+import hxrg
+from pkg_resources import resource_filename
 
 
 class TimeSeries(object):
@@ -96,6 +98,7 @@ class TimeSeries(object):
                 frame = deepcopy(new_integ[g, :, :])
 
                 ncoeffs = non_linearity.shape[0]
+
                 corr = non_linearity[ncoeffs-1, :, :]
                 for k in range(1, ncoeffs):
                     corr = corr + non_linearity[-k-1, :, :] * frame**k
@@ -105,6 +108,83 @@ class TimeSeries(object):
             self.data[i, :, :, :] = deepcopy(new_integ)
 
         self.modif_str = self.modif_str+'_nonlin'
+    
+    def add_detector_noise(self, offset=500., gain=1.61, pca0_file=None, noise_seed=None, dark_seed=None):
+        """
+        Add read-noise, 1/f noise and alternating column noise using the HxRG noise generator.
+        """
+
+        # In the current implementation the pca0 file goes unused, but it is a mandatory input of HxRG.
+        if pca0_file is None:
+            pca0_file = resource_filename('detector', 'files/niriss_pca0.fits')
+
+        if noise_seed is None:
+            noise_seed = 7 + int(np.random.uniform() * 4000000000.)
+
+        if dark_seed is None:
+            dark_seed = 5 + int(np.random.uniform() * 4000000000.)
+
+        np.random.seed(dark_seed)
+
+        # Make empty data array
+        detector_noise = np.zeros([self.nintegs, self.ngroups, self.ncols, self.nrows], dtype=np.float32)
+
+        # Define noise parameters.
+        # White read-noise.
+        rd_noise = 12.95  # [electrons]
+
+        # Correlated pink noise.
+        c_pink = 9.6  # [electrons]
+
+        # Uncorrelated pink noise.
+        u_pink = 3.2  # [electrons]
+
+        # Alternating column noise.
+        acn = 2.0  # [electrons]
+
+        # PCA0 (picture frame) noise.
+        pca0_amp = 0.  # Do not use PCA0 component.
+
+        # Bias pattern.
+        bias_amp = 0.  # Do not use PCA0 component.
+        bias_offset = offset * gain  # [electrons]
+
+        # Dark current.
+        dark_current = 0.0  # [electrons/frame] Unused because pca0_amp = 0.
+
+        # Pedestal drifts.
+        pedestal = 18.30  # [electrons] Unused because pca0_amp = 0.
+
+        # Define the HXRGN instance (in detector coordinates).
+        noisegenerator = hxrg.HXRGNoise(naxis1=self.ncols, naxis2=self.nrows, naxis3=self.ngroups, pca0_file=pca0_file,
+                                        x0=0, y0=0, det_size=2048, verbose=False)
+
+        # Iterate over integrations
+        for i in range(self.nintegs):
+
+            # Choose a new random seed for this iteration.
+            seed1 = noise_seed + 24 * int(i)
+
+            # Generate a noise-cube for this integration.
+            noisecube = noisegenerator.mknoise(c_pink=c_pink, u_pink=u_pink, bias_amp=bias_amp, bias_offset=bias_offset,
+                                               acn=acn, pca0_amp=pca0_amp, rd_noise=rd_noise, pedestal=pedestal,
+                                               dark_current=dark_current, dc_seed=dark_seed, noise_seed=seed1,
+                                               gain=gain)
+
+            # Ensure the noise-cube has the correct dimensions (when Ngroups = 1).
+            if noisecube.ndim == 2:
+                noisecube = noisecube[np.newaxis, :, :]
+
+            # Change from detector coordinates to science coordinates.
+            noisecube = np.transpose(noisecube, (0, 2, 1))
+            noisecube = noisecube[::, ::-1, ::-1]
+
+            # Add the final noise array.
+            detector_noise[i, :, :, :] = np.copy(noisecube)
+
+        self.data = self.data + detector_noise
+
+        self.modif_str = self.modif_str + '_detector'
 
     def write_to_fits(self, filename=None):
         """
@@ -113,7 +193,7 @@ class TimeSeries(object):
 
         hdu_new = self.hdu_ideal
         hdu_new[1].data = self.data
-
+        
         if filename is None:
             filename = self.ima_path[:-5]+self.modif_str+'.fits'
             hdu_new.writeto(filename, overwrite=True)
@@ -188,3 +268,12 @@ class TimeSeries(object):
             if filename is None:
                 filename = 'pixel_'+str(i_row)+'_'+str(i_col)+'.png'
             fig.savefig(filename)
+
+
+def main():
+
+    return
+
+
+if __name__ == '__main__':
+    main()

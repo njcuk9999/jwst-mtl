@@ -8,52 +8,55 @@ Introduce the detector response in the simulated images
 
 from __future__ import division, print_function
 import numpy as np
-import sys
+from pkg_resources import resource_filename
 import timeseries
 
 
-def main(argv):
+def add_noise(filelist, nonlinearity=True, detector=True):
     """
-    python detector.py path/to/fits/file.fits 1
+    A function to add detector noise the the simulations.
     """
-    print('Input arguments: ', argv)
 
-    lenargv = len(argv)
+    for filename in filelist:
 
-    # a minimum of 2 arguments must be specified for a command-line call
-    if lenargv > 2:
-        # path to the fits file containing the image (Jason's output)
-        ima_path = argv[1]
+        tso = timeseries.TimeSeries(filename)
 
-        # include effect of non-linearity in detector response if True
-        add_non_linearity = bool(int(argv[2]))
+        tso.addPoissonNoise()
 
-    else:  # if not called from the command line
-        path_soss = '/Users/caroline/Research/GitHub/SOSS/jwst-mtl/SOSS/'
-        path_data = 'detector/data/'
-        filename = 'jw00001001001_0110100001_NISRAPID_cal_c.fits'
+        if nonlinearity:
+            coef_file = 'files/files_jwst_niriss_linearity_0011_range_0_100000_npoints_100_polydeg_4.npy'
+            non_linearity = np.load(resource_filename('detector', coef_file))
+            tso.addNonLinearity(non_linearity)
 
-        ima_path = path_soss + path_data + filename
-        add_non_linearity = True
+        if detector:
+            tso.addDetectorNoise()
 
-        print(ima_path, add_non_linearity)
+        tso.writeToFits()
 
-    ts = timeseries.TimeSeries(ima_path)
+    return
 
-    # adding Poisson noise to the images prior to non-linearity correction
-    ts.add_poisson_noise()
 
-    # modify time series for non-linearity effects
-    if add_non_linearity:
+def main():
+    """
+    A command line interface.
+    """
 
-        # File path containing the forward coefficients for the fit
-        # forward coefficients calc using non-linearity data from CRDS website
-        non_linearity = np.load('files/files_jwst_niriss_linearity_0011_range_0_100000_npoints_100_polydeg_4.npy')
+    import argparse
 
-        ts.add_non_linearity(non_linearity)
+    parser = argparse.ArgumentParser(description='Add sources of noise to the simulation.')
+    parser.add_argument('filenames', type=str, nargs='+',
+                        help='The simulation file(s) to process.')
+    parser.add_argument('--nonlinearity', action='store_true',
+                        help='Add the effect of non-linearity to the data.', dest='nonlinearity')
+    parser.add_argument('--detector', action='store_true',
+                        help='Add the effects of read-noise, 1/f noise and ACN to the data.', dest='detector')
 
-    ts.write_to_fits()  # write modified time series observations to a new file
+    args = parser.parse_args()
+
+    add_noise(args.filenames, args.nonlinearity, args.detector)
+
+    return
 
 
 if __name__ == "__main__":
-    main(sys.argv)
+    main()
