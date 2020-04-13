@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.sparse import lil_matrix, csr_matrix, diags, find
 
 # Local imports
 from custom_numpy import is_sorted, first_change, arange_2d
@@ -47,16 +48,31 @@ class _BaseOverlap():
         this value will be masked.
     '''
 
-    def __init__(self, scidata, T_list, P_list, lam_list,
+    def __init__(self, scidata, T_list, P_list, lam_list, c_list=None,
                  lam_grid=None, d_lam=5e-4, sig=None, mask=None, tresh=1e-5):
         
         self.n_ord = len(T_list)
+        self.N_k = len(lam_grid)
+        
         self.tresh = tresh
         
         if sig is None:
             self.sig = np.ones_like(scidata)
         else:
             self.sig = sig.copy()
+        
+        # Set convolution to identity if not given (no effect)
+        if c_list is None:
+            c_list = [np.array([1.])
+                      for n in range(self.n_ord)]
+        
+        # Define convolution matrix
+        self.c_list = []
+        for c_n in c_list:
+            self.c_list.append(self.sparse_c(c_n))
+        
+        # Save the half length of each kernels
+        self.c_hl = [(c_n.shape[-1] - 1) // 2 for c_n in c_list]
         
         # Take the lam range of order 1
         # if lam_grid is not given
@@ -127,19 +143,19 @@ class _BaseOverlap():
             w.append(w_n), k.append(k_n)
         self.w, self.k = w, k
         
-        # Get indexing to build the linear system later
-        n_wv = len(self.lam_grid)
-        j = np.arange(n_wv)
-        j_list = []
-        p_list = []
-        for k_m in self.k:
-            j_m, p_m = [], []
-            for ij in range(k_m.shape[-1]):
-                j_m_ij, p_m_ij = np.where(k_m[:,ij][None,:] == j[:,None])
-                j_m.append(j_m_ij), p_m.append(p_m_ij)
-            j_m, p_m = np.array(j_m), np.array(p_m)
-            j_list.append(j_m), p_list.append(p_m)
-        self.j_list, self.p_list = j_list, p_list
+#         # Get indexing to build the linear system later
+#         n_wv = len(self.lam_grid)
+#         j = np.arange(n_wv)
+#         j_list = []
+#         p_list = []
+#         for k_m in self.k:
+#             j_m, p_m = [], []
+#             for ij in range(k_m.shape[-1]):
+#                 j_m_ij, p_m_ij = np.where(k_m[:,ij][None,:] == j[:,None])
+#                 j_m.append(j_m_ij), p_m.append(p_m_ij)
+#             j_m, p_m = np.array(j_m), np.array(p_m)
+#             j_list.append(j_m), p_list.append(p_m)
+#         self.j_list, self.p_list = j_list, p_list
 
         # Assign other trivial attributes
         self.data = scidata.copy()
@@ -152,49 +168,50 @@ class _BaseOverlap():
         
     def _get_mask_lam(self, n):
         
-        lam_min = self.lam_grid[0]
-        lam_max = self.lam_grid[-1]
-        lam_p, lam_m = self.getattrs('lam_p', 'lam_m', n=n)
+        lam_p, lam_m, c_hl   \
+                = self.getattrs('lam_p', 'lam_m', 'c_hl', n=n)
+        lam_min = self.lam_grid[c_hl]
+        lam_max = self.lam_grid[-1 - c_hl]
         
         mask = (lam_m < lam_min) | (lam_p > lam_max)
         
         return mask
     
-    def extract(self):
+#     def extract(self):
         
-        I, sig, mask, grid, d_grid  \
-            = self.getattrs('data','sig', 'mask',
-                            'lam_grid', 'd_lam')
-        T, L, H, P, w, k, j, p  \
-            = self.getattrs('T_list', 'L', 'H', 'P_list',
-                            'w', 'k', 'j_list', 'p_list')
-        n_lam = grid.size
+#         I, sig, mask, grid, d_grid  \
+#             = self.getattrs('data','sig', 'mask',
+#                             'lam_grid', 'd_lam')
+#         T, L, H, P, w, k, j, p  \
+#             = self.getattrs('T_list', 'L', 'H', 'P_list',
+#                             'w', 'k', 'j_list', 'p_list')
+#         n_lam = grid.size
         
-        I, sig = I[~mask], sig[~mask]
+#         I, sig = I[~mask], sig[~mask]
         
-        a = []
-        for n in range(self.n_ord):
-            a_n = []
-            P_n = P[n][~mask]
-            a_n = P_n[:,None] * T[n][k[n]] * w[n] / sig[:,None]
-            a.append(a_n)
+#         a = []
+#         for n in range(self.n_ord):
+#             a_n = []
+#             P_n = P[n][~mask]
+#             a_n = P_n[:,None] * T[n][k[n]] * w[n] / sig[:,None]
+#             a.append(a_n)
         
-        # TODO add convolution here or in the loop above
-        self.a = a
-        b = a
+#         # TODO add convolution here or in the loop above
+#         self.a = a
+#         b = a
 
-        # Build system
-        M, d = _build_system(I/sig, b, k, j, p, n_lam)
+#         # Build system
+#         M, d = _build_system(I/sig, b, k, j, p, n_lam)
         
-        return M, d
+#         return M, d
     
     def inject(self, f):
         
         grid, d_grid, ma  \
             = self.getattrs('lam_grid', 'd_lam', 'mask')
-        T, L, H, P, w, k, lam  \
+        T, L, H, P, w, k, lam, c  \
             = self.getattrs('T_list', 'L', 'H', 'P_list',
-                            'w', 'k', 'lam_list')
+                            'w', 'k', 'lam_list', 'c_list')
         
         out = np.zeros(ma.shape)
         for n in range(len(T)):
@@ -204,12 +221,161 @@ class _BaseOverlap():
             
             k_n, w_n = k[n], w[n]
             
+            f_conv = c[n].dot(f(grid))
+            
             inj_n = np.nansum(P_n[:,None] * T[n][k_n]
-                              * w_n * f(grid[k_n]),
+                              * w_n * f_conv[k_n],
                               axis=-1)
             out[~ma] += np.array(inj_n)
             
         return out
+    
+    def rebuild(self, f_k):
+        
+        grid, d_grid, ma  \
+            = self.getattrs('lam_grid', 'd_lam', 'mask')
+        T, L, H, P, w, k, lam, c  \
+            = self.getattrs('T_list', 'L', 'H', 'P_list',
+                            'w', 'k', 'lam_list', 'c_list')
+        
+        out = np.zeros(ma.shape)
+        for n in range(len(T)):
+#             ma = mask_ord[n]
+            P_n = P[n][~ma]
+            lam_n = lam[n][~ma]
+            
+            k_n, w_n = k[n], w[n]
+                            
+            f_conv = c[n].dot(f_k)
+            
+            inj_n = np.nansum(P_n[:,None] * T[n][k_n]
+                              * w_n * f_conv[k_n],
+                              axis=-1)
+            out[~ma] += np.array(inj_n)
+            
+        return out
+    
+    def sparse_c(self, c):
+        '''
+        Define the sparse convolution matrix
+        
+        Parameters:
+        
+        c : ndarray, (N_k, N_kernel) or (N_kernel) if kernel constant
+        '''
+        N_k = self.N_k
+        c = c.T
+        len_ker = len(c)
+        
+        if len_ker % 2 != 1:
+            raise ValueError("length of the convolution kernel should be odd.")
+
+        diag_offset = np.arange(len_ker, dtype=int)
+        diag_offset -= (len_ker - 1) // 2
+
+        if c.ndim > 1:
+            # Offset diags have a smaller length.
+            # If offset is positive, take diag[-offset:]
+            # and if negative, take diag[:-offset]
+            c_diags = [diag[slice_4_diag(off)]
+                       for diag, off in zip(c, diag_offset)]
+            
+            return diags(c_diags, diag_offset, shape=(N_k,N_k), format='csr')
+        else:
+            return diags(c, diag_offset, shape=(N_k,N_k), format='csr')
+        
+    def sparse_a(self, a, n):
+        '''
+        Transform `a` to a sparse matrix to apply convolution
+        '''
+        # Get parameters from object attributes
+        k = self.k[n]
+        N_k, N_i = self.N_k, len(k)
+        i_k = np.indices(k.shape)[0]
+        
+        # Take only well defined coefficients
+        row = i_k[k>=0]
+        col = k[k>=0]
+        data = a[k>=0]
+
+        return csr_matrix((data, (row, col)), shape=(N_i,N_k))
+    
+    def get_jp(self, k=None):
+        '''
+        Get indexing to build the linear system later
+        '''
+        print('Pre-compute indexing')
+        # Get needed attributes
+        n_wv = self.N_k
+        if k is None:
+            k = self.k_c
+        
+        # Initiate
+        j = np.arange(n_wv)
+        j_list = []
+        p_list = []
+        
+        for k_m in k:
+            j_m, p_m = [], []
+            for ij in range(k_m.shape[-1]):
+                j_m_ij, p_m_ij = np.where(k_m[:,ij][None,:] == j[:,None])
+                j_m.append(j_m_ij), p_m.append(p_m_ij)
+            j_m, p_m = np.array(j_m), np.array(p_m)
+            j_list.append(j_m), p_list.append(p_m)
+        self.j_list, self.p_list = j_list, p_list
+        print('Done')
+        
+        return j_list, p_list
+        
+        
+    def extract(self):
+        
+        # Get needed attributes
+        I, sig, mask, grid, d_grid  \
+            = self.getattrs('data','sig', 'mask',
+                            'lam_grid', 'd_lam')
+        T, L, H, P, w, k, c  \
+            = self.getattrs('T_list', 'L', 'H', 'P_list',
+                            'w', 'k', 'c_list')
+        N_k, n_ord = self.N_k, self.n_ord
+        
+        # Keep only not masked values
+        I, sig = I[~mask], sig[~mask]
+        
+        # Build b_n
+        b, k_c = [], []
+        for n in range(n_ord):
+            P_n = P[n][~mask]
+            # Compute a at each pixels
+            a_n = P_n[:,None] * T[n][k[n]] * w[n] / sig[:,None]
+            # Convert to sparse matrix to apply convolution
+            a_n = self.sparse_a(a_n, n)
+            # Apply convolution on the matrix a
+            b_n = a_n.dot(c[n])
+            # Unsparse to give as an input for _build_system
+            b_n, k_c_n = unsparse(b_n)
+            # Save value
+            b.append(b_n), k_c.append(k_c_n)
+        
+        # Check if k_c changed
+        try:
+            k_c_old = self.k_c
+            for n in range(n_ord):
+                if not (k_c[n]==k_c_old[n]).all():
+                    raise ValueError('k_c has changed. Not normal.')
+        except AttributeError:
+            self.k_c = k_c
+
+        # Compute j and p if needed (takes time)
+        try:
+            j, p = self.getattrs('j_list', 'p_list')
+        except AttributeError:
+            j, p = self.get_jp()
+
+        # Build system
+        M, d = _build_system(I/sig, b, k_c, j, p, N_k)
+        
+        return M, d
     
     def getattrs(self, *args, n=None):
         
@@ -238,7 +404,7 @@ class TrpzOverlap(_BaseOverlap):
         lam_p, lam_m, mask_ord  \
             = self.getattrs('lam_p', 'lam_m', 'mask_ord', n=n)
         
-        # Compute only valid pixels
+        # Compute only for valid pixels
         lam_p = lam_p[~mask]
         lam_m = lam_m[~mask]
         
@@ -577,3 +743,34 @@ def _build_system(I, b, k, j, p, n_lam):
                     
 
     return M, d
+
+def slice_4_diag(offset):
+    '''
+    If offset is positive, take [-offset:]
+    and if negative, take [:-offset]
+    '''
+    
+    if offset <= 0:
+        return slice(-offset, None)
+    else:
+        return slice(None, -offset)
+    
+def unsparse(matrix, fill_value=np.nan):
+    
+    col, row, val = find(matrix.T)
+    N_row, N_col = matrix.shape
+
+    good_rows, counts = np.unique(row, return_counts=True)
+
+    # Define the new position in columns
+    i_col = np.indices((N_row, counts.max()))[1]
+    i_col = i_col[good_rows]
+    i_col = i_col[i_col < counts[:,None]]
+    
+    # Create outputs and assign values
+    col_out = np.ones((N_row, counts.max()), dtype=int) * -1
+    col_out[row, i_col] = col
+    out = np.ones((N_row, counts.max())) * fill_value
+    out[row, i_col] = val
+    
+    return out, col_out
