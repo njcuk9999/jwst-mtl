@@ -1,0 +1,1 @@
+/Users/albert/NIRISS/SOSSpipeline/syntMagCode/synthesizeMagnitude.py
