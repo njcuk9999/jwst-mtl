@@ -237,33 +237,6 @@ class _BaseOverlap():
 
         return csr_matrix((data, (row, col)), shape=(N_i,N_kc))
     
-    def get_jp(self, k=None):
-        '''
-        Get indexing to build the linear system later
-        '''
-        print('Pre-compute indexing')
-        # Get needed attributes
-        n_wv = self.N_k
-        if k is None:
-            k = self.k_c
-        
-        # Initiate
-        j = np.arange(n_wv)
-        j_list = []
-        p_list = []
-        
-        for k_m in k:
-            j_m, p_m = [], []
-            for ij in range(k_m.shape[-1]):
-                j_m_ij, p_m_ij = np.where(k_m[:,ij][None,:] == j[:,None])
-                j_m.append(j_m_ij), p_m.append(p_m_ij)
-            j_m, p_m = np.array(j_m), np.array(p_m)
-            j_list.append(j_m), p_list.append(p_m)
-        self.j_list, self.p_list = j_list, p_list
-        print('Done')
-        
-        return j_list, p_list
-    
     def _get_a(self, n, sparse=True):
         
         # Get needed attributes
@@ -283,51 +256,8 @@ class _BaseOverlap():
             return self.sparse_a(a_n, n)
         else:
             return a_n
-        
-        
-    def extract(self):
-        
-        # Get needed attributes
-        I, sig, mask, c \
-            = self.getattrs('data','sig', 'mask', 'c_list')
-        N_k, n_ord = self.N_k, self.n_ord
-        
-        # Keep only not masked values
-        I, sig = I[~mask], sig[~mask]
-        
-        # Build b_n
-        b, k_c = [], []
-        for n in range(n_ord):
-            # Get sparse a
-            a_n = self._get_a(n)
-            # Apply convolution on the matrix a
-            b_n = a_n.dot(c[n])
-            # Unsparse to give as an input for _build_system
-            b_n, k_c_n = unsparse(b_n)
-            # Save value
-            b.append(b_n), k_c.append(k_c_n)
-        
-        # Check if k_c changed
-        try:
-            k_c_old = self.k_c
-            for n in range(n_ord):
-                if not (k_c[n]==k_c_old[n]).all():
-                    raise ValueError('k_c has changed. Not normal.')
-        except AttributeError:
-            self.k_c = k_c
-
-        # Compute j and p if needed (takes time)
-        try:
-            j, p = self.getattrs('j_list', 'p_list')
-        except AttributeError:
-            j, p = self.get_jp()
-
-        # Build system
-        M, d = _build_system(I/sig, b, k_c, j, p, N_k)
-        
-        return M, d
     
-    def extract_new(self):
+    def extract(self):
         
         # Get needed attributes
         I, sig, mask, c \
@@ -669,64 +599,6 @@ def _get_lam_p_or_m(lam):
     else:
         raise ValueError('Bad pixel values for wavelength')
 
-
-
-def _build_system_slow(I, b, k, n_lam):
-
-    # Initialize
-    d = np.zeros(n_lam)
-    M = np.zeros((n_lam,n_lam))
-
-    # Iterate over matrix lines (lam)
-    for j in range(n_lam):
-#         print(j)
-        for k_n, b_n in zip(k, b):
-            for i, (k_in, b_in) in enumerate(zip(k_n, b_n)):
-#                 p_in = (k_in == j) & (k_in >= 0)
-#                 print(k_in)
-                p_in = (k_in == j)
-                if p_in.any():
-#                     print(I[p_in] * b_in[i])
-                    d[j] += (I[i] * b_in[p_in])
-                
-                    for k_m, b_m in zip(k, b):
-                        k_im, b_im = k_m[i], b_m[i]
-                        p_im = k_im >= 0
-                        np.add.at(M, (j, k_im[p_im]), b_in[p_in] * b_im[p_im])
-
-    return M, d
-
-
-def _build_system(I, b, k, j, p, n_lam):
-    
-    # Initialize
-    d = np.zeros(n_lam)
-    M = np.zeros((n_lam,n_lam))
-    
-    # Transpose k, j and p
-    k = [k_n.T for k_n in k]
-    b = [b_n.T for b_n in b]
-
-    n_ord = len(k)
-    for n in range(n_ord):
-
-        n_ij = len(j[n])
-        for ij in range(n_ij):
-            np.add.at(d, j[n][ij], (I * b[n][ij])[p[n][ij]])
-        
-        for m in range(n_ord):
-            m_ij = len(j[m])
-            for ij1 in range(n_ij):
-                for ij2 in range(m_ij):
-                    
-                    k_ij = k[m][ij2][p[n][ij1]]
-                    good = k_ij >= 0 
-                    if good.any():
-                        np.add.at(M, (j[n][ij1][good], k_ij[good]),
-                                  (b[m][ij2][p[n][ij1]] * b[n][ij1][p[n][ij1]])[good])
-                    
-
-    return M, d
 
 def slice_4_diag(offset):
     '''
