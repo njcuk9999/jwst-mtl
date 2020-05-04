@@ -1,9 +1,11 @@
 import numpy as np
-from scipy.sparse import lil_matrix, csr_matrix, diags, find
+from scipy.sparse import find, issparse, csr_matrix
+from scipy.sparse.linalg import spsolve
 
 # Local imports
 from custom_numpy import is_sorted, first_change, arange_2d
 from interpolate import SegmentedLagrangeX
+from convolution import get_c_matrix
 
 
 class _BaseOverlap():
@@ -49,7 +51,8 @@ class _BaseOverlap():
         this value will be masked.
     """    
     def __init__(self, scidata, T_list, P_list, lam_list, lam_grid=None,
-                 c_list=None, sig=None, mask=None, tresh=1e-5):
+                 lam_bounds=None, i_bounds=None, c_list=None,
+                 c_kwargs=None, sig=None, mask=None, tresh=1e-5):
         
         # lam_grid must be specified
         if lam_grid is None:
@@ -71,28 +74,6 @@ class _BaseOverlap():
         # Save pixel wavelength
         self.lam_list = [lam.copy() for lam in lam_list]
         
-        # Set convolution to identity if not given (no effect)
-        if c_list is None:
-            c_list = [np.array([1.])
-                      for n in range(self.n_ord)]
-            
-        # Save the half length of kernels of each orders
-        # This is utilised to get the convolved wavelength grid
-        # such that it equals to lam_grid[c_hl:-c_hl]
-        self.c_hl = [(c_n.shape[-1] - 1) // 2 for c_n in c_list]
-        # Idea: define a lam_grid_c (convolved) instead?
-        
-        # Define convolution sparse matrix
-        # and save length of the convolved flux
-        c, N_kc_list = [], []
-        for c_n in c_list:  # For each order
-            sparse_c_n = self.sparse_c(c_n)
-            N_kc = sparse_c_n.shape[0]
-            c.append(sparse_c_n)
-            N_kc_list.append(N_kc)
-        self.c_list = c
-        self.N_kc_list = N_kc_list
-        
         # Save wavelength grid
         self.lam_grid = lam_grid.copy()
         
@@ -107,8 +88,66 @@ class _BaseOverlap():
                 T.append(T_n)  
         self.T_list = T  # Save value
         
-        # Define a global mask and masks for each orders
+        # Assign a first estimate of i_bounds if not specified
+        # to be able to compute mask
+        if i_bounds is None:
+            i_bounds = [[0,len(lam_grid)]
+                        for _ in range(self.n_ord)]
+        else:
+            # Make sure it is absolute index, not relative
+            # So no negative index.
+            for i_bnds in i_bounds:
+                if i_bnds[1] < 0:
+                    i_bnds[1] = len(lam_grid) + i_bnds[1]
+        self.i_bounds = i_bounds
+        
+        # First estimate of a global mask and masks for each orders
         self.mask, self.mask_ord = self._get_masks(mask)
+        
+        # Correct i_bounds if it was not specified
+        self.i_bounds = self._get_i_bnds(lam_bounds)
+        
+        # Re-build global mask and masks for each orders
+        self.mask, self.mask_ord = self._get_masks(mask)
+        
+        # Set convolution to identity if not given (no effect)
+        if c_list is None:
+            c_list = [np.array([1.])
+                      for n in range(self.n_ord)]
+            
+        # Check c_kwargs input
+        if c_kwargs is None:
+            c_kwargs = [{} for _ in range(self.n_ord)]
+        elif isinstance(c_kwargs,dict):
+            c_kwargs = [c_kwargs for _ in range(self.n_ord)]
+        # Define convolution sparse matrix    
+        c = []
+        for i, c_n in enumerate(c_list):
+            if not issparse(c_n):
+                c_n = get_c_matrix(c_n, lam_grid,
+                                   i_bounds=self.i_bounds[i],
+                                   **c_kwargs[i])
+            c.append(c_n)
+        self.c_list = c
+            
+#         # Save the half length of kernels of each orders
+#         # This is utilised to get the convolved wavelength grid
+#         # such that it equals to lam_grid[c_hl:-c_hl]
+#         self.c_hl = [(c_n.shape[-1] - 1) // 2 for c_n in c_list]
+#         # Idea: define a lam_grid_c (convolved) instead?
+        
+#         # Define convolution sparse matrix
+#         # and save length of the convolved flux
+#         c, N_kc_list = [], []
+#         for c_n in c_list:  # For each order
+#             sparse_c_n = self.sparse_c(c_n)
+#             N_kc = sparse_c_n.shape[0]
+#             c.append(sparse_c_n)
+#             N_kc_list.append(N_kc)
+#         self.c_list = c
+#         self.N_kc_list = N_kc_list
+        
+
         
         # Computes weights (coefficients of the linear
         # combination that express the flux of a pixel
@@ -123,7 +162,7 @@ class _BaseOverlap():
 
         # Assign other trivial attributes
         self.data = scidata.copy()
-        # TODO: try setting to np.nan instead
+        # TODO: try setting to np.nan instead?
         self.data[self.mask] = 0  
         
     def _get_masks(self, mask):
@@ -161,6 +200,35 @@ class _BaseOverlap():
         
         return global_mask, mask_ord
     
+    def _get_i_bnds(self, lam_bounds):
+        """ Define wavelength boundaries for each orders using the order's mask """
+        
+        
+        # TODO: define this function for only a given order
+        lam_grid = self.lam_grid
+        i_bounds = self.i_bounds
+        
+        # Check if lam_bounds given
+        if lam_bounds is None:
+            lam_bounds = []
+            for i in range(self.n_ord):
+                lam = self.lam_list[i][~self.mask_ord[i]]
+                lam_bounds.append([lam.min(), lam.max()])
+                
+        # What we need is the boundary position
+        # on the wavelength grid.
+        i_bnds_new = []
+        for bounds, i_bnds in zip(lam_bounds, i_bounds):
+            a = np.min(np.where(lam_grid >= bounds[0])[0])
+            b = np.max(np.where(lam_grid <= bounds[1])[0]) + 1
+            # Take the most restrictive bound
+            a = np.max([a, i_bnds[0]])
+            b = np.min([b, i_bnds[1]])
+            # Keep value
+            i_bnds_new.append([a,b])
+            
+        return i_bnds_new
+    
     def inject(self, f, **kwargs):
         
         grid = self.lam_grid
@@ -191,30 +259,6 @@ class _BaseOverlap():
         out[ma] = np.nan
             
         return out
-    
-    def sparse_c(self, c):
-        '''
-        Define the sparse convolution matrix
-        
-        Parameters:
-        
-        c : ndarray, (N_kc, N_kernel) or (N_kernel) if kernel constant
-        '''
-        N_k = self.N_k
-        c = c.T
-        len_ker = len(c)
-        
-        if len_ker % 2 != 1:
-            raise ValueError("length of the convolution kernel should be odd.")
-
-        diag_offset = np.arange(len_ker, dtype=int)
-        
-        if c.ndim > 1:
-            N_kc = c.shape[-1]
-        else:
-            N_kc = N_k - len_ker + 1
-            
-        return diags(c, diag_offset, shape=(N_kc,N_k), format='csr')
         
     def sparse_a(self, a, n):
         '''
@@ -222,7 +266,8 @@ class _BaseOverlap():
         Useful to apply convolution
         '''
         # Get parameters from object attributes
-        k, N_kc = self.k[n], self.N_kc_list[n]
+        k = self.k[n]
+        N_kc = np.diff(self.i_bounds[n]).astype(int)[0]
         
         # Number of good pixels
         N_i = len(k)
@@ -257,7 +302,7 @@ class _BaseOverlap():
         else:
             return a_n
     
-    def extract(self):
+    def build_sys(self):
         
         # Get needed attributes
         I, sig, mask, c \
@@ -285,6 +330,55 @@ class _BaseOverlap():
         
         return M, d
     
+    def extract(self):
+        
+        # Build the system to solve
+        M, d = self.build_sys()
+        
+        # Get index of `lam_grid` convered by the pixel
+        # `lam_grid` may cover more then the pixels.
+        try:
+            a, b = self.i_grid
+        except AttributeError:
+            a, b = self.get_i_grid(d)
+            self.i_grid = [a, b]
+        
+        # Init f_k with nan
+        f_k = np.ones(d.shape[-1]) * np.nan
+        # Only solve for valid range (on the detector).
+        # It will be a singular matrix otherwise.
+        f_k[a:b] = spsolve(M[a:b,a:b], d.T[a:b])
+        
+        return f_k
+    
+    def get_i_grid(self, d):
+        """ Return the index of the grid that are defined """
+        d = d.toarray()[0]
+        i_non_zero = np.nonzero(d)[0]
+        a = np.min(i_non_zero)
+        b = np.max(i_non_zero) + 1
+        # Make sure they fall on the grid
+        a = np.max([0, a])
+        b = np.min([len(d), b])
+        
+        return a, b
+    
+    def get_w(self, *args):
+        """Dummy method to be able to init this class"""
+        
+        return None, None
+    
+    def get_mask_lam(self, n):
+        """ Mask according to wavelength grid """
+        lam = self.lam_list[n]
+        a, b = self.i_bounds[n]
+        lam_min = self.lam_grid[a]
+        lam_max = self.lam_grid[b-1]
+        
+        mask = (lam <= lam_min) | (lam >= lam_max)
+        
+        return mask
+    
     def getattrs(self, *args, n=None):
         
         if n is None:
@@ -311,12 +405,12 @@ class LagrangeOverlap(_BaseOverlap):
         
     def get_mask_lam(self, n):
         
-        lam, c_hl   \
-            = self.getattrs('lam_list', 'c_hl', n=n)
-        lam_min = self.lam_grid[c_hl]
-        lam_max = self.lam_grid[-1-c_hl]
+        lam, i_bnds   \
+            = self.getattrs('lam_list', 'i_bounds', n=n)
+        lam_min = self.lam_grid[i_bnds[0]]
+        lam_max = self.lam_grid[i_bnds[1]-1]
         
-        mask = (lam < lam_min) | (lam > lam_max)
+        mask = (lam <= lam_min) | (lam >= lam_max)
         
         return mask
     
@@ -329,11 +423,11 @@ class LagrangeOverlap(_BaseOverlap):
         grid, mask, order \
             = self.getattrs('lam_grid', 'mask', 'lagrange_ord')
         # ... diffraction-order dependent attributes
-        lam, mask_ord, c_hl  \
-            = self.getattrs('lam_list', 'mask_ord', 'c_hl', n=n)
+        lam, mask_ord, i_bnds  \
+            = self.getattrs('lam_list', 'mask_ord', 'i_bounds', n=n)
         
         # Use the convolved grid (depends on the order)
-        grid = grid[c_hl:len(grid)-c_hl]
+        grid = grid[i_bnds[0]:i_bnds[1]]
         
         # Compute delta lamda of each pixel
         # delta_lambda = lambda_plus - lambda_minus
@@ -427,10 +521,10 @@ class TrpzOverlap(_BaseOverlap):
     
     def get_mask_lam(self, n):
         
-        lam_p, lam_m, c_hl   \
-            = self.getattrs('lam_p', 'lam_m', 'c_hl', n=n)
-        lam_min = self.lam_grid[c_hl]
-        lam_max = self.lam_grid[-1-c_hl]
+        lam_p, lam_m, i_bnds   \
+            = self.getattrs('lam_p', 'lam_m', 'i_bounds', n=n)
+        lam_min = self.lam_grid[i_bnds[0]]
+        lam_max = self.lam_grid[i_bnds[1]-1]
         
         mask = (lam_m < lam_min) | (lam_p > lam_max)
         
@@ -444,12 +538,12 @@ class TrpzOverlap(_BaseOverlap):
         grid, mask  \
             = self.getattrs('lam_grid','mask')
         # ... order dependent attributes
-        lam_p, lam_m, mask_ord, c_hl  \
+        lam_p, lam_m, mask_ord, i_bnds  \
             = self.getattrs('lam_p', 'lam_m',
-                            'mask_ord', 'c_hl', n=n)
+                            'mask_ord', 'i_bounds', n=n)
         
         # Use the convolved grid (depends on the order)
-        grid = grid[c_hl:len(grid)-c_hl]
+        grid = grid[i_bnds[0]:i_bnds[1]]
         
         # Compute the wavelength coverage of the grid
         d_grid = np.diff(grid)

@@ -1,8 +1,9 @@
 import numpy as np
+from scipy.sparse import diags, csr_matrix
 
 
-def get_c_matrix(kernel, grid, bounds=None, sparse=True,
-                 n_out=None, thresh_out=None, **kwargs):
+def get_c_matrix(kernel, grid, bounds=None, i_bounds=None,
+                 sparse=True, n_out=None, thresh_out=None, **kwargs):
     """
     Return a convolution matrix
     Can return a sparse matrix (N_k_convolved, N_k)
@@ -53,12 +54,16 @@ def get_c_matrix(kernel, grid, bounds=None, sparse=True,
         length of the kernel.
     """
     
-    # Define range where the convolution is defined on the grid
-    if bounds is None:
-        a, b = 0, len(grid)
+    # Define range where the convolution is defined on the grid.
+    # If `i_bounds` is not specified, try with `bounds`.
+    if i_bounds is None:
+        if bounds is None:
+            a, b = 0, len(grid)
+        else:
+            a = np.min(np.where(grid >= bounds[0])[0])
+            b = np.max(np.where(grid <= bounds[1])[0]) + 1
     else:
-        a = np.min(np.where(grid >= bounds[0])[0])
-        b = np.max(np.where(grid <= bounds[1])[0]) + 1
+        a, b = i_bounds
     
     # Generate a 2D kernel if it depending on the input
     if callable(kernel):
@@ -111,8 +116,6 @@ def cut_ker(ker, n_out=None, thresh=None):
         i_left = np.max([h_len - i_left, 0])
         i_right = np.min([h_len + i_right, n_ker - 1])
         
-        
-    print(i_left, i_right, h_len, n_ker)
     # Apply the cut
     for i in range(0,i_left):
         # Add condition in case the kernel is larger
