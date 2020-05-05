@@ -16,8 +16,6 @@ from astropy.io import fits
 from copy import deepcopy
 import numpy.random as rdm
 
-#%%
-
 
 class TimeSeries(object):
 
@@ -123,7 +121,7 @@ class TimeSeries(object):
         print('Writing to file: '+filename)
 
     def plot_image(self, i_group=0, i_integ=0, log=False, reverse_y=True,
-                  save=False, filename=None):
+                   save=False, filename=None):
         """
         Plot the detector image for a chosen frame
         """
@@ -150,7 +148,7 @@ class TimeSeries(object):
                 filename = 'image_G'+str(i_group)+'_I'+str(i_integ)+'.png'
             fig.savefig(filename)
 
-    def plot_pixel(self, i_row=1380, i_col=55, marker='o', color='b',
+    def plot_pixel(self, i_row=1380, i_col=55,
                    plot_on_im=True, save=False, filename=None):
         """
         Plot the flux in a given pixel as a function of Frame #

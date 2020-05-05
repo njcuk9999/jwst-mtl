@@ -56,4 +56,4 @@ def main(argv):
 
 
 if __name__ == "__main__":
-    fit = main(sys.argv)
+    main(sys.argv)

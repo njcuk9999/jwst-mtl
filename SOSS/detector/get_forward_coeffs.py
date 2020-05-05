@@ -17,8 +17,9 @@ import sys
 from astropy.io import fits
 import time
 
+
 def get_forward(correc_coeffs, i_row=1380, i_col=55,
-                range_calibration=[0., 100e3], npoints=100, poly_deg=4,
+                range_calibration=None, npoints=100, poly_deg=4,
                 plot=False):
     """
     Fit forward coefficients for a pixel
@@ -29,6 +30,8 @@ def get_forward(correc_coeffs, i_row=1380, i_col=55,
     - plot: plot the result of the polynomial fit
     """
 
+    if range_calibration is None:
+        range_calibration = [0., 100e3]
     fluxes_calibration = np.linspace(range_calibration[0],
                                      range_calibration[1], npoints)
 
@@ -63,18 +66,15 @@ def get_forward(correc_coeffs, i_row=1380, i_col=55,
     return fwd_coeffs
 
 
-def calc_forward_coeffs_array(correc_coeffs, range_calibration=[0., 100e3],
-                              npoints=100, poly_deg=4, print_every_N_col=5):
+def calc_forward_coeffs_array(correc_coeffs, poly_deg=4, print_every_ncol=5):
     """
     Calculate the ndarray of (poly_deg+1)*ncols*nrows coefficients
     - correc_coeffs: correction coefficients from CRDS file
-    - range_calibration: range of counts for which the forward coefficients are
-    calculated
-    - npoints: number of points to use for calibration
     - poly_deg: degree of the polynomial to fit for the forward coefficients
     - print_every_N_col: if None, does nothing. if = a number, will print to
     the screen every time this number of columns has been processed
     """
+
     ncols = 2048
     nrows = 2048
     forward_coeffs = np.zeros((poly_deg+1, ncols, nrows))
@@ -83,8 +83,8 @@ def calc_forward_coeffs_array(correc_coeffs, range_calibration=[0., 100e3],
 
     for c in range(ncols):
 
-        if print_every_N_col is not None:
-            if (c % print_every_N_col) == 0:
+        if print_every_ncol is not None:
+            if (c % print_every_ncol) == 0:
                 print('Column '+str(c+1)+'/'+str(ncols))
 
         for r in range(nrows):
@@ -116,9 +116,7 @@ def main(argv):
     if lenargv > 1:
         crds_path = argv[1]  # path to the fits file containing the CRDS file
         if lenargv > 2:
-            range_calibration = []
-            range_calibration.append(float(argv[2]))
-            range_calibration.append(float(argv[3]))
+            range_calibration = [float(argv[2]), float(argv[3])]
             npoints = int(argv[4])
             poly_deg = int(argv[5])
         else:
@@ -141,9 +139,7 @@ def main(argv):
     # correc_coeffs = fits.open(crdsPath)[1].data[:,1792:,:]
     correc_coeffs = fits.open(crds_path)[1].data
 
-    fwd_coeffs = calc_forward_coeffs_array(correc_coeffs,
-                                           range_calibration=range_calibration,
-                                           npoints=npoints, poly_deg=poly_deg)
+    fwd_coeffs = calc_forward_coeffs_array(correc_coeffs, poly_deg=poly_deg)
 
     np.save('files/'+crds_path[:-5].replace('/', '_') + '_range_'
             + str(int(range_calibration[0])) + '_'
@@ -152,4 +148,4 @@ def main(argv):
 
 
 if __name__ == "__main__":
-    fit = main(sys.argv)
+    main(sys.argv)
