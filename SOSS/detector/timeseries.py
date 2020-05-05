@@ -36,12 +36,10 @@ class TimeSeries(object):
 
         self.nrows = header['NAXIS1']
         self.ncols = header['NAXIS2']
-
-        # number of groups per integration
-        self.ngroups = header['NAXIS3']
-
-        # number of integrations in time series observations
-        self.nintegs = header['NAXIS4']
+        self.ngroups = header['NAXIS3']  # number of groups per integration
+        self.nintegs = header['NAXIS4']  # number of integrations in time series observations
+        self.subarray = hdu_ideal[0].header['SUBARRAY']
+        self.tgroup = hdu_ideal[0].header['TGROUP']  # TODO Uses as exposure time per frame.
 
         self.modif_str = '_mod'  # string encoding the modifications
 
@@ -111,7 +109,7 @@ class TimeSeries(object):
     
     def add_detector_noise(self, offset=500., gain=1.61, pca0_file=None, noise_seed=None, dark_seed=None):
         """
-        Add read-noise, 1/f noise and alternating column noise using the HxRG noise generator.
+        Add read-noise, 1/f noise, kTC noise, and alternating column noise using the HxRG noise generator.
         """
 
         # In the current implementation the pca0 file goes unused, but it is a mandatory input of HxRG.
@@ -186,6 +184,84 @@ class TimeSeries(object):
 
         self.modif_str = self.modif_str + '_detector'
 
+    def apply_flatfield(self, flatfile=None):
+        """
+        Apply the flat field correction to the simulation.
+        """
+
+        if flatfile is None:
+            flatfile = resource_filename('detector', 'files/jwst_niriss_flat_0181.fits')
+
+        # Read the flat-field from file (in science coordinates).
+        with fits.open(flatfile) as hdu:
+            flatfield = hdu[1].data
+
+        # Select the appropriate subarray.
+        if self.subarray == 'SUBSTRIP96':
+            slc = slice(1792, 1888)
+        elif self.subarray == 'SUBSTRIP256':
+            slc = slice(1792, 2048)
+        elif self.subarray == 'FULL':
+            slc = slice(0, 2048)
+        else:
+            raise ValueError('SUBARRAY must be one of SUBSTRIP96, SUBSTRIP256 or FULL')
+
+        subflat = flatfield[slc, :]
+
+        # Apply to the simulation.
+        self.data = self.data * subflat
+
+        self.modif_str = self.modif_str + '_flat'
+
+    def add_superbias(self, gain=1.61, biasfile=None):
+        """
+        Add the bias level to the simulation.
+        """
+
+        if biasfile is None:
+            biasfile = resource_filename('detector', 'files/jwst_niriss_superbias_0137.fits')
+
+        # Read the super bias from file (in science coordinates).
+        with fits.open(biasfile) as hdu:
+            superbias = hdu[1].data  # [ADU]
+
+        superbias = superbias*gain  # [electrons]
+
+        # Select the appropriate subarray.
+        if self.subarray == 'SUBSTRIP96':
+            slc = slice(1792, 1888)
+        elif self.subarray == 'SUBSTRIP256':
+            slc = slice(1792, 2048)
+        elif self.subarray == 'FULL':
+            slc = slice(0, 2048)
+        else:
+            raise ValueError('SUBARRAY must be one of SUBSTRIP96, SUBSTRIP256 or FULL')
+
+        subbias = superbias[slc, :]
+
+        # Add the bias level to the simulation.
+        self.data = self.data + subbias
+
+        self.modif_str = self.modif_str + '_bias'
+
+    def add_simple_dark(self, darkvalue=0.0414):  # TODO dark should be lower in the voids.
+        """
+        Add a simple dark current to the simulation.
+
+        - Uses 0.0414 electrons/s by default. Taken from Jdox on 04-May-2020, note that the actual dark current is lower
+        in the voids.
+
+        """
+
+        # Generate the dark ramps for the simulation.
+        dark = rdm.poisson(darkvalue*self.tgroup, size=self.data.shape)  # [electrons]
+        darkramp = np.cumsum(dark, axis=1)
+
+        # Add the dark ramps to the simulation.
+        self.data = self.data + darkramp
+
+        self.modif_str = self.modif_str + '_dark'
+
     def write_to_fits(self, filename=None):
         """
         Write to a fits file the new header and data
@@ -193,7 +269,7 @@ class TimeSeries(object):
 
         hdu_new = self.hdu_ideal
         hdu_new[1].data = self.data
-        
+
         if filename is None:
             filename = self.ima_path[:-5]+self.modif_str+'.fits'
             hdu_new.writeto(filename, overwrite=True)
