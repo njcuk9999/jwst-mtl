@@ -6,6 +6,7 @@ from scipy.sparse.linalg import spsolve
 from custom_numpy import is_sorted, first_change, arange_2d
 from interpolate import SegmentedLagrangeX
 from convolution import get_c_matrix
+from utils import _get_lam_p_or_m
 
 
 class _BaseOverlap():
@@ -129,25 +130,6 @@ class _BaseOverlap():
                                    **c_kwargs[i])
             c.append(c_n)
         self.c_list = c
-            
-#         # Save the half length of kernels of each orders
-#         # This is utilised to get the convolved wavelength grid
-#         # such that it equals to lam_grid[c_hl:-c_hl]
-#         self.c_hl = [(c_n.shape[-1] - 1) // 2 for c_n in c_list]
-#         # Idea: define a lam_grid_c (convolved) instead?
-        
-#         # Define convolution sparse matrix
-#         # and save length of the convolved flux
-#         c, N_kc_list = [], []
-#         for c_n in c_list:  # For each order
-#             sparse_c_n = self.sparse_c(c_n)
-#             N_kc = sparse_c_n.shape[0]
-#             c.append(sparse_c_n)
-#             N_kc_list.append(N_kc)
-#         self.c_list = c
-#         self.N_kc_list = N_kc_list
-        
-
         
         # Computes weights (coefficients of the linear
         # combination that express the flux of a pixel
@@ -203,7 +185,6 @@ class _BaseOverlap():
     def _get_i_bnds(self, lam_bounds):
         """ Define wavelength boundaries for each orders using the order's mask """
         
-        
         # TODO: define this function for only a given order
         lam_grid = self.lam_grid
         i_bounds = self.i_bounds
@@ -231,12 +212,14 @@ class _BaseOverlap():
     
     def inject(self, f, **kwargs):
         
-        grid = self.lam_grid
+        # If f is callable, project on grid
+        if callable(f):
+            grid = self.lam_grid
         
-        # Project on wavelength grid
-        f_k = f(grid)
+            # Project on wavelength grid
+            f = f(grid)
             
-        return self.rebuild(f_k, **kwargs)
+        return self.rebuild(f, **kwargs)
     
     def rebuild(self, f_k, orders=None):
         
@@ -352,7 +335,7 @@ class _BaseOverlap():
         return f_k
     
     def get_i_grid(self, d):
-        """ Return the index of the grid that are defined """
+        """ Return the index of the grid that are well defined """
         d = d.toarray()[0]
         i_non_zero = np.nonzero(d)[0]
         a = np.min(i_non_zero)
@@ -362,6 +345,65 @@ class _BaseOverlap():
         b = np.min([len(d), b])
         
         return a, b
+    
+    
+    def bin_flux(self, grid, f_k, n=0):
+        """ Bin the oversampled flux to a pixel grid"""
+        
+        # Get needed attributes
+        lam_grid = self.lam_grid
+        i_bnds, c = self.getattrs('i_bounds', 'c_list', n=n)
+        
+        # Use the convolved grid and flux
+        lam_grid = lam_grid[slice(*i_bnds)]
+        f_k = c.dot(f_k)
+        
+        # Compute extremities of the bins
+        # (Assuming grid is the center)
+        lam_p, lam_m = _get_lam_p_or_m(grid)
+        
+        # Make sur it's sorted
+        lam_p, lam_m = np.sort(lam_p), np.sort(lam_m)
+        
+        # Special treatment at the end of the bins
+        lam_bin = np.concatenate([lam_m, lam_p[-1:]])
+        
+        # Compute bins
+        f_out = np.histogram(lam_grid, lam_bin, weights=f_k)[0]
+        # Normalise (result is the mean in each bins)
+        f_out /= np.histogram(lam_grid, lam_bin)[0]
+        
+        return f_out
+    
+    def bin_flux_th(self, grid, f_th, n=0):
+        """ Method to generate a theoretical extracted flux"""
+
+        # Get needed attributes
+        lam_grid = self.lam_grid
+        i_bnds = self.i_bounds[n]
+        
+        # Use the convolved grid and project the 
+        # convolve flux theoric
+        lam_grid = lam_grid[slice(*i_bnds)]
+        f_k = f_th(lam_grid)
+        
+        # Compute extremities of the bins
+        # (Assuming grid is the center)
+        lam_p, lam_m = _get_lam_p_or_m(grid)
+
+        # Make sure it's sorted
+        lam_p, lam_m = np.sort(lam_p), np.sort(lam_m)
+
+        # Special treatment at the end of the bins
+        lam_bin = np.concatenate([lam_m, lam_p[-1:]])
+
+        # Compute bins
+        f_out = np.histogram(lam_grid, lam_bin, weights=f_k)[0]
+        # Normalise (result is the mean in each bins)
+        f_out /= np.histogram(lam_grid, lam_bin)[0]
+
+        return f_out
+        
     
     def get_w(self, *args):
         """Dummy method to be able to init this class"""
@@ -474,7 +516,7 @@ class TrpzOverlap(_BaseOverlap):
         super().__init__(scidata, T_list, P_list,
                          lam_list, **kwargs)
              
-    def _get_LH(self, grid, n):
+    def _get_LH_old(self, grid, n):
         """
         Find the lowest (L) and highest (H) index 
         of lam_grid for each pixels and orders.
@@ -510,6 +552,39 @@ class TrpzOverlap(_BaseOverlap):
         # Special treatment when H==grid[-1], so cond all True
         ind = np.where(cond.all(axis=-1))
         H[ind] = len(grid) - 1
+
+        # Set invalid pixels for this order to L=-1 and H=-2
+        ma = mask_ord[~mask]
+        L[ma], H[ma] = -1, -2
+        
+        print('Done')
+
+        return L, H
+    
+    def _get_LH(self, grid, n):
+        """
+        Find the lowest (L) and highest (H) index 
+        of lam_grid for each pixels and orders.
+        """
+        print('Compute LH')
+        
+        # Get needed attributes
+        mask = self.mask
+        # ... order dependent attributes
+        lam_p, lam_m, mask_ord  \
+            = self.getattrs('lam_p', 'lam_m', 'mask_ord', n=n)
+        
+        # Compute only for valid pixels
+        lam_p = lam_p[~mask]
+        lam_m = lam_m[~mask]
+        
+        # Find lower (L) index in the pixel
+        #
+        L = np.searchsorted(grid, lam_m, side='right')
+
+        # Find higher (H) index in the pixel
+        #
+        H = np.searchsorted(grid, lam_p) - 1
 
         # Set invalid pixels for this order to L=-1 and H=-2
         ma = mask_ord[~mask]
@@ -565,14 +640,23 @@ class TrpzOverlap(_BaseOverlap):
         # for each pixel
         k_first, k_last = -1*np.ones(N_i), -1*np.ones(N_i)
         # If lowest value close enough to the exact grid value,
-        cond = (grid[L]-lam_m)/d_grid[L] <= 1.0e-8
+        # NOTE: Could be approximately equal to the exact grid
+        # value. It would look like that.
+        # >>> L_dgrid = L
+        # >>> L_dgrid[L_dgrid==len(d_grid)] = len(d_grid) - 1
+        # >>> cond = (grid[L]-lam_m)/d_grid[L_dgrid] <= 1.0e-8
+        # But let's stick with the exactly equal
+        cond = (grid[L] == lam_m)
         # special case (no need for L_i - 1)
         k_first[cond & ~ma] = L[cond & ~ma]
         lam_m[cond & ~ma] = grid[L[cond & ~ma]]
         # else, need L_i - 1
         k_first[~cond & ~ma] = L[~cond & ~ma] - 1
-        # Same situation for highest value,
-        cond = (lam_p-grid[H])/d_grid[H-1] <= 1.0e-8
+        # Same situation for highest value. If we follow the note
+        # above (~=), the code could look like
+        # >>> cond = (lam_p-grid[H])/d_grid[H-1] <= 1.0e-8
+        # But let's stick with the exactly equal
+        cond = (lam_p == grid[H])
         # special case (no need for H_i - 1)
         k_last[cond & ~ma] = H[cond & ~ma]
         lam_p[cond & ~ma] = grid[H[cond & ~ma]]
@@ -667,31 +751,26 @@ class TrpzOverlap(_BaseOverlap):
 
         print('Done')
         return w, k
-        
+    
+    
+def _bin_flux(lam_grid, grid, f_k):
 
-def _get_lam_p_or_m(lam):
-    '''
-    Compute lambda_plus and lambda_minus
-    '''
-    
-    lam_r = np.zeros_like(lam)
-    lam_l = np.zeros_like(lam)
-    
-    # Def delta lambda
-    d_lam = np.diff(lam, axis=1)
-    
-    # Define lambda left and lambda right of each pixels
-    lam_r[:,:-1] = lam[:,:-1] + d_lam/2
-    lam_r[:,-1] = lam[:,-1] + d_lam[:,-1]/2
-    lam_l[:,1:] = lam[:,:-1] + d_lam/2  # Same values as lam_r
-    lam_l[:,0] = lam[:,0] - d_lam[:,0]/2
-    
-    if (lam_r >= lam_l).all():
-        return lam_r, lam_l
-    elif (lam_r <= lam_l).all():
-        return lam_l, lam_r
-    else:
-        raise ValueError('Bad pixel values for wavelength')
+    # Compute extremities of the bins
+    # (Assuming grid is the center)
+    lam_p, lam_m = _get_lam_p_or_m(grid)
+
+    # Make sur it's sorted
+    lam_p, lam_m = np.sort(lam_p), np.sort(lam_m)
+
+    # Special treatment at the end of the bins
+    lam_bin = np.concatenate([lam_m, lam_p[-1:]])
+
+    # Compute bins
+    f_out = np.histogram(lam_grid, lam_bin, weights=f_k)[0]
+    # Normalise (result is the mean in each bins)
+    f_out /= np.histogram(lam_grid, lam_bin)[0]
+
+    return f_out
 
 
 def slice_4_diag(offset):

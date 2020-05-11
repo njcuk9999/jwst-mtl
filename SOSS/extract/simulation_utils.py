@@ -22,7 +22,7 @@ def gauss_ker(x=None, mean=None, sigma=None, FWHM=None, nFWHM=7, oversample=None
         if FWHM is None:
             FWHM = sigma2fwhm(sigma)
         # Length of the kernel is 2 x nFWHM times FWHM
-        x = np.linspace(0, nFWHM*FWHM, nFWHM*FWHM*oversample + 1)
+        x = np.linspace(0, nFWHM*FWHM, int(nFWHM*FWHM*oversample + 1))
         x = np.concatenate([mean - x, mean + x])
         x = np.unique(x)
        

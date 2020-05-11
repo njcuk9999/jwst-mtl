@@ -2,7 +2,7 @@ import numpy as np
 from scipy.sparse import diags, csr_matrix
 
 
-def get_c_matrix(kernel, grid, bounds=None, i_bounds=None,
+def get_c_matrix(kernel, grid, bounds=None, i_bounds=None, norm=False,
                  sparse=True, n_out=None, thresh_out=None, **kwargs):
     """
     Return a convolution matrix
@@ -72,6 +72,9 @@ def get_c_matrix(kernel, grid, bounds=None, i_bounds=None,
         kernel = to_2d(kernel, grid, [a,b], **kwargs)
         
     # Kernel should now be a 2-D array (N_kernel x N_kc)
+    # Normalize if specified
+    if norm:
+        kernel = kernel / kernel.sum(axis=0)
     # Apply n_out
     kernel = cut_ker(kernel, n_out, thresh_out)
 
