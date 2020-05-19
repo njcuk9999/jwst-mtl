@@ -18,7 +18,7 @@ def example_1(wave_micron, flux_W_m2_micron):
     # Synthesize magnitudes
     filterlist = ['WISE2','Johnson-U','MKO-J'] # keep as array, an array of name is expected
     pathvega = '/Users/albert/NIRISS/SOSSpipeline/sandbox/'
-    pathfilter = '/Users/albert/NIRISS/SOSSpipeline/sandbox/filterSVO/'
+    pathfilter = '/Users/albert/filterSVO/'
     
     filtermag = syntMag(wave_micron,flux_W_m2_micron,filterlist,
                     path_filter_transmission=pathfilter,
@@ -49,7 +49,7 @@ def example_2():
     print('Beginning of example_2')
 
     pathvega = '/Users/albert/NIRISS/SOSSpipeline/sandbox/'
-    pathfilter = '/Users/albert/NIRISS/SOSSpipeline/sandbox/filterSVO/'
+    pathfilter = '/Users/albert/filterSVO/'
 
     # read some spectrum and wavelength in wave_micron, flux_W_m2_micron
     #wave_micron, flux_W_m2_micron = read_some_spectrum_not_implemented()
@@ -119,9 +119,174 @@ def FlambdaToFnu(wave,Flambda):
     return(Fnu_W_m2_Hz)
 
 
-def syntMag(lba,Flba,filterlist,path_filter_transmission=None,path_vega_spectrum=None):
+def jansky_to_AB(jansky):
+
+    # Convert from Jansky to Fnu 
+    
+    #The AB Magnitude constant
+    #ABconstant = 48.594 # advocated by Arnouts
+    ABconstant = 48.600
+    
+    # by definition:
+    Fnu_W_m2_Hz = 1.0e-26 * jansky
+    #Convert Fnu (metric) to Fnu (cgs) (erg/sec/cm2/Hz) using 1 erg = 1.0e-7 J and 1 m2 = 10^4 cm2
+    Fnu_erg_sec_cm2_Hz = 1.0e+3 * Fnu_W_m2_Hz
+    #Convert to AB magnitude using magnitude = -2.5*alog10(flux) - 48.60
+    ABmag = -2.5 * np.log10(Fnu_erg_sec_cm2_Hz) - ABconstant
+
+    return(ABmag)
+
+def AB_to_jansky(magAB):
+    
+    # Convert from AB magnitude to Jansky
+    
+    #The AB Magnitude constant
+    #ABconstant = 48.594 # advocated by Arnouts
+    ABconstant = 48.600
+    
+    # First convert from mag AB to Fnu in cgs units: erg/s/cm2/Hz
+    fnu_cgs = np.power(10,-(magAB+ABconstant)/2.5)
+    # Then convert cgs to Jy (1 Jy = 10-23 erg/s/cm2/Hz)
+    jansky = fnu_cgs * 1e+23
+    
+    return(jansky)
+    
+
+def ABmag_to_Vegamag(magAB, filterlist, path_filter_transmission=None,
+            path_vega_spectrum=None,verbose=None):
+    # Convert AB magnitude to Vega magnitudes. That requires a filter name.
+    #
+    # Handles 3 cases:
+    # 1) if magAB and filterlist are both scalars, then the function also
+    #    returns a scalar.
+    # 2) if magAB is an array but the filterlist is a scalar, then the
+    #    function returns an array of same length as magAB.
+    # 3) if both magAB and filterlist are arrays, then the function returns
+    #    a matrix of shape nmag x nfilter, e.g. mat[:,0] is all mag thru 
+    #    one filter.
+    
+    if verbose:
+        print('shapes of input parameters:')
+        print('magAB:', np.shape(magAB))
+        print('filterlist', np.shape(filterlist))
+    
+    #Check if a path for the Vega spectrum was passed. If not, assume some
+    # local path
+    if path_vega_spectrum == None:
+        path_vega_spectrum = '/Users/albert/NIRISS/SOSSpipeline/syntMagCode/'
+    if path_filter_transmission == None:
+        path_filter_transmission = '/Users/albert/filterSVO/'
+
+    # Initialize the filters array
+    if np.size(filterlist) == 1:
+        filters = np.array(np.reshape(filterlist,-1))
+    else:
+        filters = np.array(filterlist)
+
+    # Initialize matrix of AB to Vega magnitude offsets
+    magoffset = np.empty((np.size(magAB),np.size(filters)), dtype=np.float)
+    # Initialize input magAB into a matrix spanning filters across axis=2
+    magABmatrix = np.empty((np.size(magAB),np.size(filters)), dtype=np.float)
+    for f in range(np.size(filters)):
+        magABmatrix[:,f] = magAB
+
+    # Read the Vega and AB spectra. Both share the same wavelength sampling
+    # (that of the Vega spectrum).
+    wave_Vega, Flambda_Vega = readVega(path_vega_spectrum=path_vega_spectrum)
+    lba = wave_Vega*1.0
+    wave_AB, Flambda_AB = readAB(wave_sampling=lba)
+    
+    # Each wavelength sample has a width, determined here: 
+    dlba = sample_width(lba)
+
+    for f in range(np.size(filters)):
+        #Get the filter transmission curve for that range at same sampling
+        filter_wave, filter_t, magsystem = readFilter(filters[f],wave_sampling=lba,
+                                                      path_filter_transmission=path_filter_transmission)
+        
+        Flux_Vega = np.sum(Flambda_Vega * filter_t * dlba) / np.sum(filter_t * dlba)
+        Flux_AB = np.sum(Flambda_AB * filter_t * dlba) / np.sum(filter_t * dlba)
+        #magVega[f] = magAB -2.5*np.log10(Flux_AB/Flux_Vega)
+        magoffset[:,f] = -2.5*np.log10(Flux_AB/Flux_Vega)
+ 
+    # Apply offset to input AB magnitudes
+    magVega = magABmatrix + magoffset
+    
+    # Manage output because at this point, it is a matrix (nfilter x nmag)
+    if (np.size(filterlist) == 1) and (np.size(magAB) == 1):
+        # a single magnitude through a single filter was requested.
+        # return a scalar:
+        return(magVega[0,0])
+    elif (np.size(filterlist) == 1) and (np.size(magAB) > 1):
+        # an array of magnitudes was passed, through a single filter.
+        # return an array of magnitudes, not a matrix
+        return(np.reshape(magVega[:,0],-1))
+    elif (np.size(filterlist) > 1) and (np.size(magAB) == 1):
+        # magAB is a scalr but filterlist is an array as input.
+        # return an array of size nfilter.
+        return(np.reshape(magVega[0,:],-1))
+    else:
+        # magnitudes and filters were both arrays as input.
+        # return a matrix
+        return(magVega)
+
+
+def Vegamag_to_ABmag(magVega, filterlist, path_filter_transmission=None,
+            path_vega_spectrum=None,verbose=None):
+    
+    # Convert Vega magnitude to AB magnitude.
+    # refer to ABmag_to_Vegamag for explanations
+    
+    # Determine the AB to Vega magnitude offset for each filter.
+    # Send zero thru the AB --> Vega converter (Vega mag will have lower values
+    # so offset will be less than zero for most filters)
+    offset = ABmag_to_Vegamag(0,filterlist, 
+                              path_filter_transmission=path_filter_transmission,
+                              path_vega_spectrum=path_vega_spectrum,
+                              verbose=verbose)
+    # Subtract (rather than add) the offsets to get ABmags
+    if (np.size(magVega) > 1) and (np.size(filterlist)) > 1:
+        magAB = np.zeros((np.size(magVega),np.size(filterlist)))
+        for f in range(np.size(filterlist)):
+            magAB[:,f] = magVega - offset[f]
+    else:
+        magAB = magVega - offset
+        
+    return(magAB)
+
+
+def sample_width(lba):
+    # Given an array of wavelength, not necessarily sampled equally spaced
+    # and BUT necessarily sorted, return the wavelength width spanned by each
+    # sample.
+    
+    # Find the indices of sorted array of wavelengths
+    indsort = np.argsort(lba)
+    
+    if np.array_equal(lba, lba[indsort]) is False:
+        print('Error. The input array needs to be sorted before entering this function. Stop.')
+        stop
+        
+    # Devise the width of each wavelength sample   
+    dlba = lba*0.0
+    dlba[0:-1] = lba[1:]-lba[0:-1]
+    # Make the last index the same as previous last
+    dlba[-1] = dlba[-2]*1.0   
+    
+    return(dlba)
+
+
+def syntMag(lba,Flba,filterlist,path_filter_transmission=None,
+            path_vega_spectrum=None):
     # Computes the synthetic magnitude of a spectrum through an input list of filters
 
+    #Check if a path for the Vega spectrum was passed. If not, assume some
+    # local path
+    if path_vega_spectrum == None:
+        path_vega_spectrum = '/Users/albert/NIRISS/SOSSpipeline/syntMagCode/'
+    if path_filter_transmission == None:
+        path_filter_transmission = '/Users/albert/filterSVO/'
+    
     # Initialize array of output magnitudes
     mag = np.arange(np.size(filterlist), dtype=np.float)
 
@@ -129,45 +294,116 @@ def syntMag(lba,Flba,filterlist,path_filter_transmission=None,path_vega_spectrum
     wave_Vega, Flambda_Vega = readVega(wave_sampling=lba, path_vega_spectrum=path_vega_spectrum)
     wave_AB, Flambda_AB = readAB(wave_sampling=lba)
 
+    # Each wavelength sample has a width, determined here: 
+    dlba = sample_width(lba)
+
     for f in range(np.size(filterlist)):
         #Get the filter transmission curve for that range at same sampling
         filter_wave, filter_t, magsystem = readFilter(filterlist[f],wave_sampling=lba,
                                                       path_filter_transmission=path_filter_transmission)
         if magsystem == 'Vega':
             #Do the Vega spectrum
-            Energy_Vega = np.sum(Flambda_Vega * filter_t) / np.sum(filter_t)
-            Energy_filter = np.sum(Flba * filter_t) / np.sum(filter_t)
-            mag[f] = -2.5*np.log10(Energy_filter/Energy_Vega)
+            #Energy_Vega = np.sum(Flambda_Vega * filter_t) / np.sum(filter_t)
+            #Energy_filter = np.sum(Flba * filter_t) / np.sum(filter_t)
+            #mag[f] = -2.5*np.log10(Energy_filter/Energy_Vega)
+            Flux_Vega = np.sum(Flambda_Vega * filter_t * dlba) / np.sum(filter_t * dlba)
+            Flux_filter = np.sum(Flba * filter_t * dlba) / np.sum(filter_t * dlba)
+            mag[f] = -2.5*np.log10(Flux_filter/Flux_Vega)
         if magsystem == 'AB':
             #Repeat with the AB spectrum
-            Energy_AB = np.sum(Flambda_AB * filter_t) / np.sum(filter_t)
-            Energy_filter = np.sum(Flba * filter_t) / np.sum(filter_t)
-            mag[f] = -2.5*np.log10(Energy_filter/Energy_AB)
+            #Energy_AB = np.sum(Flambda_AB * filter_t) / np.sum(filter_t)
+            #Energy_filter = np.sum(Flba * filter_t) / np.sum(filter_t)
+            #mag[f] = -2.5*np.log10(Energy_filter/Energy_AB)
+            Flux_AB = np.sum(Flambda_AB * filter_t * dlba) / np.sum(filter_t * dlba)
+            Flux_filter = np.sum(Flba * filter_t * dlba) / np.sum(filter_t * dlba)
+            mag[f] = -2.5*np.log10(Flux_filter/Flux_AB)
 
     return(mag)
 
+
+
+
+def syntNphoton(lba, Flba, filterlist, path_filter_transmission=None,
+                path_vega_spectrum=None):
+    
+    # Computes the number of photons/sec/m2 produced by a spectrum when 
+    # integrated in a filter band pass.
+    #
+    # INPUTS:
+    # lba : wavelength (microns)
+    # Flba : Flux in Flambda units (energy/time/area/wavelength)
+    # filterlist : an array of filter shortnames (to do 1 or more filters)
+    #
+    # OPTIONAL INPUTS:
+    # path_filter_transmission : The path of the directory where the filter
+    #                            transmission curves can be found.
+    # path_vega_spectrum : The path of the directory where the Vega spectrum
+    #                      can be found.
+
+    # physical constants
+    c = 299792458.0 # m/sec
+    h = 6.62607004e-34 # m2 kg / sec
+
+    # Check if a path to the filter transmission files was passed. 
+    # If not, assume some local path
+    #if path_vega_spectrum == None:
+    #    path_vega_spectrum = '/Users/albert/NIRISS/SOSSpipeline/syntMagCode/'
+    if path_filter_transmission == None:
+        path_filter_transmission = '/Users/albert/filterSVO/'        
+    
+    # Devise the width of each wavelength sample (in microns)     
+    dlba = sample_width(lba)
+    
+    # Initialize array of output magnitudes
+    nphot = np.arange(np.size(filterlist), dtype=np.float)
+
+    # the photon energy is (need to convert lba from microns to meters)
+    Ephot = h * c / (lba * 1e-6)
+
+    for f in range(np.size(filterlist)):
+        #Get the filter transmission curve for that range at same sampling
+        filter_wave, filter_t, magsystem = readFilter(filterlist[f],wave_sampling=lba,
+                                                      path_filter_transmission=path_filter_transmission)
+        # Ephoton = h * c / lambda
+        # Nphoton = deltalambda * Flambda / Ephoton = 
+        #         = deltalambda * lambda * Flambda / (h * c)
+        # where deltalambda is the width of each wavelength sample in microns
+
+        # The energy contained in one spectrum sample, after correcting for 
+        # transmission, is (DO NOT convert dlba from microns to meters because
+        # the spectrum is per micron).
+        Espec = dlba * Flba * filter_t
+        
+        # The number of photons is the sum over all samples of the spectrum
+        # energy divided by a photon energy.
+        nphot[f] = np.sum(Espec/Ephot)
+        
+    return(nphot)
 
 def readVega(wave_sampling=None,path_vega_spectrum=None):
     if path_vega_spectrum != None:
         vegafile = path_vega_spectrum+'VegaLCB.sed'
     else:
-        vegafile = './VegaLCB.sed'
-    tab = ascii.read(vegafile, names=['wave_nm', 'Flambda'],data_start=52, format='fixed_width', delimiter=' ',col_starts=(0, 10))
+        vegafile = '/Users/albert/filterSVO/VegaLCB.sed'
+    tab = ascii.read(vegafile, names=['wave_nm', 'Flambda'],data_start=52, 
+                     format='fixed_width', delimiter=' ',col_starts=(0, 10))
     #Lejeune spectrum is in angstrom, Flambda (erg/s/cm2/angstrom)
     l = tab['wave_nm']  # First column
     f = tab['Flambda']  # Second column
     l_micron = l / 10000.
     Flambda_uncal = f * 1.0e-7 * 1.0e+4 * 10000.0    #to W/m2/um
 
-    #Convert read out Vega spectrum to Flambda - NO NO NO, the Lejeune spectrum is in Flambda after all
+    #Convert read out Vega spectrum to Flambda - NO NO NO, the Lejeune 
+    # spectrum is in Flambda after all
     # Flambda_uncal [W/m2/um] 
     # Flambda_uncal = 1e-6 * K.c * Fnu_uncal / np.power(l_micron*1e-6,2) #or equivalently:
     # Flambda_uncal = 1e+6 * K.c * Fnu_uncal / np.power(l_micron,2)
     Flambda_anchor_spectrum = np.interp([0.5556], l_micron, Flambda_uncal)
 
     # The reference anchor for Vega in Flambda is given by Fukugita 1995
-    # for Vega of 3.44+/-0.05 e-9 erg/cm2/s/angstrom at 5556 ang (Fukugita 1995)
-    Flambda_anchor_Fukugita = 3.44e-9 * 1.0e-7 * 1.0e+4 * 10000.0    #to W/m2/um
+    # for Vega of 3.44+/-0.05 e-9 erg/cm2/s/angstrom at 5556 ang 
+    # (Fukugita 1995)
+    Flambda_anchor_Fukugita = 3.44e-9 * 1.0e-7 * 1.0e+4 * 10000.0  #to W/m2/um
 
     #print('Flambda_anchor_spectrum =', Flambda_anchor_spectrum)
     #print('Flambda_anchor_Fukugita =', Flambda_anchor_Fukugita)
@@ -222,7 +458,8 @@ def readAB(wave_sampling=None):
     if (wave_sampling is None):
         return(l_micron,Flambda_calibrated)
     else:
-        Flambda_calibrated_resamp = np.interp(wave_sampling, l_micron, Flambda_calibrated)
+        Flambda_calibrated_resamp = np.interp(wave_sampling, l_micron, 
+                                              Flambda_calibrated)
         # make sure that extremes are set to zero
         ind = (np.where((wave_sampling < np.min(l_micron)) | (wave_sampling > np.max(l_micron))))[0]
         nind = np.size(ind)
@@ -234,14 +471,14 @@ def readAB(wave_sampling=None):
 
 
 def readFilter(requestedFilterName,path_filter_transmission=None,
-               wave_sampling=None,keepPeakAbsolute=None,returnWidth=None,
+               wave_sampling=None,keepPeakAbsolute=True,returnWidth=None,
                verbose = None):
 
     # What is missing and would be nice is if there was a function to
     # list the available supported filters.
-    
+
     if path_filter_transmission == None:
-        path = './FilterSVO/'
+        path = '/Users/albert/filterSVO/'
     else:
         path = path_filter_transmission+'/'
     if verbose is True: print('path to filter transmission curve: {:}'.format(path))
@@ -273,7 +510,7 @@ def readFilter(requestedFilterName,path_filter_transmission=None,
     dico.append(('CFHT_Wircam.J.dat.txt','Vega',['WIRCam-J','MKO_J','MKO-J','J']))
     dico.append(('CFHT_Wircam.H.dat.txt','Vega',['WIRCam-H','MKO_H','MKO-H','H']))
     dico.append(('CFHT_Wircam.Ks.dat.txt','Vega',['WIRCam-Ks','MKO_Ks','MKO-Ks','K']))
-    dico.append(('CFHT_Wircam.W.dat.txt','Vega',['WIRCam-W']))
+    dico.append(('CFHT_Wircam.W.dat','Vega',['WIRCam-W']))
     dico.append(('UKIRT_UKIDSS.Z.dat.txt','Vega',['UKIDSS-Z']))
     dico.append(('UKIRT_UKIDSS.Y.dat.txt','Vega',['UKIDSS-Y']))
     dico.append(('UKIRT_UKIDSS.J.dat.txt','Vega',['UKIDSS-J']))
@@ -282,15 +519,52 @@ def readFilter(requestedFilterName,path_filter_transmission=None,
     dico.append(('HST_NICMOS1.F110W.dat.txt','Vega',['NICMOS1.F110W']))
     dico.append(('HST_NICMOS1.F190N.dat.txt','Vega',['NICMOS1.F190N']))
     dico.append(('HST_NICMOS1.F170M.dat.txt','Vega',['NICMOS1.F170M']))
+    # JWST - NIRISS
     dico.append(('JWST_NIRISS.F380M.dat.txt','Vega',['NIRISS.F380M']))
     dico.append(('JWST_NIRISS.F430M.dat.txt','Vega',['NIRISS.F430M']))
     dico.append(('JWST_NIRISS.F480M.dat.txt','Vega',['NIRISS.F480M']))
+    # JWST - NIRCam
+    #
+    dico.append(('JWST_NIRCam.F070W.dat','Vega',['NIRCam.F070W']))
+    dico.append(('JWST_NIRCam.F090W.dat','Vega',['NIRCam.F090W']))
+    dico.append(('JWST_NIRCam.F115W.dat','Vega',['NIRCam.F115W']))
+    dico.append(('JWST_NIRCam.F140M.dat','Vega',['NIRCam.F140M']))
+    dico.append(('JWST_NIRCam.F150W.dat','Vega',['NIRCam.F150W']))
+    dico.append(('JWST_NIRCam.F150W2.dat','Vega',['NIRCam.F150W2']))
+    dico.append(('JWST_NIRCam.F162M.dat','Vega',['NIRCam.F162M']))
+    dico.append(('JWST_NIRCam.F164N.dat','Vega',['NIRCam.F164N']))
+    dico.append(('JWST_NIRCam.F182M.dat','Vega',['NIRCam.F182M']))
+    dico.append(('JWST_NIRCam.F187N.dat','Vega',['NIRCam.F187N']))
+    dico.append(('JWST_NIRCam.F200W.dat','Vega',['NIRCam.F200W']))
     dico.append(('JWST_NIRCam.F210M.dat','Vega',['NIRCam.F210M']))
+    dico.append(('JWST_NIRCam.F212N.dat','Vega',['NIRCam.F212N']))
+    dico.append(('JWST_NIRCam.F250M.dat','Vega',['NIRCam.F250M']))
+    dico.append(('JWST_NIRCam.F277W.dat','Vega',['NIRCam.F277W']))
+    dico.append(('JWST_NIRCam.F300M.dat','Vega',['NIRCam.F200M']))
+    dico.append(('JWST_NIRCam.F322W2.dat','Vega',['NIRCam.F322W2']))
+    dico.append(('JWST_NIRCam.F323N.dat','Vega',['NIRCam.F323N']))
+    dico.append(('JWST_NIRCam.F335M.dat','Vega',['NIRCam.F335M']))
+    dico.append(('JWST_NIRCam.F356W.dat','Vega',['NIRCam.F356W']))
     dico.append(('JWST_NIRCam.F360M.dat','Vega',['NIRCam.F360M']))
+    dico.append(('JWST_NIRCam.F405N.dat','Vega',['NIRCam.F405N']))
     dico.append(('JWST_NIRCam.F410M.dat','Vega',['NIRCam.F410M']))
     dico.append(('JWST_NIRCam.F430M.dat','Vega',['NIRCam.F430M']))
+    dico.append(('JWST_NIRCam.F444W.dat','Vega',['NIRCam.F444W']))
     dico.append(('JWST_NIRCam.F460M.dat','Vega',['NIRCam.F460M']))
+    dico.append(('JWST_NIRCam.F466N.dat','Vega',['NIRCam.F466N']))
+    dico.append(('JWST_NIRCam.F470N.dat','Vega',['NIRCam.F470N']))
     dico.append(('JWST_NIRCam.F480M.dat','Vega',['NIRCam.F480M']))
+    # JWST - MIRI 
+    dico.append(('JWST_MIRI.F560W.dat','Vega',['MIRI.F560W']))
+    dico.append(('JWST_MIRI.F770W.dat','Vega',['MIRI.F770W']))
+    dico.append(('JWST_MIRI.F1000W.dat','Vega',['MIRI.F1000W']))
+    dico.append(('JWST_MIRI.F1130W.dat','Vega',['MIRI.F1130W']))
+    dico.append(('JWST_MIRI.F1280W.dat','Vega',['MIRI.F1280W']))
+    dico.append(('JWST_MIRI.F1500W.dat','Vega',['MIRI.F1500W']))
+    dico.append(('JWST_MIRI.F1800W.dat','Vega',['MIRI.F1800W']))
+    dico.append(('JWST_MIRI.F2100W.dat','Vega',['MIRI.F2100W']))
+    dico.append(('JWST_MIRI.F2550W.dat','Vega',['MIRI.F2550W']))
+    # Gaia DR2    
     dico.append(('GAIA_GAIA2.G.dat','Vega',['GAIA.DR2.G']))
     dico.append(('GAIA_GAIA2.Grp.dat','Vega',['GAIA.DR2.Grp']))
     dico.append(('GAIA_GAIA2.Gbp.dat','Vega',['GAIA.DR2.Gbp']))
