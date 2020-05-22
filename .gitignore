@@ -107,3 +107,4 @@ venv.bak/
 *.DS_Store
 AMI/NRM_simulator/save_etc.txt
 AMI/NRM_simulator/Simulated_data/
+AMI/NRM_simulator/SCENES/
