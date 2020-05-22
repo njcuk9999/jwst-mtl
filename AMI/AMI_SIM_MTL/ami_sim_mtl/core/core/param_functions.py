@@ -20,6 +20,7 @@ from ami_sim_mtl.core.core import general
 from ami_sim_mtl.core.core import exceptions
 from ami_sim_mtl.core.instrument import constants
 
+
 # =============================================================================
 # Define variables
 # =============================================================================
@@ -84,6 +85,9 @@ class CaseInsensitiveDict(dict):
         :param value: object, the object to set (as in dictionary) for the
                       parameter
         :param source: string, the source for the parameter
+
+        :type key: str
+        :type value: object
         :type source: str
 
         :return: None
@@ -187,12 +191,50 @@ class CaseInsensitiveDict(dict):
                 super(CaseInsensitiveDict, self).__setitem__(key, value)
 
 
+class ListCaseInsensitiveDict(CaseInsensitiveDict):
+    def __getitem__(self, key: str) -> list:
+        """
+        Method used to get the value of an item using "key"
+        used as x.__getitem__(y) <==> x[y]
+        where key is case insensitive
+
+        :param key: string, the key for the value returned (case insensitive)
+
+        :type key: str
+
+        :return value: list, the value stored at position "key"
+        """
+        # set function name
+        _ = display_func('__getitem__', __NAME__, 'ListCaseInsensitiveDict')
+        # return from supers dictionary storage
+        # noinspection PyTypeChecker
+        return list(super(ListCaseInsensitiveDict, self).__getitem__(key))
+
+    def __setitem__(self, key: str, value: list, source: str = None):
+        """
+        Sets an item wrapper for self[key] = value
+        :param key: string, the key to set for the parameter
+        :param value: object, the object to set (as in dictionary) for the
+                      parameter
+        :param source: string, the source for the parameter
+
+        :type key: str
+        :type value: list
+        :type source: str
+
+        :return: None
+        """
+        # set function name
+        _ = display_func('__setitem__', __NAME__, 'ListCaseInsensitiveDict')
+        # then do the normal dictionary setting
+        super(ListCaseInsensitiveDict, self).__setitem__(key, list(value))
+
+
 class ParamDict(CaseInsensitiveDict):
     """
     Custom dictionary to retain source of a parameter (added via setSource,
     retreived via getSource). String keys are case insensitive.
     """
-
     def __init__(self, *arg, **kw):
         """
         Constructor for parameter dictionary, calls dict.__init__
@@ -206,7 +248,7 @@ class ParamDict(CaseInsensitiveDict):
         # storage for the sources
         self.sources = CaseInsensitiveDict()
         # storage for the source history
-        self.source_history = CaseInsensitiveDict()
+        self.source_history = ListCaseInsensitiveDict()
         # storage for the instances
         self.instances = CaseInsensitiveDict()
         # the print format
@@ -228,7 +270,7 @@ class ParamDict(CaseInsensitiveDict):
 
         :type key: str
         :return value: object, the value stored at position "key"
-        :raises ConfigError: if key not found
+        :raises ParamException: if key not found
         """
         # set function name
         func_name = display_func('__getitem__', __NAME__, 'ParamDict')
@@ -253,10 +295,11 @@ class ParamDict(CaseInsensitiveDict):
         :param source: string, the source for the parameter
 
         :type key: str
-        :type source: str
+        :type source: Union[None, str]
+        :type instance: Union[None, object]
 
         :return: None
-        :raises ConfigError: if parameter dictionary is locked
+        :raises ParamException: if parameter dictionary is locked
         """
         # set function name
         func_name = display_func('__setitem__', __NAME__, 'ParamDict')
@@ -308,7 +351,7 @@ class ParamDict(CaseInsensitiveDict):
         # delete item using super
         super(ParamDict, self).__delitem__(key)
 
-    def __repr__(self) -> str:
+    def __repr__(self):
         """
         Get the offical string representation for this instance
         :return: return the string representation
@@ -435,11 +478,11 @@ class ParamDict(CaseInsensitiveDict):
         # only add if key is in main dictionary
         if key in self.keys():
             self.sources[key] = source
-            if key not in self.source_history:
-                self.source_history[key] = []
             # add to history
-            self.source_history[key].append(source)
-
+            if key in self.source_history:
+                self.source_history[key].append(source)
+            else:
+                self.source_history[key] = [source]
         else:
             # log error: source cannot be added for key
             emsg = (" Source cannot be added for key '{0}' "
@@ -499,7 +542,8 @@ class ParamDict(CaseInsensitiveDict):
         else:
             self.set_source(key, source)
 
-    def set_sources(self, keys: str, sources: Union[str, List[str], dict]):
+    def set_sources(self, keys: List[str],
+                    sources: Union[str, List[str], dict]):
         """
         Set a list of keys sources
 
@@ -535,7 +579,8 @@ class ParamDict(CaseInsensitiveDict):
             # set source
             self.set_source(key, source)
 
-    def set_instances(self, keys: str, instances: Union[object, list, dict]):
+    def set_instances(self, keys: List[str],
+                      instances: Union[object, list, dict]):
         """
         Set a list of keys sources
 
@@ -571,7 +616,7 @@ class ParamDict(CaseInsensitiveDict):
             # set source
             self.set_instance(key, instance)
 
-    def append_sources(self, keys: str, sources: Union[str, List[str], dict]):
+    def append_sources(self, keys: List[str], sources: Union[str, List[str], dict]):
         """
         Adds list of keys sources (appends if exists)
 
@@ -585,7 +630,7 @@ class ParamDict(CaseInsensitiveDict):
                         if string all sources with these keys will = source
 
         :type keys: list
-        :type sources: Union[str, list, dict]
+        :type sources: Union[str, List[str], dict]
 
         :return None:
         """
@@ -754,7 +799,7 @@ class ParamDict(CaseInsensitiveDict):
         :return keys: list of strings, the keys which contain this substring
         """
         # set function name
-        _ = display_func(None, 'contains', __NAME__, 'ParamDict')
+        _ = display_func('contains', __NAME__, 'ParamDict')
         # define return list
         return_keys = []
         # loop around keys
@@ -1082,7 +1127,7 @@ class ParamDict(CaseInsensitiveDict):
         if key in self.instances:
             print("\tInstance: \t\t {0}".format(self.instances[key]))
 
-    def history(self, key):
+    def history(self, key: str):
         """
         Display the history of where key was defined (using source)
 
@@ -1118,7 +1163,7 @@ class ParamDict(CaseInsensitiveDict):
 # Other private functions
 # =============================================================================
 # capitalisation function (for case insensitive keys)
-def _capitalise_key(key):
+def _capitalise_key(key: str) -> str:
     """
     Capitalizes "key" (used to make ParamDict case insensitive), only if
     key is a string
