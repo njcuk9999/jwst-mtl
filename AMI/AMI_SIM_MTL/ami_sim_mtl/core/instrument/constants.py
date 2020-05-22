@@ -9,12 +9,15 @@ Created on 2020-05-21
 
 @author: cook
 """
-from astropy.io import units as uu
+from astropy import units as uu
+
 from ami_sim_mtl.core.core import constant_functions
+
 # set very basic constants
 __NAME__ = 'core.instruments.constants.py'
 __VERSION__ = '0.0.001'
 __DATE__ = '2020-05-21'
+
 # get constants class
 Consts = constant_functions.Constants(__NAME__)
 
@@ -48,6 +51,22 @@ group = 'General'
 Consts.add('USER_CONFIG_FILE', value=None, dtype='path',
            source=__NAME__, user=True, argument=True, group=group,
            description='Define the user config file', command='--config')
+
+# Define the package name
+Consts.add('PACKAGE_NAME', value='ami_sim_mtl', dtype=str,
+           source=__NAME__, user=True, group=group,
+           description='Define the package name')
+
+# Define the package version
+Consts.add('PACKAGE_VERSION', value=__VERSION__, dtype=str,
+           source=__NAME__, user=True, group=group,
+           description='Define the package version')
+
+# Define the version date
+Consts.add('PACKAGE_VERSION_DATE', value=__DATE__, dtype=str,
+           source=__NAME__, user=True, group=group,
+           description='Define the package version date')
+
 
 # =============================================================================
 #   Simulation constants

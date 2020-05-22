@@ -8,8 +8,11 @@ Exceptions are defined in here for use through wihtout problem
 Created on 2020-05-21
 
 @author: cook
+
+Rules: Cannot import from any package module
 """
 from typing import Union
+from pathlib import Path
 
 # =============================================================================
 # Define variables
@@ -27,11 +30,12 @@ class ConstantException(Exception):
         """
         Construct a Constant Exception instance
 
-        for use with raise ConstantException(message, constant)
+        for use with raise ConstantException(...)
 
         :param message: a string to explain the exception
         :param kind: the kind of error that occurred
         :param instance: object, a constants instance or None
+        :param funcname: the function name that error was raise in
         """
         self.constant = instance
         self.kind = kind
@@ -49,17 +53,19 @@ class ConstantException(Exception):
 
 
 class PathException(Exception):
-    def __init__(self, path: str,
+    def __init__(self, path: Union[str, Path],
                  exception: Union[None, Exception] = None,
                  funcname: Union[str, None] = None,
                  message: Union[str, None] = None):
         """
         Create a Path Exception
 
+        for use with raise PathException(...)
+
         :param path: str, the path to the file
         :param exception: the exception that was caused and then raised this
                           (can be None)
-        :param funcname: str, the function name (can be None)
+        :param funcname: the function name that error was raise in
         :param message: if set this is the error that is printed
         """
         self.exception = exception
@@ -82,6 +88,67 @@ class PathException(Exception):
         else:
             emsg = 'Path: {0}'.format(self.path)
             emsg += '\n\tFunc: {0}'.format(self.funcname)
+        return emsg
+
+
+class ParamDictException(Exception):
+    def __init__(self, message: str, kind: str,
+                 instance: Union[None, object] = None,
+                 funcname: Union[None, str] = None,
+                 exception: Union[None, Exception] = None):
+        """
+        Construct a Parameter Dictionary Exception instance
+
+        for use with raise ParamDictException(...)
+
+        :param message: a string to explain the exception
+        :param kind: the kind of error that occurred
+        :param instance: object, a constants instance or None
+        :param funcname: the function name that error was raise in
+        :param exception: store the exception if given
+        """
+        self.constant = instance
+        self.kind = kind
+        self.message = message
+        self.funcname = funcname
+        self.exception = exception
+
+    def __str__(self):
+        """
+        Return a string representation of the Constant Exception
+        :return:
+        """
+        emsg = '[{0}] {1}'.format(self.kind, self.message)
+        emsg += '\n\tFunc: {0}'.format(self.funcname)
+        return emsg
+
+
+class ImportException(Exception):
+    def __init__(self, message: str, kind: str,
+                 instance: Union[None, object] = None,
+                 funcname: Union[None, str] = None):
+        """
+        Construct a Import Exception instance
+
+        for use with raise ImportException(...)
+
+        :param message: a string to explain the exception
+        :param kind: the kind of error that occurred
+        :param instance: object, a constants instance or None
+        :param funcname: the function name that error was raise in
+        """
+        self.constant = instance
+        self.kind = kind
+        self.message = message
+        self.funcname = funcname
+
+    def __str__(self):
+        """
+        Return a string representation of the Constant Exception
+        :return:
+        """
+        emsg = '[{0}] {1}'.format(self.kind, self.message)
+        emsg += '\n\tFunc: {0}'.format(self.funcname)
         return emsg
 
 
