@@ -1,5 +1,5 @@
 import numpy as np
-from scipy.sparse import find, issparse, csr_matrix
+from scipy.sparse import find, issparse, csr_matrix, diags
 from scipy.sparse.linalg import spsolve
 
 # Local imports
@@ -268,16 +268,16 @@ class _BaseOverlap():
     def _get_a(self, n, sparse=True):
         
         # Get needed attributes
-        mask, sig = self.mask, self.sig
+        mask= self.mask
         # Order dependent attributes
         T, P, w, k  \
             = self.getattrs('T_list', 'P_list',
                             'w', 'k', n=n)
         
         # Keep only valid pixels (P and sig are still 2-D)
-        P, sig = P[~mask], sig[~mask]
+        P = P[~mask]
         # Compute a at each valid pixels
-        a_n = P[:,None] * T[k] * w / sig[:,None]
+        a_n = P[:,None] * T[k] * w
         
         if sparse:
             # Convert to sparse matrix
@@ -295,7 +295,7 @@ class _BaseOverlap():
         # Keep only not masked values
         I, sig = I[~mask], sig[~mask]
         
-        # Build b_n
+        # Build matrix B
         b_matrix = csr_matrix((len(I), N_k))
         for n in range(n_ord):
             # Get sparse a
@@ -308,6 +308,7 @@ class _BaseOverlap():
         # Build system 
         # (B_T * B) * f = (I/sig)_T * B
         # |   M   | * f = |     d      |
+        b_matrix = diags((1/sig)).dot(b_matrix)
         M = b_matrix.T.dot(b_matrix)
         d = csr_matrix((I/sig).T).dot(b_matrix)
         

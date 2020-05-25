@@ -1,5 +1,8 @@
 import numpy as np
 from scipy.sparse import diags, csr_matrix
+from scipy.interpolate import RectBivariateSpline
+from astropy.io import fits
+import matplotlib.pyplot as plt
 
 
 def get_c_matrix(kernel, grid, bounds=None, i_bounds=None, norm=False,
@@ -72,6 +75,7 @@ def get_c_matrix(kernel, grid, bounds=None, i_bounds=None, norm=False,
         kernel = to_2d(kernel, grid, [a,b], **kwargs)
         
     # Kernel should now be a 2-D array (N_kernel x N_kc)
+    
     # Normalize if specified
     if norm:
         kernel = kernel / kernel.sum(axis=0)
@@ -264,4 +268,169 @@ def _get_wings(f, grid, h_len, a, b):
     right[:i_grid] = ker
     
     return left, right
+
+
+class WebbKer():
+    
+    path = "ExtractionTestFiles/spectral_kernel_matrix/"
+    file_frame = "spectral_kernel_matrix_os_{}_width_{}pixels.fits"
+    
+    def __init__(self, wv_map, n_os=10, n_pix=21, bounds_error=False, fill_value='extrapolate'):
+        
+        # Mask where wv_map is equal to 0
+        wv_map = np.ma.array(wv_map, mask=(wv_map==0))
+        # Force wv_map to have the red wavelengths
+        # at the end of the detector
+        if np.diff(wv_map,axis=-1).mean() < 0:
+            wv_map = np.flip(wv_map, axis=-1)
+        
+        # Number of columns
+        n_col = wv_map.shape[-1]
+        
+        # Create filename
+        file = self.file_frame.format(n_os, n_pix)
+        
+        # Read file
+        hdu = fits.open(self.path + file)
+        header = hdu[0].header
+        ker, wv_ker = hdu[0].data
+        
+        # Where is the blue and red end of the kernel
+        i_blue, i_red = header['BLUINDEX'], header['REDINDEX']
+        # Flip `ker` to put the red part of the kernel at the end 
+        if i_blue > i_red:
+            ker = np.flip(ker, axis=0)
+            
+        # Create oversampled pixel position array
+        pixels = np.arange(-(n_pix//2), n_pix//2 + 1/n_os, 1/n_os)
+        
+        # `wv_ker` has only the value of the central wavelength
+        # of the kernel at each points because it's a function
+        # of the pixels (so depends on wv solution). 
+        wv_center = wv_ker[0,:]
+        
+        # Let's use the wavelength solution to create a mapping
+        # First find which kernels that falls on the detector
+        wv_min = np.min(wv_map[wv_map > 0])
+        wv_max = np.max(wv_map[wv_map > 0])
+        i_min = np.searchsorted(wv_center, wv_min)
+        i_max = np.searchsorted(wv_center, wv_max) - 1
+        
+        # FOR LATER ###########
+        # Use the next kernels at each extremities to define the
+        # boundaries of the interpolation to use in the class
+        # RectBivariateSpline (at the end)
+        # bbox = [min pixel, max pixel, min wv_center, max wv_center]
+        bbox = [None, None,
+                wv_center[np.max([i_min-1, 0])],
+                wv_center[np.min([i_max+1, len(wv_center)-1])]]
+        #######################
+        
+        # Keep only kernels that falls on the detector
+        ker, wv_ker = ker[:,i_min:i_max+1], wv_ker[:,i_min:i_max+1]
+        wv_center = np.array(wv_ker[0,:])
+        
+        # Then find the pixel closest to each kernel center
+        # and use the surrounding pixels (columns)
+        # to get the wavelength. At the boundaries,
+        # wavelenght might not be defined or falls out of
+        # the detector, so fit a 1-order polynomial to 
+        # extrapolate. The polynomial is also used to interpolate
+        # for oversampling.
+        i_surround = np.arange(-(n_pix//2), n_pix//2 + 1)
+        poly = []
+        for i, wv_c in enumerate(wv_center):
+            wv = np.ma.masked_all(i_surround.shape)
+            # Closest pixel wv
+            i_row, i_col = np.unravel_index(
+                np.argmin(np.abs(wv_map-wv_c)), wv_map.shape
+            )
+            # Surrounding columns
+            index = i_col + i_surround
+            # Make sure it's on the detector
+            i_good = (index >= 0) & (index < n_col)
+            # Assign wv values
+            wv[i_good] = wv_map[i_row, index[i_good]]
+            # Fit n=1 polynomial
+            poly_i = np.polyfit(i_surround[~wv.mask], wv[~wv.mask],1)
+            # Project on os pixel grid
+            wv_ker[:,i] = np.poly1d(poly_i)(pixels)
+            # Save coeffs
+            poly.append(poly_i)
+            
+        self.n_pix = n_pix
+        self.n_os = n_os
+        self.wv_ker = wv_ker
+        self.ker = ker
+        self.pixels = pixels
+        self.wv_center = wv_center
+        self.poly = np.array(poly)
+        self.fill_value = fill_value
+        self.bounds_error = bounds_error
+        self.f_ker = RectBivariateSpline(pixels, wv_center, ker, bbox=bbox)
+        
+    def __call__(self, wv, wv_c):
+        
+        wv_center = self.wv_center
+        poly = self.poly
+        fill_value = self.fill_value
+        bounds_error = self.bounds_error
+        n_wv_c = len(wv_center)
+        f_ker = self.f_ker
+        n_pix = self.n_pix
+        
+        # #################################
+        # First, convert wv value in pixels
+        # #################################
+        
+        # Find corresponding interval
+        i_wv_c = np.searchsorted(wv_center, wv_c) - 1
+        
+        # Deal with values out of bounds
+        if bounds_error:
+            message = 'Value of wv center out of interpolation range'
+            raise ValueError(message)
+        elif fill_value=='extrapolate':
+            i_wv_c[i_wv_c < 0] = 0
+            i_wv_c[i_wv_c >= (n_wv_c - 1)] = n_wv_c - 2
+        else:
+            return NotImplemented
+        
+        # Compute coefficients that interpolate along wv_centers
+        d_wv_c = wv_center[i_wv_c + 1] - wv_center[i_wv_c]
+        a_c = (wv_center[i_wv_c + 1] - wv_c) / d_wv_c
+        b_c = (wv_c - wv_center[i_wv_c]) / d_wv_c
+        
+        # Compute a and b from the equation:
+        # pix = a * lambda + b
+        a = 1 / (a_c * poly[i_wv_c,0] + b_c * poly[i_wv_c+1,0])
+        b = -(a_c * poly[i_wv_c,1] + b_c * poly[i_wv_c+1,1])
+        b /= (a_c * poly[i_wv_c,0] + b_c * poly[i_wv_c+1,0])
+        
+        # Compute pixel values
+        pix = a * wv + b
+        
+        # ######################################
+        # Second, compute kernel value on the
+        # interpolation grid (pixel x wv_center)
+        # ######################################
+        
+        out = f_ker(pix, wv_c, grid=False)
+        # Make sure it's not negative
+        out[out < 0] = 0
+        # and put values out of pixel range
+        # to zero
+        out[pix > n_pix//2] = 0
+        out[pix < -(n_pix//2)] = 0
+
+        return out
+    
+    def show(self):
+        
+        plt.figure()
+        plt.imshow(self.ker, norm=LogNorm())
+        plt.colorbar()
+        
+        plt.figure()
+        plt.plot(self.wv_ker, self.ker)
 

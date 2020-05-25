@@ -2,9 +2,13 @@ import numpy as np
 from custom_numpy import is_sorted
 
 
-def gaussian(x, x0=0, sig=1, amp=1):
+def gaussian(x, x0=0, sig=1, amp=None):
     
-    return amp * np.exp(-((x - x0) / sig)**2)
+    # Amplitude term
+    if amp is None:
+        amp = 1/np.sqrt(2 * np.pi * sig**2)
+    
+    return amp * np.exp(-0.5*((x - x0) / sig)**2)
 
 
 def gauss_ker(x=None, mean=None, sigma=None, FWHM=None, nFWHM=7, oversample=None):
@@ -49,3 +53,22 @@ def fwhm2sigma(fwhm):
 
 def sigma2fwhm(sigma):
     return sigma * np.sqrt(8 * np.log(2))
+
+def get_d_lam_poly(wv, sampling=2, order=5):
+    """
+    Returns the function of the width of the resolution
+    kernel (delta lambda) in the wavelength space.
+    The function is a polynomial fit.
+    """
+    
+    # Use only valid columns
+    wv = wv[wv > 0]
+    
+    # Get d_lam of the convolution kernel assuming sampling
+    d_lam = np.abs(sampling*np.diff(wv))
+    
+    # Fit polynomial
+    coeffs = np.polyfit(wv[1:], d_lam, order)
+    
+    # Return as a callable
+    return np.poly1d(coeffs)
