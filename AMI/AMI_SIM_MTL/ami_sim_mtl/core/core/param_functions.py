@@ -9,6 +9,7 @@ Created on 2020-05-21
 
 @author: cook
 """
+import argparse
 from collections import OrderedDict
 import copy
 import numpy as np
@@ -28,14 +29,31 @@ from ami_sim_mtl.core.instrument import constants
 consts = constants.Consts
 # define name
 __NAME__ = 'core.core.constant_functions.py'
-__version__ = consts['PACKAGE_VERSION'].value
-__date__ = consts['PACKAGE_VERSION_DATE'].value
+__version__ = consts.constants['PACKAGE_VERSION'].value
+__date__ = consts.constants['PACKAGE_VERSION_DATE'].value
 # define package name
-PACKAGE = consts['PACKAGE_NAME'].value
+PACKAGE = consts.constants['PACKAGE_NAME'].value
 # get general functions
 display_func = general.display_func
 # get exceptions
 ParamException = exceptions.ParamDictException
+# Define user config file header
+CONFIG_FILE_HEADER = """
+# =============================================================================
+# User Config file
+# =============================================================================
+# Use this config file by defining it with argument --config
+# 
+#     Note: not all keys are used in each code
+
+"""
+# Define user config group header
+CONFIG_GROUP_HEADER = """
+# -----------------------------------------------------------------------------
+# {0} constants
+# -----------------------------------------------------------------------------
+"""
+
 
 
 # =============================================================================
@@ -1154,10 +1172,64 @@ class ParamDict(CaseInsensitiveDict):
 # =============================================================================
 # Define functions
 # =============================================================================
-# TODO: Write load config functions
-# TODO:  1 from consts
-# TODO:  2 from user config
-# TODO:  3 from command line (sys.argv)
+def setup(lconsts: constants.Consts, kwargs: dict,
+          description: str) -> ParamDict:
+    """
+    Setup the code
+
+    Order of priority (lowest to highest)
+    - constants file (lconsts.constants)
+    - config file (USER_CONFIG_FILE)
+    - call to main (kwargs)
+    - command line arguments (sys.argv)
+
+    :param lconsts: Constants instance
+    :param kwargs: dictionary of arguments from function call
+    :param description: str, the description of the input code
+    :return:
+    """
+    # get parameters from constants
+    params = ParamDict()
+    # ----------------------------------------------------------------------
+    # Lowest priority: params from constants file (lconsts.constants)
+    # ----------------------------------------------------------------------
+    # loop around constants
+    for cname in lconsts.constants:
+        # get constant
+        constant = lconsts.constants[cname]
+        # copy constant into parameters
+        params[cname] = constant.value
+        # set source and instance
+        params.set_source(cname, constant.source)
+        params.set_instance(cname, constant.copy())
+
+    # read arguments from cmdline (need to update user_config_file)
+    args = _read_from_cmdline(params, description)
+
+    # ----------------------------------------------------------------------
+    # next priority: params from config file
+    # ----------------------------------------------------------------------
+    params = _read_from_config_file(params, args)
+
+    # ----------------------------------------------------------------------
+    # next priority: params from call to main (kwargs)
+    # ----------------------------------------------------------------------
+    params = _read_from_kwargs(params, kwargs)
+
+    # ----------------------------------------------------------------------
+    # next priority: params from command line arguments (sys.argv)
+    # ----------------------------------------------------------------------
+    params = _update_from_cmdline(params, args)
+
+    # ----------------------------------------------------------------------
+    # deal with config file generation
+    # ----------------------------------------------------------------------
+    if params['GENERATE_CONFIG_FILE']:
+        _generate_config_file(params)
+
+    # return the parameter dictionary
+    return params
+
 
 # =============================================================================
 # Other private functions
@@ -1210,7 +1282,7 @@ def _check_mod_source(source: str) -> str:
     return source
 
 
-def _string_repr_list(key: str, values: Union[list, np.ndarr], source: str,
+def _string_repr_list(key: str, values: Union[list, np.ndarray], source: str,
                       fmt: str) -> List[str]:
     """
     Represent a list (or array) as a string list but only the first
@@ -1314,6 +1386,270 @@ def _map_dictparameter(value: str, dtype: Union[None, Type] = None) -> dict:
         raise ParamException(emsg.format(*eargs), 'dictp', funcname=func_name,
                              exception=e)
 
+
+def _read_from_config_file(params: ParamDict, args: argparse.Namespace,
+                           configfile: Union[None, str] = None) -> ParamDict:
+    """
+    Read a config file
+
+    :param params: ParamDict, the parameter dictionary for constants
+    :param args: argparse.Namespace - the argparse namespace attribute holder
+    :param configfile: str or None, if set, sets the config file
+
+    :return:
+    """
+    # get user config file and out dir from args
+    cmd_userconfig = getattr(args, 'USER_CONFIG_FILE', None)
+    cmd_outdir = getattr(args, 'OUTDIR', None)
+    # ----------------------------------------------------------------------
+    # if we have a config file defined use it
+    if configfile is not None:
+        user_config_file = str(configfile)
+        params['USER_CONFIG_FILE'] = user_config_file
+    # if we have a command line argument use it
+    elif cmd_userconfig is not None:
+        user_config_file = cmd_userconfig
+        params['USER_CONFIG_FILE'] = user_config_file
+    # get the config file
+    elif params['USER_CONFIG_FILE'] is not None:
+        user_config_file = params['USER_CONFIG_FILE']
+    else:
+        user_config_file = None
+    # ----------------------------------------------------------------------
+    # deal with no user_config_file
+    if user_config_file is None:
+        return params
+    # ----------------------------------------------------------------------
+    # get the output directory
+    if cmd_outdir is not None:
+        outdir = Path(cmd_outdir)
+        params['OUTDIR'] = cmd_outdir
+    # else if it is already in params
+    elif params['OUTDIR'] is not None:
+        outdir = Path(str(params['OUTDIR']))
+    else:
+        outdir = Path.cwd().joinpath('outputs')
+        params['OUTDIR'] = str(outdir)
+    # construct out path
+    if Path(user_config_file).exists():
+        outpath = Path(user_config_file)
+    else:
+        outpath = outdir.joinpath(user_config_file)
+    # ----------------------------------------------------------------------
+    # read constants file to directory
+    keys, values = np.loadtxt(outpath, delimiter='=', unpack=True, comments='#',
+                              dtype=str)
+    keys = np.char.array(keys).strip().upper()
+    values = np.char.array(values).strip()
+    # push into dictionary
+    configdict = dict(zip(keys, values))
+    # loop around constants
+    for cname in params:
+        # get constant
+        constant = params.instances[cname]
+        assert isinstance(constant, constants.constant_functions.Constant)
+        # only add constatns that have user=True
+        if constant.user:
+            # check if we have it in config dictionary
+            if cname in configdict.keys():
+                # get config dictionary value
+                configvalue = configdict[cname]
+                # deal with a None value
+                if configvalue in [None, 'None', '']:
+                    configvalue = None
+                # update value
+                constant.value = configvalue
+                # check values
+                constant.check_value()
+                # now add to params
+                params[cname] = constant.value
+                params.set_source(cname, str(outpath))
+    # return params
+    return params
+
+
+def _read_from_kwargs(params: ParamDict, kwargs: dict) -> ParamDict:
+    """
+    Read arguments from kwargs (normally from call to main function) and
+    push them into params
+
+    :param params: ParamDict, the parameter dictionary of constants
+    :param kwargs: dict, the keyword dictionary from call
+
+    :return: the updated parameter dictionary
+    """
+    # convert kwargs to case insensitive dictionary
+    kwargs = CaseInsensitiveDict(kwargs)
+    # loop around keyword arguments
+    for cname in params:
+        # get constant
+        constant = params.instances[cname]
+        assert isinstance(constant, constants.constant_functions.Constant)
+        # only add constatns that have user=True
+        if constant.user:
+            # check if we have it in config dictionary
+            if cname in kwargs:
+                # get config dictionary value
+                configvalue = kwargs[cname]
+                # deal with a None value
+                if configvalue in [None, 'None', '']:
+                    configvalue = None
+                # update value
+                constant.value = configvalue
+                # check values
+                constant.check_value()
+                # now add to params
+                params[cname] = constant.value
+                params.set_source(cname, 'kwargs')
+    # return params
+    return params
+
+
+def _read_from_cmdline(params: ParamDict,
+                       description: str) -> argparse.Namespace:
+    """
+    Read the arguments from the command line (via argparse)
+
+    :param params: ParamDict, the parameter dictionary of constants
+    :param description: str, the description for the help page
+
+    :return: the argparse argument holder
+    """
+    # set up parser
+    parser = argparse.ArgumentParser(description=description)
+    # loop around keyword arguments
+    for cname in params:
+        # get constant
+        constant = params.instances[cname]
+        assert isinstance(constant, constants.constant_functions.Constant)
+        # only add constants that have argument=True
+        if constant.argument:
+            # deal with no command set
+            if constant.command is None:
+                # generate error
+                emsg = ('Constant {0} must have a "command" defined (as '
+                        '"argument=True")')
+                exceptions.ConstantException(emsg.format(cname),
+                                             kind='command')
+            # add argument
+            parser.add_argument(*constant.command,
+                                action='store', default=None,
+                                dest=cname, help=constant.description)
+    # parse arguments
+    args = parser.parse_args()
+    # return parser arguments
+    return args
+
+
+def _update_from_cmdline(params: ParamDict, args: argparse.Namespace):
+    # ----------------------------------------------------------------------
+    # now loop around and add to params
+    # loop around keyword arguments
+    for cname in params:
+        # get constant
+        constant = params.instances[cname]
+        assert isinstance(constant, constants.constant_functions.Constant)
+        # only add constatns that have user=True
+        if constant.user:
+            # check if we have it in config dictionary
+            if hasattr(args, cname):
+                # get config dictionary value
+                configvalue = getattr(args, cname, None)
+                # deal with a None value
+                if configvalue in [None, 'None', '']:
+                    continue
+                # update value
+                constant.value = configvalue
+                # check values
+                constant.check_value()
+                # now add to params
+                params[cname] = constant.value
+                params.set_source(cname, 'sys.argv')
+    # return params
+    return params
+
+
+def _generate_config_file(params: ParamDict):
+    """
+    Write a config file based on lconsts
+
+    :param lconsts:
+    :return:
+    """
+    # get the config file
+    if params['USER_CONFIG_FILE'] is not None:
+        user_config_file = params['USER_CONFIG_FILE']
+    else:
+        user_config_file = 'user_config.ini'
+    # get the output directory
+    if params['OUTDIR'] is not None:
+        outdir = params['OUTDIR']
+    else:
+        outdir = os.path.join('.', 'outputs')
+    # ----------------------------------------------------------------------
+    # set up lines for adding to constants file
+    lines = CONFIG_FILE_HEADER.split('\n')
+    # used groups
+    used_groups = []
+    # loop around constants
+    for cname in params:
+        # get constant
+        constant = params.instances[cname]
+        assert isinstance(constant, constants.constant_functions.Constant)
+        # only add constants that have user=True
+        if constant.user:
+            # --------------------------------------------------------------
+            # deal with adding group section
+            if constant.group not in used_groups:
+                lines += CONFIG_GROUP_HEADER.format(constant.group).split('\n')
+                # add group to used groups
+                used_groups.append(constant.group)
+            # --------------------------------------------------------------
+            # get description lines
+            dlines = _wraptext(constant.description)
+            # loop around description lines and add to lines as comments
+            for dline in dlines:
+                lines.append('# ' + dline)
+            # --------------------------------------------------------------
+            # then add the line NAME = VALUE
+            lines.append('{0} = {1}'.format(constant.name, constant.value))
+            lines.append('')
+    # ----------------------------------------------------------------------
+    # construct out path
+    outpath = os.path.join(outdir, user_config_file)
+    # write constants file to directory
+    with open(outpath, 'w') as f:
+        for line in lines:
+            f.write(line + '\n')
+
+
+def _wraptext(text: str, length: int = 78) -> List[str]:
+    """
+    Wrap long text into several lines of text is smart enough to wrap
+    words that are too long to a new line
+
+    :param text: str, the long text to wrap
+    :param length: int, the number of characters to wrap at
+
+    :return: the list of strings each of less than "length" characters
+    """
+    lines = []
+    buffer = ''
+    # split all words in the text
+    words = text.split(' ')
+    # loop around words
+    for word in words:
+        # offload buffer to lines
+        if len(buffer) + len(word) >= length:
+            lines.append(buffer)
+            buffer = ''
+        # else add to the buffer
+        else:
+            buffer += '{0} '.format(word)
+    # add the last buffer
+    lines.append(buffer)
+    # return the list of strings
+    return lines
 
 # =============================================================================
 # Start of code
