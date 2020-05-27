@@ -112,6 +112,7 @@ def get_package_directory(package: str, directory: Union[str, Path]):
     # return the absolute data_folder path
     return data_folder
 
+
 # =============================================================================
 # Start of code
 # =============================================================================
