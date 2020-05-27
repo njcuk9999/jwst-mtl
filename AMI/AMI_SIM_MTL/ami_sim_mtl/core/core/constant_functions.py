@@ -17,7 +17,7 @@ Rules:
 from collections import OrderedDict
 from typing import Union, List
 from pathlib import Path
-from astropy import units as uu
+import copy
 
 from ami_sim_mtl.core.core import general
 from ami_sim_mtl.core.core import exceptions
@@ -43,14 +43,14 @@ class Constant:
                  source: Union[None, str] = None,
                  user: bool = False,
                  argument: bool = False,
+                 required: bool = False,
                  group: Union[None, str] = None,
                  description: Union[None, str] = None,
                  minimum: Union[None, int, float] = None,
                  maximum: Union[None, int, float] = None,
                  options: Union[None, list] = None,
                  check: bool = True,
-                 command: Union[None, List[str], str] = None,
-                 units: Union[None, str, uu.core.Unit] = None):
+                 command: Union[None, List[str], str] = None):
         """
         Construct a constant file
 
@@ -61,6 +61,8 @@ class Constant:
         :param source: the source of this constant (e.g. __NAME__)
         :param user: whether this should be used in the user config file
         :param argument: whether this should be used as a command line argument
+        :param required: whether this constant is required as a command
+                         line argument
         :param group: the group this constant belongs to
         :param description: the descriptions to use for the help file /
                             user config file
@@ -74,11 +76,11 @@ class Constant:
         :type source: Union[None, str]
         :type user: bool
         :type argument: bool
+        :type required: bool
         :type group: Union[None, str]
         :type description: Union[None, str]
         :type check: bool
         :type command: Union[None, List[str], str]
-        :type units: Union[None, str, uu.core.Unit]
         """
         self.name = name
         self.value = value
@@ -86,6 +88,7 @@ class Constant:
         self.source = source
         self.user = user
         self.argument = argument
+        self.required = required
         self.group = group
         self.description = description
         self.minimum = minimum
@@ -96,12 +99,25 @@ class Constant:
         self.command = command
         self.__list_commands()
         # check values
-        self.__check_value()
-        # check units
-        self.units = units
-        self.__check_units()
+        self.check_value()
 
-    def __check_value(self):
+    def copy(self, **kwargs):
+        # deal with getting kwargs from call or from self (as a deep copy)
+        kwargs['name'] = kwargs.get('name', str(self.name))
+        kwargs['value'] = kwargs.get('value', copy.deepcopy(self.value))
+        kwargs['dtype'] = kwargs.get('dtype', copy.deepcopy(self.dtype))
+        kwargs['source'] = kwargs.get('source', copy.deepcopy(self.source))
+        kwargs['user'] = kwargs.get('user', bool(self.user))
+        kwargs['argument'] = kwargs.get('argument', bool(self.argument))
+        kwargs['required'] = kwargs.get('required', bool(self.required))
+        kwargs['group'] = kwargs.get('group', copy.deepcopy(self.group))
+        kwargs['description'] = kwargs.get('description', str(self.description))
+        kwargs['check'] = kwargs.get('check', bool(self.check))
+        kwargs['command'] = kwargs.get('command', copy.deepcopy(self.command))
+        # return new instances of Constant
+        return Constant(**kwargs)
+
+    def check_value(self):
         """
         Check that the value satisfies the dtype/min/max/options
 
@@ -226,57 +242,6 @@ class Constant:
                 raise ConstantException(emsg.format(*eargs), 'command', self,
                                         funcname=func_name)
 
-    def __check_units(self):
-        """
-        Deal with constant having units
-        :return:
-        """
-        # set function name
-        func_name = display_func('__check_units', __NAME__, 'Constant')
-        # if we do not have units then return
-        if self.units is None:
-            return
-        # if units are astropy units already we are good
-        if isinstance(self.units, uu.core.Unit):
-            # value must be a float
-            self.dtype = float
-            # must then recheck values
-            self.__check_value()
-        # if units are a string we need to make sure they can be turned to
-        #  into an astropy unit
-        elif isinstance(self.units, str):
-            try:
-                self.units = uu.core.Unit(self.units)
-            except Exception:
-                # construct error message
-                emsg = ('Constant "{0}" has "units" (="{1}") that are '
-                        'invalid [str] (must be astropy valid units)')
-                eargs = [self.name, self.units]
-                # raise Constant Exception
-                raise ConstantException(emsg.format(*eargs), 'units',
-                                        self, funcname=func_name)
-        # else units are invalid
-        else:
-            # construct error message
-            emsg = ('Constant "{0}" has "units" (="{1}") that are '
-                    'invalid [non str] (must be astropy valid units)')
-            eargs = [self.name, self.units]
-            # raise Constant Exception
-            raise ConstantException(emsg.format(*eargs), 'units',
-                                    self, funcname=func_name)
-
-        # now add units to the value
-        try:
-            self.value = self.value * self.units
-        except Exception:
-            # construct error message
-            emsg = ('Constant "{0}" has "units" (="{1}") that are '
-                    'invalid [error] (must be astropy valid units)')
-            eargs = [self.name, self.units]
-            # raise Constant Exception
-            raise ConstantException(emsg.format(*eargs), 'units',
-                                    self, funcname=func_name)
-
     def __str__(self):
         """
         Return a string representation of Constant Class
@@ -295,7 +260,7 @@ class Constant:
 
 
 class Constants:
-    def __init__(self, name=None):
+    def __init__(self, name: Union[str, None] = None):
         """
         Construct the Constants class
 
@@ -309,25 +274,29 @@ class Constants:
         self.arguments = []
         self.commands = []
 
-    def add(self, name, **kwargs):
+    def add(self, name: str, **kwargs):
         """
         Add a constant to the Constants list
 
         :param name: the name of this constant (must be a string)
         :param kwargs: see list below
 
-        kwargs:
-           - value: the default value of this constant (must be type: None or dtype)
-           - dtype: the data type (i.e. int, float, bool, list, path etc
-           - source: the source of this constant (e.g. __NAME__)
-           - user: whether this should be used in the user config file
-           - argument: whether this should be used as a command line argument
-           - group: the group this constant belongs to
-           - description: the descriptions to use for the help file / user
-             config file
-           - minimum:  if int/float set the minimum allowed value
-           - maximum:  if int/float set the maximum allowed value
-           - options:  a list of possible options (each option must be type dtype)
+        :keyword value: the default value of this constant (must be type:
+                        None or dtype)
+        :keyword dtype: the data type (i.e. int, float, bool, list, path etc
+        :keyword source: the source of this constant (e.g. __NAME__)
+        :keyword user: whether this should be used in the user config file
+        :keyword argument: whether this should be used as a command line
+                           argument
+        :keyword required: whether this constant is required as a command
+                           line argument
+        :keyword group: the group this constant belongs to
+        :keyword description: the descriptions to use for the help file / user
+                              config file
+        :keyword minimum:  if int/float set the minimum allowed value
+        :keyword maximum:  if int/float set the maximum allowed value
+        :keyword options:  a list of possible options (each option must be
+                           type dtype)
 
         :return:
         """
@@ -341,6 +310,54 @@ class Constants:
             self.arguments.append(constant.name)
             # check that constant commands are unique
             self._check_unique_commands(constant)
+
+    def add_argument(self, name: str, group: Union[str, None] = None,
+                     required: bool = False, **kwargs):
+        """
+        Add an argument to the Constants list
+
+        :param name: the name of this constant (must be a string)
+        :param group: the group this constant belongs to
+
+        :param kwargs: see list below
+
+        :keyword value: the default value of this constant (must be type:
+                        None or dtype)
+        :keyword dtype: the data type (i.e. int, float, bool, list, path etc
+        :keyword source: the source of this constant (e.g. __NAME__)
+        :keyword user: whether this should be used in the user config file
+        :keyword description: the descriptions to use for the help file / user
+                              config file
+        :keyword minimum:  if int/float set the minimum allowed value
+        :keyword maximum:  if int/float set the maximum allowed value
+        :keyword options:  a list of possible options (each option must be
+                           type dtype)
+
+        :return:
+        """
+        # force argument to True
+        kwargs['argument'] = True
+        # add to constants
+        constant = Constant(name, group=group, required=required, **kwargs)
+        # add to constants
+        self.constants[name] = constant
+        # add arguments to list (for lookup)
+        self.arguments.append(constant.name)
+        # check that constant commands are unique
+        self._check_unique_commands(constant)
+
+    def copy(self, name: Union[str, None] = None):
+        if name is None:
+            name = 'Unknown'
+        newinst = Constants(name)
+        # copy over constants
+        for key in self.constants:
+            newinst.constants[key] = self.constants[key].copy()
+        # copy over lists of strings
+        newinst.arguments = list(self.arguments)
+        newinst.commands = list(self.commands)
+        # return new instance of constants
+        return newinst
 
     def _check_unique_commands(self, constant: Constant):
         """
@@ -418,6 +435,12 @@ def _check_type(cname, variable, value, dtype, instance=None, check=True):
             # raise a path exception
             raise PathException(value, funcname=func_name,
                                 message=emsg.format(*eargs))
+    # -------------------------------------------------------------------------
+    if dtype == bool:
+        if value in ['1', 1, True, 'True', 'T', 'Y', 'true', 'yes', 'YES']:
+            value = True
+        else:
+            value = False
     # -------------------------------------------------------------------------
     # do we check? if not just return
     if not check:
