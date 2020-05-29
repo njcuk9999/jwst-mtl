@@ -1531,8 +1531,13 @@ def _read_from_cmdline(params: ParamDict,
                         '"argument=True")')
                 exceptions.ConstantException(emsg.format(cname),
                                              kind='command')
+            # deal with casting data type
+            if constant.dtype in [int, float, str, bool]:
+                dtype = constant.dtype
+            else:
+                dtype = None
             # add argument
-            parser.add_argument(*constant.command,
+            parser.add_argument(*constant.command, type=dtype,
                                 action='store', default=None,
                                 dest=cname, help=constant.description)
     # parse arguments
@@ -1549,8 +1554,8 @@ def _update_from_cmdline(params: ParamDict, args: argparse.Namespace):
         # get constant
         constant = params.instances[cname]
         assert isinstance(constant, constants.constant_functions.Constant)
-        # only add constatns that have user=True
-        if constant.user:
+        # only add constant that have argument=True
+        if constant.argument:
             # check if we have it in config dictionary
             if hasattr(args, cname):
                 # get config dictionary value
@@ -1617,6 +1622,8 @@ def _generate_config_file(params: ParamDict):
     # ----------------------------------------------------------------------
     # construct out path
     outpath = os.path.join(outdir, user_config_file)
+
+    print('Writing constants file to {0}'.format(outpath))
     # write constants file to directory
     with open(outpath, 'w') as f:
         for line in lines:
