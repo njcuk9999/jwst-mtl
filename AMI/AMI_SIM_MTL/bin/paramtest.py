@@ -31,7 +31,7 @@ __DATE__ = lconsts.constants['PACKAGE_VERSION_DATE'].value
 # Define the scene fits file
 lconsts.add_argument('SCENE', value=None, dtype=str,
                      source=__NAME__, user=True, argument=True,
-                     group=__NAME__, description='Define the scene fits file',
+                     group='code', description='Define the scene fits file',
                      command=['--scene'])
 
 
