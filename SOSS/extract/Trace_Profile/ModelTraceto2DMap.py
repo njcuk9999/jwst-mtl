@@ -1,170 +1,25 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Functions for creating a model SOSS trace profile, and placing
+it on the detector.
+
+Created on Fri May 29 11:58:29 2020
+
+@author: MCR
+"""
+
 import numpy as np
 import matplotlib.pyplot as plt
 from astropy.io import fits
 from astropy.modeling import models, fitting
 from tqdm import tqdm
-import UdeMSOSS as soss
 import sys
-sys.path.insert(1, '/Users/michaelradica/Documents/GitHub/jwst-mtl/SOSS/trace/')
+sys.path.insert(1, '../../trace/')
 import tracepol as tp
 
 
-def oversample_slice(slice_native, os, scaleflux=True):
-    ''' Oversample a 1D PSF to the desired scale.
-    _________________________________________________
-    Inputs: slice_native - 1D PSF slice (in spectral direction)
-            os - oversampling scale
-            scaleflux - option to scale down the oversampled flux
-    Ouputs: oversampled PSF slice
-    '''
-
-    dimy = np.shape(slice_native)[0]
-    slice_os = np.zeros(dimy*os)
-
-    for i in range(dimy):
-        slice_os[i*os:(i+1)*os] = slice_native[i]
-
-    # Scale total flux in PSF
-    if scaleflux is True:
-        slice_os = slice_os / os
-
-    return slice_os
-
-
-def make_rectified_trace(psf_1D, *args, specparams=None, os=1):
-    ''' Take a 1D PSF, broadcast across 2048 spectral pixels.
-    _________________________________________________
-    Inputs: psf_1D - 1D PSF function
-            *args - args for psf_1D (if no spectral dependence)
-            specparams - dictionary of polynomials for the variation
-                        of the Gaussian trace profile parameters, as
-                        output by fit_specpoly.
-            os - spectral oversampling scale
-    Ouputs: rectified trace array
-    '''
-
-    tracemodel = np.zeros((int(64*os), 2048))  # Assume 64pix native PSF width
-
-    for i in tqdm(range(2048)):
-
-        # Add spectral dependence and oversample if necessary
-        if specparams is not None:
-            theta = []
-            for par in specparams:
-                theta.append(np.polyval(specparams[par][0], i))
-            G = psf_1D([theta[0], theta[1], theta[2], theta[3]], [theta[4],
-                       theta[5], theta[6], theta[7]], [theta[8], theta[9],
-                       theta[10], theta[11]])
-            os_slice = G(np.arange(64*os))
-
-        else:
-            # Oversample slice if necessary
-            os_slice = oversample_slice(psf_1D(*args), os)
-
-        tracemodel[:, i] += os_slice
-
-    return tracemodel
-
-
-def make_2D_trace(tracemodel, orders=[1, 2], os=1, semiwidth=32, filename=None):
-    ''' Take a 1D PSF and broadcast across 2048 spectral
-    pixels. Returns a data cube with one frame for each order.
-    _________________________________________________
-    Inputs: tracemodel - rectified 2D trace of one single order
-            orders - desired orders to include
-            oversamp - oversampling factor
-            semiwidth - semi-width of the 1D PSF
-            filename - name of fits file to write detector image to
-    Ouputs: 2D trace map with desired orders, directly returned or
-            in a fits file
-    '''
-
-    naty = np.linspace(0, 255, 256)  # Native spectral axis
-    modely = np.linspace(-32, 32, int(64*os))  # Model oversampled spectral axis
-    dcube = []
-
-    # Get trace solution coefficients
-    tp2 = tp.get_tracepars()
-
-    # Determine x and y positions of trace centroid
-    for m in orders:
-        map2D = np.zeros((256, 2048))
-        cenx = np.arange(2048) + 0.5  # Centroid positions in X
-        lmbd = tp.x2wavelength(cenx, tp2, m)[0]  # Wavelength at each centroid
-        ceny = tp.wavelength2y(lmbd, tp2, m)[0][::-1]  # Y centroid at each X
-
-        # Map trace model to 2D detector
-        for x in cenx:
-            x = int(x)
-            z = tracemodel[:, int(cenx[x])]
-            y = ceny[x] + modely  # Shift PSF to centroid position
-            slicemap = np.interp(naty, y, z)  # Interpolate oversampled PSF onto native Y
-            ind = np.where((naty > ceny[x] - 3*semiwidth) &
-                           (naty < ceny[x] + 3*semiwidth))  # Trim wings
-            map2D[ind, x] += slicemap[ind]
-
-        dcube.append(map2D/np.nanmax(map2D))
-
-    # Either write data to fits file
-    if filename is not None:
-        hdu = fits.PrimaryHDU()
-        hdu.data = np.array(dcube)
-        hdu.writeto(filename, overwrite=True)
-
-    # Or return the detector image cube
-    else:
-        return np.array(dcube)
-
-
-def chi2(data, model):
-    '''Simple Chi^2 calculation.'''
-    chi2 = np.sum((data - model)**2 / data)
-    return chi2
-
-
-def construct_model_4G(amp, mean, sig, bounds=None):
-    '''Create model of 'horned' Gaussian trace profile
-    _________________________________________________
-    Inputs: amp - array of amplitudes of individual Gaussians
-            mean - array of individual Gaussian means
-            sig - array of individual Gaussian std deviations
-            bounds - percent allowance for variation of parameters
-                     from one trace column to another.
-    Ouputs: astropy model of four summed Gaussians
-    '''
-
-    # If fitting bounds are not required
-    if bounds is None:
-        g1 = models.Gaussian1D(amp[0], mean[0], sig[0])
-        g2 = models.Gaussian1D(amp[1], mean[1], sig[1])
-        g3 = models.Gaussian1D(amp[2], mean[2], sig[2])
-        g4 = models.Gaussian1D(amp[3], mean[3], sig[3])
-
-    # Add percent fitting bounds
-    else:
-        ubound = 1 + bounds/100
-        dbound = 1 - bounds/100
-        g1 = models.Gaussian1D(amp[0], mean[0], sig[0], bounds={
-            "amplitude": (dbound*amp[0], ubound*amp[0]),
-            "mean": (dbound*mean[0], ubound*mean[0]),
-            "stddev": (dbound*sig[0], ubound*sig[0])})
-        g2 = models.Gaussian1D(amp[1], mean[1], sig[1], bounds={
-            "amplitude": (dbound*amp[1], ubound*amp[1]),
-            "mean": (dbound*mean[1], ubound*mean[1]),
-            "stddev": (dbound*sig[1], ubound*sig[1])})
-        g3 = models.Gaussian1D(amp[2], mean[2], sig[2], bounds={
-            "amplitude": (dbound*amp[2], ubound*amp[2]),
-            "mean": (dbound*mean[2], ubound*mean[2]),
-            "stddev": (dbound*sig[2], ubound*sig[2])})
-        g4 = models.Gaussian1D(amp[3], mean[3], sig[3], bounds={
-            "amplitude": (dbound*amp[3], ubound*amp[3]),
-            "mean": (dbound*mean[3], ubound*mean[3]),
-            "stddev": (dbound*sig[3], ubound*sig[3])})
-
-    return g1 + g2 + g3 + g4
-
-
-def calibratefit(trace, os=5, calslice=4, plot=False):
+def calibrate_fit(trace, os=5, calslice=4, plot=False):
     '''Calibrate starting parameters for the trace fit by fitting the
     desired model to the first column in the rectified trace.
     _________________________________________________
@@ -172,8 +27,8 @@ def calibratefit(trace, os=5, calslice=4, plot=False):
             os - scale of spatial oversampling
             calslice - the detector column number to use for calibration
             plot - show a plot of the results?
-    Ouputs: arrays of the best fitting amplitudes (A), centers (M), and
-            widths (S) of the four Gaussians in the trace model.
+    Ouputs: arrays of the best fitting amplitudes (amp), centers (pos), and
+            widths (wid) of the four Gaussians in the trace model.
     '''
 
     # Set initial conditions for the first slice
@@ -216,7 +71,7 @@ def calibratefit(trace, os=5, calslice=4, plot=False):
         ax_model.plot(x, g_init(x), c='black', label='Model', alpha=0.8)
         ax_model.scatter(x, data_init, s=2, c='grey', label='Trace Data')
         ax_model.set_ylabel('Trace Profile', fontsize=12)
-        ax_model.legend()
+        ax_model.legend(fontsize=10)
 
         ax_resid.plot(x, 100*(g_init(x) - data_init)/data_init)
         ax_resid.set_xlabel('Spatial Pixel', fontsize=12)
@@ -231,18 +86,65 @@ def calibratefit(trace, os=5, calslice=4, plot=False):
         return amp, pos, wid
 
 
-def fit_rectrace(trace, Amp, Pos, Wid, os=5, plot=False):
-    '''Calibrate starting parameters for the trace fit by fitting the
-    desired model to the first column in the rectified trace.
+def chi2(data, model):
+    '''Simple Chi^2 calculation.'''
+    chi2 = np.sum((data - model)**2 / data)
+    return chi2
+
+
+def construct_model_4G(amp, mean, sig, bounds=None):
+    '''Create model of 'horned' Gaussian trace profile
     _________________________________________________
-    Inputs: trace - the rectified trace model to fit
+    Inputs: amp - array of amplitudes of individual Gaussians
+            mean - array of individual Gaussian means
+            sig - array of individual Gaussian std deviations
+            bounds - percent allowance for variation of parameters
+                     from one pixel column to the next.
+    Ouputs: astropy model of four summed Gaussians
+    '''
+
+    # If fitting bounds are not required
+    if bounds is None:
+        g1 = models.Gaussian1D(amp[0], mean[0], sig[0])
+        g2 = models.Gaussian1D(amp[1], mean[1], sig[1])
+        g3 = models.Gaussian1D(amp[2], mean[2], sig[2])
+        g4 = models.Gaussian1D(amp[3], mean[3], sig[3])
+
+    # Add percent fitting bounds
+    else:
+        ubound = 1 + bounds/100
+        dbound = 1 - bounds/100
+        g1 = models.Gaussian1D(amp[0], mean[0], sig[0], bounds={
+            "amplitude": (dbound*amp[0], ubound*amp[0]),
+            "mean": (dbound*mean[0], ubound*mean[0]),
+            "stddev": (dbound*sig[0], ubound*sig[0])})
+        g2 = models.Gaussian1D(amp[1], mean[1], sig[1], bounds={
+            "amplitude": (dbound*amp[1], ubound*amp[1]),
+            "mean": (dbound*mean[1], ubound*mean[1]),
+            "stddev": (dbound*sig[1], ubound*sig[1])})
+        g3 = models.Gaussian1D(amp[2], mean[2], sig[2], bounds={
+            "amplitude": (dbound*amp[2], ubound*amp[2]),
+            "mean": (dbound*mean[2], ubound*mean[2]),
+            "stddev": (dbound*sig[2], ubound*sig[2])})
+        g4 = models.Gaussian1D(amp[3], mean[3], sig[3], bounds={
+            "amplitude": (dbound*amp[3], ubound*amp[3]),
+            "mean": (dbound*mean[3], ubound*mean[3]),
+            "stddev": (dbound*sig[3], ubound*sig[3])})
+
+    return g1 + g2 + g3 + g4
+
+
+def fit_rectrace(trace, Amp, Pos, Wid, os=5, plot=False):
+    '''Fit desired model to each detector column
+    _________________________________________________
+    Inputs: trace - the rectified trace model to be fit
             Amp - starting guesses for the four Gaussian amplitudes
             Po - starting guesses for the four Gaussian positions
             Wid - starting guesses for the four Gaussian widths
             os - scale of spatial oversampling
             plot - show a plot of the results?
     Ouputs: dictionary of best fitting parameters for the four model
-            Gaussians, as well as the fit Chi2 at each spectral pixel.
+            Gaussians, as well as the fit Chi2 at each spectral column.
     '''
 
     x = np.arange(64*os)
@@ -355,9 +257,8 @@ def fit_specpoly(params_4G, os=1, method=None, plot=False):
 
     Outparams = dict()
 
-    # Do not fit Chi2
     for par in params_4G:
-        if par == 'Chi2':
+        if par == 'Chi2':  # Don't fit the Chi^2
             continue
 
         # Running storage of best fit values and parameters
@@ -373,7 +274,7 @@ def fit_specpoly(params_4G, os=1, method=None, plot=False):
         # Try up to a 9th order polynomial
         for i in range(10):
             model_i = np.polyfit(np.arange(2040)+4, params_4G[par], order)
-            Model.append(model_i)  # store polynomials params
+            Model.append(model_i)  # store polynomial params
             back = np.polyval(model_i, np.arange(2040)+4)
 
             res.append(np.mean(np.abs(back - params_4G[par])))  # calculate model residuals
@@ -382,11 +283,11 @@ def fit_specpoly(params_4G, os=1, method=None, plot=False):
             # If best fit is chosen by BIC and residuals
             if method == 'resweight' or par in ['Amp_c', 'Amp_r', 'Amp_l',
                                                 'Amp_w']:
-                BIC.append((np.log(320)*order + C)*res[i])
+                BIC.append((np.log(64*os)*order + C)*res[i])
 
             # If best fit is only chosen by BIC
             else:
-                BIC.append((np.log(320)*order + C))
+                BIC.append((np.log(64*os)*order + C))
 
             order += 1
 
@@ -419,7 +320,8 @@ def fit_specpoly(params_4G, os=1, method=None, plot=False):
         ax[1, 0].plot(np.arange(2040)+4, params_4G['Mean_c'], ls=':')
         ax[1, 0].plot(np.arange(2040)+4, np.polyval(Outparams['Mean_c'][0],
                       np.arange(2040)+4), c='black')
-        ax[1, 0].set_ylabel('Position [pixels]', fontsize=12)
+        ax[1, 0].set_ylabel('Position [pixels] \n (%sx Oversampled)' % os,
+                            fontsize=12)
         ax[1, 1].plot(np.arange(2040)+4, params_4G['Mean_l'], ls=':')
         ax[1, 1].plot(np.arange(2040)+4, np.polyval(Outparams['Mean_l'][0],
                       np.arange(2040)+4), c='black')
@@ -433,7 +335,8 @@ def fit_specpoly(params_4G, os=1, method=None, plot=False):
         ax[2, 0].plot(np.arange(2040)+4, params_4G['stddev_c'], ls=':')
         ax[2, 0].plot(np.arange(2040)+4, np.polyval(Outparams['stddev_c'][0],
                       np.arange(2040)+4), c='black')
-        ax[2, 0].set_ylabel('Width [pixels]', fontsize=12)
+        ax[2, 0].set_ylabel('Width [pixels] \n (%sx Oversampled)' % os,
+                            fontsize=12)
         ax[2, 0].set_xlabel('Center', fontsize=12)
         ax[2, 1].plot(np.arange(2040)+4, params_4G['stddev_l'], ls=':')
         ax[2, 1].plot(np.arange(2040)+4, np.polyval(Outparams['stddev_l'][0],
@@ -452,3 +355,110 @@ def fit_specpoly(params_4G, os=1, method=None, plot=False):
 
     else:
         return Outparams
+
+
+def make_rectified_trace(psf_1D, *args, specparams=None, os=1):
+    ''' Take a 1D PSF, broadcast across 2048 spectral pixels.
+    _________________________________________________
+    Inputs: psf_1D - 1D PSF function
+            *args - args for psf_1D (if no spectral dependence)
+            specparams - dictionary of polynomials for the variation
+                        of the Gaussian trace profile parameters,
+                        as output by fit_specpoly.
+            os - spectral oversampling scale
+    Ouputs: rectified trace array
+    '''
+
+    tracemodel = np.zeros((int(64*os), 2048))  # Assume 64 pix native PSF width
+
+    for i in tqdm(range(2048)):
+
+        # Add spectral dependence and oversample if necessary
+        if specparams is not None:
+            theta = []
+            for par in specparams:
+                theta.append(np.polyval(specparams[par][0], i))
+            G = psf_1D([theta[0], theta[1], theta[2], theta[3]], [theta[4],
+                       theta[5], theta[6], theta[7]], [theta[8], theta[9],
+                       theta[10], theta[11]])
+            os_slice = G(np.arange(64*os))
+
+        else:
+            # Oversample slice if necessary
+            os_slice = oversample_slice(psf_1D(*args), os)
+
+        tracemodel[:, i] += os_slice
+
+    return tracemodel
+
+
+def make_2D_trace(tracemodel, orders=[1, 2], os=1, semiwidth=32, filename=None):
+    ''' Take a 1D PSF and broadcast across 2048 spectral
+    pixels. Returns a data cube with one frame for each order.
+    _________________________________________________
+    Inputs: tracemodel - rectified 2D trace of one single order
+            orders - desired orders to include
+            oversamp - oversampling factor
+            semiwidth - semi-width of the 1D PSF
+            filename - name of fits file to write detector image to
+    Ouputs: 2D trace map with desired orders, directly returned or
+            in a fits file
+    '''
+
+    naty = np.linspace(0, 255, 256)  # Native spectral axis
+    modely = np.linspace(-32, 32, int(64*os))  # Model oversampled spectral axis
+    dcube = []
+
+    # Get trace solution coefficients
+    tp2 = tp.get_tracepars()
+
+    # Determine x and y positions of trace centroid
+    for m in orders:
+        map2D = np.zeros((256, 2048))
+        cenx = np.arange(2048) + 0.5  # Centroid positions in X
+        lmbd = tp.x2wavelength(cenx, tp2, m)[0]  # Wavelength at each centroid
+        ceny = tp.wavelength2y(lmbd, tp2, m)[0][::-1]  # Y centroid at each X
+
+        # Map trace model to 2D detector
+        for x in cenx:
+            x = int(x)
+            z = tracemodel[:, int(cenx[x])]
+            y = ceny[x] + modely  # Shift PSF to centroid position
+            slicemap = np.interp(naty, y, z)  # Interpolate oversampled PSF onto native Y
+            ind = np.where((naty > ceny[x] - 3*semiwidth) &
+                           (naty < ceny[x] + 3*semiwidth))  # Trim wings
+            map2D[ind, x] += slicemap[ind]
+
+        dcube.append(map2D/np.nanmax(map2D))
+
+    # Either write data to fits file
+    if filename is not None:
+        hdu = fits.PrimaryHDU()
+        hdu.data = np.array(dcube)
+        hdu.writeto(filename, overwrite=True)
+
+    # Or return the detector image cube
+    else:
+        return np.array(dcube)
+
+
+def oversample_slice(slice_native, os, scaleflux=True):
+    ''' Oversample a 1D PSF to the desired scale.
+    _________________________________________________
+    Inputs: slice_native - 1D PSF slice (in spectral direction)
+            os - oversampling scale
+            scaleflux - option to scale down the oversampled flux
+    Ouputs: oversampled PSF slice
+    '''
+
+    dimy = np.shape(slice_native)[0]
+    slice_os = np.zeros(dimy*os)
+
+    for i in range(dimy):
+        slice_os[i*os:(i+1)*os] = slice_native[i]
+
+    # Scale total flux in PSF
+    if scaleflux is True:
+        slice_os = slice_os / os
+
+    return slice_os
