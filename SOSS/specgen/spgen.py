@@ -273,7 +273,7 @@ def readstarmodel(starmodel_file,nmodeltype):
         for line in f:
             line = line.strip() #get rid of \n at the end of the line
             columns = line.split() #break into columns with space delimiter
-            starmodel_wv.append(float(columns[0])*10)
+            starmodel_wv.append(float(columns[0]))
             flux=-float(columns[5])*np.pi*(42.0*float(columns[1])+70.0*float(columns[2])\
                     +90.0*float(columns[3])+105.0*float(columns[4])-210.0)/210.0
             starmodel_flux.append(np.max([0.0,flux]))
