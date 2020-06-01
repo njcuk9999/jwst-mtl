@@ -233,7 +233,16 @@ def read_pars(filename,pars):
     return pars;
 
 def readresponse(response_file):
-    "Usage: ld,res1,res2,res3=readresponse(response_file)"
+    """Usage: ld,res0,res1,res2,res3,qy=readresponse(response_file)
+    Inputs
+     response_file - FITS file for instrument response.
+
+    Outputs:
+
+     ld - wavelength (A)
+     res0,1,2,3 - responce for orders 0,1,2,3
+     qy - quantum yield
+    """
     hdulist = fits.open(response_file)
     tbdata = hdulist[1].data                   #fetch table data for HUD=1
     reponse_ld=tbdata.field(0)[0]*10.0         #Wavelength (A)
@@ -247,7 +256,14 @@ def readresponse(response_file):
     return reponse_ld,reponse_n0,reponse_n1,reponse_n2,reponse_n3,quantum_yield;
 
 def readstarmodel(starmodel_file,nmodeltype):
-    "Usage: starmodel_wv,starmodel_flux=readstarmodel(starmodel_file,smodeltype)"
+    """Usage: starmodel_wv,starmodel_flux=readstarmodel(starmodel_file,smodeltype)
+    Inputs:
+      starmodel_file - full path and filename to star spectral model
+      smodeltype - type of model.  2==ATLAS 
+
+    Returns:
+      starmodel_wv,starmodel_flux
+    """
     starmodel_wv=[]
     starmodel_flux=[]
 
@@ -270,3 +286,132 @@ def readstarmodel(starmodel_file,nmodeltype):
         print('Currently on ATLAS-9 models are supported (nmodeltype=2)')
 
     return starmodel_wv,starmodel_flux;
+
+def readplanetmodel(planetmodel_file,pmodeltype):
+    """Usage: planetmodel_wv,planetmodel_depth=readplanetmodel(planetmodel_file,pmodeltype)
+    Inputs
+      planetmodel_file : full path to planet model (wavelength,r/R*)
+      pmodeltype : type of mode
+        1 : space seperated - wavelength(A) R/R*
+        2 : CSV - wavelength(A),transit-depth(ppm)
+
+    Outputs
+      planetmodel_wv : array with model wavelengths (A)
+      planetmodel_depth : array with model r/R* values.
+    """
+    planetmodel_wv=[]
+    planetmodel_depth=[]
+    f = open(planetmodel_file,'r')
+    for line in f:
+        
+        if pmodeltype==2:
+            line = line.strip() #get rid of \n at the end of the line
+            columns = line.split(',') #break into columns with comma
+            if is_number(columns[0]): #ignore lines that start with '#' 
+                planetmodel_wv.append(float(columns[0])*10000.0) #wavelength (um -> A)   
+                tdepth=np.abs(float(columns[1]))/1.0e6 #transit depth ppm -> relative
+                planetmodel_depth.append(np.sqrt(tdepth)) #transit depth- > r/R*
+
+        elif pmodeltype==1:
+            line = line.strip() #get rid of \n at the end of the line
+            columns = line.split() #break into columns with comma
+            if is_number(columns[0]): #ignore lines that start with '#' 
+                planetmodel_wv.append(float(columns[0])) #wavelength (A)   
+                planetmodel_depth.append(float(columns[1])) #r/R*
+            
+    f.close()
+
+    planetmodel_wv=np.array(planetmodel_wv)       #convert to numpy array
+    planetmodel_depth=np.array(planetmodel_depth)
+    
+    return planetmodel_wv,planetmodel_depth;
+
+def is_number(s):
+    try:
+        float(s)
+        return True
+    except ValueError:
+        return False
+
+def p2w(p,noversample,ntrace):
+    """Usage: w=p2w(p,noversample,ntrace) Converts x-pixel (p) to wavelength (w)
+    Inputs:
+      p : pixel value along dispersion axis (float) on oversampled grid.
+      noversample : oversampling factor (integer 10 >= 1)
+      ntrace : order n=1,2,3 
+
+    Outputs:
+      w : wavelength (A)
+    """
+    
+    #co-efficients for polynomial that define the trace-position
+    nc=5 #number of co-efficients
+    c=[[2.60188,-0.000984839,3.09333e-08,-4.19166e-11,1.66371e-14],\
+     [1.30816,-0.000480837,-5.21539e-09,8.11258e-12,5.77072e-16],\
+     [0.880545,-0.000311876,8.17443e-11,0.0,0.0]]
+    
+    pix=p/noversample
+    w=c[ntrace-1][0]
+    for i in range(1,nc):
+        #print(w)
+        w+=np.power(pix,i)*c[ntrace-1][i]
+    w*=10000.0 #um to A
+                  
+    return w
+
+def w2p(w,noversample,ntrace):
+    """Usage: p=w2p(w,noversample,ntrace) Converts wavelength (w) to x-pixel (p)
+    Inputs:
+      w : wavelength (A)
+      noversample : oversampling factor (integer 10 >= 1)
+      ntrace : order n=1,2,3 
+
+    Outputs:
+      p : pixel value along dispersion axis (float) on oversampled grid.
+
+    """
+
+
+
+    nc=5
+    
+    c=[[2957.38,-1678.19,526.903,-183.545,23.4633],\
+       [3040.35,-2891.28,682.155,-189.996,0.0],\
+       [2825.46,-3211.14,2.69446,0.0,0.0]]
+    
+    wum=w/10000.0 #A->um
+    p=c[ntrace-1][0]
+    for i in range(1,nc):
+        #print(p)
+        p+=np.power(wum,i)*c[ntrace-1][i]
+    p=p*noversample
+                  
+    return p
+
+def ptrace(px,noversample,ntrace):
+    """given x-pixel, return y-position based on trace
+    Usage:
+    py = ptrace(px,noversample,ntrace)
+
+    Inputs:
+      px : pixel on dispersion axis (float) on oversampled grid.
+      noversample : oversampling factor (integer 10 >= 1)
+      ntrace : order n=1,2,3 
+
+    Outputs:
+      py : pixel on spatial axis (float) on oversampled grid.
+    """
+    nc=5 #number of co-efficients
+    c=[[275.685,0.0587943,-0.000109117,1.06605e-7,-3.87e-11],\
+      [254.109,-0.00121072,-1.84106e-05,4.81603e-09,-2.14646e-11],\
+      [203.104,-0.0483124,-4.79001e-05,0.0,0.0]]
+    
+    opx=px/noversample #account for oversampling
+    
+    ptrace=c[ntrace-1][0]
+    for i in range(1,nc):
+        #print(w)
+        ptrace+=np.power(opx,i)*c[ntrace-1][i]
+        
+    ptrace=ptrace-128
+    return ptrace;
