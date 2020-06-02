@@ -97,7 +97,7 @@ class OptimalExtract():
         f = (num / norm).sum(axis=0)
         
         # Return flux (divided by throughtput)
-        out = (f[~f.mask] / t).data
+        out = (f[~ma.all(axis=0)] / t).data
         
         # Return sorted acoording to lam_grid
         return out[np.argsort(grid)]

@@ -53,7 +53,7 @@ class _BaseOverlap():
     """    
     def __init__(self, scidata, T_list, P_list, lam_list, lam_grid=None,
                  lam_bounds=None, i_bounds=None, c_list=None,
-                 c_kwargs=None, sig=None, mask=None, tresh=1e-5):
+                 c_kwargs=None, sig=None, mask=None, thresh=1e-5, verbose=False):
         
         # lam_grid must be specified
         if lam_grid is None:
@@ -62,7 +62,8 @@ class _BaseOverlap():
         # Basic parameters to save
         self.n_ord = len(T_list)
         self.N_k = len(lam_grid)
-        self.tresh = tresh
+        self.thresh = thresh
+        self.verbose = verbose
         
         if sig is None:
             self.sig = np.ones_like(scidata)
@@ -139,6 +140,11 @@ class _BaseOverlap():
         w, k = [], []
         for n in range(self.n_ord):  # For each orders
             w_n, k_n = self.get_w(n)  # Compute weigths
+            # Convert to sparse matrix
+            # First get the dimension of the convolved grid
+            N_kc = np.diff(self.i_bounds[n]).astype(int)[0]
+            # Then convert to sparse
+            w_n = sparse_k(w_n, k_n, N_kc)
             w.append(w_n), k.append(k_n)
         self.w, self.k = w, k  # Save values
 
@@ -150,13 +156,13 @@ class _BaseOverlap():
     def _get_masks(self, mask):
             
         # Get needed attributes 
-        tresh, n_ord \
-            = self.getattrs('tresh', 'n_ord')
+        thresh, n_ord \
+            = self.getattrs('thresh', 'n_ord')
         T_list, P_list, lam_list  \
             = self.getattrs('T_list', 'P_list', 'lam_list')
         
         # Mask according to the global troughput (spectral and spatial)
-        mask_P = [P  < tresh for P in P_list]
+        mask_P = [P  < thresh for P in P_list]
         
         # Mask pixels not covered by the wavelength grid
         mask_lam = [self.get_mask_lam(n) for n in range(n_ord)]
@@ -242,33 +248,35 @@ class _BaseOverlap():
         out[ma] = np.nan
             
         return out
-        
-    def sparse_a(self, a, n):
-        '''
-        Transform `a` to a sparse matrix.
-        Useful to apply convolution
-        '''
-        # Get parameters from object attributes
-        k = self.k[n]
-        N_kc = np.diff(self.i_bounds[n]).astype(int)[0]
-        
-        # Number of good pixels
-        N_i = len(k)
-        
-        # Get row index
-        i_k = np.indices(k.shape)[0]
-        
-        # Take only well defined coefficients
-        row = i_k[k>=0]
-        col = k[k>=0]
-        data = a[k>=0]
 
-        return csr_matrix((data, (row, col)), shape=(N_i,N_kc))
+# ####### TO ERASE #########    
+#     def sparse_a(self, a, n):
+#         '''
+#         Transform `a` to a sparse matrix.
+#         Useful to apply convolution
+#         '''
+#         # Get parameters from object attributes
+#         k = self.k[n]
+#         N_kc = np.diff(self.i_bounds[n]).astype(int)[0]
+        
+#         # Number of good pixels
+#         N_i = len(k)
+        
+#         # Get row index
+#         i_k = np.indices(k.shape)[0]
+        
+#         # Take only well defined coefficients
+#         row = i_k[k>=0]
+#         col = k[k>=0]
+#         data = a[k>=0]
+
+#         return csr_matrix((data, (row, col)), shape=(N_i,N_kc))
     
-    def _get_a(self, n, sparse=True):
+    def _get_a(self, n):
         
         # Get needed attributes
-        mask= self.mask
+        mask = self.mask
+        lam = self.lam_grid
         # Order dependent attributes
         T, P, w, k  \
             = self.getattrs('T_list', 'P_list',
@@ -277,13 +285,15 @@ class _BaseOverlap():
         # Keep only valid pixels (P and sig are still 2-D)
         P = P[~mask]
         # Compute a at each valid pixels
-        a_n = P[:,None] * T[k] * w
+        a_n = diags(P).dot(w)# * T[k] * lam[k]
         
-        if sparse:
-            # Convert to sparse matrix
-            return self.sparse_a(a_n, n)
-        else:
-            return a_n
+#         if sparse:
+#             return self.sparse_a(a_n, n)
+#             # Convert to sparse matrix
+#             a_n = self.sparse_a(a_n, n)
+        return a_n.dot(diags((T*lam)[slice(*self.i_bounds[n])]))
+#         else:
+#             return a_n # * T[k] * lam[k]
     
     def build_sys(self):
         
@@ -319,7 +329,7 @@ class _BaseOverlap():
         # Build the system to solve
         M, d = self.build_sys()
         
-        # Get index of `lam_grid` convered by the pixel
+        # Get index of `lam_grid` convered by the pixel.
         # `lam_grid` may cover more then the pixels.
         try:
             a, b = self.i_grid
@@ -404,6 +414,21 @@ class _BaseOverlap():
         f_out /= np.histogram(lam_grid, lam_bin)[0]
 
         return f_out
+    
+    def get_logl(self, f_k=None):
+        """
+        Return the log likelyhood compute on each pixels
+        """
+
+        data = self.data
+        sig = self.sig
+        
+        if f_k is None:
+            f_k = self.extract()
+
+        model = self.rebuild(f_k)
+
+        return np.nansum((model-data)**2/sig**2)
         
     
     def get_w(self, *args):
@@ -434,7 +459,12 @@ class _BaseOverlap():
         else:
             return out[0]
         
+    def v_print(self, *args, **kwargs):
         
+        if self.verbose:
+            print(*args, **kwargs)
+        
+
 class LagrangeOverlap(_BaseOverlap):
     
     def __init__(self, *args, lagrange_ord=1, lam_grid=None, **kwargs):
@@ -516,58 +546,13 @@ class TrpzOverlap(_BaseOverlap):
         # Init upper class
         super().__init__(scidata, T_list, P_list,
                          lam_list, **kwargs)
-             
-    def _get_LH_old(self, grid, n):
-        """
-        Find the lowest (L) and highest (H) index 
-        of lam_grid for each pixels and orders.
-        """
-        print('Compute LH')
-        
-        # Get needed attributes
-        mask = self.mask
-        # ... order dependent attributes
-        lam_p, lam_m, mask_ord  \
-            = self.getattrs('lam_p', 'lam_m', 'mask_ord', n=n)
-        
-        # Compute only for valid pixels
-        lam_p = lam_p[~mask]
-        lam_m = lam_m[~mask]
-        
-        # Find lower (L) index in the pixel
-        #
-        L = np.ones(lam_m.shape, dtype=int) * -1
-        cond = lam_m[:,None] <= grid[None,:]
-        ind, L_good = first_change(cond, axis=-1)
-        L[ind] = L_good + 1
-        # Special treatment when L==grid[0], so cond is all True
-        ind = np.where(cond.all(axis=-1))
-        L[ind] = 0
-
-        # Find higher (H) index in the pixel
-        #
-        H = np.ones(lam_p.shape, dtype=int) * -2
-        cond = lam_p[:,None] >= grid[None,:]
-        ind, H_good = first_change(cond, axis=-1)
-        H[ind] = H_good
-        # Special treatment when H==grid[-1], so cond all True
-        ind = np.where(cond.all(axis=-1))
-        H[ind] = len(grid) - 1
-
-        # Set invalid pixels for this order to L=-1 and H=-2
-        ma = mask_ord[~mask]
-        L[ma], H[ma] = -1, -2
-        
-        print('Done')
-
-        return L, H
     
     def _get_LH(self, grid, n):
         """
         Find the lowest (L) and highest (H) index 
         of lam_grid for each pixels and orders.
         """
-        print('Compute LH')
+        self.v_print('Compute LH')
         
         # Get needed attributes
         mask = self.mask
@@ -591,7 +576,7 @@ class TrpzOverlap(_BaseOverlap):
         ma = mask_ord[~mask]
         L[ma], H[ma] = -1, -2
         
-        print('Done')
+        self.v_print('Done')
 
         return L, H
     
@@ -608,7 +593,7 @@ class TrpzOverlap(_BaseOverlap):
     
     def get_w(self, n):
         
-        print('Compute weigths and k')
+        self.v_print('Compute weigths and k')
         
         # Get needed attributes
         grid, mask  \
@@ -635,7 +620,7 @@ class TrpzOverlap(_BaseOverlap):
         N_i = len(L)
         i = np.arange(N_i)
         
-        print('Compute k')
+        self.v_print('Compute k')
         
         # Define fisrt and last index of lam_grid
         # for each pixel
@@ -679,7 +664,7 @@ class TrpzOverlap(_BaseOverlap):
         ####################
         ####################
         
-        print('compute w')
+        self.v_print('compute w')
 
         # Valid for every cases
         w[:,0] = grid[k[:,1]] - lam_m
@@ -690,7 +675,7 @@ class TrpzOverlap(_BaseOverlap):
         ##################
         case = (N_k == 2) & ~ma
         if case.any():
-            print('N_k = 2')
+            self.v_print('N_k = 2')
             # if k_i[0] != L_i
             cond = case & (k[:,0] != L)
             w[cond,1] += lam_m[cond] - grid[k[cond,0]]
@@ -705,7 +690,7 @@ class TrpzOverlap(_BaseOverlap):
         ##################
         case = (N_k >= 3) & ~ma
         if case.any():
-            print('N_k = 3')
+            self.v_print('N_k = 3')
             N_ki = N_k[case]
             w[case,1] = grid[k[case,1]] - lam_m[case]
             w[case,N_ki-2] += lam_p[case] - grid[k[case,N_ki-2]]
@@ -727,7 +712,7 @@ class TrpzOverlap(_BaseOverlap):
         ##################
         case = (N_k >= 4) & ~ma
         if case.any():
-            print('N_k = 4')
+            self.v_print('N_k = 4')
             N_ki = N_k[case]
             w[case,1] += grid[k[case,2]] - grid[k[case,1]]
             w[case,N_ki-2] += grid[k[case,N_ki-2]] - grid[k[case,N_ki-3]]            
@@ -737,7 +722,7 @@ class TrpzOverlap(_BaseOverlap):
         ##################
         case = (N_k > 4) & ~ma
         if case.any():
-            print('N_k > 4')
+            self.v_print('N_k > 4')
             i_k = np.indices(k.shape)[-1]
             cond = case[:,None] & (2 <= i_k) & (i_k < N_k[:,None]-2)
             ind1, ind2 = np.where(cond)
@@ -750,7 +735,7 @@ class TrpzOverlap(_BaseOverlap):
         # Make sure invalid values are masked
         w[k<0] = np.nan
 
-        print('Done')
+        self.v_print('Done')
         return w, k
     
     
@@ -784,6 +769,27 @@ def slice_4_diag(offset):
         return slice(-offset, None)
     else:
         return slice(None, -offset)
+    
+def sparse_k(val, k, N_k):
+    '''
+    Transform a 2D array `val` to a sparse matrix.
+    `k` is use for the position in the second axis 
+    of the matrix. The resulting sparse matrix will 
+    have the shape : ((len(k), N_k))
+    Set k elements to a negative value when not defined
+    '''
+    # Length of axis 0
+    N_i = len(k)
+
+    # Get row index
+    i_k = np.indices(k.shape)[0]
+
+    # Take only well defined coefficients
+    row = i_k[k>=0]
+    col = k[k>=0]
+    data = val[k>=0]
+
+    return csr_matrix((data, (row, col)), shape=(N_i,N_k))
     
 def unsparse(matrix, fill_value=np.nan):
     

@@ -183,7 +183,7 @@ def fct_to_array(f, grid, grid_range, thresh=1e-8, length=None):
     # Assign range where the convolution is defined on the grid
     a, b = grid_range
     
-    # Init with a convolution of single length
+    # Init with the value at kernel's center
     out = f(grid, grid)[a:b]
         
     # Add wings
@@ -195,7 +195,7 @@ def fct_to_array(f, grid, grid_range, thresh=1e-8, length=None):
         length = 1
         h_len = 0  # Half length
         
-        # Add value on each sides until tresh is reached
+        # Add value on each sides until thresh is reached
         while True:            
             # Already update half-length
             h_len += 1
@@ -210,12 +210,15 @@ def fct_to_array(f, grid, grid_range, thresh=1e-8, length=None):
                 # Update kernel length and add new values
                 length += 2
                 out = np.vstack([left, out, right])
+                
+        # Weights due to integration (from the convolution)
+        weights = trpz_weight(grid, length, out.shape, a, b)
 
-        return out
+        return out * weights
     
     elif (length % 2) == 1:  # length needs to be odd
         # Generate a 2D array of the grid iteratively until
-        # thresh is reached everywhere.
+        # specified length is reached.
         
         # Compute number of half-length
         n_h_len = (length - 1) // 2
@@ -227,8 +230,11 @@ def fct_to_array(f, grid, grid_range, thresh=1e-8, length=None):
             
             # Add new kernel values
             out = np.vstack([left, out, right])
-
-        return out
+            
+        # Weights due to integration (from the convolution)
+        weights = trpz_weight(grid, length, out.shape, a, b)
+        
+        return out * weights
     
     else:
         raise ValueError("`length` must be odd.")
@@ -251,9 +257,10 @@ def _get_wings(f, grid, h_len, a, b):
     i_grid = np.max([0,a-h_len])
     # Save the new grid
     grid_new = grid[i_grid:b-h_len]
-    # Re-assign `i_grid`
+    # Re-use dummy variable `i_grid`
     i_grid = len(grid_new)
-    # Compute kernel at the left end
+    # Compute kernel at the left end.
+    # `i_grid` accounts for smaller length.
     ker = f(grid_new, grid[b-i_grid:b])
     left[-i_grid:] = ker
 
@@ -269,6 +276,30 @@ def _get_wings(f, grid, h_len, a, b):
     
     return left, right
 
+def trpz_weight(grid, length, shape, a, b):
+    """ Compute weights due to trapeze integration """
+    
+    # Index of each element on the convolution matrix
+    # with respect to the non-convolved grid
+    i_grid = np.indices(shape)[0] - (length // 2)
+    i_grid = np.arange(a, b) + i_grid[:-1]
+    
+    # Set values out of grid to -1
+    i_bad = (i_grid < 0) | (i_grid >= len(grid)-1) 
+    i_grid[i_bad] = -1
+    
+    # Delta lambda
+    d_grid = np.diff(grid)
+    # Compute weights from trapezoidal integration
+    weight = 1/2 * d_grid[i_grid]
+    weight[i_bad] = 0
+    
+    # Fill output
+    out = np.zeros(shape)
+    out[:-1] += weight
+    out[1:] += weight
+    
+    return out
 
 class WebbKer():
     
