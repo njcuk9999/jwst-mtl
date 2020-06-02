@@ -1903,15 +1903,15 @@ def _splash(params: ParamDict, quiet: bool = False,
     package_name = params['PACKAGE_NAME']
     package_version = params['PACKAGE_VERSION']
     # set up text
-    headertext = '\t{0}\tVerion: {1}'
+    headertext = '\t{0}\tVersion: {1}'
     # push to log
     params.log.header()
-    params.log.empty(headertext.format(package_name, package_version), 'm')
+    params.log.empty(headertext.format(package_name, package_version), 'g')
     params.log.header()
     # deal with adding the code name (if set)
     if name is not None:
         nametext = '\tCode: {0}'
-        params.log.empty(nametext.format(name), 'm')
+        params.log.empty(nametext.format(name), 'b')
         params.log.header()
 
 def _generate_config_file(params: ParamDict):

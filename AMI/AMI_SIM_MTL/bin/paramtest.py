@@ -84,6 +84,7 @@ def __main__(params):
     params.log.warning('This is a test of warning')
     params.log.error('This is a test of an error')
 
+    return params
 
 # =============================================================================
 # Start of code
