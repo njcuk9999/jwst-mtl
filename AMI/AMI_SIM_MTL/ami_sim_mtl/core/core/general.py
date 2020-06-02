@@ -33,7 +33,8 @@ REL_CACHE = dict()
 # Define functions
 # =============================================================================
 def display_func(func_name: str, program_name: str = None,
-                 class_name: str = None) -> str:
+                 class_name: str = None,
+                 params: Union[object, None] = None) -> str:
     """
     Constructs the displayed function name (may work with breakpoints later)
 
@@ -51,6 +52,11 @@ def display_func(func_name: str, program_name: str = None,
         name += class_name + '.'
     # add function name
     name += func_name + '()'
+    # lowest debug level
+    if params is not None:
+        # only deal with ParamDict (not defined at this level unless passed)
+        if hasattr(params, 'log'):
+            params.log.ldebug('In: {0}'.format(name), 9)
     # return display name
     return name
 
