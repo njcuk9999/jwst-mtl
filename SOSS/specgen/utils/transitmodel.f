@@ -1,6 +1,6 @@
 CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
       subroutine transitmodel(nfit,nplanet,nplanetmax,sol,nmax,npt,time,
-     .  itime,ntt,tobs,omc,tmodel,dtype)
+     .  itime,ntt,tobs,omc,tmodel,dtype,ld1,ld2,ld3,ld4,rdr,tarray)
 CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
 C     My Transit-model.  Handles multi-planets, TTVs, phase-curves and
 C     radial-velocities
@@ -19,7 +19,9 @@ C     (c) jasonfrowe@gmail.com
      .  occ(nintg),bp(nintg),jm1,tdnintg
       integer ntt(nplanetmax)
       double precision tobs(nplanetmax,nmax),omc(nplanetmax,nmax),ttcor
-      
+      double precision ld1(nmax),ld2(nmax),ld3(nmax),ld4(nmax),
+     . rdr(nplanetmax,nmax),tarray(nplanetmax,nmax)
+
       Pi=acos(-1.d0)!define Pi and 2*Pi
       tPi=2.0d0*Pi 
       pid2=Pi/2.0d0
@@ -113,9 +115,19 @@ C       added 2019/08/14
 !Add parallel commands here
         !write(6,*) 'Number of threads',OMP_GET_NUM_THREADS()
 !$OMP PARALLEL DO PRIVATE(j,jm1,ttcor,tflux,t,phi,Manom,Tanom,drs,
-!$OMP& x2,y2,bt,vt,tide,alb,caltran,mu,tm,bp,ratio,occ) 
-!$OMP& FIRSTPRIVATE (Eanom,c1,c2,c3,c4)
+!$OMP& x2,y2,bt,vt,tide,alb,caltran,mu,tm,bp,ratio,occ,c1,c2,c3,c4,RpRs) 
+!$OMP& FIRSTPRIVATE (Eanom)
+!!$OMP& FIRSTPRIVATE (Eanom,c1,c2,c3,c4)
         do i=1,npt
+
+          c1=ld1(i)      !limb-darkening
+          c2=ld2(i)
+          c3=ld3(i)
+          c4=ld4(i)
+
+          RpRs=rdr(ii,i)   !r/R*
+          ted=tarray(ii,i) !TED
+
             call lininterp(tobs,omc,nplanetmax,nmax,ii,ntt,time(i),
      .          ttcor)
 c            write(0,*) ii,time(i),ttcor

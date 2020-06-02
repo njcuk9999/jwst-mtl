@@ -180,7 +180,7 @@ def read_pars(filename,pars):
                         else:
                             print('Error: Planet number is Invalid ',npl)
                             print('Linenumber: ',linenumber)
-                    elif command[0:nlcom-1] == 'es':
+                    elif command[0:nlcom-1] == 'ec':
                         npl=int(np.float(command[nlcom-1]))
                         if (npl <= pars.nplanetmax) &(npl>0):
                             nplanet=np.max((nplanet,npl))
@@ -188,7 +188,7 @@ def read_pars(filename,pars):
                         else:
                             print('Error: Planet number is Invalid ',npl)
                             print('Linenumber: ',linenumber)
-                    elif command[0:nlcom-1] == 'ec':
+                    elif command[0:nlcom-1] == 'es':
                         npl=int(np.float(command[nlcom-1]))
                         if (npl <= pars.nplanetmax) &(npl>0):
                             nplanet=np.max((nplanet,npl))
@@ -204,7 +204,7 @@ def read_pars(filename,pars):
                         else:
                             print('Error: Planet number is Invalid ',npl)
                             print('Linenumber: ',linenumber)
-                    elif command[0:nlcom-1] == 'al':
+                    elif command[0:nlcom-1] == 'el':
                         npl=int(np.float(command[nlcom-1]))
                         if (npl <= pars.nplanetmax) &(npl>0):
                             nplanet=np.max((nplanet,npl))
@@ -212,7 +212,7 @@ def read_pars(filename,pars):
                         else:
                             print('Error: Planet number is Invalid ',npl)
                             print('Linenumber: ',linenumber)
-                    elif command[0:nlcom-1] == 'el':
+                    elif command[0:nlcom-1] == 'al':
                         npl=int(np.float(command[nlcom-1]))
                         if (npl <= pars.nplanetmax) &(npl>0):
                             nplanet=np.max((nplanet,npl))
@@ -299,10 +299,13 @@ def readstarmodel(starmodel_file,nmodeltype):
       smodeltype - type of model.  2==ATLAS 
 
     Returns:
-      starmodel_wv,starmodel_flux
+      starmodel_wv : wavelength (A)
+      starmodel_flux : flux
+      ld_coeff : non-linear limb-darkening coefficients
     """
     starmodel_wv=[]
     starmodel_flux=[]
+    ld_coeff=[]
 
     if nmodeltype==2:
 
@@ -314,15 +317,18 @@ def readstarmodel(starmodel_file,nmodeltype):
             flux=-float(columns[5])*np.pi*(42.0*float(columns[1])+70.0*float(columns[2])\
                     +90.0*float(columns[3])+105.0*float(columns[4])-210.0)/210.0
             starmodel_flux.append(np.max([0.0,flux]))
+            ld_coeff.append([float(columns[1]),float(columns[2]),float(columns[3])\
+                ,float(columns[4])])
         f.close()
 
         starmodel_wv=np.array(starmodel_wv)
         starmodel_flux=np.array(starmodel_flux)
+        ld_coeff=np.array(ld_coeff)
 
     else:
         print('Currently on ATLAS-9 models are supported (nmodeltype=2)')
 
-    return starmodel_wv,starmodel_flux;
+    return starmodel_wv,starmodel_flux,ld_coeff;
 
 def readplanetmodel(planetmodel_file,pmodeltype):
     """Usage: planetmodel_wv,planetmodel_depth=readplanetmodel(planetmodel_file,pmodeltype)
@@ -505,7 +511,8 @@ def addflux2pix(px,py,pixels,fmod):
 
     return pixels;
 
-def transitmodel (sol,time, itime=-1, ntt=0, tobs=0, omc=0, dtype=0 ): 
+def transitmodel (sol,time,ld1,ld2,ld3,ld4,rdr,tarray,\
+    itime=-1, ntt=0, tobs=0, omc=0, dtype=0 ): 
     "read in transitmodel solution"  
     nplanet=int((len(sol)-8)/10) #number of planets
     
@@ -528,7 +535,8 @@ def transitmodel (sol,time, itime=-1, ntt=0, tobs=0, omc=0, dtype=0 ):
         dtypein=np.ones(len(time), dtype="int32")*int(dtype) #contains data type, 0-photometry,1=RV data
 
     tmodel= np.zeros(len(time)) #contains the transit model
-    tfit5.transitmodel(nplanet,sol,time,itime,nttin,tobsin,omcin,tmodel,dtypein)
+    tfit5.transitmodel(nplanet,sol,time,itime,nttin,tobsin,omcin,tmodel,dtypein,\
+        ld1,ld2,ld3,ld4,rdr,tarray)
     return tmodel;
 
 def get_dw(starmodel_wv,planetmodel_wv,norder,pars):
