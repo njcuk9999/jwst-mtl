@@ -582,5 +582,53 @@ def get_dw(starmodel_wv,planetmodel_wv,norder,pars):
     
     return dw,dwflag
 
+def resample_models(dw,starmodel_wv,starmodel_flux,ld_coeff,\
+    planetmodel_wv,planetmodel_rprs,norder,pars):
+
+    #common grid
+    wv1=p2w(pars.xout+1,1,norder)
+    wv2=p2w(0,1,norder)
+    #wv=np.arange(wv1,wv2,dw)
+    bmax=int((wv2-wv1)/dw)
+
+    #bin star model
+    bin_starmodel_wv=[]
+    bin_starmodel_flux=[]
+    bin_ld_coeff=[]
+    bin=[int((s_wv-wv1)/dw) for s_wv in starmodel_wv]
+    bin=np.array(bin)
+    for b in range(0,bmax+1):
+        npt=len(bin[bin==b])
+        #nc=nc+npt
+        if npt>0:
+            #print(npt)
+            bin_starmodel_wv.append(np.mean(starmodel_wv[bin==b]))
+            bin_starmodel_flux.append(np.mean(starmodel_flux[bin==b]))
+            ld1=np.mean(ld_coeff[bin==b,0])
+            ld2=np.mean(ld_coeff[bin==b,1])
+            ld3=np.mean(ld_coeff[bin==b,2])
+            ld4=np.mean(ld_coeff[bin==b,3])
+            bin_ld_coeff.append([ld1,ld2,ld3,ld4])
+    bin_starmodel_wv=np.array(bin_starmodel_wv)
+    bin_starmodel_flux=np.array(bin_starmodel_flux)
+    bin_ld_coeff=np.array(bin_ld_coeff)
+
+
+    #bin planet model
+    bin_planetmodel_wv=[]
+    bin_planetmodel_rprs=[]
+    bin=[int((s_wv-wv1)/dw) for s_wv in planetmodel_wv]
+    bin=np.array(bin)
+    for b in range(0,bmax+1):
+        npt=len(bin[bin==b])
+        #nc=nc+npt
+        if npt>0:
+            #print(npt)
+            bin_planetmodel_wv.append(np.mean(planetmodel_wv[bin==b]))
+            bin_planetmodel_rprs.append(np.mean(planetmodel_rprs[bin==b]))
+    bin_planetmodel_wv=np.array(bin_planetmodel_wv)
+    bin_planetmodel_rprs=np.array(bin_planetmodel_rprs)
+    
+    return bin_starmodel_wv,bin_starmodel_flux,bin_ld_coeff,bin_planetmodel_wv,bin_planetmodel_rprs
 
 
