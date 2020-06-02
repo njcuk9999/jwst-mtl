@@ -65,6 +65,18 @@ Consts.add('PACKAGE_VERSION_DATE', value=__DATE__, dtype=str,
            source=__NAME__, user=False, group=group,
            description='Define the package version date')
 
+# Define package log theme
+Consts.add('PACKAGE_THEME', value='DARK', dtype=str,
+           source=__NAME__, user=False, argument=True, group=group,
+           description='Define package log theme',
+           command=['--theme'], options=['DARK', 'LIGHT', 'OFF'])
+
+# Define the package directory
+Consts.add('PACKAGE_DIRECTORY', value='ami_sim_data', dtype=str, source=__NAME__,
+           user=False, group=group,
+           description='Define the default file directory name'
+                       'contains input/output/log/config directories')
+
 # Define whether we want to generate a config file
 Consts.add('GENERATE_CONFIG_FILE', value=False, dtype=bool,
            source=__NAME__, user=False, argument=True, group=group,
@@ -72,10 +84,24 @@ Consts.add('GENERATE_CONFIG_FILE', value=False, dtype=bool,
            command='--getconfig')
 
 # Define an output directory
-Consts.add('OUTDIR', value=None, dtype=str, source=__NAME__, user=True,
-           argument=True, group=group, description='Define an output directory',
-           command='--out')
+Consts.add('DIRECTORY', value=None, dtype=str, source=__NAME__, user=False,
+           argument=True, group=group,
+           description='Define the working directory '
+                       '(note this can also be set by setting the AMIDIR '
+                       'environmental variable',
+           command='--dir')
 
+# set the environmental variable for ami sim dir
+Consts.add('ENV_DIR', value='AMIDIR', dtype=str, source=__NAME__, user=False,
+           argument=False, group=group,
+           description='set the environmental variable for ami sim directory'
+                       '(If unset defaults to ~/{PACKAGE_NAME}/')
+
+# set debug mode
+Consts.add('DEBUG', value=0, dtype=int, source=__NAME__, user=True,
+           argument=True, group=group,
+           description='Set debug mode (0=Off 1=On, 2=Full)',
+           command='--debug')
 
 # =============================================================================
 #   Simulation constants
