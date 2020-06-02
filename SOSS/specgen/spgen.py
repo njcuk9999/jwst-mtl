@@ -1,6 +1,7 @@
 import numpy as np #numpy gives us better array management 
 import os #checking status of requested files
 from astropy.io import fits #astropy modules for FITS IO
+import tfit5
 
 class ModelPars:
     """Default Model Parameters
@@ -415,3 +416,127 @@ def ptrace(px,noversample,ntrace):
         
     ptrace=ptrace-128
     return ptrace;
+
+
+def addflux2pix(px,py,pixels,fmod):
+    """Usage: pixels=addflux2pix(px,py,pixels,fmod)
+
+    Drizel Flux onto Pixels using a square PSF of pixel size unity
+    px,py are the pixel position (integers)
+    fmod is the flux calculated for (px,py) pixel
+        and it has the same length as px and py
+    pixels is the image.
+    """
+
+    xmax = pixels.shape[0] #Size of pixel array
+    ymax = pixels.shape[1]
+
+    pxmh = px-0.5 #location of reference corner of PSF square
+    pymh = py-0.5
+
+    dx = np.floor(px+0.5)-pxmh
+    dy = np.floor(py+0.5)-pymh
+
+    # Supposing right-left as x axis and up-down as y axis:
+    # Lower left pixel
+    npx = int(pxmh) #Numpy arrays start at zero
+    npy = int(pymh)
+    
+    #print('n',npx,npy)
+    
+    if (npx >= 0) & (npx < xmax) & (npy >= 0) & (npy < ymax) :
+        pixels[npx,npy]=pixels[npx,npy]+fmod*dx*dy
+
+    #Same operations are done for the 3 pixels other neighbouring pixels
+
+    # Lower right pixel
+    npx = int(pxmh)+1 #Numpy arrays start at zero
+    npy = int(pymh)
+    if (npx >= 0) & (npx < xmax) & (npy >= 0) & (npy < ymax) :
+        pixels[npx,npy]=pixels[npx,npy]+fmod*(1.0-dx)*dy
+
+    # Upper left pixel
+    npx = int(pxmh) #Numpy arrays start at zero
+    npy = int(pymh)+1
+    if (npx >= 0) & (npx < xmax) & (npy >= 0) & (npy < ymax) :
+        pixels[npx,npy]=pixels[npx,npy]+fmod*dx*(1.0-dy)
+
+    # Upper right pixel
+    npx = int(pxmh)+1 #Numpy arrays start at zero
+    npy = int(pymh)+1
+    if (npx >= 0) & (npx < xmax) & (npy >= 0) & (npy < ymax) :
+        pixels[npx,npy]=pixels[npx,npy]+fmod*(1.0-dx)*(1.0-dy)
+
+    return pixels;
+
+def transitmodel (sol,time, itime=-1, ntt=0, tobs=0, omc=0, dtype=0 ): 
+    "read in transitmodel solution"  
+    nplanet=int((len(sol)-8)/10) #number of planets
+    
+    if type(itime) is float :
+        if itime < 0 :
+            itime=np.ones(len(time))*0.020434
+        else:
+            itime=np.ones(len(time))*float(itime)
+    
+    if type(ntt) is int :
+        nttin=  np.zeros(nplanet, dtype="int32") #number of TTVs measured 
+        tobsin= np.zeros(shape=(nplanet,len(time))) #time stamps of TTV measurements (days)
+        omcin=  np.zeros(shape=(nplanet,len(time))) #TTV measurements (O-C) (days)
+    else:
+        nttin=ntt
+        tobsin=tobs
+        omcin=omc
+    
+    if type(dtype) is int :
+        dtypein=np.ones(len(time), dtype="int32")*int(dtype) #contains data type, 0-photometry,1=RV data
+
+    tmodel= np.zeros(len(time)) #contains the transit model
+    tfit5.transitmodel(nplanet,sol,time,itime,nttin,tobsin,omcin,tmodel,dtypein)
+    return tmodel;
+
+def get_dw(starmodel_wv,planetmodel_wv,norder,pars):
+    norder=1 #Order to use.
+
+    #get spectral resolution of star spectra
+    nstarmodel=len(starmodel_wv)
+    dw_star_array=np.zeros(nstarmodel-1)
+    sortidx=np.argsort(starmodel_wv)
+    for i in range(nstarmodel-1):
+        dw_star_array[i]=starmodel_wv[sortidx[i+1]]-starmodel_wv[sortidx[i]]
+    dw_star=np.max(dw_star_array)
+    #print('dw_star',dw_star)
+
+    #get spectral resolution of planet spectra
+    nplanetmodel=len(planetmodel_wv)
+    dw_planet_array=np.zeros(nplanetmodel-1)
+    sortidx=np.argsort(planetmodel_wv)
+    for i in range(nplanetmodel-1):
+        dw_planet_array[i]=planetmodel_wv[sortidx[i+1]]-planetmodel_wv[sortidx[i]]
+    dw_planet=np.max(dw_planet_array)
+    #print('dw_planet',dw_planet)    
+
+    #get spectra resolution needed to populate grid.
+    xmax=pars.xout*pars.noversample
+    dw_grid_array=np.zeros(xmax-1)
+    for i in range(xmax-1):
+        dw_grid_array[i]=p2w(i+1,pars.noversample,norder)-p2w(i,pars.noversample,norder)
+    dw_grid=np.abs(np.min(dw_grid_array))
+    #print('dw_grid',dw_grid)
+
+    dw=np.max((dw_star,dw_planet))
+
+    if dw>dw_grid:
+        print("Warning. stellar/planet model spectral resolution is too low.  Data will be interpolated.")
+        dw=np.min((dw,dw_grid))
+        dwflag=1
+    else: #bin data to common grid.
+        dw
+        dwflag=0
+
+    #print('dw',dw)
+    
+    return dw,dwflag
+
+
+
