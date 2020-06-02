@@ -233,7 +233,43 @@ def read_pars(filename,pars):
     
     return pars;
 
+class response_class:
+    def __init__(self):
+        self.wv=[]  #initialize arrays
+        self.response=[]
+        self.response_order=[]
+        self.quantum_yield=[]
+
 def readresponse(response_file):
+    """Usage: response=readresponse(response_file)
+    Inputs
+     response_file - FITS file for instrument response.
+
+    Outputs:
+
+     response_class
+       wv(npt) : wavelength
+       response(norder,npt) : response
+       response_order(norder) : order index
+       quantum_yield(npt) : quantum yield
+    """
+
+    response=response_class() #class to contain response info
+
+    hdulist = fits.open(response_file)
+    tbdata = hdulist[1].data                   #fetch table data for HUD=1
+
+    response.wv=tbdata.field(0)[0]*10.0         #Wavelength (A)
+    for i in range(4):
+        response.response.append(tbdata.field('SOSS_order'+str(i))[0]) #n=i response
+        response.response_order.append(i) #store order
+    response.quantum_yield=tbdata.field('yield')[0] #quantum yield
+
+    hdulist.close()                            #Close FITS file
+
+    return response
+
+def readresponse_old(response_file):
     """Usage: ld,res0,res1,res2,res3,qy=readresponse(response_file)
     Inputs
      response_file - FITS file for instrument response.
