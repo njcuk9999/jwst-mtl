@@ -13,8 +13,8 @@ from ami_sim_mtl.core.core import constant_functions
 
 # set very basic constants
 __NAME__ = 'core.instruments.constants.py'
-__VERSION__ = '0.0.001'
-__DATE__ = '2020-05-21'
+__VERSION__ = '0.0.004'
+__DATE__ = '2020-06-02'
 
 # get constants class
 Consts = constant_functions.Constants(__NAME__)
