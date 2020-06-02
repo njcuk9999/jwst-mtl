@@ -11,12 +11,13 @@ Created on 2020-05-21
 """
 from ami_sim_mtl.core.instrument import constants
 from ami_sim_mtl.core.core import param_functions
+from ami_sim_mtl.core.core import log_functions
 
 # =============================================================================
 # Define variables
 # =============================================================================
 # set name
-__NAME__ = 'bin/test.py'
+__NAME__ = 'paramtest.py'
 __DESCRIPTION__ = 'test script for AMI_SIM_MTL'
 # get default constants
 consts = constants.Consts
@@ -25,7 +26,8 @@ lconsts = consts.copy(__NAME__)
 # set very basic constants
 __VERSION__ = lconsts.constants['PACKAGE_VERSION'].value
 __DATE__ = lconsts.constants['PACKAGE_VERSION_DATE'].value
-
+# set up the logger
+log = log_functions.Log()
 # add code specific arguments
 
 # Define the scene fits file
@@ -39,24 +41,59 @@ lconsts.add_argument('SCENE', value=None, dtype=str,
 # Define functions
 # =============================================================================
 def main(**kwargs):
-    # get params (run time + config file + constants file)
-    params = param_functions.setup(lconsts, kwargs,
-                                   description=__DESCRIPTION__)
-    # run the __main__ to return products
-    if not params['GENERATE_CONFIG_FILE']:
-        __main__(params)
+    """
+    Main function: Do not add code here, add it in __main__
+    :param kwargs:
+    :return:
+    """
+    # for error handling set these
+    params = consts.constants
+    # wrap in error handler
+    try:
+        # get params (run time + config file + constants file)
+        params = param_functions.setup(lconsts, kwargs, log=log,
+                                       desc=__DESCRIPTION__, name=__NAME__)
+        # run the __main__ to return products
+        if not params['GENERATE_CONFIG_FILE']:
+            return __main__(params)
+    except Exception as e:
+        if hasattr(e, '__log__'):
+            log.exception(e.__log__())
+            log.error(e.__log__())
+        else:
+            emsg = 'UNEXPECTED ERROR {0}: {1}'
+            log.exception(emsg.format(type(e), str(e)))
+            log.error(emsg.format(type(e), str(e)))
+        return params
+    except SystemExit as e:
+        emsg = 'SYSTEM EXIT {0}: {1}'
+        log.exception(emsg.format(type(e), str(e)))
+        log.error(emsg.format(type(e), str(e)))
+        return params
 
 
 def __main__(params):
+
+    params.log.ldebug('run __main__', 7)
     # main code here
     for param in params:
         params.info(param)
+
+    # test logging
+    params.log.info('This is a test of info')
+    params.log.warning('This is a test of warning')
+    params.log.error('This is a test of an error')
 
 
 # =============================================================================
 # Start of code
 # =============================================================================
 if __name__ == "__main__":
+
+    # test
+    import sys
+
+    # sys.argv = 'test.py'.split()
     # run main code
     ll = main()
 
