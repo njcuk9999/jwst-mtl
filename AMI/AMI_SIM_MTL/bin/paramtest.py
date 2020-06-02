@@ -66,9 +66,6 @@ def main(**kwargs):
             log.error(emsg.format(type(e), str(e)))
         return params
     except SystemExit as e:
-        emsg = 'SYSTEM EXIT {0}: {1}'
-        log.exception(emsg.format(type(e), str(e)))
-        log.error(emsg.format(type(e), str(e)))
         return params
 
 
@@ -94,7 +91,7 @@ if __name__ == "__main__":
     # test
     import sys
 
-    # sys.argv = 'test.py'.split()
+    # sys.argv = 'test.py --getconfig=True --config=loictest.ini'.split()
     # run main code
     ll = main()
 

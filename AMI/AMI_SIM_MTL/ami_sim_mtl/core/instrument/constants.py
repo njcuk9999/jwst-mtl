@@ -46,7 +46,7 @@ Consts = constant_functions.Constants(__NAME__)
 group = 'General'
 
 # Define the user config file
-Consts.add('USER_CONFIG_FILE', value=None, dtype='path',
+Consts.add('USER_CONFIG_FILE', value=None, dtype=str,
            source=__NAME__, user=False, argument=True, group=group,
            description='Define the user config file', command='--config')
 
@@ -100,7 +100,8 @@ Consts.add('ENV_DIR', value='AMIDIR', dtype=str, source=__NAME__, user=False,
 # set debug mode
 Consts.add('DEBUG', value=0, dtype=int, source=__NAME__, user=True,
            argument=True, group=group,
-           description='Set debug mode (0=Off 1=On, 2=Full)',
+           description='Set debug mode (1-9) the higher the number the '
+                       'more verbose',
            command='--debug')
 
 # =============================================================================

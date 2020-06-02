@@ -1801,10 +1801,12 @@ def _setup_working_directory(params: ParamDict,
             workingdir = Path(workingdir)
         # if we cannot create it go with default
         except Exception as e:
-            print('Cannot create working dir. Setting to default')
-            print(e.__name__, e)
+            msg = 'Invalid working dir. Setting to default'
+            msg += '\n\t{0}: {1}'.format(type(e), str(e))
+            msg += '\n\tDefault = {0}'.format(workingdir)
+            params.log.info(msg)
             workingdir = Path(default_dir)
-            print('Default = {0}'.format(workingdir))
+
     # ----------------------------------------------------------------------
     # now check if path exists
     while not workingdir.exists():
@@ -1818,10 +1820,12 @@ def _setup_working_directory(params: ParamDict,
                 raise exceptions.ConstantException(emsg.format(default_dir),
                                                    kind='mkdir')
             # else set the working directory to default
-            print('Cannot create working dir. Setting to default')
-            print(e.__name__, e)
+            msg = 'Cannot create working dir. Setting to default'
+            msg += '\n\t{0}: {1}'.format(type(e), str(e))
+            msg += '\n\tDefault = {0}'.format(workingdir)
+            params.log.info(msg)
             workingdir = Path(default_dir)
-            print('Default = {0}'.format(workingdir))
+
     # ----------------------------------------------------------------------
     # now we have the working dir we can set some paths
     inputdir = Path(workingdir).joinpath('inputs')
@@ -1966,11 +1970,9 @@ def _generate_config_file(params: ParamDict):
                 lines.append('')
     # ----------------------------------------------------------------------
     # construct out path
-    outpath = os.path.join(outdir, user_config_file)
-
-    print('Writing constants file to {0}'.format(outpath))
+    params.log.info('Writing constants file to {0}'.format(outdir))
     # write constants file to directory
-    with open(outpath, 'w') as f:
+    with open(outdir, 'w') as f:
         for line in lines:
             f.write(line + '\n')
 
