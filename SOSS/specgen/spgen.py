@@ -631,4 +631,40 @@ def resample_models(dw,starmodel_wv,starmodel_flux,ld_coeff,\
     
     return bin_starmodel_wv,bin_starmodel_flux,bin_ld_coeff,bin_planetmodel_wv,bin_planetmodel_rprs
 
+def readkernels(workdir,\
+                wls=0.5,wle=5.2,dwl=0.05,kerneldir='Kernel/',os=1):
+    """ kernels=readkernels(wls=0.5,wle=5.2,dwl=0.05,Kerneldir='Kernel',os=1)
+    Inputs
+     workdir   : base directory
+     wls       : wavelength start for Kernels, inclusive (um)
+     wle       : wavelength end for Kernels, inclusive (um)
+     dwl       : wavelength spacing for Kernels (uw)
+     kerneldir : location of Kernels (workdir+Kernels is the full path)
+     os        : amount of oversampling.  Much be an integer >=1. 
+    """
+    
+    kernels=[]
+    kernels_wv=[]
+    
+    kdir='Kernels'+str(int(os+0.01))+'/'
+    prename='SOSS_os10_128x128_'
+    extname='.fits'
+    wl=np.copy(wls)
+    while wl<=wle:
+        
+        wname='{0:.6f}'.format(int(wl*100+0.1)/100)
+        fname=workdir+kerneldir+kdir+prename+wname+extname
+        #print(fname)
+        hdulist = fits.open(fname)
+        
+        kernel_1=hdulist[0].data.T
+        kernels.append(np.copy(kernel_1))
+        kernels_wv.append(np.float(wl))
+        
+        hdulist.close()
+        
+        wl+=dwl
+        
+    return kernels,kernels_wv
+    
 
