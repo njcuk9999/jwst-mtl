@@ -9,6 +9,7 @@ Created on Mon Feb 17 13:31:58 2020
 import numpy as np
 from astropy.io import ascii
 
+
 def trace_polynomial(trace, m=1):
     """ Fit a polynomial to the trace of order m and return a
     dictionary containing the parameters and validity intervals.
@@ -64,6 +65,7 @@ def trace_polynomial(trace, m=1):
 
     return pars
 
+
 def get_tracepars(filename=None):
     """ Read a file containing the trace profile and generate
     polynomial parameters for each order.
@@ -73,7 +75,7 @@ def get_tracepars(filename=None):
     """
 
     if filename is None:
-        filename = 'NIRISS_GR700_trace.csv' # pkg_resources?
+        filename = 'NIRISS_GR700_trace.csv'  # pkg_resources?
 
     # Read the trace.
     trace = ascii.read(filename)
@@ -88,12 +90,14 @@ def get_tracepars(filename=None):
 
     return tracepars
 
+
 def bounds_check(array, lower, upper):
     """ Perform asimple bounds check on an array. """
 
     mask = (array >= lower) & (array <= upper)
 
     return mask
+
 
 def wavelength2x(wavelength, tracepars, m=1):
     """ Convert wavelength to x-position for order m. """
@@ -103,6 +107,7 @@ def wavelength2x(wavelength, tracepars, m=1):
 
     return x, mask
 
+
 def wavelength2y(wavelength, tracepars, m=1):
     """ Convert wavelength to y-position for order m. """
 
@@ -110,6 +115,7 @@ def wavelength2y(wavelength, tracepars, m=1):
     mask = bounds_check(wavelength, tracepars[m]['wmin'], tracepars[m]['wmax'])
 
     return y, mask
+
 
 def x2wavelength(x, tracepars, m=1):
     """ Convert x-position to wavelength for order m. """
@@ -119,6 +125,7 @@ def x2wavelength(x, tracepars, m=1):
 
     return wavelength, mask
 
+
 def wavelength2xy(wavelength, tracepars, m=1):
     """ Convert wavelength to x,y-position for order m. """
 
@@ -126,6 +133,7 @@ def wavelength2xy(wavelength, tracepars, m=1):
     y, mask = wavelength2y(wavelength, tracepars, m=m)
 
     return x, y, mask
+
 
 def coords_ds9_to_dms(x_ds9, y_ds9):
     """ Transfrom ds9 coordinates to DMS coordinates. """
@@ -135,6 +143,7 @@ def coords_ds9_to_dms(x_ds9, y_ds9):
 
     return x_dms, y_dms
 
+
 def coords_dms_to_ds9(x_dms, y_dms):
     """ Transfrom DMS coordinates to ds9 coordinates. """
 
@@ -142,6 +151,7 @@ def coords_dms_to_ds9(x_dms, y_dms):
     y_ds9 = 2048 - x_dms
 
     return x_ds9, y_ds9
+
 
 def wavelength_map_2D(m, tracepars, use_tilt=False):
     """ Compute the wavelengths of order m across the SUBSTRIP256 subarray. """
@@ -159,7 +169,7 @@ def wavelength_map_2D(m, tracepars, use_tilt=False):
     # Set out-of-bounds and reference pixels to zero.
     wavelength_map[~mask] = 0
     wavelength_map[-4:] = 0
-    wavelength_map[:,:4] = 0
-    wavelength_map[:,-4:] = 0
+    wavelength_map[:, :4] = 0
+    wavelength_map[:, -4:] = 0
 
     return wavelength_map
