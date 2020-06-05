@@ -390,63 +390,6 @@ class _BaseOverlap():
         return a, b
     
     
-    def bin_flux(self, grid, f_k, n=0):
-        """ Bin the oversampled flux to a pixel grid"""
-        
-        # Get needed attributes
-        lam_grid = self.lam_grid
-        i_bnds, c = self.getattrs('i_bounds', 'c_list', n=n)
-        
-        # Use the convolved grid and flux
-        lam_grid = lam_grid[slice(*i_bnds)]
-        f_k = c.dot(f_k)
-        
-        # Compute extremities of the bins
-        # (Assuming grid is the center)
-        lam_p, lam_m = _get_lam_p_or_m(grid)
-        
-        # Make sur it's sorted
-        lam_p, lam_m = np.sort(lam_p), np.sort(lam_m)
-        
-        # Special treatment at the end of the bins
-        lam_bin = np.concatenate([lam_m, lam_p[-1:]])
-        
-        # Compute bins
-        f_out = np.histogram(lam_grid, lam_bin, weights=f_k)[0]
-        # Normalise (result is the mean in each bins)
-        f_out /= np.histogram(lam_grid, lam_bin)[0]
-        
-        return f_out
-    
-    def bin_flux_th(self, grid, f_th, n=0):
-        """ Method to generate a theoretical extracted flux"""
-
-        # Get needed attributes
-        lam_grid = self.lam_grid
-        i_bnds = self.i_bounds[n]
-        
-        # Use the convolved grid and project the 
-        # convolve flux theoric
-        lam_grid = lam_grid[slice(*i_bnds)]
-        f_k = f_th(lam_grid)
-        
-        # Compute extremities of the bins
-        # (Assuming grid is the center)
-        lam_p, lam_m = _get_lam_p_or_m(grid)
-
-        # Make sure it's sorted
-        lam_p, lam_m = np.sort(lam_p), np.sort(lam_m)
-
-        # Special treatment at the end of the bins
-        lam_bin = np.concatenate([lam_m, lam_p[-1:]])
-
-        # Compute bins
-        f_out = np.histogram(lam_grid, lam_bin, weights=f_k)[0]
-        # Normalise (result is the mean in each bins)
-        f_out /= np.histogram(lam_grid, lam_bin)[0]
-
-        return f_out
-    
     def get_logl(self, f_k=None):
         """
         Return the log likelyhood compute on each pixels
@@ -662,6 +605,7 @@ class TrpzOverlap(_BaseOverlap):
         # Define fisrt and last index of lam_grid
         # for each pixel
         k_first, k_last = -1*np.ones(N_i), -1*np.ones(N_i)
+        
         # If lowest value close enough to the exact grid value,
         # NOTE: Could be approximately equal to the exact grid
         # value. It would look like that.
@@ -774,38 +718,7 @@ class TrpzOverlap(_BaseOverlap):
 
         self.v_print('Done')
         return w, k
-    
-    
-def _bin_flux(lam_grid, grid, f_k):
 
-    # Compute extremities of the bins
-    # (Assuming grid is the center)
-    lam_p, lam_m = _get_lam_p_or_m(grid)
-
-    # Make sur it's sorted
-    lam_p, lam_m = np.sort(lam_p), np.sort(lam_m)
-
-    # Special treatment at the end of the bins
-    lam_bin = np.concatenate([lam_m, lam_p[-1:]])
-
-    # Compute bins
-    f_out = np.histogram(lam_grid, lam_bin, weights=f_k)[0]
-    # Normalise (result is the mean in each bins)
-    f_out /= np.histogram(lam_grid, lam_bin)[0]
-
-    return f_out
-
-
-def slice_4_diag(offset):
-    '''
-    If offset is positive, take [-offset:]
-    and if negative, take [:-offset]
-    '''
-    
-    if offset <= 0:
-        return slice(-offset, None)
-    else:
-        return slice(None, -offset)
     
 def sparse_k(val, k, N_k):
     '''
