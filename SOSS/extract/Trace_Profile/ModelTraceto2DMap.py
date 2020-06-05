@@ -9,13 +9,15 @@ Created on Fri May 29 11:58:29 2020
 @author: MCR
 """
 
+# TODO filename should be made lower case in a future version.
+
 import numpy as np
 import matplotlib.pyplot as plt
 from astropy.io import fits
 from astropy.modeling import models, fitting
 from tqdm import tqdm
 import sys
-sys.path.insert(1, '../../trace/')
+sys.path.insert(1, '../../trace/')  # TODO needs to be removed during package reformat.
 import tracepol as tp
 
 
@@ -60,7 +62,7 @@ def calibrate_fit(trace, os=5, calslice=4, plot=False):
         wid = [g_init.stddev_0[0], g_init.stddev_1[0],
                g_init.stddev_2[0], g_init.stddev_3[0]]
 
-    if plot is True:
+    if plot is True:  # TODO plotting should be seperated from analysis functions.
         # Show the fit results
         fig = plt.figure(figsize=(7, 5))
 
