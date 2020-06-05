@@ -456,7 +456,7 @@ def ptrace(px,noversample,ntrace):
         #print(w)
         ptrace+=np.power(opx,i)*c[ntrace-1][i]
         
-    ptrace=ptrace-128
+    ptrace=(ptrace-128)*noversample
     return ptrace;
 
 
