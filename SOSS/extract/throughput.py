@@ -6,7 +6,7 @@ from astropy.io import fits
 class ThroughputSOSS(interp1d):
     
     filename = "NIRISS_Throughput_STScI.fits"
-    path = "ExtractionTestFiles/"
+    path = "Ref_files/"
     
     def __init__(self, order=1):
         

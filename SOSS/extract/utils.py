@@ -27,7 +27,51 @@ def _get_lam_p_or_m(lam):
         raise ValueError('Bad pixel values for wavelength')
         
         
-def grid_from_map(wv_map, psf):
+def grid_from_map(wv, psf, wv_range=None, poly_ord=1):
+    """
+    Define wavelength grid by taking the center wavelength
+    at each columns where the psf is maximised. If `wv_range` is
+    out of the wv map, extrapolate with a polynomial of order `poly_ord`.
+    """
+    
+    if wv_range is None:
+        return _grid_from_map(wv, psf)
+    else:
+        # Get grid
+        grid = _grid_from_map(wv, psf)
+        # Define delta_grid as a function of grid
+        # by fitting a polynomial
+        d_grid = np.diff(grid)
+        f_dgrid = np.polyfit(grid[:-1], d_grid, poly_ord)
+        f_dgrid = np.poly1d(f_dgrid)
+        
+        # Make sure grid is between the range
+        grid = grid[
+            (wv_range[0] <= grid) & (grid <= wv_range[-1])
+        ]
+        
+        # Extrapolate values out of the wv_map or
+        grid_left, grid_right = [], []
+        if wv_range[0] < grid.min():
+            # Need the grid value to get delta_grid ...
+            grid_left = [grid.min() - f_dgrid(grid.min())]
+            # ... and iterate to get the next one until
+            # the range is reached
+            while grid_left[-1] > wv_range[0]:
+                grid_left.append(grid_left[-1] - f_dgrid(grid_left[-1]))
+            # Need to sort (and unique)
+            grid_left = np.unique(grid_left)
+        if wv_range[-1] > grid.max():
+            # Need the grid value to get delta_grid ...
+            grid_right = [grid.max() + f_dgrid(grid.max())]
+            # ... and iterate to get the next one until
+            # the range is reached
+            while grid_right[-1] < wv_range[-1]:
+                grid_right.append(grid_right[-1] + f_dgrid(grid_right[-1]))        
+                
+        return np.concatenate([grid_left, grid, grid_right])
+        
+def _grid_from_map(wv_map, psf):
     """ 
     Define wavelength grid by taking the center wavelength
     at each columns where the psf is maximised.

@@ -5,7 +5,7 @@ from astropy.io import fits
 import matplotlib.pyplot as plt
 
 
-def get_c_matrix(kernel, grid, bounds=None, i_bounds=None, norm=False,
+def get_c_matrix(kernel, grid, bounds=None, i_bounds=None, norm=True,
                  sparse=True, n_out=None, thresh_out=None, **kwargs):
     """
     Return a convolution matrix
@@ -66,9 +66,13 @@ def get_c_matrix(kernel, grid, bounds=None, i_bounds=None, norm=False,
             a = np.min(np.where(grid >= bounds[0])[0])
             b = np.max(np.where(grid <= bounds[1])[0]) + 1
     else:
+        # Make sure it is absolute index, not relative
+        # So no negative index.
+        if i_bounds[1] < 0:
+            i_bounds[1] = len(grid) + i_bounds[1]
         a, b = i_bounds
     
-    # Generate a 2D kernel if it depending on the input
+    # Generate a 2D kernel depending on the input
     if callable(kernel):
         kernel = fct_to_array(kernel, grid, [a,b], **kwargs)
     elif kernel.ndim == 1:
@@ -79,7 +83,8 @@ def get_c_matrix(kernel, grid, bounds=None, i_bounds=None, norm=False,
     # Normalize if specified
     if norm:
         kernel = kernel / kernel.sum(axis=0)
-    # Apply n_out
+
+    # Apply cut for kernel at boundaries
     kernel = cut_ker(kernel, n_out, thresh_out)
 
     # Return sparse or not
@@ -281,8 +286,9 @@ def trpz_weight(grid, length, shape, a, b):
     
     # Index of each element on the convolution matrix
     # with respect to the non-convolved grid
+    # `i_grid` has the shape (N_k_convolved, kernel_length - 1) 
     i_grid = np.indices(shape)[0] - (length // 2)
-    i_grid = np.arange(a, b) + i_grid[:-1]
+    i_grid = np.arange(a, b)[None,:] + i_grid[:-1,:]
     
     # Set values out of grid to -1
     i_bad = (i_grid < 0) | (i_grid >= len(grid)-1) 
@@ -303,7 +309,7 @@ def trpz_weight(grid, length, shape, a, b):
 
 class WebbKer():
     
-    path = "ExtractionTestFiles/spectral_kernel_matrix/"
+    path = "Ref_files/spectral_kernel_matrix/"
     file_frame = "spectral_kernel_matrix_os_{}_width_{}pixels.fits"
     
     def __init__(self, wv_map, n_os=10, n_pix=21, bounds_error=False, fill_value='extrapolate'):

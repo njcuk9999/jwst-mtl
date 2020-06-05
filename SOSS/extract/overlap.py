@@ -1,3 +1,5 @@
+
+# General imports
 import numpy as np
 from scipy.sparse import find, issparse, csr_matrix, diags
 from scipy.sparse.linalg import spsolve
@@ -5,8 +7,9 @@ from scipy.sparse.linalg import spsolve
 # Local imports
 from custom_numpy import is_sorted, first_change, arange_2d
 from interpolate import SegmentedLagrangeX
-from convolution import get_c_matrix
+from convolution import get_c_matrix, WebbKer
 from utils import _get_lam_p_or_m
+from throughput import ThroughputSOSS
 
 
 class _BaseOverlap():
@@ -51,35 +54,58 @@ class _BaseOverlap():
         The pixels where the estimated transmission is less than
         this value will be masked.
     """    
-    def __init__(self, scidata, T_list, P_list, lam_list, lam_grid=None,
-                 lam_bounds=None, i_bounds=None, c_list=None,
+    def __init__(self, P_list, lam_list, scidata=None, lam_grid=None, 
+                 lam_bounds=None, i_bounds=None, c_list=None, T_list=None,
                  c_kwargs=None, sig=None, mask=None, thresh=1e-5, verbose=False):
+        
+        ############################
+        # Check input
+        ############################
         
         # lam_grid must be specified
         if lam_grid is None:
             raise ValueError("`lam_grid` kwarg must be specified.")
         
-        # Basic parameters to save
-        self.n_ord = len(T_list)
+        ###########################
+        # Save basic parameters
+        ###########################
+        
+        # Number of orders
+        self.n_ord = len(lam_list)
+
+        # Non-convolved grid length
         self.N_k = len(lam_grid)
+        
+        # Threshold to build mask
         self.thresh = thresh
+        
+        # Verbose option
         self.verbose = verbose
         
+        # Error map of each pixels
         if sig is None:
             self.sig = np.ones_like(scidata)
         else:
             self.sig = sig.copy()
         
-        # Save PSF
+        # Save PSF for each orders
         self.P_list = [P.copy() for P in P_list]
         
-        # Save pixel wavelength
+        # Save pixel wavelength for each orders
         self.lam_list = [lam.copy() for lam in lam_list]
         
-        # Save wavelength grid
+        # Save non-convolved wavelength grid
         self.lam_grid = lam_grid.copy()
         
-        # Throughput
+        ################################
+        # Define throughput
+        ################################
+        
+        # If None, read throughput from file
+        if T_list is None:
+            T_list = [ThroughputSOSS(order=n+1)
+                      for n in range(self.n_ord)]
+            
         # Can be a callable (function) or an array
         # with the same length as lambda grid.
         T = []
@@ -89,6 +115,10 @@ class _BaseOverlap():
             except TypeError:  # Assume it's an array
                 T.append(T_n)  
         self.T_list = T  # Save value
+        
+        #####################################################
+        # Get index of wavelength grid covered by each orders 
+        #####################################################
         
         # Assign a first estimate of i_bounds if not specified
         # to be able to compute mask
@@ -103,6 +133,10 @@ class _BaseOverlap():
                     i_bnds[1] = len(lam_grid) + i_bnds[1]
         self.i_bounds = i_bounds
         
+        ###################################
+        # Build detector mask
+        ###################################
+        
         # First estimate of a global mask and masks for each orders
         self.mask, self.mask_ord = self._get_masks(mask)
         
@@ -112,16 +146,23 @@ class _BaseOverlap():
         # Re-build global mask and masks for each orders
         self.mask, self.mask_ord = self._get_masks(mask)
         
-        # Set convolution to identity if not given (no effect)
+        ####################################
+        # Build convolution matrix
+        ####################################
+        
+        # Set convolution to predifined kernels if not given
+        # Take maximum oversampling and kernel width available
+        # (n_os=10 and n_pix=21)
         if c_list is None:
-            c_list = [np.array([1.])
-                      for n in range(self.n_ord)]
+            c_list = [WebbKer(wv_map, n_os=10, n_pix=21)
+                      for wv_map in lam_list]
             
         # Check c_kwargs input
         if c_kwargs is None:
             c_kwargs = [{} for _ in range(self.n_ord)]
         elif isinstance(c_kwargs,dict):
             c_kwargs = [c_kwargs for _ in range(self.n_ord)]
+            
         # Define convolution sparse matrix    
         c = []
         for i, c_n in enumerate(c_list):
@@ -132,11 +173,14 @@ class _BaseOverlap():
             c.append(c_n)
         self.c_list = c
         
-        # Computes weights (coefficients of the linear
-        # combination that express the flux of a pixel
-        # given the flux projected on the wavelength grid)
-        # The weights depend on the method used to interpolate
-        # the flux and is encoded in the class method `_get_w()`.
+        #############################
+        # Compute weights
+        #############################
+        
+        # The weights depend on the integration method used solve
+        # the integral of the flux over a pixel and are encoded
+        # in the class method `_get_w()`.
+        
         w, k = [], []
         for n in range(self.n_ord):  # For each orders
             w_n, k_n = self.get_w(n)  # Compute weigths
@@ -148,9 +192,18 @@ class _BaseOverlap():
             w.append(w_n), k.append(k_n)
         self.w, self.k = w, k  # Save values
 
-        # Assign other trivial attributes
-        self.data = scidata.copy()
-        # TODO: try setting to np.nan instead?
+        #########################
+        # Save remaining inputs
+        #########################
+        
+        # Detector image
+        if scidata is None:
+            # Create a dummy detector image.
+            self.data = np.nan * np.ones(lam_list[0].shape)
+        else:
+            self.data = scidata.copy()
+        # Set masked values to zero ... may not be necessary
+        # IDEA: try setting to np.nan instead of zero?
         self.data[self.mask] = 0  
         
     def _get_masks(self, mask):
@@ -162,7 +215,7 @@ class _BaseOverlap():
             = self.getattrs('T_list', 'P_list', 'lam_list')
         
         # Mask according to the global troughput (spectral and spatial)
-        mask_P = [P  < thresh for P in P_list]
+        mask_P = [P < thresh for P in P_list]
         
         # Mask pixels not covered by the wavelength grid
         mask_lam = [self.get_mask_lam(n) for n in range(n_ord)]
@@ -179,7 +232,7 @@ class _BaseOverlap():
         # Mask if mask_P not masked but mask_lam is.
         # This means that an order is contaminated by another
         # order, but the wavelength range does not cover this part
-        # of the spectrum. Thus, it cannot be accounted for.
+        # of the spectrum. Thus, it cannot be treated correctly.
         global_mask |= (np.any(mask_lam, axis=0) 
                       & (~np.array(mask_P)).all(axis=0))
         
@@ -248,29 +301,6 @@ class _BaseOverlap():
         out[ma] = np.nan
             
         return out
-
-# ####### TO ERASE #########    
-#     def sparse_a(self, a, n):
-#         '''
-#         Transform `a` to a sparse matrix.
-#         Useful to apply convolution
-#         '''
-#         # Get parameters from object attributes
-#         k = self.k[n]
-#         N_kc = np.diff(self.i_bounds[n]).astype(int)[0]
-        
-#         # Number of good pixels
-#         N_i = len(k)
-        
-#         # Get row index
-#         i_k = np.indices(k.shape)[0]
-        
-#         # Take only well defined coefficients
-#         row = i_k[k>=0]
-#         col = k[k>=0]
-#         data = a[k>=0]
-
-#         return csr_matrix((data, (row, col)), shape=(N_i,N_kc))
     
     def _get_a(self, n):
         
@@ -278,22 +308,24 @@ class _BaseOverlap():
         mask = self.mask
         lam = self.lam_grid
         # Order dependent attributes
-        T, P, w, k  \
+        T, P, w, i_bnds  \
             = self.getattrs('T_list', 'P_list',
-                            'w', 'k', n=n)
+                            'w', 'i_bounds', n=n)
         
         # Keep only valid pixels (P and sig are still 2-D)
         P = P[~mask]
-        # Compute a at each valid pixels
-        a_n = diags(P).dot(w)# * T[k] * lam[k]
+        ## IDEA #####
+        # Put 1/sigma here -> P = P[~mask]/sig[~mask]
+        # Will be quicker
         
-#         if sparse:
-#             return self.sparse_a(a_n, n)
-#             # Convert to sparse matrix
-#             a_n = self.sparse_a(a_n, n)
-        return a_n.dot(diags((T*lam)[slice(*self.i_bounds[n])]))
-#         else:
-#             return a_n # * T[k] * lam[k]
+        # Compute a_n = P_n * w_n * (T_n * lambda_n)
+        # First (T * lam) for the convolve axis (N_k_c)
+        t_x_lam = (T*lam)[slice(*i_bnds)]
+        # then a_n (2-steps)
+        a_n = diags(P).dot(w)
+        a_n = a_n.dot(diags(t_x_lam))
+        
+        return a_n
     
     def build_sys(self):
         
@@ -447,6 +479,13 @@ class _BaseOverlap():
         
         return mask
     
+    def lam_grid_c(self, order):
+        """ 
+        Return lam_grid for the convolved flux at a given order.
+        """
+        index = slice(*self.i_bounds[order])
+        return self.lam_grid[index]
+    
     def getattrs(self, *args, n=None):
         
         if n is None:
@@ -532,8 +571,7 @@ class LagrangeOverlap(_BaseOverlap):
 class TrpzOverlap(_BaseOverlap):
     ''' Version oversampled with trapezoidal integration '''
     
-    def __init__(self, scidata, T_list,
-                 P_list, lam_list, **kwargs):
+    def __init__(self, P_list, lam_list, **kwargs):
         
         # Get wavelength at the boundary of each pixel
         # TODO? Could also be an input??
@@ -544,8 +582,7 @@ class TrpzOverlap(_BaseOverlap):
         self.lam_p, self.lam_m = lam_p, lam_m  # Save values
         
         # Init upper class
-        super().__init__(scidata, T_list, P_list,
-                         lam_list, **kwargs)
+        super().__init__(P_list, lam_list, **kwargs)
     
     def _get_LH(self, grid, n):
         """
