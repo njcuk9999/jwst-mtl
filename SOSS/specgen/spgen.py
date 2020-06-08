@@ -1,7 +1,14 @@
+import sys
+sys.path.insert(0, "../trace/")
+
 import numpy as np #numpy gives us better array management 
 import os #checking status of requested files
 from astropy.io import fits #astropy modules for FITS IO
+from scipy import interpolate #spline interpolation
+import scipy.signal
 import tfit5
+
+import tracepol as tp
 
 class ModelPars:
     """Default Model Parameters
@@ -376,7 +383,7 @@ def is_number(s):
     except ValueError:
         return False
 
-def p2w(p,noversample,ntrace):
+def p2w_old(p,noversample,ntrace):
     """Usage: w=p2w(p,noversample,ntrace) Converts x-pixel (p) to wavelength (w)
     Inputs:
       p : pixel value along dispersion axis (float) on oversampled grid.
@@ -402,7 +409,7 @@ def p2w(p,noversample,ntrace):
                   
     return w
 
-def w2p(w,noversample,ntrace):
+def w2p_old(w,noversample,ntrace):
     """Usage: p=w2p(w,noversample,ntrace) Converts wavelength (w) to x-pixel (p)
     Inputs:
       w : wavelength (A)
@@ -431,7 +438,7 @@ def w2p(w,noversample,ntrace):
                   
     return p
 
-def ptrace(px,noversample,ntrace):
+def ptrace_old(px,noversample,ntrace):
     """given x-pixel, return y-position based on trace
     Usage:
     py = ptrace(px,noversample,ntrace)
@@ -458,6 +465,100 @@ def ptrace(px,noversample,ntrace):
         
     ptrace=(ptrace-128)*noversample
     return ptrace;
+
+def p2w(tracePars, pixel , noversample=1 , ntrace=1 ,maskON=False):
+    
+    """Usage: Maps a pixel on the spectral axis of the NIRISS-SOSS detector to a wavelength in Angstroms.
+Requires the default 'trace_file' to be in the same location as this code.
+    
+Inputs:
+  tracePars : Polynomial solutions for trace
+  pixel : pixel on spectral axis (float) on oversampled grid
+  noversample : oversampling factor (integer 10 >= 1)
+  ntrace : order n=1,2,3 
+  maskON : Boolean that determines whether the mask array supplied by the inner functions is returned or not
+
+Outputs:
+    if MaskON:  return a tuple of ( wavelength on spectral axis , mask_array ). The mask is a boolean array that delimits
+                   the wavelength values that actually map to a given order. 
+    else:       return the wavelength values of pixels on the spectral axis for all pixel values found in the
+                   'pixel' input parameter.
+    """
+    
+    pixel = 2048-pixel # tp.flipX(pixel)                     # Subtracting from 2048 each pixel value to ensure that the spectral axis from
+                                                     # left-to-right corresponds to decreasing wavelength values
+    pixel = pixel / noversample              # Adjusts the pixel values based on oversampling
+    
+    wave_MICRON = tp.x2wavelength(pixel,tracePars,m=ntrace) # From 'jwst-mtl/SOSS/trace/tracepol.py'
+    
+    if maskON:   # Decides whether or not to return the masking provided by the x2wavelength routine. Default is 'False' 
+                    # because this functionality was not present before in J Rowe's previous implementation of 'p2w'
+        return wave_MICRON[0] * 10000 , wave_MICRON[1]
+    
+    return wave_MICRON[0] * 10000    # Factor of 10000 used to get wavelengths in units of (Avatar) Aang-stroms
+
+
+def w2p(tracePars, wave_ANG , noversample=1 , ntrace=1 , maskON=False):
+    
+    """Usage: Maps a wavelength in Angstroms to a pixel on the spectral axis of the NIRISS-SOSS detector.
+Requires the default 'trace_file' to be in the same location as this code.
+    
+Inputs:
+  tracePars : Polynomial solutions for trace
+  wave_ANG : wavelength on spectral axis (float)
+  noversample : oversampling factor (integer 10 >= 1)
+  ntrace : order n=1,2,3 
+  trace_file : Name of a file containing columns of wavelength (microns), x-pixel, y-pixel and order number
+  maskON : Boolean that determines whether the mask array supplied by the inner functions is returned or not
+
+Outputs:
+  if MaskON:  return a tuple of ( pixel on spectral axis , mask_array ). The mask is a boolean array that delimits the 
+                   pixels on the detector that actually correspond to a given order. 
+  else:       return the pixels on the spectral axis for all wavelength values found in the
+                   'wave_ANG' input parameter.
+    """
+    
+    pixel = list( tp.wavelength2x(wave_ANG/10000,tracePars,m=ntrace) )  # From 'jwst-mtl/SOSS/trace/tracepol.py'.
+                                                                           # Routine requires microns instead of Angstroms 
+    pixel[0] = pixel[0] * noversample  # Adjust pixels based on oversampling
+    
+    if maskON:   # Decides whether or not to return the masking provided by the wavelength2x routine. Default is 'False' 
+                    # because this functionality was not present before in J Rowe's previous implementation of 'w2p'
+        #return tp.flipX(pixel[0]) , pixel[1]
+        return 2048-pixel[0], pixel[1]
+    
+    #return tp.flipX(pixel[0])  # Subtracting from 2048 each pixel value to ensure that the spectral axis from left-to-right
+    return 2048-pixel[0]
+                             # corresponds to decreasing wavelength values
+
+def ptrace(tracePars, pixel, noversample=1, ntrace=1 , maskON=False):
+    
+    """Usage: Maps a pixel on the spectral (x) axis of the NIRISS-SOSS detector to a position in the spatial (y) axis corresponding
+to a trace-center coordinate.
+Requires the default 'trace_file' to be in the same location as this code.
+    
+Inputs:
+  tracePars : Polynomial solutions for trace
+  pixel : pixel on spectral axis (float) on oversampled grid
+  noversample : oversampling factor (integer 10 >= 1)
+  ntrace : order n=1,2,3 
+  trace_file : Name of a file containing columns of wavelength (microns), x-pixel, y-pixel and order number
+  maskON : Boolean that determines whether the mask array supplied by the inner functions is returned or not
+
+Outputs:
+    if MaskON:  return a tuple of ( pixel coordinate on spectral axis , mask_array ). The mask is a boolean array that
+                   delimits the coordinate values that actually map to a given order. 
+    else:       return the coordinate values on the spatial axis for all pixel values found in the
+                   'pixel' input parameter.
+    """
+    
+    wv_ANG = p2w(tracePars, pixel,noversample=noversample , ntrace=ntrace , maskON=maskON)
+    if maskON:
+        y , mask = tp.wavelength2y(wv_ANG[0]/10000, tracePars, m=ntrace)  # Need to input microns instead of Angstroms
+        return y*noversample , mask
+    else:
+        y = tp.wavelength2y(wv_ANG/10000, tracePars, m=ntrace)
+        return y[0]*noversample
 
 
 def addflux2pix(px,py,pixels,fmod):
@@ -539,7 +640,7 @@ def transitmodel (sol,time,ld1,ld2,ld3,ld4,rdr,tarray,\
         ld1,ld2,ld3,ld4,rdr,tarray)
     return tmodel;
 
-def get_dw(starmodel_wv,planetmodel_wv,norder,pars):
+def get_dw(starmodel_wv,planetmodel_wv,norder,pars,tracePars):
     norder=1 #Order to use.
 
     #get spectral resolution of star spectra
@@ -564,7 +665,8 @@ def get_dw(starmodel_wv,planetmodel_wv,norder,pars):
     xmax=pars.xout*pars.noversample
     dw_grid_array=np.zeros(xmax-1)
     for i in range(xmax-1):
-        dw_grid_array[i]=p2w(i+1,pars.noversample,norder)-p2w(i,pars.noversample,norder)
+        dw_grid_array[i]=p2w(tracePars,i+1,pars.noversample,norder)\
+          -p2w(tracePars,i,pars.noversample,norder)
     dw_grid=np.abs(np.min(dw_grid_array))
     #print('dw_grid',dw_grid)
 
@@ -583,18 +685,21 @@ def get_dw(starmodel_wv,planetmodel_wv,norder,pars):
     return dw,dwflag
 
 def resample_models(dw,starmodel_wv,starmodel_flux,ld_coeff,\
-    planetmodel_wv,planetmodel_rprs,norder,pars):
+    planetmodel_wv,planetmodel_rprs,pars,tracePars):
 
-    #common grid
-    wv1=p2w(pars.xout+1,1,norder)
-    wv2=p2w(0,1,norder)
-    #wv=np.arange(wv1,wv2,dw)
+    wv1=p2w(tracePars,pars.xout+1,1,1)
+    wv2=p2w(tracePars,0,1,1)
+
+    for norder in range(1,4):
+        wv1=np.min((p2w(tracePars,pars.xout+1,1,norder),wv1))
+        wv2=np.max((p2w(tracePars,0,1,norder),wv2))
+    
     bmax=int((wv2-wv1)/dw)
 
     #bin star model
-    bin_starmodel_wv=[]
-    bin_starmodel_flux=[]
-    bin_ld_coeff=[]
+    bin_starmodel_wv=np.zeros(bmax+1)
+    bin_starmodel_flux=np.zeros(bmax+1)
+    bin_ld_coeff=[None]*(bmax+1)
     bin=[int((s_wv-wv1)/dw) for s_wv in starmodel_wv]
     bin=np.array(bin)
     for b in range(0,bmax+1):
@@ -602,21 +707,24 @@ def resample_models(dw,starmodel_wv,starmodel_flux,ld_coeff,\
         #nc=nc+npt
         if npt>0:
             #print(npt)
-            bin_starmodel_wv.append(np.mean(starmodel_wv[bin==b]))
-            bin_starmodel_flux.append(np.mean(starmodel_flux[bin==b]))
+            bin_starmodel_wv[b]=np.mean(starmodel_wv[bin==b])
+            bin_starmodel_flux[b]=np.mean(starmodel_flux[bin==b])
             ld1=np.mean(ld_coeff[bin==b,0])
             ld2=np.mean(ld_coeff[bin==b,1])
             ld3=np.mean(ld_coeff[bin==b,2])
             ld4=np.mean(ld_coeff[bin==b,3])
-            bin_ld_coeff.append([ld1,ld2,ld3,ld4])
-    bin_starmodel_wv=np.array(bin_starmodel_wv)
-    bin_starmodel_flux=np.array(bin_starmodel_flux)
+            bin_ld_coeff[b]=[ld1,ld2,ld3,ld4]
+        else:
+            bin_starmodel_wv[b]=dw*(b+0.5)+wv1
+            bin_ld_coeff[b]=[0,0,0,0]
+    #bin_starmodel_wv=np.array(bin_starmodel_wv)
+    #bin_starmodel_flux=np.array(bin_starmodel_flux)
     bin_ld_coeff=np.array(bin_ld_coeff)
 
 
     #bin planet model
-    bin_planetmodel_wv=[]
-    bin_planetmodel_rprs=[]
+    bin_planetmodel_wv=np.zeros(bmax+1)
+    bin_planetmodel_rprs=np.zeros(bmax+1)
     bin=[int((s_wv-wv1)/dw) for s_wv in planetmodel_wv]
     bin=np.array(bin)
     for b in range(0,bmax+1):
@@ -624,10 +732,12 @@ def resample_models(dw,starmodel_wv,starmodel_flux,ld_coeff,\
         #nc=nc+npt
         if npt>0:
             #print(npt)
-            bin_planetmodel_wv.append(np.mean(planetmodel_wv[bin==b]))
-            bin_planetmodel_rprs.append(np.mean(planetmodel_rprs[bin==b]))
-    bin_planetmodel_wv=np.array(bin_planetmodel_wv)
-    bin_planetmodel_rprs=np.array(bin_planetmodel_rprs)
+            bin_planetmodel_wv[b]=np.mean(planetmodel_wv[bin==b])
+            bin_planetmodel_rprs[b]=np.mean(planetmodel_rprs[bin==b])
+        else:
+            bin_planetmodel_wv[b]=dw*(b+0.5)+wv1
+    #bin_planetmodel_wv=np.array(bin_planetmodel_wv)
+    #bin_planetmodel_rprs=np.array(bin_planetmodel_rprs)
     
     return bin_starmodel_wv,bin_starmodel_flux,bin_ld_coeff,bin_planetmodel_wv,bin_planetmodel_rprs
 
@@ -667,4 +777,58 @@ def readkernels(workdir,\
         
     return kernels,kernels_wv
     
+def gen_unconv_image(pars,response,bin_starmodel_wv,bin_starmodel_flux,bin_ld_coeff,\
+    bin_planetmodel_rprs,time,itime,solin,norder,tracePars):
 
+    #array to hold synthetic image
+    xmax=pars.xout*pars.noversample
+    ymax=pars.yout*pars.noversample
+
+    pixels=np.zeros((xmax,ymax))
+
+    #interpolate over response and quantum yield
+    response_spl = interpolate.splrep(response.wv, response.response[1], s=0)
+    quantum_yield_spl  = interpolate.splrep(response.wv, response.quantum_yield, s=0)
+    rmax=np.max(response.wv)
+    rmin=np.min(response.wv)
+
+    #Generate Transit Model
+    npt=len(bin_starmodel_wv) #number of wavelengths in model
+    time_array=np.ones(npt)*time   #Transit model expects array
+    itime_array=np.ones(npt)*itime #Transit model expects array
+    rdr_array=np.ones((1,npt))*bin_planetmodel_rprs #r/R* -- can be multi-planet
+    tedarray=np.zeros((1,npt)) #secondary eclipse -- can be multi-planet
+    planet_flux_ratio=transitmodel (solin, time_array,\
+                            bin_ld_coeff[:,0], bin_ld_coeff[:,1], bin_ld_coeff[:,2],bin_ld_coeff[:,3],\
+                            rdr_array,tedarray,itime=itime_array)
+
+    for k in range(bin_starmodel_wv.shape[0]):
+
+        w=bin_starmodel_wv[k]
+        i=w2p(tracePars,w,pars.noversample,norder)
+        j=ptrace(tracePars,i,pars.noversample,norder)
+
+        if (i<=xmax+1) & (i>=0) & (j<=ymax+1) & (j>=0): #check if pixel is on grid
+
+            if w < rmax and w > rmin:
+                response_one = interpolate.splev(w, response_spl, der=0)
+                quantum_yield_one = interpolate.splev(w, quantum_yield_spl, der=0)
+            else:
+                response_one = 0
+                quantum_yield_one = 0
+            flux=planet_flux_ratio[k]*bin_starmodel_flux[k]*response_one*quantum_yield_one
+            pixels=addflux2pix(i,j,pixels,flux)
+            
+    return pixels
+
+def convolve_1wv(pixels_t,kernel_resize,kernels_wv,wv_idx,pars,norder,tracePars,dwl=0.05):
+    
+    x1=scipy.signal.fftconvolve(pixels_t, kernel_resize[wv_idx], mode='same')
+    wl=kernels_wv[wv_idx]
+    fmax=0
+    for i in range(x1.shape[1]):
+            wlp=p2w(tracePars,i,pars.noversample,norder)/10000.0
+            fac=max(0.0,1.0-np.abs(wlp-wl)/dwl)
+            x1[:,i]=x1[:,i]*fac
+            fmax=np.max((fac,fmax))
+    return x1
