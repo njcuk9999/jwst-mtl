@@ -486,9 +486,9 @@ Outputs:
                    'pixel' input parameter.
     """
     
-    pixel = 2048-pixel # tp.flipX(pixel)                     # Subtracting from 2048 each pixel value to ensure that the spectral axis from
+    pixel = 2048-pixel/noversample            # tp.flipX(pixel)                     # Subtracting from 2048 each pixel value to ensure that the spectral axis from
                                                      # left-to-right corresponds to decreasing wavelength values
-    pixel = pixel / noversample              # Adjusts the pixel values based on oversampling
+    #pixel = pixel / noversample              # Adjusts the pixel values based on oversampling
     
     wave_MICRON = tp.x2wavelength(pixel,tracePars,m=ntrace) # From 'jwst-mtl/SOSS/trace/tracepol.py'
     
@@ -525,10 +525,10 @@ Outputs:
     if maskON:   # Decides whether or not to return the masking provided by the wavelength2x routine. Default is 'False' 
                     # because this functionality was not present before in J Rowe's previous implementation of 'w2p'
         #return tp.flipX(pixel[0]) , pixel[1]
-        return 2048-pixel[0], pixel[1]
+        return noversample*2048-pixel[0], pixel[1]
     
     #return tp.flipX(pixel[0])  # Subtracting from 2048 each pixel value to ensure that the spectral axis from left-to-right
-    return 2048-pixel[0]
+    return noversample*2048-pixel[0]
                              # corresponds to decreasing wavelength values
 
 def ptrace(tracePars, pixel, noversample=1, ntrace=1 , maskON=False):
