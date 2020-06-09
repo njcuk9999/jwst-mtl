@@ -6,7 +6,8 @@ import os #checking status of requested files
 from astropy.io import fits #astropy modules for FITS IO
 from scipy import interpolate #spline interpolation
 import scipy.signal
-import tfit5
+import tfit5 #Fortran routine for fastest transitmodel ever
+import binmodels_py as bm #Fortran routine for speedy resampling of data
 
 import tracepol as tp
 
@@ -640,7 +641,7 @@ def transitmodel (sol,time,ld1,ld2,ld3,ld4,rdr,tarray,\
         ld1,ld2,ld3,ld4,rdr,tarray)
     return tmodel;
 
-def get_dw(starmodel_wv,planetmodel_wv,norder,pars,tracePars):
+def get_dw(starmodel_wv,planetmodel_wv,pars,tracePars):
     norder=1 #Order to use.
 
     #get spectral resolution of star spectra
@@ -685,6 +686,37 @@ def get_dw(starmodel_wv,planetmodel_wv,norder,pars,tracePars):
     return dw,dwflag
 
 def resample_models(dw,starmodel_wv,starmodel_flux,ld_coeff,\
+    planetmodel_wv,planetmodel_rprs,pars,tracePars):
+    
+    wv1=p2w(tracePars,pars.xout+1,1,1)
+    wv2=p2w(tracePars,0,1,1)
+
+    for norder in range(1,4):
+        wv1=np.min((p2w(tracePars,pars.xout+1,1,norder),wv1))
+        wv2=np.max((p2w(tracePars,0,1,norder),wv2))
+
+    bmax=int((wv2-wv1)/dw)
+
+    snpt=starmodel_wv.shape[0]
+    pnpt=planetmodel_wv.shape[0]
+
+    ld_coeff_in=np.zeros((snpt,4))
+
+    bin_starmodel_wv=np.zeros(bmax)
+    bin_starmodel_flux=np.zeros(bmax)
+    bin_ld_coeff=np.zeros((bmax,4),order='F')
+    bin_planetmodel_wv=np.zeros(bmax)
+    bin_planetmodel_rprs=np.zeros(bmax)
+
+    bm.binmodels_py(wv1,wv2,dw,\
+        starmodel_wv,starmodel_flux,ld_coeff,\
+        planetmodel_wv,planetmodel_rprs,\
+        bin_starmodel_wv,bin_starmodel_flux,bin_ld_coeff,bin_planetmodel_wv,bin_planetmodel_rprs)
+
+    return bin_starmodel_wv,bin_starmodel_flux,bin_ld_coeff,bin_planetmodel_wv,bin_planetmodel_rprs
+
+
+def resample_models_old(dw,starmodel_wv,starmodel_flux,ld_coeff,\
     planetmodel_wv,planetmodel_rprs,pars,tracePars):
 
     wv1=p2w(tracePars,pars.xout+1,1,1)
