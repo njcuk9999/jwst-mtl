@@ -74,7 +74,8 @@ def Simulate_NIRISS_AMI(param, mag, filt, phot=1e8, fov=500, savedir='Simulated_
         X_comp = sep * np.cos(np.deg2rad(posang + 90))
         Y_comp = sep * np.sin(np.deg2rad(posang + 90))
         obj[N//2, N//2] = 1
-        obj[N//2 + int(Y_comp/pscale), N//2 + int(X_comp/pscale)] = 1/(2.5)**dm
+        obj[N//2 + int(np.round(Y_comp/pscale)), N//2 +
+            int(np.round(X_comp/pscale))] = 1/(2.5)**dm
     elif param['type'] == 'disk':
         tar = param['type']
         diam = param['diam']
@@ -118,7 +119,8 @@ def Simulate_NIRISS_AMI(param, mag, filt, phot=1e8, fov=500, savedir='Simulated_
 
     os.system('python ami_etc.py %s %2.1f %2.2e' % (filt, mag, phot))
 
-    etc = np.loadtxt('save_etc.txt')
+    dirwork = os.path.dirname(os.path.realpath(__file__))
+    etc = np.loadtxt(dirwork + '/save_etc.txt')
 
     ngrp = etc[0]
     nit = etc[1]
@@ -129,7 +131,12 @@ def Simulate_NIRISS_AMI(param, mag, filt, phot=1e8, fov=500, savedir='Simulated_
     over = 'x%s' % oversampling
     psfname = psfdir + '%s_%i_flat_%s.fits' % (filt, size, over)
 
-    objname = 'SCENES/'
+    objname = dirwork + '/SCENES/'
+    
+    if not os.path.exists(objname):
+        print('### Create %s directory to save all requested simulation. ###' % "SCENES/")
+        os.system('mkdir %s' % objname)
+        
     if tar == 'disk':
         objname += '%s_d=%2.0fmas_mag=%2.1f.fits' % (tar, diam, mag)
     elif tar == 'binary':
@@ -169,7 +176,7 @@ def Simulate_NIRISS_AMI(param, mag, filt, phot=1e8, fov=500, savedir='Simulated_
 
 filt = 'F430M'
 
-mag = 6
+mag = 9
 param_bin = {'type': 'binary',
              'sep': 200,  # [mas]
              'dm': 5,  # [mag]
@@ -182,6 +189,6 @@ param_disk = {'type': 'disk',
 
 param_calib = {'type': 'pointsource'}
 
-Simulate_NIRISS_AMI(param_bin, mag, filt, phot=1e6)
+Simulate_NIRISS_AMI(param_bin, mag, filt, phot=1e8)
 
 plt.show()
