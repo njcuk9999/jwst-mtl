@@ -44,7 +44,7 @@ class _BaseOverlap():
         Estimate of the error on each pixel. Default is one everywhere.
     mask : (N, M) array_like boolean, optional
         Boolean Mask of the bad pixels on the detector.
-    lam_grid : (N_k) array_like, optional but recommended:
+    lam_grid : (n_k) array_like, optional but recommended:
         The grid on which f(lambda) will be projected.
         Default still has to be improved.
     d_lam : float, optional:
@@ -75,7 +75,7 @@ class _BaseOverlap():
         self.n_ord = len(lam_list)
 
         # Non-convolved grid length
-        self.N_k = len(lam_grid)
+        self.n_k = len(lam_grid)
 
         # Threshold to build mask
         self.thresh = thresh
@@ -187,9 +187,9 @@ class _BaseOverlap():
             w_n, k_n = self.get_w(n)  # Compute weigths
             # Convert to sparse matrix
             # First get the dimension of the convolved grid
-            N_kc = np.diff(self.i_bounds[n]).astype(int)[0]
+            n_kc = np.diff(self.i_bounds[n]).astype(int)[0]
             # Then convert to sparse
-            w_n = sparse_k(w_n, k_n, N_kc)
+            w_n = sparse_k(w_n, k_n, n_kc)
             w.append(w_n), k.append(k_n)
         self.w, self.k = w, k  # Save values
 
@@ -322,7 +322,7 @@ class _BaseOverlap():
         # Will be quicker
 
         # Compute a_n = P_n * w_n * (T_n * lambda_n)
-        # First (T * lam) for the convolve axis (N_k_c)
+        # First (T * lam) for the convolve axis (n_k_c)
         t_x_lam = (T*lam)[slice(*i_bnds)]
         # then a_n (2-steps)
         a_n = diags(P).dot(w)
@@ -335,13 +335,13 @@ class _BaseOverlap():
         # Get needed attributes
         I, sig, mask, c \
             = self.getattrs('data', 'sig', 'mask', 'c_list')
-        N_k, n_ord = self.N_k, self.n_ord
+        n_k, n_ord = self.n_k, self.n_ord
 
         # Keep only not masked values
         I, sig = I[~mask], sig[~mask]
 
         # Build matrix B
-        b_matrix = csr_matrix((len(I), N_k))
+        b_matrix = csr_matrix((len(I), n_k))
         for n in range(n_ord):
             # Get sparse a
             a_n = self._get_a(n)
@@ -598,14 +598,14 @@ class TrpzOverlap(_BaseOverlap):
         ma = mask_ord[~mask]
 
         # Number of used pixels
-        N_i = len(L)
-        i = np.arange(N_i)
+        n_i = len(L)
+        i = np.arange(n_i)
 
         self.v_print('Compute k')
 
         # Define fisrt and last index of lam_grid
         # for each pixel
-        k_first, k_last = -1*np.ones(N_i), -1*np.ones(N_i)
+        k_first, k_last = -1*np.ones(n_i), -1*np.ones(n_i)
 
         # If lowest value close enough to the exact grid value,
         # NOTE: Could be approximately equal to the exact grid
@@ -635,7 +635,7 @@ class TrpzOverlap(_BaseOverlap):
         k, bad = arange_2d(k_first, k_last+1, dtype=int, return_mask=True)
         k[bad] = -1
         # Number of valid k per pixel
-        N_k = np.sum(~bad, axis=-1)
+        n_k = np.sum(~bad, axis=-1)
 
         # Compute array of all w_i. Set to np.nan if not valid
         # Initialize
@@ -650,14 +650,14 @@ class TrpzOverlap(_BaseOverlap):
 
         # Valid for every cases
         w[:,0] = grid[k[:,1]] - lam_m
-        w[i,N_k-1] = lam_p - grid[k[i,N_k-2]]
+        w[i,n_k-1] = lam_p - grid[k[i,n_k-2]]
 
         ##################
-        # Case 1, N_k == 2
+        # Case 1, n_k == 2
         ##################
-        case = (N_k == 2) & ~ma
+        case = (n_k == 2) & ~ma
         if case.any():
-            self.v_print('N_k = 2')
+            self.v_print('n_k = 2')
             # if k_i[0] != L_i
             cond = case & (k[:,0] != L)
             w[cond,1] += lam_m[cond] - grid[k[cond,0]]
@@ -669,14 +669,14 @@ class TrpzOverlap(_BaseOverlap):
                           / d_grid[k[case,0]])[:,None]
 
         ##################
-        # Case 2, N_k >= 3
+        # Case 2, n_k >= 3
         ##################
-        case = (N_k >= 3) & ~ma
+        case = (n_k >= 3) & ~ma
         if case.any():
-            self.v_print('N_k = 3')
-            N_ki = N_k[case]
+            self.v_print('n_k = 3')
+            n_ki = n_k[case]
             w[case,1] = grid[k[case,1]] - lam_m[case]
-            w[case,N_ki-2] += lam_p[case] - grid[k[case,N_ki-2]]
+            w[case,n_ki-2] += lam_p[case] - grid[k[case,n_ki-2]]
             # if k_i[0] != L_i
             cond = case & (k[:,0] != L)
             w[cond,0] *= (grid[k[cond,1]] - lam_m[cond]) / d_grid[k[cond,0]]
@@ -684,32 +684,32 @@ class TrpzOverlap(_BaseOverlap):
                           * (lam_m[cond] - grid[k[cond,0]])
                           / d_grid[k[cond,0]])
             # if k_i[-1] != H_i
-            cond = case & (k[i,N_k-1] != H)
-            N_ki = N_k[cond]
-            w[cond,N_ki-1] *= ((lam_p[cond] - grid[k[cond,N_ki-2]])
-                               / d_grid[k[cond,N_ki-2]])
-            w[cond,N_ki-2] += ((grid[k[cond,N_ki-1]] - lam_p[cond])
-                               * (lam_p[cond] - grid[k[cond,N_ki-2]])
-                               / d_grid[k[cond,N_ki-2]])
+            cond = case & (k[i,n_k-1] != H)
+            n_ki = n_k[cond]
+            w[cond,n_ki-1] *= ((lam_p[cond] - grid[k[cond,n_ki-2]])
+                               / d_grid[k[cond,n_ki-2]])
+            w[cond,n_ki-2] += ((grid[k[cond,n_ki-1]] - lam_p[cond])
+                               * (lam_p[cond] - grid[k[cond,n_ki-2]])
+                               / d_grid[k[cond,n_ki-2]])
 
         ##################
-        # Case 3, N_k >= 4
+        # Case 3, n_k >= 4
         ##################
-        case = (N_k >= 4) & ~ma
+        case = (n_k >= 4) & ~ma
         if case.any():
-            self.v_print('N_k = 4')
-            N_ki = N_k[case]
+            self.v_print('n_k = 4')
+            n_ki = n_k[case]
             w[case,1] += grid[k[case,2]] - grid[k[case,1]]
-            w[case,N_ki-2] += grid[k[case,N_ki-2]] - grid[k[case,N_ki-3]]
+            w[case,n_ki-2] += grid[k[case,n_ki-2]] - grid[k[case,n_ki-3]]
 
         ##################
-        # Case 4, N_k > 4
+        # Case 4, n_k > 4
         ##################
-        case = (N_k > 4) & ~ma
+        case = (n_k > 4) & ~ma
         if case.any():
-            self.v_print('N_k > 4')
+            self.v_print('n_k > 4')
             i_k = np.indices(k.shape)[-1]
-            cond = case[:,None] & (2 <= i_k) & (i_k < N_k[:,None]-2)
+            cond = case[:,None] & (2 <= i_k) & (i_k < n_k[:,None]-2)
             ind1, ind2 = np.where(cond)
             w[ind1,ind2] = d_grid[k[ind1,ind2]-1] + d_grid[k[ind1,ind2]]
 
@@ -723,16 +723,16 @@ class TrpzOverlap(_BaseOverlap):
         return w, k
 
 
-def sparse_k(val, k, N_k):
+def sparse_k(val, k, n_k):
     '''
     Transform a 2D array `val` to a sparse matrix.
     `k` is use for the position in the second axis
     of the matrix. The resulting sparse matrix will
-    have the shape : ((len(k), N_k))
+    have the shape : ((len(k), n_k))
     Set k elements to a negative value when not defined
     '''
     # Length of axis 0
-    N_i = len(k)
+    n_i = len(k)
 
     # Get row index
     i_k = np.indices(k.shape)[0]
@@ -742,25 +742,25 @@ def sparse_k(val, k, N_k):
     col = k[k >= 0]
     data = val[k >= 0]
 
-    return csr_matrix((data, (row, col)), shape=(N_i, N_k))
+    return csr_matrix((data, (row, col)), shape=(n_i, n_k))
 
 
 def unsparse(matrix, fill_value=np.nan):
 
     col, row, val = find(matrix.T)
-    N_row, N_col = matrix.shape
+    n_row, n_col = matrix.shape
 
     good_rows, counts = np.unique(row, return_counts=True)
 
     # Define the new position in columns
-    i_col = np.indices((N_row, counts.max()))[1]
+    i_col = np.indices((n_row, counts.max()))[1]
     i_col = i_col[good_rows]
     i_col = i_col[i_col < counts[:,None]]
 
     # Create outputs and assign values
-    col_out = np.ones((N_row, counts.max()), dtype=int) * -1
+    col_out = np.ones((n_row, counts.max()), dtype=int) * -1
     col_out[row, i_col] = col
-    out = np.ones((N_row, counts.max())) * fill_value
+    out = np.ones((n_row, counts.max())) * fill_value
     out[row, i_col] = val
 
     return out, col_out
