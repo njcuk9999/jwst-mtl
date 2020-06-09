@@ -509,7 +509,6 @@ Inputs:
   wave_ANG : wavelength on spectral axis (float)
   noversample : oversampling factor (integer 10 >= 1)
   ntrace : order n=1,2,3 
-  trace_file : Name of a file containing columns of wavelength (microns), x-pixel, y-pixel and order number
   maskON : Boolean that determines whether the mask array supplied by the inner functions is returned or not
 
 Outputs:
@@ -543,7 +542,6 @@ Inputs:
   pixel : pixel on spectral axis (float) on oversampled grid
   noversample : oversampling factor (integer 10 >= 1)
   ntrace : order n=1,2,3 
-  trace_file : Name of a file containing columns of wavelength (microns), x-pixel, y-pixel and order number
   maskON : Boolean that determines whether the mask array supplied by the inner functions is returned or not
 
 Outputs:
@@ -615,7 +613,20 @@ def addflux2pix(px,py,pixels,fmod):
 
 def transitmodel (sol,time,ld1,ld2,ld3,ld4,rdr,tarray,\
     itime=-1, ntt=0, tobs=0, omc=0, dtype=0 ): 
-    "read in transitmodel solution"  
+    """Get a transit model
+    Usage: tmodel = transitmodel(sol,time,ld1,ld2,ld3,ld4,rdr,tarray,\
+      itime=-1, ntt=0, tobs=0, omc=0, dtype=0)
+
+    Inputs:
+      sol - Transit model parameters
+      time - time array
+      ld1,ld2,ld3,ld4 - limb-darkening array
+      rdr - Rp/R* array
+      tarray - Thermal eclipse array
+
+    Outputs:
+      tmodel - relative flux at times given by time array
+    """  
     nplanet=int((len(sol)-8)/10) #number of planets
     
     if type(itime) is float :
@@ -642,6 +653,21 @@ def transitmodel (sol,time,ld1,ld2,ld3,ld4,rdr,tarray,\
     return tmodel;
 
 def get_dw(starmodel_wv,planetmodel_wv,pars,tracePars):
+    """ Get optimum wavelength grid.
+    Usage: dw,dwflag=get_dw(starmodel_wv,planetmodel_wv,pars,tracePars)
+
+    Inputs
+      starmodel_wv - star model wavelength array
+      planetmodel_wv - planet model wavelength array
+      pars - model parameters
+      tracePars - trace solution
+
+    Outputs
+      dw - optimum wavelength spacing
+      dwflag - flag : 0-grid is good.  1-grid is too course
+
+    """
+
     norder=1 #Order to use.
 
     #get spectral resolution of star spectra
@@ -687,6 +713,31 @@ def get_dw(starmodel_wv,planetmodel_wv,pars,tracePars):
 
 def resample_models(dw,starmodel_wv,starmodel_flux,ld_coeff,\
     planetmodel_wv,planetmodel_rprs,pars,tracePars):
+    """Resamples star and planet model onto common grid.
+
+    Usage:
+    bin_starmodel_wv,bin_starmodel_flux,bin_ld_coeff,bin_planetmodel_wv,bin_planetmodel_rprs\
+      =resample_models(dw,starmodel_wv,starmodel_flux,ld_coeff,\
+      planetmodel_wv,planetmodel_rprs,pars,tracePars)
+
+
+      Inputs:
+        dw - wavelength spacing.  This should be calculated using get_dw
+        starmodel_wv - stellar model wavelength array
+        starmodel_flux - stellar model flux array
+        ld_coeff - non-linear limb-darkening coefficients array
+        planetmodel_wv - planet model wavelength array
+        planetmodel_rprs - planet model Rp/R* array
+        pars - model parameters 
+        tracePars - trace solution
+
+      Output:
+        bin_starmodel_wv - binned star wavelength array
+        bin_starmodel_flux - binned star model array
+        bin_ld_coeff - binned limb-darkening array
+        bin_planetmodel_wv - binned planet wavelength array (should be same size as bin_starmodel_wv)
+        bin_planetmodel_rprs - binned Rp/R* array
+    """
     
     wv1=p2w(tracePars,pars.xout+1,1,1)
     wv2=p2w(tracePars,0,1,1)
@@ -819,7 +870,7 @@ def gen_unconv_image(pars,response,bin_starmodel_wv,bin_starmodel_flux,bin_ld_co
     pixels=np.zeros((xmax,ymax))
 
     #interpolate over response and quantum yield
-    response_spl = interpolate.splrep(response.wv, response.response[1], s=0)
+    response_spl = interpolate.splrep(response.wv, response.response[norder], s=0)
     quantum_yield_spl  = interpolate.splrep(response.wv, response.quantum_yield, s=0)
     rmax=np.max(response.wv)
     rmin=np.min(response.wv)
