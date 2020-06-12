@@ -6,24 +6,33 @@ Created on Tue Jan 21 14:21:35 2020
 Introduce the detector response in the simulated images
 """
 
-from __future__ import division, print_function
-import numpy as np
-from pkg_resources import resource_filename
+from __future__ import division, print_function  # TODO do we need these? I'm assuming we're using python3?
 import timeseries
 
 
-def add_noise(filelist, nonlinearity=True, detector=True, flatfield=True, superbias=True, darkframe=True):
+def add_noise(filelist, normalize=False, zodibackg=True, flatfield=True, darkframe=True, nonlinearity=True,
+              superbias=True, detector=True):
     """
-    A function to add detector noise the the simulations.
+    A function to add detector noise to the simulations.
     """
 
+    normfactor = None
     for filename in filelist:
 
         tso = timeseries.TimeSeries(filename)
 
+        if normalize:
+
+            # If no normalization was provided use the first file to scale all files.
+            if normfactor is None:
+                normfactor = tso.get_normfactor()
+
+            tso.apply_normfactor(normfactor)
+
         tso.add_poisson_noise()
 
-        # TODO add background signal.
+        if zodibackg:
+            tso.add_zodiacal_background()
 
         if flatfield:
             tso.apply_flatfield()
@@ -32,9 +41,7 @@ def add_noise(filelist, nonlinearity=True, detector=True, flatfield=True, superb
             tso.add_simple_dark()
 
         if nonlinearity:
-            coef_file = 'files/files_jwst_niriss_linearity_0011_range_0_100000_npoints_100_polydeg_4.npy'
-            non_linearity = np.load(resource_filename('detector', coef_file))
-            tso.add_non_linearity(non_linearity)
+            tso.add_non_linearity()
 
         if superbias:
             tso.add_superbias()
@@ -57,20 +64,25 @@ def main():
     parser = argparse.ArgumentParser(description='Add sources of noise to the simulation.')
     parser.add_argument('filenames', type=str, nargs='+',
                         help='The simulation file(s) to process.')
-    parser.add_argument('--nonlinearity', action='store_true',
-                        help='Add the effect of non-linearity to the simulation.', dest='nonlinearity')
-    parser.add_argument('--detector', action='store_true',
-                        help='Add the effects of read-noise, 1/f noise, kTC noise, and ACN to the simulation.', dest='detector')
-    parser.add_argument('--flatfield', action='store_true',
-                        help='Apply the flat-field to the simulation.', dest='flatfield')
-    parser.add_argument('--superbias', action='store_true',
-                        help='Add the super bias to the simulation.', dest='superbias')
-    parser.add_argument('--darkframe', action='store_true',
-                        help='Add dark current to the simulation.', dest='darkframe')
+    parser.add_argument('--normalize', action='store_true', dest='normalize',
+                        help='Applies a crude re-normalization to the simulation.')
+    parser.add_argument('--no-zodibackg', action='store_false', dest='zodibackg',
+                        help='Add the zodiacal light background to the simulation.')
+    parser.add_argument('--no-flatfield', action='store_false', dest='flatfield',
+                        help='Apply the flat-field to the simulation.')
+    parser.add_argument('--no-darkframe', action='store_false', dest='darkframe',
+                        help='Add dark current to the simulation.')
+    parser.add_argument('--no-nonlinearity', action='store_false', dest='nonlinearity',
+                        help='Add the effect of non-linearity to the simulation.')
+    parser.add_argument('--no-superbias', action='store_false', dest='superbias',
+                        help='Add the super bias to the simulation.')
+    parser.add_argument('--no-detector', action='store_false', dest='detector',
+                        help='Add the effects of read-noise, 1/f noise, kTC noise, and ACN to the simulation.')
 
     args = parser.parse_args()
 
-    add_noise(args.filenames, args.nonlinearity, args.detector, args.flatfield, args.superbias)
+    add_noise(args.filenames, args.normalize, args.zodibackg, args.flatfield, args.darkframe, args.nonlinearity,
+              args.superbias, args.detector)
 
     return
 
