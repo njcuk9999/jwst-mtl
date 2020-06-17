@@ -28,7 +28,7 @@ niriss.pupil_mask = 'GR700XD'
 
 # Loop through all wavelengths to generate PSFs and write them to disk
 for wave in wavelist:
-    print('Calculate PSF at wavelength ', wave, ' microns')
+    print('Calculate PSF at wavelength ', wave/1e-6, ' microns')
     text = '{0:5f}'.format(wave*1e+6)
     psf = niriss.calc_psf(monochromatic=wave, fov_pixels=pixel,
                           oversample=oversampling, display=False)
