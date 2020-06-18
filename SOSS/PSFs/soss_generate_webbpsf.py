@@ -12,17 +12,25 @@ from astropy.io import fits
 
 
 def loicpsf(wavelist=None, wfe_real=None, save_to_disk=True):
-    '''
-    Utility function which calls the WebbPSF package to create monochromatic
+    '''Utility function which calls the WebbPSF package to create monochromatic
     PSFs for NIRISS SOSS mode obserations.
-    ___________________________________________
-    Inputs: wavelist (list) - list of wavelengths (in meters) for which to
-                              generate PSFs.
-            wfe_real (int) - index of wavefront realization to use for the PSF
-                             (if non-default WFE realization is desired).
-            save_to_disk (bool) - whether to save PSFs to disk.
-    Outputs: Nothing (if PSFs are written to disk), or list of np.ndarrays with
-             the PSF data.
+
+    Parameters
+    ----------
+    wavelist : list
+        List of wavelengths (in meters) for which to generate PSFs.
+    wfe_real : int
+        Index of wavefront realization to use for the PSF (if non-default
+        WFE realization is desired).
+    save_to_disk  : bool
+        Whether to save PSFs to disk.
+
+    Returns
+    -------
+    None : NoneType
+        If PSFs are written to disk.
+    psf-list : list
+        List of np.ndarrays with the PSF data.
     '''
 
     if wavelist is None:
