@@ -44,6 +44,10 @@ download_path = '/path/into/which/files/are/downlaoded/'
 downloader.download_reffiles(download_path, instrument='all', dark_type='linearized', skip_darks=False, skip_cosmic_rays=False, skip_psfs=False, skip_grism=False)
 ```
 
+Edit 2020-06-19: 
+Cannot download reference files: [see here](https://github.com/spacetelescope/mirage/issues/498)
+
+
 
 ## Simulating Image data
 
