@@ -3,12 +3,13 @@
 import numpy as np
 from scipy.sparse import find, issparse, csr_matrix, diags
 from scipy.sparse.linalg import spsolve
+from scipy.interpolate import interp1d
 
 # Local imports
 from custom_numpy import arange_2d
 from interpolate import SegmentedLagrangeX
 from convolution import get_c_matrix, WebbKer
-from utils import _get_lam_p_or_m
+from utils import _get_lam_p_or_m, get_n_nodes, oversample_grid
 from throughput import ThroughputSOSS
 
 
@@ -76,6 +77,10 @@ class _BaseOverlap():
 
         # Non-convolved grid length
         self.n_k = len(lam_grid)
+        
+        # Shape of the detector used
+        # (the wavelength map should have the same shape)
+        self.shape = lam_list[0].shape
 
         # Threshold to build mask
         self.thresh = thresh
@@ -85,7 +90,8 @@ class _BaseOverlap():
 
         # Error map of each pixels
         if sig is None:
-            self.sig = np.ones_like(scidata)
+            # Ones with the detector shape
+            self.sig = np.ones_like(self.shape)
         else:
             self.sig = sig.copy()
 
@@ -406,6 +412,87 @@ class _BaseOverlap():
         model = self.rebuild(f_k)
 
         return - np.nansum((model-data)**2/sig**2)
+    
+    def get_adapt_grid(self, f_k=None, n_max=3, **kwargs):
+        """
+        Return an irregular grid needed to reach a
+        given precision when integrating over each pixels.
+
+        Parameters (all optional)
+        ----------
+        f_k: 1D array-like
+            Input flux in the integral to be optimized.
+            f_k is the projection of the flux on self.lam_grid
+        n_max: int (n_max > 0)
+            Maximum number of nodes in each intervals of self.lam_grid.
+            Needs to be greater then zero.
+
+        kwargs (arguments passed to the function get_n_nodes)
+        ------
+        tol, rtol : float, optional
+            The desired absolute and relative tolerances. Defaults are 1.48e-4.
+        divmax : int, optional
+            Maximum order of extrapolation. Default is 10.
+
+        Returns
+        -------
+        os_grid  : 1D array
+            Oversampled grid which minimizes the integration error based on
+            Romberg's method
+        See Also
+        --------
+        utils.get_n_nodes
+        scipy.integrate.quadrature.romberg
+        References
+        ----------
+        .. [1] 'Romberg's method' https://en.wikipedia.org/wiki/Romberg%27s_method
+
+        """    
+        # Generate f_k if not given
+        if f_k is None:
+            f_k = self.extract()
+
+        # Init output oversampled grid
+        os_grid = []
+
+        # Iterate starting with the last order
+        for i_ord in range(self.n_ord - 1, -1, -1):        
+
+            # Grid covered by this order
+            grid_ord = self.lam_grid_c(i_ord)    
+
+            # Estimate the flux at this order
+            f_k_c = self.c_list[i_ord].dot(f_k)
+            # Interpolate with a cubic spline
+            fct = interp1d(grid_ord, f_k_c, kind='cubic')
+
+            # Find number of nodes to reach the precision
+            n_oversample = get_n_nodes(grid_ord, fct, **kwargs)
+
+            # Make sure n_oversample is not greater than 
+            # user's define `n_max`
+            n_oversample = np.clip(n_oversample, 0, n_max)
+
+            # Generate oversampled grid
+            grid_ord = oversample_grid(grid_ord, n_os=n_oversample)
+
+            # Keep only wavelength that are not already
+            # covered by os_grid.
+            if os_grid:
+                # Under or above os_grid
+                index = (grid_ord < np.min(os_grid))
+                index |= (grid_ord > np.max(os_grid))
+            else:
+                index = slice(None)
+
+            # Keep these values
+            os_grid.append(grid_ord[index])
+
+        # Convert os_grid to 1D array
+        os_grid = np.concatenate(os_grid)
+
+        # Return sorted and unique
+        return np.unique(os_grid)
 
     def get_w(self, *args):
         """Dummy method to be able to init this class"""
