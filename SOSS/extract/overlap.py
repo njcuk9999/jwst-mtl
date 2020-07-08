@@ -16,8 +16,9 @@ from throughput import ThroughputSOSS
 class _BaseOverlap():
     """
     Base class for overlaping extraction of the form:
-    A f = b
-    where A is a matrix and b is an array.
+    (B_T * B) * f = (data/sig)_T * B
+    where B is a matrix and f is an array.
+    The matrix multiplication B * f is the 2d model of the detector.
     We want to solve for the array f.
     The elements of f are labelled by 'k'.
     The pixels are labeled by 'i'.
@@ -29,11 +30,6 @@ class _BaseOverlap():
 
     Parameters
     ----------
-    scidata : (N, M) array_like
-        A 2-D array of real values representing the detector image.
-    T_list : (N_ord) list or array of functions
-        A list or array of the throughput at each order.
-        The functions depend on the wavelength
     P_list : (N_ord, N, M) list or array of 2-D arrays
         A list or array of the spatial profile for each order
         on the detector. It has to have the same (N, M) as `scidata`.
@@ -41,23 +37,45 @@ class _BaseOverlap():
         A list or array of the central wavelength position for each
         order on the detector.
         It has to have the same (N, M) as `scidata`.
+    scidata : (N, M) array_like, optional
+        A 2-D array of real values representing the detector image.
+    lam_grid : (N_k) array_like, optional
+        The grid on which f(lambda) will be projected.
+        Default still has to be improved.
+    lam_bounds : list or array-like (N_ord, 2), optional
+        Boundary wavelengths covered by each orders.
+        Default is the wavelength covered by `lam_list`.
+    i_bounds : list or array-like (N_ord, 2), optional
+        Index of `lam_bounds`on `lam_grid`.
+    c_list : array or sparse, optional
+        Convolution kernel to be applied on f_k for each orders.
+        If array, the shape has to be (N_ker, N_k_c) and it will
+        be passed to `convolution.get_c_matrix` function.
+        If sparse, the shape has to be (N_k_c, N_k) and it will
+        be used directly. N_ker is the length of the effective kernel
+        and N_k_c is the length of f_k convolved. 
+        Default is given by convolution.WebbKer(wv_map, n_os=10, n_pix=21).
+    T_list : (N_ord [, N_k]) list or array of callable, optional
+        A list of functions or array of the throughput at each order.
+        If callable, the function depend on the wavelength.
+        If array, projected on `lam_grid`.
+        Default is given by `throughput.ThroughputSOSS`.
+    c_kwargs : list of N_ord dictionnaries, optional
+        Inputs keywords arguments to pass to
+        `convolution.get_c_matrix` function.
     sig : (N, M) array_like, optional
         Estimate of the error on each pixel. Default is one everywhere.
     mask : (N, M) array_like boolean, optional
         Boolean Mask of the bad pixels on the detector.
-    lam_grid : (n_k) array_like, optional but recommended:
-        The grid on which f(lambda) will be projected.
-        Default still has to be improved.
-    d_lam : float, optional:
-        Step to build a default `lam_grid`, but should be replaced
-        for the needed resolution.
     tresh : float, optional:
-        The pixels where the estimated transmission is less than
-        this value will be masked.
+        The pixels where the estimated spatial profile is less than
+        this value will be masked. Default is 1e-5.
+    verbose : bool, optional
+        Print steps. Default is False.
     """
     def __init__(self, P_list, lam_list, scidata=None, lam_grid=None,
                  lam_bounds=None, i_bounds=None, c_list=None,
-                 T_list=None, c_kwargs=None, sig=None,
+                 c_kwargs=None, T_list=None, sig=None,
                  mask=None, thresh=1e-5, verbose=False):
 
         ############################
@@ -91,12 +109,12 @@ class _BaseOverlap():
         # Error map of each pixels
         if sig is None:
             # Ones with the detector shape
-            self.sig = np.ones_like(self.shape)
+            self.sig = np.ones(self.shape)
         else:
             self.sig = sig.copy()
 
         # Save PSF for each orders
-        self.P_list = [P.copy() for P in P_list]
+        self.update_lists(P_list=P_list)
 
         # Save pixel wavelength for each orders
         self.lam_list = [lam.copy() for lam in lam_list]
@@ -112,16 +130,9 @@ class _BaseOverlap():
         if T_list is None:
             T_list = [ThroughputSOSS(order=n+1)
                       for n in range(self.n_ord)]
-
-        # Can be a callable (function) or an array
-        # with the same length as lambda grid.
-        T = []
-        for T_n in T_list:  # For each order
-            try:  # First assume it's a function
-                T.append(T_n(self.lam_grid))  # Project on grid
-            except TypeError:  # Assume it's an array
-                T.append(T_n)
-        self.T_list = T  # Save value
+            
+        # Save T_list for each orders
+        self.update_lists(T_list=T_list)
 
         #####################################################
         # Get index of wavelength grid covered by each orders
@@ -278,7 +289,19 @@ class _BaseOverlap():
 
         return i_bnds_new
 
-    def inject(self, f, **kwargs):
+    def rebuild(self, f, orders=None):
+        """
+        Build current model of the detector.
+        
+        Parameters
+        ----------
+        f: array-like or callable
+            flux as a function of wavelength if callable
+            or flux projected on the wavelength grid
+        orders: iterable, ooptional
+            Order index to model on detector. Default is
+            all available orders.
+        """
 
         # If f is callable, project on grid
         if callable(f):
@@ -286,103 +309,269 @@ class _BaseOverlap():
 
             # Project on wavelength grid
             f = f(grid)
-
-        return self.rebuild(f, **kwargs)
-
-    def rebuild(self, f_k, orders=None):
-
-        ma, c  \
-            = self.getattrs('mask', 'c_list')
+        
+        # Iterate over all orders by default
         if orders is None:
             orders = range(self.n_ord)
 
+        return self._rebuild(f, orders)
+
+    def _rebuild(self, f_k, orders):
+        """
+        Build current model of the detector.
+        
+        Parameters
+        ----------
+        f_k: array-like
+            Flux projected on the wavelength grid
+        orders: iterable
+            Order index to model on detector.
+        """
+        
+        # Get needed class attribute
+        ma = self.mask
+        
         # Distribute the flux on detector
-        out = np.zeros(ma.shape)
+        out = np.zeros(self.shape)
         for n in orders:
-            # Compute `a_n` at each pixels
-            a_n = self._get_a(n)
-            # Apply convolution on the flux
-            f_c = c[n].dot(f_k)
+            # Compute `b_n` at each pixels w/o `sig`
+            b_n = self.get_b_n(n, sig=False)
             # Add flux to pixels
-            out[~ma] += a_n.dot(f_c)
+            out[~ma] += b_n.dot(f_k)
 
         # nan invalid pixels
         out[ma] = np.nan
 
         return out
-
-    def _get_a(self, n):
-
-        # Get needed attributes
-        mask = self.mask
-        lam = self.lam_grid
-        # Order dependent attributes
-        T, P, w, i_bnds  \
-            = self.getattrs('T_list', 'P_list',
-                            'w', 'i_bounds', n=n)
+    
+    def update_lists(self, T_list=None, P_list=None, **kwargs):
+        """
+        Update attributes.
+        """
+        # Spatial profile
+        if P_list is not None:
+            self.P_list = [p_n.copy() for p_n in P_list]
+        
+        # Throughput  
+        if T_list is not None:
+            # Can be a callable (function) or an array
+            # with the same length as lambda grid.
+            t = []
+            for t_n in T_list:  # For each order
+                try:  # First assume it's a function
+                    t.append(t_n(self.lam_grid))  # Project on grid
+                except TypeError:  # Assume it's an array
+                    t.append(t_n)
+            self.T_list = t  # Save value
+            
+        if kwargs:
+            message = ', '.join(kwargs.keys())
+            message += ' not supported by'
+            message += ' `update_lists` method.'
+            raise TypeError(message)
+        
+    
+    def get_b_n(self, i_ord, sig=True, quick=False):
+        """
+        Compute the matrix `b_n = (P/sig).w.T.lambda.c_n` ,
+        where `P` is the spatial profile matrix (diag),
+        `w` is the integrations weights matrix,
+        `T` is the throughput matrix (diag),
+        `lambda` is the convolved wavelength grid matrix (diag),
+        `c_n` is the convolution kernel.
+        The model of the detector at order n (`model_n`)
+        is given by the system:
+        model_n = b_n.c_n.f , 
+        where f is the incoming flux projected on the wavelenght grid.
+        Parameters
+        ----------
+        i_ord : integer
+            Label of the order (depending on the initiation of the object).
+        sig: bool or (N, M) array_like, optional 
+            If 2-d array, `sig` is the new error estimation map.
+            It is the same shape as `sig` initiation input. If bool, 
+            wheter to apply sigma or not. The method will return 
+            b_n/sigma if True or array_like and b_n if False. If True,
+            the default object attribute `sig` will be use.
+        quick: bool, optional
+            If True, only perform one matrix multiplication
+            instead of the whole system: (P/sig).(w.T.lambda.c_n)
+        """        
+        #### Input management ######
+        
+        # Special treatment for error map
+        # Can be bool or array.
+        if sig is False:
+            # Sigma will have no effect
+            sig = np.ones(self.shape)
+        else:
+            if sig is not True:
+                # Sigma must be an array so 
+                # update object attribute
+                self.sig = sig.copy()
+            # Take sigma from object
+            sig = self.sig
+        
+        # Get needed attributes ...
+        attrs = ('lam_grid', 'mask')
+        lam, mask = self.getattrs(*attrs)
+        
+        # ... order dependent attributes
+        attrs = ('T_list', 'P_list', 'c_list', 'w', 'i_bounds')
+        t_n, p_n, c_n, w, i_bnds = self.getattrs(*attrs, n=i_ord)
 
         # Keep only valid pixels (P and sig are still 2-D)
-        P = P[~mask]
-        ## IDEA #####
-        # Put 1/sigma here -> P = P[~mask]/sig[~mask]
-        # Will be quicker
+        # And apply direcly 1/sig here (quicker)
+        p_n = p_n[~mask] / sig[~mask]
 
-        # Compute a_n = P_n * w_n * (T_n * lambda_n)
-        # First (T * lam) for the convolve axis (n_k_c)
-        t_x_lam = (T*lam)[slice(*i_bnds)]
-        # then a_n (2-steps)
-        a_n = diags(P).dot(w)
-        a_n = a_n.dot(diags(t_x_lam))
-
-        return a_n
-
-    def build_sys(self):
-
+        ### Compute b_n ###
+        
+        # Quick mode if only `p_n` or `sig` has changed
+        if quick:
+            # Get pre-computed (right) part of the equation
+            right = self.w_t_lam_c[i_ord]
+            # Apply new p_n
+            b_n = diags(p_n).dot(right)
+        else:
+            # First (T * lam) for the convolve axis (n_k_c)
+            product = (t_n * lam)[slice(*i_bnds)]
+            # then convolution
+            product = diags(product).dot(c_n)
+            # then weights
+            product = w.dot(product)
+            # Save this product for quick mode
+            self.save_w_t_lam_c(i_ord, product)
+            # Then spatial profile
+            b_n = diags(p_n).dot(product)
+            
+        return b_n
+    
+    def save_w_t_lam_c(self, order, product):
+        
         # Get needed attributes
-        I, sig, mask, c \
-            = self.getattrs('data', 'sig', 'mask', 'c_list')
-        n_k, n_ord = self.n_k, self.n_ord
+        n_ord = self.n_ord
+        
+        # Check if attribute exists
+        try:
+            self.w_t_lam_c
+        except AttributeError:
+            # Init w_t_lam_c.
+            self.w_t_lam_c = [[] for i_ord in range(n_ord)]
+        
+        # Assign value
+        self.w_t_lam_c[order] = product.copy()
+            
 
-        # Keep only not masked values
-        I, sig = I[~mask], sig[~mask]
+    def build_sys(self, data=None, sig=True, **kwargs):
+        """
+        Build linear system arising from the logL maximisation.
+        TIPS: To be quicker, only specify the psf (`P_list`) in kwargs.
+              There will be only one matrix multiplication:
+              (P/sig).(w.T.lambda.c_n).
+        Parameters
+        ----------
+        data : (N, M) array_like, optional
+            A 2-D array of real values representing the detector image.
+            Default is the object attribute `data`.
+        sig: bool or (N, M) array_like, optional 
+            Estimate of the error on each pixel.
+            If 2-d array, `sig` is the new error estimation map.
+            It is the same shape as `sig` initiation input. If bool, 
+            wheter to apply sigma or not. The method will return 
+            b_n/sigma if True or array_like and b_n if False. If True,
+            the default object attribute `sig` will be use.
+        T_list : (N_ord [, N_k]) list or array of functions, optional
+            A list or array of the throughput at each order.
+            The functions depend on the wavelength
+            Default is the object attribute `T_list`
+        P_list : (N_ord, N, M) list or array of 2-D arrays, optional
+            A list or array of the spatial profile for each order
+            on the detector. It has to have the same (N, M) as `scidata`.
+            Default is the object attribute `P_list`
+        """        
+        ##### Input management ######
+        
+        # Use data from object as default
+        if data is None: data = self.data
+
+        # Take mask from object
+        mask = self.mask
+        
+        # Get some dimensions infos
+        n_k, n_ord = self.n_k, self.n_ord
+        
+        # Update P_list and T_list if given.
+        self.update_lists(**kwargs)
+        
+        # Check if inputs are suited for quick mode;
+        # Quick mode if `T_list` is not specified.
+        quick = ('T_list' not in kwargs)
+        quick &=  hasattr(self, 'w_t_lam_c')  # Pre-computed
+        if quick: 
+            self.v_print('Quick mode is on!')
+        
+        ####### Calculations ########
 
         # Build matrix B
-        b_matrix = csr_matrix((len(I), n_k))
-        for n in range(n_ord):
-            # Get sparse a
-            a_n = self._get_a(n)
-            # Apply convolution on the matrix a
-            b_n = a_n.dot(c[n])
-            # Add
-            b_matrix += b_n
+        # Initiate with empty matrix
+        n_i = (~mask).sum()  # n good pixels
+        b_matrix = csr_matrix((n_i, n_k))
+        # Sum over orders
+        for i_ord in range(n_ord):
+            # Get sparse b_n
+            b_matrix += self.get_b_n(i_ord, sig=sig, quick=quick)
 
         # Build system
-        # (B_T * B) * f = (I/sig)_T * B
-        # |   M   | * f = |     d      |
-        b_matrix = diags((1/sig)).dot(b_matrix)
-        M = b_matrix.T.dot(b_matrix)
-        d = csr_matrix((I/sig).T).dot(b_matrix)
+        # Fisrt get `sig` which have been update`
+        # when calling `get_b_n`
+        sig = self.sig
+        # Take only valid pixels and apply `sig`on data
+        data = data[~mask] / sig[~mask]
+        # (B_T * B) * f = (data/sig)_T * B
+        # (matrix ) * f = result
+        matrix = b_matrix.T.dot(b_matrix)
+        result = csr_matrix(data.T).dot(b_matrix)
 
-        return M, d
+        return matrix, result
 
-    def extract(self):
-
+    def extract(self, **kwargs):
+        """
+        Build linear system arising from the logL maximisation.
+        All parameters are passed to `build_sys` method.
+        Parameters
+        ----------
+        data : (N, M) array_like, optional
+            A 2-D array of real values representing the detector image.
+            Default is the object attribute `data`.
+        T_list : (N_ord [, N_k]) list or array of functions, optional
+            A list or array of the throughput at each order.
+            The functions depend on the wavelength
+            Default is the object attribute `T_list`
+        P_list : (N_ord, N, M) list or array of 2-D arrays, optional
+            A list or array of the spatial profile for each order
+            on the detector. It has to have the same (N, M) as `scidata`.
+            Default is the object attribute `P_list`
+        sig : (N, M) array_like, optional
+            Estimate of the error on each pixel`
+            Same shape as `scidata`.
+            Default is the object attribute `sig`.
+        """
         # Build the system to solve
-        M, d = self.build_sys()
+        matrix, result = self.build_sys(**kwargs)
 
         # Get index of `lam_grid` convered by the pixel.
         # `lam_grid` may cover more then the pixels.
         try:
             a, b = self.i_grid
         except AttributeError:
-            a, b = self.get_i_grid(d)
+            a, b = self.get_i_grid(result)
             self.i_grid = [a, b]
 
         # Init f_k with nan
-        f_k = np.ones(d.shape[-1]) * np.nan
+        f_k = np.ones(result.shape[-1]) * np.nan
         # Only solve for valid range (on the detector).
         # It will be a singular matrix otherwise.
-        f_k[a:b] = spsolve(M[a:b,a:b], d.T[a:b])
+        f_k[a:b] = spsolve(matrix[a:b,a:b], result.T[a:b])
 
         return f_k
 
