@@ -157,7 +157,7 @@ class _BaseOverlap():
         # Build convolution matrix
         ####################################
 
-        # Set convolution to predifined kernels if not given
+        # Set convolution to predefined kernels if not given
         # Take maximum oversampling and kernel width available
         # (n_os=10 and n_pix=21)
         if c_list is None:
