@@ -789,7 +789,63 @@ class LagrangeOverlap(_BaseOverlap):
 
 
 class TrpzOverlap(_BaseOverlap):
-    ''' Version oversampled with trapezoidal integration '''
+    """
+    Version of overlaping extraction with oversampled trapezoidal integration
+    overlaping extraction solve the equation of the form:
+    (B_T * B) * f = (data/sig)_T * B
+    where B is a matrix and f is an array.
+    The matrix multiplication B * f is the 2d model of the detector.
+    We want to solve for the array f.
+    The elements of f are labelled by 'k'.
+    The pixels are labeled by 'i'.
+    Every pixel 'i' is covered by a set of 'k' for each order
+    of diffraction.
+
+    Parameters
+    ----------
+    P_list : (N_ord, N, M) list or array of 2-D arrays
+        A list or array of the spatial profile for each order
+        on the detector. It has to have the same (N, M) as `scidata`.
+    lam_list : (N_ord, N, M) list or array of 2-D arrays
+        A list or array of the central wavelength position for each
+        order on the detector.
+        It has to have the same (N, M) as `scidata`.
+    scidata : (N, M) array_like, optional
+        A 2-D array of real values representing the detector image.
+    lam_grid : (N_k) array_like, optional
+        The grid on which f(lambda) will be projected.
+        Default still has to be improved.
+    lam_bounds : list or array-like (N_ord, 2), optional
+        Boundary wavelengths covered by each orders.
+        Default is the wavelength covered by `lam_list`.
+    i_bounds : list or array-like (N_ord, 2), optional
+        Index of `lam_bounds`on `lam_grid`.
+    c_list : array or sparse, optional
+        Convolution kernel to be applied on f_k for each orders.
+        If array, the shape has to be (N_ker, N_k_c) and it will
+        be passed to `convolution.get_c_matrix` function.
+        If sparse, the shape has to be (N_k_c, N_k) and it will
+        be used directly. N_ker is the length of the effective kernel
+        and N_k_c is the length of f_k convolved. 
+        Default is given by convolution.WebbKer(wv_map, n_os=10, n_pix=21).
+    T_list : (N_ord [, N_k]) list or array of callable, optional
+        A list of functions or array of the throughput at each order.
+        If callable, the function depend on the wavelength.
+        If array, projected on `lam_grid`.
+        Default is given by `throughput.ThroughputSOSS`.
+    c_kwargs : list of N_ord dictionnaries, optional
+        Inputs keywords arguments to pass to
+        `convolution.get_c_matrix` function.
+    sig : (N, M) array_like, optional
+        Estimate of the error on each pixel. Default is one everywhere.
+    mask : (N, M) array_like boolean, optional
+        Boolean Mask of the bad pixels on the detector.
+    tresh : float, optional:
+        The pixels where the estimated spatial profile is less than
+        this value will be masked. Default is 1e-5.
+    verbose : bool, optional
+        Print steps. Default is False.
+    """
 
     def __init__(self, P_list, lam_list, **kwargs):
 
