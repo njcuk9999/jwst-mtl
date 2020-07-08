@@ -3,6 +3,7 @@ from scipy.sparse import diags, csr_matrix
 from scipy.interpolate import RectBivariateSpline
 from astropy.io import fits
 import matplotlib.pyplot as plt
+from matplotlib.colors import LogNorm #for better display
 
 
 def get_c_matrix(kernel, grid, bounds=None, i_bounds=None, norm=True,
