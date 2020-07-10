@@ -76,22 +76,24 @@ def grid_from_map(wv, psf, wv_range=None, poly_ord=1, out_col=False):
 def _grid_from_map(wv_map, psf, out_col=False):
     """ 
     Define wavelength grid by taking the center wavelength
-    at each columns where the psf is maximised.
+    at each columns at the center of mass of
+    the spatial profile.
     """
+    # Normalisation for each column
+    col_sum = psf.sum(axis=0)
     
-    # Find max psf to define the grid
-    i_grid = np.argmax(psf,axis=0)
-    
-    # Get value from wv_map
-    cols = np.arange(wv_map.shape[-1])
-    grid = wv_map[i_grid, cols]
-    
-    # Keep only valid column
+    # Compute only valid columns
     i_good = (psf > 0).any(axis=0)
     i_good &= (wv_map > 0).any(axis=0)
     
+    # Get center wavelength using center of mass
+    # with psf as weights
+    center_wv = (wv_map * psf)[:, i_good]
+    center_wv /= col_sum[i_good]
+    center_wv = center_wv.sum(axis=0)
+    
     # Return sorted and unique
-    out = np.unique(grid[i_good])
+    out = np.unique(center_wv)
     
     # Return columns if specified
     if out_col:
