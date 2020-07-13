@@ -26,52 +26,78 @@ def _get_lam_p_or_m(lam):
     elif (lam_r <= lam_l).all():
         return lam_l.T, lam_r.T
     else:
-        raise ValueError('Bad pixel values for wavelength')
+        raise ValueError('Bad pixel values for wavelength') 
         
-        
-def grid_from_map(wv, psf, wv_range=None, poly_ord=1, out_col=False):
+def grid_from_map(wv, psf, wv_range=None, poly_ord=1, out_col=False, n_os=1):
     """
     Define wavelength grid by taking the center wavelength
-    at each columns where the psf is maximised. If `wv_range` is
-    out of the wv map, extrapolate with a polynomial of order `poly_ord`.
-    """
+    at each columns given by the center of mass of
+    the spatial profile (so one wavelength per column). 
+    If `wv_range` is out of the wv map,
+    extrapolate with a polynomial of order `poly_ord`.
     
+    Parameters
+    ----------
+    wv : (N, M) array
+        Array of the central wavelength position
+        for a given order on the (N, M) detector.
+    psf : (N, M) array
+        Array of the spatial profile for
+        the a given order on the (N, M) detector.
+    wv_range : 2-element list, optional
+        Minimum and maximum boundary of the grid to generate. In microns.
+        `wv_range` must include some wavelenghts of `wv`.
+    poly_ord : int, optional
+        Order of the polynomial use to extrapolate the grid. Default is 1.
+    out_col : bool, optional
+        Return or not. It will be forced to False if extrapolation is needed.
+    n_os : 2 element list or int, optional
+        Oversampling of the grid compare to the pixel sampling.
+        Can be specified for each orders if a list is given. 
+        If `int` is given, take same value for both orders.
+        Default is 2.
+    """
+    # Different treatement if `wv_range` is given
     if wv_range is None:
-        return _grid_from_map(wv, psf, out_col=out_col)
+        out = _grid_from_map(wv, psf, out_col=out_col)
     else:
         # Get grid
-        grid = _grid_from_map(wv, psf)
-        # Define delta_grid as a function of grid
-        # by fitting a polynomial
-        d_grid = np.diff(grid)
-        f_dgrid = np.polyfit(grid[:-1], d_grid, poly_ord)
-        f_dgrid = np.poly1d(f_dgrid)
+        grid, col = _grid_from_map(wv, psf, out_col=True)
         
+        # Check if extrapolation needed. 
+        # If so, `out_col` must be False
+        extrapolate = (wv_range[0] < grid.min())
+        extrapolate |= (wv_range[1] > grid.max())
+        if extrapolate and out_col:
+            out_col = False
+            warn("Cannot extrapolate and return columns."
+                 + " Setting `out_col` to False.")
+
         # Make sure grid is between the range
-        grid = grid[
-            (wv_range[0] <= grid) & (grid <= wv_range[-1])
-        ]
+        cond = (wv_range[0] <= grid) & (grid <= wv_range[-1])
+        grid, col = grid[cond], col[cond]
+        # Check if grid and wv_range are compatible
+        if not cond.any():
+            raise ValueError("Invalid `wv` or `wv_range`."
+                             +" `wv_range`: {}".format(wv_range))
         
-        # Extrapolate values out of the wv_map or
-        grid_left, grid_right = [], []
-        if wv_range[0] < grid.min():
-            # Need the grid value to get delta_grid ...
-            grid_left = [grid.min() - f_dgrid(grid.min())]
-            # ... and iterate to get the next one until
-            # the range is reached
-            while grid_left[-1] > wv_range[0]:
-                grid_left.append(grid_left[-1] - f_dgrid(grid_left[-1]))
-            # Need to sort (and unique)
-            grid_left = np.unique(grid_left)
-        if wv_range[-1] > grid.max():
-            # Need the grid value to get delta_grid ...
-            grid_right = [grid.max() + f_dgrid(grid.max())]
-            # ... and iterate to get the next one until
-            # the range is reached
-            while grid_right[-1] < wv_range[-1]:
-                grid_right.append(grid_right[-1] + f_dgrid(grid_right[-1]))        
-                
-        return np.concatenate([grid_left, grid, grid_right])
+        # Extrapolate values out of the wv_map if needed
+        if extrapolate:
+            grid = _extrapolate_grid(grid, poly_ord, wv_range)
+        
+        # Different output depending on `out_col`
+        if out_col:
+            out = grid, col
+        else:
+            out = grid
+        
+    # Apply oversampling
+    if out_col:
+        # Return grid and columns
+        return [oversample_grid(out_i, n_os=n_os) for out_i in out]
+    else:
+        # Only the grid
+        return oversample_grid(out, n_os=n_os)
         
 def _grid_from_map(wv_map, psf, out_col=False):
     """ 
@@ -83,23 +109,67 @@ def _grid_from_map(wv_map, psf, out_col=False):
     col_sum = psf.sum(axis=0)
     
     # Compute only valid columns
-    i_good = (psf > 0).any(axis=0)
-    i_good &= (wv_map > 0).any(axis=0)
+    good = (psf > 0).any(axis=0)
+    good &= (wv_map > 0).any(axis=0)
     
     # Get center wavelength using center of mass
     # with psf as weights
-    center_wv = (wv_map * psf)[:, i_good]
-    center_wv /= col_sum[i_good]
+    center_wv = (wv_map * psf)[:, good]
+    center_wv /= col_sum[good]
     center_wv = center_wv.sum(axis=0)
     
     # Return sorted and unique
     out = np.unique(center_wv)
     
-    # Return columns if specified
+    # Return index of columns if specified
     if out_col:
-        return out, i_good
+        return out, np.arange(len(good))[good]
     else:
         return out
+    
+def _extrapolate_grid(grid, poly_ord, wv_range):
+    """ 
+    Extrapolate `grid` using d_grid as a function of
+    `grid` to compute iteratively the next extrapolated nodes.
+    The extapolation is done with a polynomial of order `poly_ord`.
+    The extrapolation range is given by `wv_range`.
+    Returns the extrapolated grid.
+    """
+    # Define delta_grid as a function of grid
+    # by fitting a polynomial
+    d_grid = np.diff(grid)
+    f_dgrid = np.polyfit(grid[:-1], d_grid, poly_ord)
+    f_dgrid = np.poly1d(f_dgrid)
+
+    # Extrapolate values out of the wv_map if needed
+    grid_left, grid_right = [], []
+    if wv_range[0] < grid.min():
+        # Need the grid value to get delta_grid ...
+        grid_left = [grid.min() - f_dgrid(grid.min())]
+        # ... and iterate to get the next one until
+        # the range is reached
+        while True:
+            next_val = grid_left[-1] - f_dgrid(grid_left[-1])
+            if next_val < wv_range[0]:
+                break
+            else:
+                grid_left.append(next_val)
+        # Need to sort (and unique)
+        grid_left = np.unique(grid_left)
+    if wv_range[-1] > grid.max():
+        # Need the grid value to get delta_grid ...
+        grid_right = [grid.max() + f_dgrid(grid.max())]
+        # ... and iterate to get the next one until
+        # the range is reached
+        while True:
+            next_val = grid_right[-1] + f_dgrid(grid_right[-1])
+            if next_val > wv_range[-1]:
+                break
+            else:
+                grid_right.append(next_val)
+    
+    # Combine to get output        
+    return np.concatenate([grid_left, grid, grid_right])
 
 def oversample_grid(lam_grid, n_os=1):
     """
@@ -119,7 +189,6 @@ def oversample_grid(lam_grid, n_os=1):
     new_grid: 1D array
         Oversampled grid.
     """
-    
     # Convert n_os to array
     n_os = np.array(n_os)
     
@@ -144,6 +213,73 @@ def oversample_grid(lam_grid, n_os=1):
     
     # Return sorted and unique
     return np.unique(new_grid)
+
+def get_soss_grid(p_list, lam_list, lam_min=0.55, lam_max=3.0, n_os=None):
+    """
+    Return a wavelength grid specific for NIRISS SOSS mode.
+    Assume 2 orders are given.
+    See `grid_from_map` function if only one order is needed.
+    
+    Parameters
+    ----------
+    p_list : (N_ord=2, N, M) list or array of 2-D arrays
+        A list or array of the spatial profile for
+        the 2 orders on the (N, M) detector.
+    lam_list : (N_ord=2, N, M) list or array of 2-D arrays
+        A list or array of the central wavelength position
+        for the 2 orders on the (N, M) detector.
+    lam_min : float, optional
+        Minimum boundary of the grid to generate. In microns.
+    lam_max : float, optional
+        Maximum boundary of the grid to generate. In microns.
+    n_os : 2 element list or int, optional
+        Oversampling of the grid compare to the pixel sampling.
+        Can be specified for each orders if a list is given. 
+        If `int` is given, take same value for both orders.
+        Default is 2.
+    """
+    # Check n_os input.
+    # Default value is 2 for each orders
+    if n_os is None:
+        n_os = [2, 2]
+    else:
+        # Check if input has length = 2
+        try:
+            length = len(n_os)
+        # If scalar, same value for each orders
+        except TypeError:
+            n_os = [n_os, n_os]
+        else:
+            if length != 2:
+                err = ValueError(
+                    "len(n_os) == {},".format(length)
+                    + " but it must have length = 2"
+                    + " or be a scalar."
+                )
+                raise err
+    
+    # Generate wavelength range for each orders
+    # Order 1 covers the reddest part of the spectrum,
+    # so apply `lam_max`on order 1. Opposite for order 2.
+    range_list = [[lam_list[0].min(), lam_max],
+                  [lam_min, lam_list[1].max()]]
+    
+    # Use grid given by the wavelength at the center of the pixels 
+    # at the center of mass of the spatial profile
+    # (so one wavelength per column)
+    # Do it for both orders and apply oversampling
+    lam_grid = [grid_from_map(wv_i, p_i, wv_range=rng_i, n_os=i_os)
+                for wv_i, p_i, rng_i, i_os
+                in zip(lam_list, p_list, range_list, n_os)]
+
+    # Remove values from order 1 that are already covered by order 2
+    lam_grid[0] = lam_grid[0][lam_grid[0] > lam_grid[1].max()]
+
+    # Combine both grid
+    out_grid = np.concatenate(lam_grid)
+
+    # Make sure sorted and unique
+    return np.unique(out_grid)
     
 def uneven_grid(lam_grid, n_os=1, space=None):
     
