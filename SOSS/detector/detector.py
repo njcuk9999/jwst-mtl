@@ -6,7 +6,8 @@ Created on Tue Jan 21 14:21:35 2020
 Introduce the detector response in the simulated images
 """
 
-from __future__ import division, print_function  # TODO do we need these? I'm assuming we're using python3?
+import argparse
+
 import timeseries
 
 
@@ -14,6 +15,26 @@ def add_noise(filelist, normalize=False, zodibackg=True, flatfield=True, darkfra
               superbias=True, detector=True):
     """
     A function to add detector noise to the simulations.
+
+    :param filelist: list of string, the list of files to process
+    :param normalize: bool, renormalize the simulation, default False.
+    :param zodibackg: bool, include the effect of the zodiacal background, default True.
+    :param flatfield: bool, include the effect of the flatfield, default True.
+    :param darkframe: bool, include the effect of darkcurrent, default True.
+    :param nonlinearity: bool, include the effect of non-linearity, default True.
+    :param superbias: bool, include the effect of bias, default True.
+    :param detector: bool, include the effects of detector noise, default True.
+
+    :type filelist: list[str]
+    :type normalize: bool
+    :type zodibackg: bool
+    :type flatfield: bool
+    :type darkframe: bool
+    :type nonlinearity: bool
+    :type superbias: bool
+    :type detector: bool
+
+    :return:
     """
 
     normfactor = None
@@ -55,11 +76,7 @@ def add_noise(filelist, normalize=False, zodibackg=True, flatfield=True, darkfra
 
 
 def main():
-    """
-    A command line interface.
-    """
-
-    import argparse
+    """A command line interface."""
 
     parser = argparse.ArgumentParser(description='Add sources of noise to the simulation.')
     parser.add_argument('filenames', type=str, nargs='+',

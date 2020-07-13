@@ -7,7 +7,6 @@ TimeSeries objects for simulations of SOSS observations
 """
 
 # General imports.
-from __future__ import division, print_function  # TODO do we need these? I'm assuming we're using python3?
 from copy import deepcopy
 from pkg_resources import resource_filename
 
@@ -35,9 +34,7 @@ FULL_WELL = 72000.
 class TimeSeries(object):
 
     def __init__(self, ima_path):
-        """
-        Make a TimeSeries object from a series of synthetic images
-        """
+        """Make a TimeSeries object from a series of synthetic images."""
 
         self.ima_path = ima_path
 
@@ -57,6 +54,8 @@ class TimeSeries(object):
         self.modif_str = '_mod'  # string encoding the modifications
 
     def get_normfactor(self, full_well=FULL_WELL):
+        """Determine a re-normalization factor so that the highest pixel value in the simulation
+         will match the full well capacity"""
 
         max_value = np.amax(self.data)
         normfactor = full_well/max_value
@@ -64,15 +63,14 @@ class TimeSeries(object):
         return normfactor
 
     def apply_normfactor(self, normfactor):
+        """Apply an arbitrary re-normalization to the simulations."""
 
         self.data = self.data*normfactor
 
         self.modif_str = self.modif_str + '_norm'
 
     def add_poisson_noise(self):
-        """
-        Add Poisson noise to the simulation.
-        """
+        """Add Poisson noise to the simulation."""
 
         # Can be done without loops, but this reduces memory requirements.
         for i in range(self.nintegs):
@@ -94,11 +92,7 @@ class TimeSeries(object):
         self.modif_str = self.modif_str + '_poisson_noise'
 
     def add_non_linearity(self, coef_file=None, gain=GAIN):
-        """
-        Add non-linearity on top of the linear integration-long ramp
-        non_linearity: array of polynomial coefficients
-        offset: removed prior to correction and put back after
-        """
+        """Add non-linearity on top of the linear integration-long ramp."""
 
         if coef_file is None:
             coef_file = resource_filename('detector', 'files/jwst_niriss_linearity_0011_bounds_0_60000_npoints_100_deg_5.fits')
@@ -142,8 +136,8 @@ class TimeSeries(object):
         self.modif_str = self.modif_str + '_nonlin'
     
     def add_detector_noise(self, offset=500., gain=GAIN, pca0_file=None, noise_seed=None, dark_seed=None):
-        """
-        Add read-noise, 1/f noise, kTC noise, and alternating column noise using the HxRG noise generator.
+        """Add read-noise, 1/f noise, kTC noise, and alternating column noise
+        using the HxRG noise generator.
         """
 
         # In the current implementation the pca0 file goes unused, but it is a mandatory input of HxRG.
@@ -214,9 +208,7 @@ class TimeSeries(object):
         self.modif_str = self.modif_str + '_detector'
 
     def apply_flatfield(self, flatfile=None):
-        """
-        Apply the flat field correction to the simulation.
-        """
+        """Apply the flat field correction to the simulation."""
 
         if flatfile is None:
             flatfile = resource_filename('detector', 'files/jwst_niriss_flat_0181.fits')
@@ -243,9 +235,7 @@ class TimeSeries(object):
         self.modif_str = self.modif_str + '_flat'
 
     def add_superbias(self, gain=GAIN, biasfile=None):
-        """
-        Add the bias level to the simulation.
-        """
+        """Add the bias level to the simulation."""
 
         if biasfile is None:
             biasfile = resource_filename('detector', 'files/jwst_niriss_superbias_0137.fits')
@@ -274,12 +264,11 @@ class TimeSeries(object):
         self.modif_str = self.modif_str + '_bias'
 
     def add_simple_dark(self, darkvalue=DARKVALUE):  # TODO dark should be lower in the voids.
-        """
-        Add a simple dark current to the simulation.
+        """Add a simple dark current to the simulation.
 
-        - Uses 0.0414 electrons/s by default. Taken from Jdox on 04-May-2020, note that the actual dark current is lower
-        in the voids.
-
+        .. note::
+        Uses 0.0414 electrons/s by default. Taken from Jdox on 04-May-2020, note that the actual dark current
+        is lower in the voids.
         """
 
         # Generate the dark ramps for the simulation.
@@ -293,6 +282,7 @@ class TimeSeries(object):
         self.modif_str = self.modif_str + '_dark'
 
     def add_zodiacal_background(self, zodifile=None):
+        """Add the zodiacal background signal to the simulation."""
 
         if zodifile is None:
             zodifile = resource_filename('detector', 'files/background_detectorfield_normalized.fits')
@@ -329,9 +319,7 @@ class TimeSeries(object):
         self.modif_str = self.modif_str + '_zodibackg'
 
     def write_to_fits(self, filename=None, gain=GAIN):
-        """
-        Write to a fits file the new header and data
-        """
+        """Write to a .fits file the new header and data."""
 
         hdu_new = self.hdu_ideal
         hdu_new[1].data = (self.data/gain).astype('uint16')  # Convert to ADU in 16 bit integers.
@@ -343,9 +331,7 @@ class TimeSeries(object):
         print('Writing to file: ' + filename)
 
     def plot_image(self, i_group=0, i_integ=0, log=False, reverse_y=True, save=False, filename=None):
-        """
-        Plot the detector image for a chosen frame.
-        """
+        """Plot the detector image for a chosen frame."""
 
         img = self.data[i_integ, i_group, :, :]
 
@@ -371,9 +357,7 @@ class TimeSeries(object):
             fig.savefig(filename)
 
     def plot_pixel(self, i_row=1380, i_col=55, plot_on_im=True, save=False, filename=None):
-        """
-        Plot the flux in a given pixel as a function of Frame #
-        """
+        """Plot the flux in a given pixel as a function of Frame Number."""
 
         # to distinguish integrations and groups in plotting
         colors = ['b', 'orange', 'g', 'red']

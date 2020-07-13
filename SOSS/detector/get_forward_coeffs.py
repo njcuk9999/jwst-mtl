@@ -20,6 +20,7 @@ import matplotlib.pyplot as plt
 
 
 def visualize(row, col, coeffs, inv_coeffs, bounds, npoints):
+    """Make a plot showing the original and inverse non-linearity polynomials."""
 
     p1 = np.poly1d(coeffs[::-1, row, col])
     p2 = np.poly1d(inv_coeffs[::-1, row, col])
@@ -44,12 +45,20 @@ def visualize(row, col, coeffs, inv_coeffs, bounds, npoints):
 
 
 def invert_polynomials(coeffs, bounds=None, npoints=100, deg=5):
-    """
-    Fit forward coefficients for a pixel
-    - coeffs: the coefficients of the original polynomials.
-    - bounds: upper and lower bound between which to evalaute the original polynomials.
-    - npoints: number of points to evaluate the original polynomials at.
-    - deg: degree of the inverse polynomial.
+    """Fit forward coefficients for a pixel
+
+    :parameter coeffs: array of floats, the coefficients of the original polynomials.
+    :parameter bounds: list, upper and lower bound between which to evalaute the original polynomials.
+    :parameter npoints: int, number of points to evaluate the original polynomials at.
+    :parameter deg: int, degree of the inverse polynomial.
+
+    :type coeffs: array[float]
+    :type bounds: list[float]
+    :type npoints: int
+    :type deg: int
+
+    :returns inv_coeffs: array of floats, coefficients of the inverse polynomials.
+    :rtype inv_coeffs: array[float]
     """
 
     if bounds is None:
