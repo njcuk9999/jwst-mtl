@@ -626,7 +626,7 @@ class _BaseOverlap():
         scipy.integrate.quadrature.romberg
         References
         ----------
-        .. [1] 'Romberg's method' https://en.wikipedia.org/wiki/Romberg%27s_method
+        [1] 'Romberg's method' https://en.wikipedia.org/wiki/Romberg%27s_method
 
         """
         # Generate f_k if not given
