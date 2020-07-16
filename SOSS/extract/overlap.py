@@ -505,7 +505,7 @@ class _BaseOverlap():
         # Check if inputs are suited for quick mode;
         # Quick mode if `t_list` is not specified.
         quick = ('t_list' not in kwargs)
-        quick &=  hasattr(self, 'w_t_lam_c')  # Pre-computed
+        quick &= hasattr(self, 'w_t_lam_c')  # Pre-computed
         if quick:
             self.v_print('Quick mode is on!')
 
@@ -531,7 +531,7 @@ class _BaseOverlap():
         matrix = b_matrix.T.dot(b_matrix)
         result = csr_matrix(data.T).dot(b_matrix)
 
-        return matrix, result
+        return matrix, result.toarray().squeeze()
 
     def extract(self, **kwargs):
         """
@@ -571,13 +571,12 @@ class _BaseOverlap():
         # Only solve for valid range (on the detector).
         # It will be a singular matrix otherwise.
         f_k[i_grid] = spsolve(matrix[i_grid, :][:, i_grid],
-                              result.T[i_grid])
+                              result[i_grid])
 
         return f_k
 
     def get_i_grid(self, d):
         """ Return the index of the grid that are well defined """
-        d = d.toarray().squeeze()
         return np.nonzero(d)[0]
 
     def get_logl(self, f_k=None):
