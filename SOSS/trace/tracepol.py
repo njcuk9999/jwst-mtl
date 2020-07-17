@@ -9,7 +9,7 @@ import numpy as np
 from astropy.io import ascii
 
 
-def trace_polynomial(trace, m=1):
+def trace_polynomial(trace, m=1, maxorder=15):
     """Fit a polynomial to the trace of order m and return a
     dictionary containing the parameters and validity intervals.
     """
@@ -19,45 +19,45 @@ def trace_polynomial(trace, m=1):
     # Select the data for order m.
     mask = (trace['order'] == m)
     wave = trace['Wavelength'][mask]
-    x_ds9 = trace['xpos'][mask]
-    y_ds9 = trace['ypos'][mask]
+    spatpix_ds9 = trace['xpos'][mask]
+    specpix_ds9 = trace['ypos'][mask]
     
     # Find the edges of the domain.
-    wmin = np.amin(wave)
-    wmax = np.amax(wave)
+    wavemin = np.amin(wave)
+    wavemax = np.amax(wave)
     
-    ymin = np.amin(y_ds9)
-    ymax = np.amax(y_ds9)
+    specmin = np.amin(specpix_ds9)
+    specmax = np.amax(specpix_ds9)
 
     # Compute the polynomial parameters for x and y.
     order = 0
     while order <= maxorder:
 
-        xpars = np.polyfit(wave, x_ds9, order)
-        ypars = np.polyfit(wave, y_ds9, order)
+        spatpars = np.polyfit(wave, spatpix_ds9, order)
+        specpars = np.polyfit(wave, specpix_ds9, order)
 
-        xp_ds9 = np.polyval(xpars, wave)
-        yp_ds9 = np.polyval(ypars, wave)
+        spatpixp_ds9 = np.polyval(spatpars, wave)
+        specpixp_ds9 = np.polyval(specpars, wave)
 
-        if np.all(np.abs(x_ds9 - xp_ds9) < 0.5) & np.all(np.abs(y_ds9 - yp_ds9) < 0.5):
+        if np.all(np.abs(spatpix_ds9 - spatpixp_ds9) < 0.5) & np.all(np.abs(specpix_ds9 - specpixp_ds9) < 0.5):
             break
             
         order += 1
     
     # Compute the transform back to wavelength.
-    wavegrid = wmin + (wmax - wmin)*np.linspace(0., 1., 501)
-    ygrid = np.polyval(ypars, wavegrid)
-    wpars = np.polyfit(ygrid, wavegrid, order)
+    wavegrid = wavemin + (wavemax - wavemin)*np.linspace(0., 1., 501)
+    specgrid = np.polyval(specpars, wavegrid)
+    wavepars = np.polyfit(specgrid, wavegrid, order)
 
     # Add the parameters to a dictionary.
     pars = dict()
-    pars['xpars'] = xpars
-    pars['ypars'] = ypars
-    pars['ymin'] = ymin
-    pars['ymax'] = ymax
-    pars['wpars'] = wpars
-    pars['wmin'] = wmin
-    pars['wmax'] = wmax
+    pars['spatpars'] = spatpars
+    pars['specpars'] = specpars
+    pars['specmin'] = specmin
+    pars['specmax'] = specmax
+    pars['wavepars'] = wavepars
+    pars['wavemin'] = wavemin
+    pars['wavemax'] = wavemax
     
     return pars
 
@@ -85,121 +85,136 @@ def get_tracepars(filename=None):
 
 
 def bounds_check(array, lower, upper):
-    """Perform asimple bounds check on an array."""
+    """Perform a simple bounds check on an array."""
     
     mask = (array >= lower) & (array <= upper)
     
     return mask
 
 
-def wavelength_to_xy(wavelength, tracepars, m=1, frame='dms', oversample=1.):
-    """Convert wavelength to x,y-position for order m."""
-
-    x_ds9 = np.polyval(tracepars[m]['xpars'], wavelength)
-    y_ds9 = np.polyval(tracepars[m]['ypars'], wavelength)
-    mask = bounds_check(wavelength, tracepars[m]['wmin'], tracepars[m]['wmax'])
+def specpix_ds9_to_frame(specpix_ds9, frame='dms', oversample=1):
+    """Convert specpix from ds9 coordinates to the specified frame."""
 
     if frame == 'ds9':
-        x, y = x_ds9, y_ds9
+        specpix = specpix_ds9
     elif frame == 'dms':
-        x, y = coords_ds9_to_dms(x_ds9, y_ds9)
+        specpix = 2048 * oversample - specpix_ds9
     elif frame == 'sim':
-        x, y = coords_ds9_to_sim(x_ds9, y_ds9)
+        specpix = 2048 * oversample - specpix_ds9
     else:
-        raise ValueError('Unknown coordinate frame: {}'.format(frame))
+        ValueError('Unknown coordinate frame: {}'.format(frame))
 
-    x = x*oversample
-    y = y*oversample
-
-    return x, y, mask
+    return specpix
 
 
-def xy_to_wavelength(x, y, tracepars, m=1, frame='dms', oversample=1.):
-    """Convert pixel position to wavelength for order m."""
-
-    x = x/oversample
-    y = y/oversample
+def spatpix_ds9_to_frame(spatpix_ds9, frame='dms', oversample=1):
+    """Convert spatpix from ds9 coordinates to the specified frame."""
 
     if frame == 'ds9':
-        y_ds9 = y
+        spatpix = spatpix_ds9
     elif frame == 'dms':
-        _, y_ds9 = coords_dms_to_ds9(x, y)
+        spatpix = 256 * oversample - spatpix_ds9
     elif frame == 'sim':
-        _, y_ds9 = coords_sim_to_ds9(x, y)
+        spatpix = spatpix_ds9
     else:
-        raise ValueError('Unknown coordinate frame: {}'.format(frame))
+        ValueError('Unknown coordinate frame: {}'.format(frame))
 
-    wavelength = np.polyval(tracepars[m]['wpars'], y_ds9)
-    mask = bounds_check(y_ds9, tracepars[m]['ymin'], tracepars[m]['ymax'])
-    
+    return spatpix
+
+
+def pix_ds9_to_frame(specpix_ds9, spatpix_ds9, frame='dms', oversample=1):
+    """Convert from ds9 to coordinates to the specified frame."""
+
+    specpix = specpix_ds9_to_frame(specpix_ds9, frame=frame, oversample=oversample)
+    spatpix = spatpix_ds9_to_frame(spatpix_ds9, frame=frame, oversample=oversample)
+
+    return specpix, spatpix
+
+
+def specpix_frame_to_ds9(specpix, frame='dms', oversample=1):
+    """Convert specpix from an arbitrary frame to ds9 coordinates."""
+
+    if frame == 'ds9':
+        specpix_ds9 = specpix
+    elif frame == 'dms':
+        specpix_ds9 = 2048 * oversample - specpix
+    elif frame == 'sim':
+        specpix_ds9 = 2048 * oversample - specpix
+    else:
+        ValueError('Unknown coordinate frame: {}'.format(frame))
+
+    return specpix_ds9
+
+
+def spatpix_frame_to_ds9(spatpix, frame='dms', oversample=1):
+    """Convert spatpix from an arbitrary frame to ds9 coordinates."""
+
+    if frame == 'ds9':
+        spatpix_ds9 = spatpix
+    elif frame == 'dms':
+        spatpix_ds9 = 256 * oversample - spatpix
+    elif frame == 'sim':
+        spatpix_ds9 = spatpix
+    else:
+        ValueError('Unknown coordinate frame: {}'.format(frame))
+
+    return spatpix_ds9
+
+
+def pix_frame_to_ds9(specpix, spatpix, frame='dms', oversample=1):
+    """Convert from an arbitrary frame to ds9 coordinates."""
+
+    specpix_ds9 = specpix_frame_to_ds9(specpix, frame=frame, oversample=oversample)
+    spatpix_ds9 = spatpix_frame_to_ds9(spatpix, frame=frame, oversample=oversample)
+
+    return specpix_ds9, spatpix_ds9
+
+
+def wavelength_to_pix(wavelength, tracepars, m=1, frame='dms', oversample=1):
+    """Convert wavelength to pixel coordinates for order m."""
+
+    # Convert wavelenght to ds9 pixel coordinates.
+    specpix_ds9 = np.polyval(tracepars[m]['specpars'], wavelength)
+    spatpix_ds9 = np.polyval(tracepars[m]['spatpars'], wavelength)
+    mask = bounds_check(wavelength, tracepars[m]['wavemin'], tracepars[m]['wavemax'])
+
+    # Convert coordinates to the requested frame.
+    specpix, spatpix = pix_ds9_to_frame(specpix_ds9, spatpix_ds9, frame=frame)
+
+    # Oversample the coordinates.
+    specpix = specpix*oversample
+    spatpix = spatpix*oversample
+
+    return specpix, spatpix, mask
+
+
+def specpix_to_wavelength(specpix, tracepars, m=1, frame='dms', oversample=1):
+    """Convert the spectral pixel coordinate to wavelength for order m."""
+
+    # Remove any oversampling.
+    specpix = specpix/oversample
+
+    # Convert the input coordinates to ds9 coordinates.
+    specpix_ds9 = specpix_frame_to_ds9(specpix, frame=frame)
+
+    # Convert the specpix coordinates to wavelength.
+    wavelength = np.polyval(tracepars[m]['wavepars'], specpix_ds9)
+    mask = bounds_check(specpix_ds9, tracepars[m]['specmin'], tracepars[m]['specmax'])
+
     return wavelength, mask
 
 
-def coords_ds9_to_dms(x_ds9, y_ds9, oversample=1.):
-    """Transfrom ds9 coordinates to DMS coordinates."""
-
-    x_dms = 2048*oversample - y_ds9
-    y_dms = 256*oversample - x_ds9
-    
-    return x_dms, y_dms
-
-
-def coords_dms_to_ds9(x_dms, y_dms, oversample=1.):
-    """Transfrom DMS coordinates to ds9 coordinates."""
-    
-    x_ds9 = 256*oversample - y_dms
-    y_ds9 = 2048*oversample - x_dms
-    
-    return x_ds9, y_ds9
-
-
-def coords_ds9_to_sim(x_ds9, y_ds9, oversample=1.):
-    """Transform DS9 coordinates to Simulation coordinates."""
-
-    x_sim = 2048*oversample - y_ds9
-    y_sim = x_ds9
-
-    return x_sim, y_sim
-
-
-def coords_sim_to_ds9(x_sim, y_sim, oversample=1.):
-    """Transform Simulation coordinates to DS9 coordinates."""
-
-    x_ds9 = y_sim
-    y_ds9 = 2048*oversample - x_sim
-
-    return x_ds9, y_ds9
-
-
-def coords_dms_to_sim(x_dms, y_dms, oversample=1.):
-    """Transform DMS coordinates to Simulation coordinates."""
-
-    x_ds9, y_ds9 = coords_dms_to_ds9(x_dms, y_dms, oversample=oversample)
-    x_sim, y_sim = coords_ds9_to_sim(x_ds9, y_ds9, oversample=oversample)
-
-    return x_sim, y_sim
-
-
-def coords_sim_to_dms(x_sim, y_sim, oversample=1.):
-    """Transform Simulation coordinates to DMS coordinates."""
-
-    x_ds9, y_ds9 = coords_sim_to_ds9(x_sim, y_sim, oversample=oversample)
-    x_dms, y_dms = coords_ds9_to_dms(x_ds9, y_ds9, oversample=oversample)
-
-    return x_dms, y_dms
-
-
-def wavelength_map_2d(m, tracepars, oversample=1., use_tilt=False):
+def wavelength_map_2d(m, tracepars, oversample=1, use_tilt=False):
     """Compute the wavelengths of order m across the SUBSTRIP256 subarray."""
     
     if use_tilt:
         raise ValueError("The 'use_tilt' option has not yet been implemented.")
         
     # Get the coordinates of the pixels in the subarray.
-    y_dms, x_dms = np.indices((256*int(oversample), 2048*int(oversample)))
+    spatpix_dms, specpix_dms = np.indices((256*int(oversample), 2048*int(oversample)))
 
     # Convert to wavelengths using the trace polynomials.
-    wavelength_map, mask = xy_to_wavelength(x_dms, y_dms, tracepars, m=m, frame='dms', oversample=oversample)
+    wavelength_map, mask = specpix_to_wavelength(specpix_dms, tracepars, m=m, frame='dms', oversample=oversample)
     
     # Set out-of-bounds and reference pixels to zero.
     wavelength_map[~mask] = 0
