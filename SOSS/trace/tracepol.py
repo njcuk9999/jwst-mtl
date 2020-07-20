@@ -8,13 +8,15 @@ import numpy as np
 
 from astropy.io import ascii
 
+# TODO Implement SUBSTRIP96 tranformation, keeps rows 151:246 (1 based).
+
 
 def trace_polynomial(trace, m=1, maxorder=15):
     """Fit a polynomial to the trace of order m and return a
     dictionary containing the parameters and validity intervals.
     """
 
-    # TODO added arbitrary maxorder to deal with poor exrapolatian, revisit when extrapolotion fixed.
+    # TODO added arbitrary maxorder to deal with poor exrapolatian, revisit when extrapolation fixed.
     
     # Select the data for order m.
     mask = (trace['order'] == m)
@@ -74,6 +76,8 @@ def get_tracepars(filename=None):
     trace = ascii.read(filename)  # Read the Code V trace model from file. DS9 coordinates are used.
     trace['xpos'] /= 0.018  # Convert from micron to pixels.
     trace['ypos'] /= 0.018  # Convert from micron to pixels.
+    trace['xpos'] -= 0.5  # Set the origin at the center of the lower-left pixel.
+    trace['ypos'] -= 0.5  # Set the origin at the center of the lower-left pixel.
 
     # Compute polynomial parameters for different orders.
     tracepars = dict()
@@ -98,11 +102,11 @@ def specpix_ds9_to_frame(specpix_ds9, frame='dms', oversample=1):
     if frame == 'ds9':
         specpix = specpix_ds9
     elif frame == 'dms':
-        specpix = 2048 * oversample - specpix_ds9
+        specpix = 2047*oversample - specpix_ds9
     elif frame == 'sim':
-        specpix = 2048 * oversample - specpix_ds9
+        specpix = 2047*oversample - specpix_ds9
     else:
-        ValueError('Unknown coordinate frame: {}'.format(frame))
+        raise ValueError('Unknown coordinate frame: {}'.format(frame))
 
     return specpix
 
@@ -113,11 +117,11 @@ def spatpix_ds9_to_frame(spatpix_ds9, frame='dms', oversample=1):
     if frame == 'ds9':
         spatpix = spatpix_ds9
     elif frame == 'dms':
-        spatpix = 256 * oversample - spatpix_ds9
+        spatpix = 255*oversample - spatpix_ds9
     elif frame == 'sim':
         spatpix = spatpix_ds9
     else:
-        ValueError('Unknown coordinate frame: {}'.format(frame))
+        raise ValueError('Unknown coordinate frame: {}'.format(frame))
 
     return spatpix
 
@@ -137,11 +141,11 @@ def specpix_frame_to_ds9(specpix, frame='dms', oversample=1):
     if frame == 'ds9':
         specpix_ds9 = specpix
     elif frame == 'dms':
-        specpix_ds9 = 2048 * oversample - specpix
+        specpix_ds9 = 2047*oversample - specpix
     elif frame == 'sim':
-        specpix_ds9 = 2048 * oversample - specpix
+        specpix_ds9 = 2047*oversample - specpix
     else:
-        ValueError('Unknown coordinate frame: {}'.format(frame))
+        raise ValueError('Unknown coordinate frame: {}'.format(frame))
 
     return specpix_ds9
 
@@ -152,11 +156,11 @@ def spatpix_frame_to_ds9(spatpix, frame='dms', oversample=1):
     if frame == 'ds9':
         spatpix_ds9 = spatpix
     elif frame == 'dms':
-        spatpix_ds9 = 256 * oversample - spatpix
+        spatpix_ds9 = 255*oversample - spatpix
     elif frame == 'sim':
         spatpix_ds9 = spatpix
     else:
-        ValueError('Unknown coordinate frame: {}'.format(frame))
+        raise ValueError('Unknown coordinate frame: {}'.format(frame))
 
     return spatpix_ds9
 
