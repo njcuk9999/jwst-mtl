@@ -260,9 +260,14 @@ def get_soss_grid(p_list, lam_list, lam_min=0.55, lam_max=3.0, n_os=None):
     
     # Generate wavelength range for each orders
     # Order 1 covers the reddest part of the spectrum,
-    # so apply `lam_max`on order 1. Opposite for order 2.
-    range_list = [[lam_list[0].min(), lam_max],
-                  [lam_min, lam_list[1].max()]]
+    # so apply `lam_max` on order 1. Opposite for order 2.
+    # Take the most restrictive lam_min for order 1
+    lam_min_1 = np.max([lam_list[0].min(), lam_min])
+    # Take the most restrictive lam_max for order 2
+    lam_max_2 = np.min([lam_list[1].max(), lam_max])
+    # Now generate range for each orders
+    range_list = [[lam_min_1, lam_max],
+                  [lam_min, lam_max_2]]
     
     # Use grid given by the wavelength at the center of the pixels 
     # at the center of mass of the spatial profile
