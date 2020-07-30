@@ -1,5 +1,6 @@
 
 # General imports
+import matplotlib.pyplot as plt
 import numpy as np
 from scipy.sparse import find, issparse, csr_matrix, diags
 from scipy.sparse.linalg import spsolve
@@ -11,6 +12,7 @@ from interpolate import SegmentedLagrangeX
 from convolution import get_c_matrix, WebbKer
 from utils import _get_lam_p_or_m, get_n_nodes, oversample_grid
 from throughput import ThroughputSOSS
+from regularisation import Tikhonov, tikho_solve
 
 
 class _BaseOverlap():
@@ -76,7 +78,7 @@ class _BaseOverlap():
     def __init__(self, p_list, lam_list, scidata=None, lam_grid=None,
                  lam_bounds=None, i_bounds=None, c_list=None,
                  c_kwargs=None, t_list=None, sig=None,
-                 mask=None, thresh=1e-5, verbose=False):
+                 mask=None, thresh=1e-5, orders=[1, 2], verbose=False):
 
         ############################
         # Check input
@@ -128,8 +130,13 @@ class _BaseOverlap():
 
         # If None, read throughput from file
         if t_list is None:
-            t_list = [ThroughputSOSS(order=n+1)
-                      for n in range(self.n_ord)]
+            if self.n_ord != len(orders):
+                message = 'New implementation:'
+                message += ' When extracting or simulating only one order,'
+                message += ' you need to specify the `orders` input keyword.'
+                raise ValueError(message)
+            t_list = [ThroughputSOSS(order=n)
+                      for n in orders]
 
         # Save t_list for each orders
         self.update_lists(t_list=t_list)
@@ -242,7 +249,8 @@ class _BaseOverlap():
         if mask is None:
             mask_ord = np.any([mask_P, mask_lam], axis=0)
         else:
-            mask_ord = np.any([mask_P, mask_lam, [mask, mask]], axis=0)
+            mask = [mask for n in range(n_ord)]  # For each orders
+            mask_ord = np.any([mask_P, mask_lam, mask], axis=0)
 
         # Mask pixels that are masked at each orders
         global_mask = np.all(mask_ord, axis=0)
@@ -255,7 +263,7 @@ class _BaseOverlap():
                         & (~np.array(mask_P)).all(axis=0))
 
         # Apply this new global mask to each orders
-        mask_ord = np.any([mask_lam, global_mask[None,:,:]], axis=0)
+        mask_ord = np.any([mask_lam, global_mask[None, :, :]], axis=0)
 
         return global_mask, mask_ord
 
@@ -369,7 +377,6 @@ class _BaseOverlap():
             message += ' not supported by'
             message += ' `update_lists` method.'
             raise TypeError(message)
-
 
     def get_b_n(self, i_ord, sig=True, quick=False):
         """
@@ -505,7 +512,7 @@ class _BaseOverlap():
         # Check if inputs are suited for quick mode;
         # Quick mode if `t_list` is not specified.
         quick = ('t_list' not in kwargs)
-        quick &=  hasattr(self, 'w_t_lam_c')  # Pre-computed
+        quick &= hasattr(self, 'w_t_lam_c')  # Pre-computed
         if quick:
             self.v_print('Quick mode is on!')
 
@@ -531,14 +538,20 @@ class _BaseOverlap():
         matrix = b_matrix.T.dot(b_matrix)
         result = csr_matrix(data.T).dot(b_matrix)
 
-        return matrix, result
+        return matrix, result.toarray().squeeze()
 
-    def extract(self, **kwargs):
+    def extract(self, tikhonov=False, tikho_kwargs=None, **kwargs):
         """
         Build linear system arising from the logL maximisation.
         All parameters are passed to `build_sys` method.
         Parameters
         ----------
+        tikhonov : bool, optional
+            Wheter to use tikhonov extraction
+            (see regularisation.tikho_solve function).
+            Default is False.
+        tikho_kwargs : dictionnary or None, optional
+            Arguments passed to `tikho_solve`.
         data : (N, M) array_like, optional
             A 2-D array of real values representing the detector image.
             Default is the object attribute `data`.
@@ -568,16 +581,23 @@ class _BaseOverlap():
 
         # Init f_k with nan
         f_k = np.ones(result.shape[-1]) * np.nan
+        # Define solver
+        solver_kwargs = {}
+        if tikhonov:
+            if tikho_kwargs is not None:
+                solver_kwargs = tikho_kwargs
+            solver = tikho_solve
+        else:
+            solver = spsolve
         # Only solve for valid range (on the detector).
         # It will be a singular matrix otherwise.
-        f_k[i_grid] = spsolve(matrix[i_grid, :][:, i_grid],
-                              result.T[i_grid])
+        f_k[i_grid] = solver(matrix[i_grid, :][:, i_grid],
+                             result[i_grid], **solver_kwargs)
 
         return f_k
 
     def get_i_grid(self, d):
         """ Return the index of the grid that are well defined """
-        d = d.toarray().squeeze()
         return np.nonzero(d)[0]
 
     def get_logl(self, f_k=None):
@@ -674,6 +694,44 @@ class _BaseOverlap():
 
         # Return sorted and unique
         return np.unique(os_grid)
+
+    def get_tikho_tests(self, factors, tikho=None, t_mat=None):
+
+        if tikho is None:
+            if t_mat is None:
+                tikho = self.tikho
+            else:
+                kwargs = {'t_mat': t_mat, 'grid': self.lam_grid}
+                tikho = Tikhonov(*self.build_sys(), **kwargs)
+                self.tikho = tikho
+
+        # Test all factors
+        tests = tikho.test_factors(factors)
+        # Generate logl using solutions for each factors
+        logl_list = []
+        for sln in tests['solution']:
+            logl_list.append(self.get_logl(sln))
+        # Save in tikho's tests
+        tikho.test['-logl'] = -1 * np.array(logl_list)
+
+        return tikho.test
+
+    def plot_tikho_factors(self):
+
+        tikho = self.tikho
+
+        # Init figure
+        fig, ax = plt.subplots(2, 1, sharex=True, figsize=(8, 6))
+        # logl plot
+        tikho.error_plot(ax=ax[0], test_key='-logl')
+        # Error plot
+        tikho.error_plot(ax=ax[1])
+        # Labels
+        ax[0].set_ylabel(r'$\log{L}$ on detector')
+        # Other details
+        fig.tight_layout()
+
+        return fig, ax
 
     def get_w(self, *args):
         """Dummy method to be able to init this class"""

@@ -465,10 +465,22 @@ class WebbKer():
     
     def show(self):
         
-        plt.figure()
-        plt.imshow(self.ker, norm=LogNorm())
-        plt.colorbar()
-        
+        # 2D figure of the kernels
+        plt.figure(figsize=(4,4))
+        # Log plot, so clip values <= 0
+        image = np.clip(self.ker, np.min(self.ker[self.ker > 0]), np.inf)
+        # plot
+        plt.pcolormesh(self.wv_center, self.pixels,  image, norm=LogNorm())
+        # Labels and others
+        plt.colorbar(label="Kernel")
+        plt.ylabel("Position relative to center [pixel]")
+        plt.xlabel("Center wavelength [$\mu m$]")
+        plt.tight_layout()
+
+        # 1D figure of all kernels
         plt.figure()
         plt.plot(self.wv_ker, self.ker)
-
+        # Labels and others
+        plt.ylabel("Kernel")
+        plt.xlabel("Wavelength [$\mu m$]")
+        plt.tight_layout()
