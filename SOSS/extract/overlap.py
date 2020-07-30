@@ -249,7 +249,8 @@ class _BaseOverlap():
         if mask is None:
             mask_ord = np.any([mask_P, mask_lam], axis=0)
         else:
-            mask_ord = np.any([mask_P, mask_lam, [mask, mask]], axis=0)
+            mask = [mask for n in range(n_ord)]  # For each orders
+            mask_ord = np.any([mask_P, mask_lam, mask], axis=0)
 
         # Mask pixels that are masked at each orders
         global_mask = np.all(mask_ord, axis=0)
@@ -545,6 +546,12 @@ class _BaseOverlap():
         All parameters are passed to `build_sys` method.
         Parameters
         ----------
+        tikhonov : bool, optional
+            Wheter to use tikhonov extraction
+            (see regularisation.tikho_solve function).
+            Default is False.
+        tikho_kwargs : dictionnary or None, optional
+            Arguments passed to `tikho_solve`.
         data : (N, M) array_like, optional
             A 2-D array of real values representing the detector image.
             Default is the object attribute `data`.
