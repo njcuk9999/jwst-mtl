@@ -6,54 +6,103 @@ Created on Tue Jan 21 14:21:35 2020
 Introduce the detector response in the simulated images
 """
 
-from __future__ import division, print_function
-import numpy as np
-import sys
+import argparse
+
 import timeseries
 
 
-def main(argv):
+def add_noise(filelist, normalize=False, zodibackg=True, flatfield=True, darkframe=True, nonlinearity=True,
+              superbias=True, detector=True):
     """
-    python detector.py path/to/fits/file.fits 1
+    A function to add detector noise to the simulations.
+
+    :param filelist: list of string, the list of files to process
+    :param normalize: bool, renormalize the simulation, default False.
+    :param zodibackg: bool, include the effect of the zodiacal background, default True.
+    :param flatfield: bool, include the effect of the flatfield, default True.
+    :param darkframe: bool, include the effect of darkcurrent, default True.
+    :param nonlinearity: bool, include the effect of non-linearity, default True.
+    :param superbias: bool, include the effect of bias, default True.
+    :param detector: bool, include the effects of detector noise, default True.
+
+    :type filelist: list[str]
+    :type normalize: bool
+    :type zodibackg: bool
+    :type flatfield: bool
+    :type darkframe: bool
+    :type nonlinearity: bool
+    :type superbias: bool
+    :type detector: bool
+
+    :return:
     """
-    print('Input arguments: ', argv)
 
-    lenargv = len(argv)
+    normfactor = None
+    for filename in filelist:
 
-    # a minimum of 2 arguments must be specified for a command-line call
-    if lenargv > 2:
-        # path to the fits file containing the image (Jason's output)
-        ima_path = argv[1]
+        tso = timeseries.TimeSeries(filename)
 
-        # include effect of non-linearity in detector response if True
-        add_non_linearity = bool(int(argv[2]))
+        if normalize:
 
-    else:  # if not called from the command line
-        path_soss = '/Users/caroline/Research/GitHub/SOSS/jwst-mtl/SOSS/'
-        path_data = 'detector/data/'
-        filename = 'jw00001001001_0110100001_NISRAPID_cal_c.fits'
+            # If no normalization was provided use the first file to scale all files.
+            if normfactor is None:
+                normfactor = tso.get_normfactor()
 
-        ima_path = path_soss + path_data + filename
-        add_non_linearity = True
+            tso.apply_normfactor(normfactor)
 
-        print(ima_path, add_non_linearity)
+        tso.add_poisson_noise()
 
-    ts = timeseries.TimeSeries(ima_path)
+        if zodibackg:
+            tso.add_zodiacal_background()
 
-    # adding Poisson noise to the images prior to non-linearity correction
-    ts.add_poisson_noise()
+        if flatfield:
+            tso.apply_flatfield()
 
-    # modify time series for non-linearity effects
-    if add_non_linearity:
+        if darkframe:
+            tso.add_simple_dark()
 
-        # File path containing the forward coefficients for the fit
-        # forward coefficients calc using non-linearity data from CRDS website
-        non_linearity = np.load('files/files_jwst_niriss_linearity_0011_range_0_100000_npoints_100_polydeg_4.npy')
+        if nonlinearity:
+            tso.add_non_linearity()
 
-        ts.add_non_linearity(non_linearity)
+        if superbias:
+            tso.add_superbias()
 
-    ts.write_to_fits()  # write modified time series observations to a new file
+        if detector:
+            tso.add_detector_noise()
+
+        tso.write_to_fits()
+
+    return
+
+
+def main():
+    """A command line interface."""
+
+    parser = argparse.ArgumentParser(description='Add sources of noise to the simulation.')
+    parser.add_argument('filenames', type=str, nargs='+',
+                        help='The simulation file(s) to process.')
+    parser.add_argument('--normalize', action='store_true', dest='normalize',
+                        help='Applies a crude re-normalization to the simulation.')
+    parser.add_argument('--no-zodibackg', action='store_false', dest='zodibackg',
+                        help='Add the zodiacal light background to the simulation.')
+    parser.add_argument('--no-flatfield', action='store_false', dest='flatfield',
+                        help='Apply the flat-field to the simulation.')
+    parser.add_argument('--no-darkframe', action='store_false', dest='darkframe',
+                        help='Add dark current to the simulation.')
+    parser.add_argument('--no-nonlinearity', action='store_false', dest='nonlinearity',
+                        help='Add the effect of non-linearity to the simulation.')
+    parser.add_argument('--no-superbias', action='store_false', dest='superbias',
+                        help='Add the super bias to the simulation.')
+    parser.add_argument('--no-detector', action='store_false', dest='detector',
+                        help='Add the effects of read-noise, 1/f noise, kTC noise, and ACN to the simulation.')
+
+    args = parser.parse_args()
+
+    add_noise(args.filenames, args.normalize, args.zodibackg, args.flatfield, args.darkframe, args.nonlinearity,
+              args.superbias, args.detector)
+
+    return
 
 
 if __name__ == "__main__":
-    main(sys.argv)
+    main()
