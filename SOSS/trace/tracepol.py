@@ -1,5 +1,3 @@
-#!/usr/bin/env python2
-# -*- coding: utf-8 -*-
 """
 Created on Mon Feb 17 13:31:58 2020
 
@@ -7,169 +5,412 @@ Created on Mon Feb 17 13:31:58 2020
 """
 
 import numpy as np
+
 from astropy.io import ascii
 
+# SUBSTRIP256 keeps solumns 0:255 (0 based) in the nat frame.
+# SUBSTRIP96 keeps columns 150:245 (0 based) in the nat frame.
 
-def trace_polynomial(trace, m=1):
-    """ Fit a polynomial to the trace of order m and return a
+
+def trace_polynomial(trace, m=1, maxorder=15):
+    """Fit a polynomial to the trace of order m and return a
     dictionary containing the parameters and validity intervals.
-    _________________________________________________
-    Inputs: trace - csv file with trace data
-            m - trace order
-    Outputs: Dictionary containing trace parameters
+
+    :param trace: astropy table containing modelled trace points.
+    :param m: spectral order for which to fit a polynomial.
+    :param maxorder: maximum polynomial order to use.
+
+    :type trace: astropy.table.Table
+    :type m: int
+    :type maxorder: int
+
+    :returns: pars - dictionary containg the polynomial solution.
+    :rtype: dict
     """
 
+    # TODO added arbitrary maxorder to deal with poor exrapolatian, revisit when extrapolation fixed.
+    
     # Select the data for order m.
     mask = (trace['order'] == m)
     wave = trace['Wavelength'][mask]
-    # We assume x is the position on the spectral, and y on the spatial axis.
-    ypos = trace['xpos'][mask]  # x and y directions are reversed in csv
-    xpos = trace['ypos'][mask]
-
+    spatpix_ref = trace['xpos'][mask]
+    specpix_ref = trace['ypos'][mask]
+    
     # Find the edges of the domain.
-    wmin = np.amin(wave)
-    wmax = np.amax(wave)
+    wavemin = np.amin(wave)
+    wavemax = np.amax(wave)
+    
+    specmin = np.amin(specpix_ref)
+    specmax = np.amax(specpix_ref)
 
-    xmin = np.amin(xpos)
-    xmax = np.amax(xpos)
-
-    # Determine trace parameters
+    # Compute the polynomial parameters for x and y.
     order = 0
-    while True:
-        xpars = np.polyfit(wave, xpos, order)
-        ypars = np.polyfit(wave, ypos, order)
+    while order <= maxorder:
 
-        x = np.polyval(xpars, wave)
-        y = np.polyval(ypars, wave)
+        spatpars = np.polyfit(wave, spatpix_ref, order)
+        specpars = np.polyfit(wave, specpix_ref, order)
 
-        # If better than half micron (wavelength step size)
-        if np.all(np.abs(xpos - x) < 0.5) & np.all(np.abs(ypos - y) < 0.5):
+        spatpixp_nat = np.polyval(spatpars, wave)
+        specpixp_nat = np.polyval(specpars, wave)
+
+        if np.all(np.abs(spatpix_ref - spatpixp_nat) < 0.5) & np.all(np.abs(specpix_ref - specpixp_nat) < 0.5):
             break
-
+            
         order += 1
-
+    
     # Compute the transform back to wavelength.
-    wavegrid = wmin + (wmax - wmin)*np.linspace(0., 1., 501)  # ~10x oversampled
-    xgrid = np.polyval(xpars, wavegrid)
-    wpars = np.polyfit(xgrid, wavegrid, order)
+    wavegrid = wavemin + (wavemax - wavemin)*np.linspace(0., 1., 501)
+    specgrid = np.polyval(specpars, wavegrid)
+    wavepars = np.polyfit(specgrid, wavegrid, order)
 
     # Add the parameters to a dictionary.
     pars = dict()
-    pars['xpar'] = xpars
-    pars['ypar'] = ypars
-    pars['xmin'] = xmin
-    pars['xmax'] = xmax
-    pars['wpar'] = wpars
-    pars['wmin'] = wmin
-    pars['wmax'] = wmax
-
+    pars['spatpars'] = spatpars
+    pars['specpars'] = specpars
+    pars['specmin'] = specmin
+    pars['specmax'] = specmax
+    pars['wavepars'] = wavepars
+    pars['wavemin'] = wavemin
+    pars['wavemax'] = wavemax
+    
     return pars
 
 
 def get_tracepars(filename=None):
-    """ Read a file containing the trace profile and generate
+    """Read a file containing the trace profile and generate
     polynomial parameters for each order.
-    _________________________________________________
-    Inputs: filename - path to csv file with trace data
-    Outputs: Dictionary containing trace parameters
+
+    :param filename: file containing modelled trace points.
+
+    :type filename: str
+
+    :returns: tracepars - a dictionary containg the parameters for the polynomial fits.
+    :rtype: dict
     """
-
+    
     if filename is None:
-        filename = 'NIRISS_GR700_trace.csv'  # pkg_resources?
-
+        filename = 'NIRISS_GR700_trace_extended.csv'  # TODO Switch to pkg_resources in the future.
+    
     # Read the trace.
-    trace = ascii.read(filename)
-    trace['xpos'] /= 0.018  # convert arcsec to pixels
-    trace['ypos'] /= 0.018
+    trace = ascii.read(filename)  # Read the Code V trace model from file. DS9 coordinates are used.
+    trace['xpos'] /= 0.018  # Convert from micron to pixels.
+    trace['ypos'] /= 0.018  # Convert from micron to pixels.
+    trace['xpos'] -= 0.5  # Set the origin at the center of the lower-left pixel.
+    trace['ypos'] -= 0.5  # Set the origin at the center of the lower-left pixel.
 
     # Compute polynomial parameters for different orders.
     tracepars = dict()
     for m in np.unique(trace['order']):
         pars = trace_polynomial(trace, m=m)
         tracepars[m] = pars
-
+        
     return tracepars
 
 
-def bounds_check(array, lower, upper):
-    """ Perform asimple bounds check on an array. """
+def bounds_check(values, lower, upper):
+    """Perform a simple bounds check on an array.
 
-    mask = (array >= lower) & (array <= upper)
+    :param values: an array of values.
+    :param lower: the lower bound of the valid range.
+    :param upper: the upper bound of the valid range.
 
+    :type values: array[float]
+    :type lower: float
+    :type upper: float
+
+    :returns: mask - a boolean array that is True when values is between lower and upper.
+    :rtype: array[bool]
+    """
+    
+    mask = (values >= lower) & (values <= upper)
+    
     return mask
 
 
-def wavelength2x(wavelength, tracepars, m=1):
-    """ Convert wavelength to x-position for order m. """
+def specpix_ref_to_frame(specpix_ref, frame='dms', oversample=1):
+    """Convert specpix from nat coordinates to the specified frame.
 
-    x = np.polyval(tracepars[m]['xpar'], wavelength)
-    mask = bounds_check(wavelength, tracepars[m]['wmin'], tracepars[m]['wmax'])
+    :param specpix_ref: specpix coordinates in the dms frame of SUBSTRIP256.
+    :param frame: the output coordinate frame.
+    :param oversample: the oversampling factor of the input coordinates.
 
-    return x, mask
+    :type specpix_ref: array[float]
+    :type frame: str
+    :type oversample: int
+
+    :returns: specpix - the input coordinates transformed to the requested coordinate frame.
+    :rtype: array[float]
+    """
+
+    if frame == 'nat':
+        specpix = specpix_ref
+    elif frame == 'dms':
+        specpix = 2047*oversample - specpix_ref
+    elif frame == 'sim':
+        specpix = 2047*oversample - specpix_ref
+    else:
+        raise ValueError('Unknown coordinate frame: {}'.format(frame))
+
+    return specpix
 
 
-def wavelength2y(wavelength, tracepars, m=1):
-    """ Convert wavelength to y-position for order m. """
+def spatpix_ref_to_frame(spatpix_ref, frame='dms', subarray='SUBSTRIP256', oversample=1):
+    """Convert spatpix from nat coordinates in SUBSTRIP256 to the specified frame and subarray.
 
-    y = np.polyval(tracepars[m]['ypar'], wavelength)
-    mask = bounds_check(wavelength, tracepars[m]['wmin'], tracepars[m]['wmax'])
+    :param spatpix_ref: spatpix coordinates in the dms frame of SUBSTRIP256.
+    :param frame: the output coordinate frame.
+    :param subarray: the output coordinate subarray.
+    :param oversample: the oversampling factor of the input coordinates.
 
-    return y, mask
+    :type spatpix_ref: array[float]
+    :type frame: str
+    :type subarray: str
+    :type oversample: int
+
+    :returns: spatpix - the input coordinates transformed to the requested coordinate frame and subarray.
+    :rtype: array[float]
+    """
+
+    if (frame == 'nat') & (subarray == 'SUBSTRIP256'):
+        spatpix = spatpix_ref
+    elif (frame == 'dms') & (subarray == 'SUBSTRIP256'):
+        spatpix = 255*oversample - spatpix_ref
+    elif (frame == 'sim') & (subarray == 'SUBSTRIP256'):
+        spatpix = spatpix_ref
+    elif (frame == 'nat') & (subarray == 'SUBSTRIP96'):
+        spatpix = spatpix_ref - 150*oversample
+    elif (frame == 'dms') & (subarray == 'SUBSTRIP96'):
+        spatpix = 245*oversample - spatpix_ref
+    elif (frame == 'sim') & (subarray == 'SUBSTRIP96'):
+        spatpix = spatpix_ref - 150*oversample
+    else:
+        raise ValueError('Unknown coordinate frame or subarray: {} {}'.format(frame, subarray))
+
+    return spatpix
 
 
-def x2wavelength(x, tracepars, m=1):
-    """ Convert x-position to wavelength for order m. """
+def pix_ref_to_frame(specpix_ref, spatpix_ref, frame='dms', subarray='SUBSTRIP256', oversample=1):
+    """Convert from nat coordinates in SUBSTRIP256 to the specified frame and subarray.
 
-    wavelength = np.polyval(tracepars[m]['wpar'], x)
-    mask = bounds_check(x, tracepars[m]['xmin'], tracepars[m]['xmax'])
+    :param specpix_ref: specpix coordinates in the dms frame of SUBSTRIP256.
+    :param spatpix_ref: spatpix coordinates in the dms frame of SUBSTRIP256.
+    :param frame: the output coordinate frame.
+    :param subarray: the output coordinate subarray.
+    :param oversample: the oversampling factor of the input coordinates.
+
+    :type specpix_ref: array[float]
+    :type spatpix_ref: array[float]
+    :type frame: str
+    :type subarray: str
+    :type oversample: int
+
+    :returns: spatpix, specpix - the input coordinates transformed to the requested coordinate frame and subarray.
+
+    :rtype: Typle(array[float], array[float])
+    """
+
+    specpix = specpix_ref_to_frame(specpix_ref, frame=frame, oversample=oversample)
+    spatpix = spatpix_ref_to_frame(spatpix_ref, frame=frame, subarray=subarray, oversample=oversample)
+
+    return specpix, spatpix
+
+
+def specpix_frame_to_ref(specpix, frame='dms', oversample=1):
+    """Convert specpix from an arbitrary frame to nat coordinates.
+
+    :param specpix: specpix coordinates in an arbitrary coordinate frame.
+    :param frame: the input coordinate frame.
+    :param oversample: the oversampling factor of the input coordinates.
+
+    :type specpix: array[float]
+    :type frame: str
+    :type oversample: int
+
+    :returns: specpix_ref - the input coordinates transformed to nat coordinate frame.
+    :rtype: array[float]
+    """
+
+    if frame == 'nat':
+        specpix_ref = specpix
+    elif frame == 'dms':
+        specpix_ref = 2047*oversample - specpix
+    elif frame == 'sim':
+        specpix_ref = 2047*oversample - specpix
+    else:
+        raise ValueError('Unknown coordinate frame: {}'.format(frame))
+
+    return specpix_ref
+
+
+def spatpix_frame_to_ref(spatpix, frame='dms', subarray='SUBSTRIP256', oversample=1):
+    """Convert spatpix from an arbitrary frame to nat coordinates in SUBSTRIP256.
+
+    :param spatpix: spatpix coordinates in an arbitrary coordinate frame.
+    :param frame: the input coordinate frame.
+    :param subarray: the input coordinate subarray.
+    :param oversample: the oversampling factor of the input coordinates.
+
+    :type spatpix: array[float]
+    :type frame: str
+    :type subarray: str
+    :type oversample: int
+
+    :returns: spatpix_ref - the input coordinates transformed to nat coordinate frame and SUBSTRIP256 subarray.
+    :rtype: array[float]
+    """
+
+    if (frame == 'nat') & (subarray == 'SUBSTRIP256'):
+        spatpix_ref = spatpix
+    elif (frame == 'dms') & (subarray == 'SUBSTRIP256'):
+        spatpix_ref = 255*oversample - spatpix
+    elif (frame == 'sim') & (subarray == 'SUBSTRIP256'):
+        spatpix_ref = spatpix
+    elif (frame == 'nat') & (subarray == 'SUBSTRIP96'):
+        spatpix_ref = spatpix + 150*oversample
+    elif (frame == 'dms') & (subarray == 'SUBSTRIP96'):
+        spatpix_ref = 245*oversample - spatpix
+    elif (frame == 'sim') & (subarray == 'SUBSTRIP96'):
+        spatpix_ref = spatpix + 150*oversample
+    else:
+        raise ValueError('Unknown coordinate frame or subarray: {} {}'.format(frame, subarray))
+
+    return spatpix_ref
+
+
+def pix_frame_to_ref(specpix, spatpix, frame='dms', subarray='SUBSTRIP256', oversample=1):
+    """Convert from an arbitrary frame and subarray to nat coordinates in SUBSTRIP256.
+
+    :param specpix: specpix coordinates in an arbitrary coordinate frame.
+    :param spatpix: spatpix coordinates in an arbitrary coordinate frame.
+    :param frame: the input coordinate frame.
+    :param subarray: the input coordinate subarray.
+    :param oversample: the oversampling factor of the input coordinates.
+
+    :type specpix: array[float]
+    :type spatpix: array[float]
+    :type frame: str
+    :type subarray: str
+    :type oversample: int
+
+    :returns: specpix_ref, spatpix_ref - the input coordinates transformed to nat coordinate frame and SUBSTRIP256 subarray.
+    :rtype: Tuple(array[float], array[float])
+    """
+
+    specpix_ref = specpix_frame_to_ref(specpix, frame=frame, oversample=oversample)
+    spatpix_ref = spatpix_frame_to_ref(spatpix, frame=frame, subarray=subarray, oversample=oversample)
+
+    return specpix_ref, spatpix_ref
+
+
+def wavelength_to_pix(wavelength, tracepars, m=1, frame='dms', subarray='SUBSTRIP256', oversample=1):
+    """Convert wavelength to pixel coordinates for order m.
+
+    :param wavelength: wavelength values in microns.
+    :param tracepars: the trace polynomial solutions returned by get_tracepars.
+    :param m: the spectral order.
+    :param frame: the coordinate frame of the output coordinates (nat, dms or sim).
+    :param subarray: the subarray of the output coordinates (SUBARRAY256 or SUBARRAY96).
+    :param oversample: the oversampling factor of the outpur coordinates.
+
+    :type wavelength: array[float]
+    :type tracepars: dict
+    :type m: int
+    :type frame: str
+    :type subarray: str
+    :type oversample: int
+
+    :returns: specpix - the spectral pixel coordinates, spatpix - the spatial pixel coordinates,
+    mask - an array that is True when the specpix values were within the valid range of the polynomial.
+    :rtype: Tuple(array[float], array[float], array[bool])
+    """
+
+    # Convert wavelenght to nat pixel coordinates.
+    specpix_nat = np.polyval(tracepars[m]['specpars'], wavelength)
+    spatpix_nat = np.polyval(tracepars[m]['spatpars'], wavelength)
+    mask = bounds_check(wavelength, tracepars[m]['wavemin'], tracepars[m]['wavemax'])
+
+    # Convert coordinates to the requested frame.
+    specpix, spatpix = pix_ref_to_frame(specpix_nat, spatpix_nat, frame=frame, subarray=subarray)
+
+    # Oversample the coordinates.
+    specpix = specpix*oversample
+    spatpix = spatpix*oversample
+
+    return specpix, spatpix, mask
+
+
+def specpix_to_wavelength(specpix, tracepars, m=1, frame='dms', oversample=1):
+    """Convert the spectral pixel coordinate to wavelength for order m.
+
+    :param specpix: the pixel values.
+    :param tracepars: the trace polynomial solutions returned by get_tracepars.
+    :param m: the spectral order.
+    :param frame: the coordinate frame of the input coordinates (nat, dms or sim).
+    :param oversample: the oversampling factor of the input coordinates.
+
+    :type specpix: array[float]
+    :type tracepars: dict
+    :type m: int
+    :type frame: str
+    :type oversample: int
+
+    :returns: wavelength - an array containing the wavelengths corresponding to specpix,
+    mask - an array that is True when the specpix values were within the valid range of the polynomial.
+    :rtype: Tuple(array[float], array[bool])
+    """
+
+    # Remove any oversampling.
+    specpix = specpix/oversample
+
+    # Convert the input coordinates to nat coordinates.
+    specpix_nat = specpix_frame_to_ref(specpix, frame=frame)
+
+    # Convert the specpix coordinates to wavelength.
+    wavelength = np.polyval(tracepars[m]['wavepars'], specpix_nat)
+    mask = bounds_check(specpix_nat, tracepars[m]['specmin'], tracepars[m]['specmax'])
 
     return wavelength, mask
 
 
-def wavelength2xy(wavelength, tracepars, m=1):
-    """ Convert wavelength to x,y-position for order m. """
+def wavelength_map_2d(tracepars, m=1, subarray='SUBSTRIP256', oversample=1, use_tilt=False):
+    """Compute the wavelengths of order m in dms coordinates for the specified subarray.
 
-    x, mask = wavelength2x(wavelength, tracepars, m=m)
-    y, mask = wavelength2y(wavelength, tracepars, m=m)
+    :param tracepars: the trace polynomial solutions returned by get_tracepars.
+    :param m: the spectral order.
+    :param subarray: the subarray of the output coordinates (SUBARRAY256 or SUBARRAY96).
+    :param oversample: the oversampling factor of the input coordinates.
+    :param use_tilt: Include the effect of tilt in the output.
 
-    return x, y, mask
+    :type tracepars: dict
+    :type m: int
+    :type subarray: str
+    :type oversample: int
+    :type use_tilt: bool
 
-
-def coords_ds9_to_dms(x_ds9, y_ds9):
-    """ Transfrom ds9 coordinates to DMS coordinates. """
-
-    x_dms = 2048 - y_ds9
-    y_dms = 256 - x_ds9
-
-    return x_dms, y_dms
-
-
-def coords_dms_to_ds9(x_dms, y_dms):
-    """ Transfrom DMS coordinates to ds9 coordinates. """
-
-    x_ds9 = 256 - y_dms
-    y_ds9 = 2048 - x_dms
-
-    return x_ds9, y_ds9
-
-
-def wavelength_map_2D(m, tracepars, use_tilt=False):
-    """ Compute the wavelengths of order m across the SUBSTRIP256 subarray. """
-
+    :returns: wavelength_map - A 2D array of wavelength values across the detector.
+    :rtype: array[float]
+    """
+    
     if use_tilt:
         raise ValueError("The 'use_tilt' option has not yet been implemented.")
-
+        
     # Get the coordinates of the pixels in the subarray.
-    y_dms, x_dms = np.indices((256, 2048))
-    x_ds9, y_ds9 = coords_dms_to_ds9(x_dms, y_dms)
+    spatpix_dms, specpix_dms = np.indices((256*int(oversample), 2048*int(oversample)))
 
     # Convert to wavelengths using the trace polynomials.
-    wavelength_map, mask = y2wavelength(y_ds9, tracepars, m=m)
-
+    wavelength_map, mask = specpix_to_wavelength(specpix_dms, tracepars, m=m, frame='dms', oversample=oversample)
+    
     # Set out-of-bounds and reference pixels to zero.
     wavelength_map[~mask] = 0
-    wavelength_map[-4:] = 0
-    wavelength_map[:, :4] = 0
-    wavelength_map[:, -4:] = 0
+    wavelength_map[-4*int(oversample):] = 0
+    wavelength_map[:, :4*int(oversample)] = 0
+    wavelength_map[:, -4*int(oversample):] = 0
+
+    if subarray == 'SUBSTRIP256':
+        pass
+    elif subarray == 'SUBSTRIP96':
+        wavelength_map = wavelength_map[10*int(oversample):106*int(oversample)]
+    else:
+        raise ValueError('Unknown subarray: {}'.format(subarray))
 
     return wavelength_map
