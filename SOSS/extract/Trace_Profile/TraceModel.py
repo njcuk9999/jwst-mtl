@@ -529,6 +529,9 @@ def makemod(clear, F277, do_plots=False, filename=None):
         # from the second order in the anchor.
         try:
             # This will have to be changed when in a package.
+            # I'm also not including it in GitHub atm as its a large-ish
+            # fits file and realistically I'll be the only one using this code.
+            # Thus I'll just use my local copy.
             stand = fits.open('../simu_F277_CLEAR/f277.fits')[0].data[::-1, :]
         except FileNotFoundError:
             sys.exit('The standard red anchor profile was not found.')
