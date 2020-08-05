@@ -35,7 +35,7 @@ def chromescale(wave, profile, invert=False):
     profile : list of floats
         1D PSF profile to be rescaled.
     invert : bool
-        If False, add back the lambda/D scaling instead of remove it.
+        If False, add back the lambda/D scaling instead of removing it.
 
     Returns
     -------
@@ -335,7 +335,7 @@ def get_data_centroids(stack, atthesex=None):
 
 
 def get_om_centroids(atthesex=None):
-    '''Utility function to get order 1 trace profile centroids from the
+    ''' Utility function to get order 1 trace profile centroids from the
     JWST NIRISS SOSS optics model.
 
     Parameters
@@ -398,8 +398,8 @@ def log_probability(theta, xvals, yvals, xCV, yCV):
 
 
 def loicpsf(wavelist=None, wfe_real=None, filepath=''):
-    '''Utility function which calls the WebbPSF package to create monochromatic
-    PSFs for NIRISS SOSS mode obserations and save them to disk.
+    ''' Utility function which calls the WebbPSF package to create
+    monochromatic PSFs for NIRISS SOSS obserations and save them to disk.
 
     Parameters
     ----------
@@ -457,12 +457,11 @@ def loicpsf(wavelist=None, wfe_real=None, filepath=''):
 
 
 def makemod(clear, F277, do_plots=False, filename=None):
-    '''This creates the full order 1 trace profile model. The region
+    ''' This creates the full order 1 trace profile model. The region
     contaminated by the second order is interpolated from the CLEAR and F277W
     exposures, or just from the CLEAR exposure and a standard red anchor if
     no F277W exposure is available. This is the main function that the end
-    user will call, everything else will be done
-    automatically.
+    user will call, everything else will be done automatically.
 
     Parameters
     ----------
@@ -481,7 +480,7 @@ def makemod(clear, F277, do_plots=False, filename=None):
     O1frame : numpy array of floats
         Complete interpolated order 1 trace model.
     None : NoneType
-        If trace model is written to a file.
+        The trace model is written to a file.
     '''
 
     # Get the centroid positions from the optics model and the data.
@@ -743,7 +742,6 @@ def plot_interpmodel(waves, nw1, nw2, p1, p2):
     ax[-1, 0].set_xlabel('Wavelength [µm]', fontsize=14)
     ax[-1, 1].set_xlabel('Wavelength [µm]', fontsize=14)
 
-    # Fit mean profiles with linear trend
     y1 = np.polyval(p1, x2)
     y2 = np.polyval(p2, x2)
 
@@ -760,7 +758,7 @@ def plot_interpmodel(waves, nw1, nw2, p1, p2):
 
 
 def rot_om2det(ang, cenx, ceny, xval, yval):
-    '''Utility function to map coordinates in the optics model
+    ''' Utility function to map coordinates in the optics model
     reference frame, onto the detector reference frame, given
     the correct transofmration parameters.
 
