@@ -35,7 +35,7 @@ def chromescale(wave, profile, invert=False):
     profile : list of floats
         1D PSF profile to be rescaled.
     invert : bool
-        If False, add back the lambda/D scaling instead of removing it.
+        If True, add back the lambda/D scaling instead of removing it.
 
     Returns
     -------
