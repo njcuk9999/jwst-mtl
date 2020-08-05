@@ -360,9 +360,8 @@ def get_om_centroids(atthesex=None):
     tp2 = tp.get_tracepars(filename='%s/NIRISS_GR700_trace.csv' % tppath)
 
     # Evaluate the trace polynomials at the desired coordinates.
-    w = tp.x2wavelength(atthesex, tp2, 1)[0]
-    xOM = tp.wavelength2x(w, tp2, 1)[0]
-    yOM = tp.wavelength2y(w, tp2, 1)[0]
+    w = tp.specpix_to_wavelength(atthesex, tp2, 1, frame='nat')[0]
+    xOM, yOM, mas = tp.wavelength_to_pix(w, tp2, 1, frame='nat')
 
     return xOM, yOM[::-1], tp2
 
@@ -510,8 +509,8 @@ def makemod(clear, F277, do_plots=False, filename=None):
     # Note that the X-value returned from the optics model are inverted
     # compared to the UdeM coordinate system. This should be checked for
     # consistency when a stable coordinate system is determined.
-    xa2 = int(round(2048 - tp.wavelength2x(2.2, tp2, 1)[0], 0))  # OM X @ 2.2µm
-    ya2 = int(round(tp.wavelength2y(2.2, tp2, 1)[0], 0))  # OM Y @ 2.2µm
+    xa2 = int(round(tp.wavelength_to_pix(2.2, tp2, 1)[0], 0))  # OM X @ 2.2µm
+    ya2 = int(round(256 - tp.wavelength_to_pix(2.2, tp2, 1)[1], 0))  # OM Y @ 2.2µm
     # Use the rotation map to find the location
     # of the 2.2µm centroids in the data.
     xa2, ya2 = rot_om2det(ang, xanch, yanch, xa2, ya2)
@@ -537,8 +536,8 @@ def makemod(clear, F277, do_plots=False, filename=None):
             sys.exit('The standard red anchor profile was not found.')
         # Find the appropriate X and Y centroids.
         # The simulation is in the OM coordinate system.
-        xa5 = int(round(2048 - tp.wavelength2x(2.8, tp2, 1)[0], 0))
-        ya5 = int(round(tp.wavelength2y(2.8, tp2, 1)[0], 0))
+        xa5 = int(round(tp.wavelength_to_pix(2.8, tp2, 1)[0], 0))  # OM X @ 2.8µm
+        ya5 = int(round(256 - tp.wavelength_to_pix(2.8, tp2, 1)[1], 0))  # OM Y @ 2.8µm
         # Extract and rescale the 2.8µm profile.
         Ranch = stand[(ya5-24):(ya5+25), xa5]
         Ranch = chromescale(2.8, Ranch)
@@ -547,8 +546,8 @@ def makemod(clear, F277, do_plots=False, filename=None):
         # If there is an F277W exposure available, we only need to
         # interpolate out to 2.5µm, as from 2.5 - 2.8µm we have perfect
         # knowledge of teh order 1 trace from the F277W.
-        xa5 = int(round(2048 - tp.wavelength2x(2.5, tp2, 1)[0], 0))
-        ya5 = int(round(tp.wavelength2y(2.5, tp2, 1)[0], 0))
+        xa5 = int(round(tp.wavelength_to_pix(2.5, tp2, 1)[0], 0)) # OM X @ 2.5µm
+        ya5 = int(round(256 - tp.wavelength_to_pix(2.5, tp2, 1)[1], 0)) # OM Y @ 2.5µm
         xa5, ya5 = rot_om2det(ang, xanch, yanch, xa5, ya5)
         xa5, ya5 = int(round(xa5, 0)), int(round(ya5, 0))
         # Extract and rescale the 2.5µm profile.
@@ -581,8 +580,8 @@ def makemod(clear, F277, do_plots=False, filename=None):
     # Create an interpolated 1D PSF at each required position.
     for i in range(rlen):
         cenx_int = start + i
-        lmbd = tp.x2wavelength(2048-cenx_int, tp2, 1)[0]  # Wavelength at each centroid
-        ceny_int = tp.wavelength2y(lmbd, tp2, 1)[0]  # Y centroid at each X
+        lmbd = tp.specpix_to_wavelength(cenx_int, tp2, 1)[0]  # Wavelength at each centroid
+        ceny_int = 256 - tp.wavelength_to_pix(lmbd, tp2, 1)[1]  # Y centroid at each X
 
         # Transform the OM centroids onto the detector.
         cenx, ceny = rot_om2det(ang, xanch, yanch, cenx_int, ceny_int)
@@ -597,7 +596,10 @@ def makemod(clear, F277, do_plots=False, filename=None):
         newmint = chromescale(lmbd, mixint, invert=True)
 
         # Put the interpolated profile on the detector.
-        axis = np.linspace(-24, 24, 49) + ceny
+        # For whatever reason in the news tracepols implementation all the Y
+        # centroids shifted up by ~1 pixel. So subtract 1 to cancel this until
+        # the root cause can be determined.
+        axis = np.linspace(-24, 24, 49) + ceny - 1
         inds = np.where((axis < 256) & (axis >= 0))[0]
         bear = np.interp(np.arange(256), axis[inds], newmint[inds])
 
@@ -610,7 +612,7 @@ def makemod(clear, F277, do_plots=False, filename=None):
         elif i == 0:
             rend = int(cenx)
 
-    # Stitck together the interpolation and data to make the complete
+    # Stitch together the interpolation and data to make the complete
     # order 1 PSF.
     newmap = np.zeros((256, 2048))
     newmap[:, rend:bend] = map2D[:, rend:bend]  # Insert interpolated data
