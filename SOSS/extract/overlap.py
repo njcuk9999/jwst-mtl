@@ -585,7 +585,9 @@ class _BaseOverlap():
             if tikho_kwargs is None:
                 tikho_kwargs = {'index': i_grid}
             else:
-                tikho_kwargs['index'] = i_grid
+                default_kwargs = {'grid': self.lam_grid,
+                                  'index': i_grid}
+                tikho_kwargs = {**default_kwargs, **tikho_kwargs}
             f_k[i_grid] = self._solve_tikho(matrix, result, **tikho_kwargs)
         else:
             f_k[i_grid] = self._solve(matrix, result, index=i_grid)
@@ -709,7 +711,7 @@ class _BaseOverlap():
         # Return sorted and unique
         return np.unique(os_grid)
 
-    def get_tikho_tests(self, factors, tikho=None, **kwargs):
+    def get_tikho_tests(self, factors, tikho=None, estimate=None, **kwargs):
 
         # Build the system to solve
         matrix, result = self.build_sys()
@@ -728,7 +730,7 @@ class _BaseOverlap():
                 tikho = self.tikho
 
         # Test all factors
-        tests = tikho.test_factors(factors)
+        tests = tikho.test_factors(factors, estimate)
         # Generate logl using solutions for each factors
         logl_list = []
         for sln in tests['solution']:
