@@ -134,6 +134,7 @@ class Tikhonov:
         self.a_mat = a_mat[index,:][:,index]
         self.b_vec = b_vec[index]
         self.t_mat = t_mat[index,:][:,index]
+        self.index = index
         self.verbose = verbose
         
     def solve(self, factor=1.0, estimate=None):
@@ -146,6 +147,7 @@ class Tikhonov:
         a_mat = self.a_mat
         b_vec = self.b_vec
         t_mat = self.t_mat
+        index = self.index
         
         # Matrix gamma (with scale factor)
         gamma = factor * self.t_mat
@@ -156,7 +158,7 @@ class Tikhonov:
         result = (a_mat.T).dot(b_vec.T)
         # Include solution estimate if given
         if estimate is not None:
-            result += gamma_2.dot(estimate.T)
+            result += gamma_2.dot(estimate[index].T)
         
         # Solve
         return spsolve(matrix, result)
