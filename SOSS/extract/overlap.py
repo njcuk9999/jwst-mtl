@@ -573,32 +573,48 @@ class _BaseOverlap():
 
         # Get index of `lam_grid` convered by the pixel.
         # `lam_grid` may cover more then the pixels.
-        try:
-            i_grid = self.i_grid
-        except AttributeError:
-            i_grid = self.get_i_grid(result)
-            self.i_grid = i_grid
+        i_grid = self.get_i_grid(result)
 
         # Init f_k with nan
         f_k = np.ones(result.shape[-1]) * np.nan
-        # Define solver
-        solver_kwargs = {}
-        if tikhonov:
-            if tikho_kwargs is not None:
-                solver_kwargs = tikho_kwargs
-            solver = tikho_solve
-        else:
-            solver = spsolve
-        # Only solve for valid range (on the detector).
+
+        # Solve with the specified solver.
+        # Only solve for valid range `i_grid` (on the detector).
         # It will be a singular matrix otherwise.
-        f_k[i_grid] = solver(matrix[i_grid, :][:, i_grid],
-                             result[i_grid], **solver_kwargs)
+        if tikhonov:
+            if tikho_kwargs is None:
+                tikho_kwargs = {'index': i_grid}
+            else:
+                default_kwargs = {'grid': self.lam_grid,
+                                  'index': i_grid}
+                tikho_kwargs = {**default_kwargs, **tikho_kwargs}
+            f_k[i_grid] = self._solve_tikho(matrix, result, **tikho_kwargs)
+        else:
+            f_k[i_grid] = self._solve(matrix, result, index=i_grid)
 
         return f_k
 
+    def _solve(self, matrix, result, index=slice(None)):
+        """
+        Simply pass `matrix` and `result`
+        to `scipy.spsolve` and apply index.
+        """
+        return spsolve(matrix[index, :][:, index], result[index])
+
+    def _solve_tikho(self, matrix, result, index=slice(None), **kwargs):
+        """Solve system using Tikhonov regularisation"""
+        # Note that the indexing is applied inside the function
+        return tikho_solve(matrix, result, index=index, **kwargs)
+
     def get_i_grid(self, d):
-        """ Return the index of the grid that are well defined """
-        return np.nonzero(d)[0]
+        """ Return the index of the grid that are well defined, so d != 0 """
+        try:
+            self.i_grid
+        except AttributeError:
+            i_grid = np.nonzero(d)[0]
+            self.i_grid = i_grid
+
+        return self.i_grid
 
     def get_logl(self, f_k=None):
         """
@@ -695,22 +711,33 @@ class _BaseOverlap():
         # Return sorted and unique
         return np.unique(os_grid)
 
-    def get_tikho_tests(self, factors, tikho=None, t_mat=None):
+    def get_tikho_tests(self, factors, tikho=None, estimate=None, **kwargs):
+
+        # Build the system to solve
+        matrix, result = self.build_sys()
+
+        # Get valid grid index
+        i_grid = self.get_i_grid(result)
 
         if tikho is None:
-            if t_mat is None:
-                tikho = self.tikho
-            else:
-                kwargs = {'t_mat': t_mat, 'grid': self.lam_grid}
-                tikho = Tikhonov(*self.build_sys(), **kwargs)
+            if kwargs:
+                default_kwargs = {'grid': self.lam_grid,
+                                  'index': i_grid}
+                kwargs = {**default_kwargs, **kwargs}
+                tikho = Tikhonov(matrix, result, **kwargs)
                 self.tikho = tikho
+            else:
+                tikho = self.tikho
 
         # Test all factors
-        tests = tikho.test_factors(factors)
+        tests = tikho.test_factors(factors, estimate)
         # Generate logl using solutions for each factors
         logl_list = []
         for sln in tests['solution']:
-            logl_list.append(self.get_logl(sln))
+            # Init f_k with nan, so it has the adequate shape
+            f_k = np.ones(result.shape[-1]) * np.nan
+            f_k[i_grid] = sln  # Assign valid values
+            logl_list.append(self.get_logl(f_k))  # log_l
         # Save in tikho's tests
         tikho.test['-logl'] = -1 * np.array(logl_list)
 

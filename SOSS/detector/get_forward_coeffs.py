@@ -5,147 +5,135 @@ Created on Tue Feb 18 12:17:45 2020
 
 @author: caroline
 
-Get forward coefficients to apply non-linearity on a linear ramp
+Get inverse coefficients to apply non-linearity on a linear ramp
 based on the correction coefficients available on the CRDS website
 """
 
 # Import modules
-from __future__ import division, print_function
+import os
+
 import numpy as np
-import matplotlib.pyplot as plt
-import sys
+
 from astropy.io import fits
-import time
+
+import matplotlib.pyplot as plt
 
 
-def get_forward(correc_coeffs, i_row=1380, i_col=55,
-                range_calibration=None, npoints=100, poly_deg=4,
-                plot=False):
-    """
-    Fit forward coefficients for a pixel
-    - range_calibration: range of counts for which the forward coefficients
-    are calculated
-    - npoints: number of points to use for calibration
-    - poly_deg: degree of the polynomial to fit for the forward coefficients
-    - plot: plot the result of the polynomial fit
-    """
+def visualize(row, col, coeffs, inv_coeffs, bounds, npoints):
+    """Make a plot showing the original and inverse non-linearity polynomials."""
 
-    if range_calibration is None:
-        range_calibration = [0., 100e3]
-    fluxes_calibration = np.linspace(range_calibration[0],
-                                     range_calibration[1], npoints)
+    p1 = np.poly1d(coeffs[::-1, row, col])
+    p2 = np.poly1d(inv_coeffs[::-1, row, col])
 
-    flux_with_nonlin = np.zeros_like(fluxes_calibration)
+    fluxes_calibration = np.linspace(bounds[0], bounds[1], npoints)
 
-    # use root finding method to calculate the fluxes with added non-linearity
-    for i in range(fluxes_calibration.size):
-        coeffs = -correc_coeffs[:, i_col, i_row][::-1]
-        coeffs[-1] = coeffs[-1] + fluxes_calibration[i]
-        cr_nonlin = np.roots(coeffs)
-        flux_with_nonlin[i] = np.real(cr_nonlin[np.isreal(cr_nonlin)])[0]
+    # Make figure comparing the forwards and backward polynomials.
+    fig = plt.figure(figsize=(8, 8))
+    ax = plt.subplot(111)
+    ax.set_title('Example: Row {}, Col {}'.format(row, col))
+    ax.plot(fluxes_calibration, p1(fluxes_calibration), color='r', label='Original Polynomial')
+    ax.plot(p2(fluxes_calibration), fluxes_calibration, color='g', label='Inverse Polynomial')
+    ax.plot(fluxes_calibration, fluxes_calibration, zorder=-20, color='gray', ls='--', label='1:1')
+    ax.set_xlabel('Non-linear Flux')
+    ax.set_ylabel('Linear Flux')
+    ax.set_aspect('equal')
+    ax.set_ylim(0,)
+    ax.set_xlim(0,)
+    ax.legend(loc=2)
 
-    # fit a polynomial to the fluxes with non-linearity
-    fwd_coeffs = np.polyfit(fluxes_calibration, flux_with_nonlin, poly_deg)
-    p = np.poly1d(fwd_coeffs)
-
-    if plot:
-        # make figure of the fluxes with non-linearity as a function of the
-        # input "perfect" fluxes
-        fig, ax = plt.subplots(1, 1)
-        ax.set_title('Example: Col '+str(i_col)+', Row '+str(i_row))
-        ax.plot(fluxes_calibration, flux_with_nonlin, marker='.', ls='',
-                color='k', label='Root-finding results')
-        ax.plot(fluxes_calibration, p(fluxes_calibration), color='r',
-                label='Polynomial fit')
-        ax.plot(fluxes_calibration, fluxes_calibration, zorder=-20,
-                color='gray', ls='--', label='1:1')
-        ax.set_xlabel('Ideal flux')
-        ax.set_ylabel('Flux with non-linearity')
-        ax.legend(loc=2)
-
-    return fwd_coeffs
+    return
 
 
-def calc_forward_coeffs_array(correc_coeffs, poly_deg=4, print_every_ncol=5):
-    """
-    Calculate the ndarray of (poly_deg+1)*ncols*nrows coefficients
-    - correc_coeffs: correction coefficients from CRDS file
-    - poly_deg: degree of the polynomial to fit for the forward coefficients
-    - print_every_N_col: if None, does nothing. if = a number, will print to
-    the screen every time this number of columns has been processed
+def invert_polynomials(coeffs, bounds=None, npoints=100, deg=5):
+    """Fit forward coefficients for a pixel
+
+    :parameter coeffs: array of floats, the coefficients of the original polynomials.
+    :parameter bounds: list, upper and lower bound between which to evalaute the original polynomials.
+    :parameter npoints: int, number of points to evaluate the original polynomials at.
+    :parameter deg: int, degree of the inverse polynomial.
+
+    :type coeffs: array[float]
+    :type bounds: list[float]
+    :type npoints: int
+    :type deg: int
+
+    :returns inv_coeffs: array of floats, coefficients of the inverse polynomials.
+    :rtype inv_coeffs: array[float]
     """
 
-    ncols = 2048
-    nrows = 2048
-    forward_coeffs = np.zeros((poly_deg+1, ncols, nrows))
+    if bounds is None:
+        bounds = [0., 6e4]
 
-    start_time = time.time()
+    # Prepare the coefficient arrays.
+    ndeg, nrows, ncols = coeffs.shape
+    coeffs = coeffs.reshape((ndeg, -1))
+    coeffs = coeffs[::-1]  # numpy uses a highest degree first convention.
+    inv_coeffs = np.zeros((deg + 1, nrows*ncols))
+    inv_coeffs[-2] = 1.  # Fix slope and intercept.
 
-    for c in range(ncols):
+    for i in range(nrows*ncols):
 
-        if print_every_ncol is not None:
-            if (c % print_every_ncol) == 0:
-                print('Column '+str(c+1)+'/'+str(ncols))
+        # Evaluate the polynomials.
+        flux_nonlinear = np.linspace(bounds[0], bounds[1], npoints)
+        flux_linear = np.polyval(coeffs[:, i], flux_nonlinear)
 
-        for r in range(nrows):
-            forward_coeffs[:, c, r] = get_forward(correc_coeffs, r, c)
+        # Fit a polynomial to the fluxes with non-linearity
+        x = flux_linear/bounds[1]  # Divide by the upper bound for a better conditioned problem.
+        mat = np.vander(x, deg + 1)
+        mat = mat[:, :-2]  # Fix slope and intercept.
 
-            if c == 0 and r == 0:
-                time_first = time.time() - start_time
-                print('The first calculation took', time_first, 'seconds.')
-                print('Estimated total run time:',
-                      time_first * nrows * ncols, 'seconds.')
+        inv_coeffs[:-2, i] = np.linalg.lstsq(mat, flux_nonlinear - flux_linear, rcond=None)[0]
 
-    return forward_coeffs
+    # Manipulate array into standard form.
+    inv_coeffs = inv_coeffs[::-1]  # numpy used a highest degree first convention.
+    for i in range(2, deg + 1):  # Undo divide by upper bound.
+        inv_coeffs[i] = inv_coeffs[i]/(bounds[1])**i
+    inv_coeffs = inv_coeffs.reshape((deg + 1, nrows, ncols))
+
+    # Deal with the reference pixels.
+    inv_coeffs[:, :4, :] = 0
+    inv_coeffs[:, :, :4] = 0
+    inv_coeffs[:, -4:, :] = 0
+    inv_coeffs[:, :, -4:] = 0
+    inv_coeffs[1, :4, :] = 1
+    inv_coeffs[1, :, :4] = 1
+    inv_coeffs[1, -4:, :] = 1
+    inv_coeffs[1, :, -4:] = 1
+
+    return inv_coeffs
 
 
-# Read in the CRDS file of correction polynomial coefficients
-def main(argv):
-    """
-    Example call:
+def main():
+    """"""
 
-    python get_forward_coeffs.py path/to/CRDS/file.fits
-    or
-    python get_forward_coeffs.py path/to/CRDS/file.fits 0 100000 100 4
-    """
+    import argparse
 
-    print('Input arguments: ', argv)
+    parser = argparse.ArgumentParser(description='Invert the coefficients of the non-linearity correction.')
+    parser.add_argument('filename', type=str,
+                        help='The CRDS non-linearity file to use.')
+    parser.add_argument('--bounds', type=float, nargs=2, default=[0., 6e4],
+                        help='The range of values over which to calculate the polynomials.')
+    parser.add_argument('--npoints', type=int, default=100,
+                        help='The number of sample point along the range.')
+    parser.add_argument('--degree', type=int, default=5,
+                        help='The degree of the polynomial used.')
 
-    lenargv = len(argv)
-    # a minimum of 1 argument must be specified for a command-line call
-    if lenargv > 1:
-        crds_path = argv[1]  # path to the fits file containing the CRDS file
-        if lenargv > 2:
-            range_calibration = [float(argv[2]), float(argv[3])]
-            npoints = int(argv[4])
-            poly_deg = int(argv[5])
-        else:
-            # setup for calculation
-            range_calibration = [0., 100e3]
-            npoints = 100
-            poly_deg = 4
+    args = parser.parse_args()
 
-    else:  # if not called from the command line
-        path_soss_files = '/home/caroline/GitHub/SOSS/files/'
-        filename = 'jwst_niriss_linearity_0011.fits'
-        crds_path = path_soss_files + filename
+    # Compute the coeffiecients for adding non-linearity to simulated observations.
+    coeffs = fits.getdata(args.filename, ext=1)
+    inv_coeffs = invert_polynomials(coeffs, bounds=args.bounds, npoints=args.npoints, deg=args.degree)
 
-        # setup for calculation
-        range_calibration = [0., 100e3]
-        npoints = 100
-        poly_deg = 4
+    # Save the coefficients to a .fits file.
+    name = os.path.splitext(os.path.basename(args.filename))[0]
+    namestr = 'files/{}_bounds_{:d}_{:d}_npoints_{:d}_deg_{:d}.fits'
+    outfile = namestr.format(name, int(args.bounds[0]), int(args.bounds[1]), args.npoints, args.degree)
 
-    # subsection for SOSS detector
-    # correc_coeffs = fits.open(crdsPath)[1].data[:,1792:,:]
-    correc_coeffs = fits.open(crds_path)[1].data
+    hdu = fits.PrimaryHDU(inv_coeffs)
+    hdu.writeto(outfile)
 
-    fwd_coeffs = calc_forward_coeffs_array(correc_coeffs, poly_deg=poly_deg)
-
-    np.save('files/'+crds_path[:-5].replace('/', '_') + '_range_'
-            + str(int(range_calibration[0])) + '_'
-            + str(int(range_calibration[0])) + '_npoints_' + str(npoints)
-            + '_polydeg_'+str(poly_deg) + '_fullFrame.npy', fwd_coeffs)
+    return
 
 
 if __name__ == "__main__":
-    main(sys.argv)
+    main()

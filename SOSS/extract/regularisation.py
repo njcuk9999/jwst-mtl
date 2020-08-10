@@ -85,13 +85,13 @@ def finite_zeroth_d(grid):
     return identity(len(grid))
 
 def tikho_solve(a_mat, b_vec, t_mat=None, grid=None,
-                verbose=True, factor=1.0, estimate=None):
+                verbose=True, factor=1.0, estimate=None, index=None):
     """
     Tikhonov solver to use as a function instead of a class.
     """
     
     tikho = Tikhonov(a_mat, b_vec, t_mat=t_mat,
-                     grid=grid, verbose=verbose)
+                     grid=grid, verbose=verbose, index=index)
 
     return tikho.solve(factor=factor, estimate=estimate)
 
@@ -109,7 +109,7 @@ class Tikhonov:
                    'first':finite_first_d,
                    'second':finite_second_d}
     
-    def __init__(self, a_mat, b_vec, t_mat=None, grid=None, verbose=True):
+    def __init__(self, a_mat, b_vec, t_mat=None, grid=None, verbose=True, index=None):
         
         # Take the identity matrix as default (zeroth derivative)
         if t_mat is None:
@@ -117,7 +117,7 @@ class Tikhonov:
             
         # b_vec will be passed to default_mat functions
         # if grid not given.
-        if grid is None and t_mat == 'zeroth':
+        if grid is None and t_mat is 'zeroth':
             grid = b_vec
         
         # If string, search in the default Tikhonov matrix
@@ -126,10 +126,15 @@ class Tikhonov:
             t_mat = self.default_mat[t_mat](grid)
         else:
             self.type = 'custom'
+            
+        # Take all indices by default
+        if index is None:
+            index = slice(None)
 
-        self.a_mat = a_mat
-        self.b_vec = b_vec
-        self.t_mat = t_mat
+        self.a_mat = a_mat[index,:][:,index]
+        self.b_vec = b_vec[index]
+        self.t_mat = t_mat[index,:][:,index]
+        self.index = index
         self.verbose = verbose
         
     def solve(self, factor=1.0, estimate=None):
@@ -142,6 +147,7 @@ class Tikhonov:
         a_mat = self.a_mat
         b_vec = self.b_vec
         t_mat = self.t_mat
+        index = self.index
         
         # Matrix gamma (with scale factor)
         gamma = factor * self.t_mat
@@ -152,7 +158,7 @@ class Tikhonov:
         result = (a_mat.T).dot(b_vec.T)
         # Include solution estimate if given
         if estimate is not None:
-            result += gamma_2.dot(estimate.T)
+            result += gamma_2.dot(estimate[index].T)
         
         # Solve
         return spsolve(matrix, result)
