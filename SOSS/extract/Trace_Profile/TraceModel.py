@@ -334,7 +334,7 @@ def get_data_centroids(stack, atthesex=None):
     return tracex_best, tracey_best
 
 
-def get_om_centroids(atthesex=None):
+def get_om_centroids(atthesex=None, order=1):
     ''' Utility function to get order 1 trace profile centroids from the
     JWST NIRISS SOSS optics model.
 
@@ -342,6 +342,8 @@ def get_om_centroids(atthesex=None):
     ----------
     atthesex : list of floats
         Pixel x values at which to evaluate the centroid position.
+    order : int
+        Diffraction order for which to return the optics model solution.
 
     Returns
     -------
@@ -360,8 +362,8 @@ def get_om_centroids(atthesex=None):
     tp2 = tp.get_tracepars(filename='%s/NIRISS_GR700_trace.csv' % tppath)
 
     # Evaluate the trace polynomials at the desired coordinates.
-    w = tp.specpix_to_wavelength(atthesex, tp2, 1, frame='nat')[0]
-    xOM, yOM, mas = tp.wavelength_to_pix(w, tp2, 1, frame='nat')
+    w = tp.specpix_to_wavelength(atthesex, tp2, order, frame='nat')[0]
+    xOM, yOM, mas = tp.wavelength_to_pix(w, tp2, order, frame='nat')
 
     return xOM, yOM[::-1], tp2
 
@@ -757,7 +759,7 @@ def plot_interpmodel(waves, nw1, nw2, p1, p2):
     return None
 
 
-def rot_om2det(ang, cenx, ceny, xval, yval):
+def rot_om2det(ang, cenx, ceny, xval, yval, order=1):
     ''' Utility function to map coordinates in the optics model
     reference frame, onto the detector reference frame, given
     the correct transofmration parameters.
@@ -772,6 +774,8 @@ def rot_om2det(ang, cenx, ceny, xval, yval):
     xval, yval : float
         Pixel X and Y values in the optics model coordinate system
         to transform into the detector frame.
+    order : int
+        Diffraction order.
 
     Returns
     -------
@@ -782,13 +786,23 @@ def rot_om2det(ang, cenx, ceny, xval, yval):
 
     # Map OM onto detector - the parameters for this transformation
     # are already well known.
-    t = 1.5*np.pi / 180
-    R = np.array([[np.cos(t), -np.sin(t)], [np.sin(t), np.cos(t)]])
-    points1 = np.array([xval - 1535, yval - 205])
-    b = R @ points1
+    if order == 1:
+        t = 1.5*np.pi / 180
+        R = np.array([[np.cos(t), -np.sin(t)], [np.sin(t), np.cos(t)]])
+        points1 = np.array([xval - 1535, yval - 205])
+        b = R @ points1
 
-    b[0] += 1535
-    b[1] += 205
+        b[0] += 1535
+        b[1] += 205
+
+    if order == 2:
+        t = 1.8*np.pi / 180
+        R = np.array([[np.cos(t), -np.sin(t)], [np.sin(t), np.cos(t)]])
+        points1 = np.array([xval - 1347, yval - 141])
+        b = R @ points1
+
+        b[0] += 1347
+        b[1] += 141
 
     # Required rotation in the detector frame to match the data.
     t = (ang+0.95)*np.pi / 180
