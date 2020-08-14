@@ -245,7 +245,8 @@ def get_data_centroids(stack, atthesex=None):
     '''
 
     # Dimensions of the subarray.
-    dimx = np.shape(stack)[1]
+    #dimx = np.shape(stack)[1]
+    dimx = len(atthesex)
     dimy = np.shape(stack)[0]
 
     # Identify the floor level of all 2040 working pixels to subtract it first.
@@ -759,7 +760,7 @@ def plot_interpmodel(waves, nw1, nw2, p1, p2):
     return None
 
 
-def rot_om2det(ang, cenx, ceny, xval, yval, order=1):
+def rot_om2det(ang, cenx, ceny, xval, yval, order=1, bound=False):
     ''' Utility function to map coordinates in the optics model
     reference frame, onto the detector reference frame, given
     the correct transofmration parameters.
@@ -776,6 +777,8 @@ def rot_om2det(ang, cenx, ceny, xval, yval, order=1):
         to transform into the detector frame.
     order : int
         Diffraction order.
+    bound : bool
+        Whether to trim rotated solutions to fit within the subarray256.
 
     Returns
     -------
@@ -814,6 +817,11 @@ def rot_om2det(ang, cenx, ceny, xval, yval, order=1):
     rot_pix[0] += cenx
     rot_pix[1] += ceny
 
-    # inds = [(b2[0]>=0) & (b2[0]<=2047)]
+    # Check to ensure all points are on the subarray.
+    if bound is True:
+        inds = [(rot_pix[1] >= 0) & (rot_pix[1] < 256) & (rot_pix[0] >= 0) &
+                (rot_pix[0] < 2048)]
 
-    return rot_pix[0], rot_pix[1]
+        return rot_pix[0][inds], rot_pix[1][inds]
+    else:
+        return rot_pix[0], rot_pix[1]
