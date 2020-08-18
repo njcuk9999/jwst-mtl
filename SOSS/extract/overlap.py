@@ -760,6 +760,68 @@ class _BaseOverlap():
 
         return fig, ax
 
+    @staticmethod
+    def _check_plot_inputs(fig, ax):
+        """
+        Method to manage inputs for plots methods.
+        """
+        # Use ax or fig if given. Else, init the figure
+        if (fig is None) and (ax is None):
+            fig, ax = plt.subplots(1, 1, sharex=True)
+        elif ax is None:
+            ax = fig.subplots(1, 1, sharex=True)
+
+        return fig, ax
+
+    def plot_sln(self, f_k, fig=None, ax=None, i_ord=0,
+                 ylabel='Flux', xlabel=r'Wavelength [$\mu$m]', **kwargs):
+
+        # Manage method's inputs
+        args = (fig, ax)
+        fig, ax = self._check_plot_inputs(*args)
+
+        # Set values to plot
+        x = self.lam_grid_c(i_ord)
+        y = self.c_list[i_ord].dot(f_k)
+
+        # Plot
+        ax.plot(x, y, **kwargs)
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
+
+        return fig, ax
+
+    def plot_err(self, f_k, f_th_ord, fig=None, ax=None,
+                 i_ord=0, error='relative', ylabel='Error',
+                 xlabel=r'Wavelength [$\mu$m]', **kwargs):
+
+        # Manage method's inputs
+        args = (fig, ax)
+        fig, ax = self._check_plot_inputs(*args)
+
+        # Set values to plot
+        x = self.lam_grid_c(i_ord)
+        f_k_c = self.c_list[i_ord].dot(f_k)
+
+        if error == 'relative':
+            y = (f_k_c - f_th_ord) / f_th_ord
+        elif error == 'absolute':
+            y = f_k_c - f_th_ord
+        elif error == 'to_noise':
+            y = (f_k_c - f_th_ord) / np.sqrt(f_th_ord)
+        else:
+            raise ValueError('`error` argument is not valid.')
+
+        # Add info to ylabel
+        ylabel += ' ({})'.format(error)
+
+        # Plot
+        ax.plot(x, y, **kwargs)
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
+
+        return fig, ax
+
     def get_w(self, *args):
         """Dummy method to be able to init this class"""
 
