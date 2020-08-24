@@ -245,7 +245,6 @@ def get_data_centroids(stack, atthesex=None):
     '''
 
     # Dimensions of the subarray.
-    #dimx = np.shape(stack)[1]
     dimx = len(atthesex)
     dimy = np.shape(stack)[0]
 
@@ -630,7 +629,7 @@ def makemod(clear, F277, do_plots=False, filename=None):
     newmap = newmap / np.nanmax(newmap, axis=0)
     # Create a mask to remove the influence of the second order
     # in the CLEAR data.
-    O1frame = mask_order1(newmap, flat_samples, xOM, yOM)
+    O1frame = mask_order(newmap, flat_samples, xOM, yOM)
 
     # Write the trace model to disk if requested.
     if filename is not None:
@@ -643,7 +642,7 @@ def makemod(clear, F277, do_plots=False, filename=None):
         return O1frame
 
 
-def mask_order1(frame, flat_samples, xOM, yOM):
+def mask_order(frame, flat_samples, xOM, yOM, order=1):
     ''' Utility function to create a pixel mask to remove the second
     order trace from the CLEAR exposure once it has been stitched into
     the full order 1 trace model.
@@ -658,6 +657,8 @@ def mask_order1(frame, flat_samples, xOM, yOM):
     xOM, yOM : numpy array of floats
         X and Y centroids coordinates respectively in the optics
         model coordinate frame.
+    order : int
+        Diffraction order to isolate on the detector.
 
     Returns
     -------
@@ -671,7 +672,8 @@ def mask_order1(frame, flat_samples, xOM, yOM):
     # Get trace centroids in the detctor frame.
     xMod, yMod = rot_om2det(np.percentile(flat_samples[:, 0], 50),
                             np.percentile(flat_samples[:, 1], 50),
-                            np.percentile(flat_samples[:, 2], 50), xOM, yOM)
+                            np.percentile(flat_samples[:, 2], 50), xOM, yOM,
+                            order=order, bound=True)
     xx = xMod.astype(int)
     yy = yMod.astype(int)
     xr = np.linspace(np.min(xx), np.max(xx), np.max(xx)+1).astype(int)
