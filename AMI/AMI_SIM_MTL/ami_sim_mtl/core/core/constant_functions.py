@@ -32,6 +32,8 @@ display_func = general.display_func
 # get exceptions
 ConstantException = exceptions.ConstantException
 PathException = exceptions.PathException
+# define true values
+TRUE_VALUES = ['1', 1, True, 'True', 'T', 'Y', 'true', 'yes', 'YES']
 
 
 # =============================================================================
@@ -112,6 +114,9 @@ class Constant:
         kwargs['required'] = kwargs.get('required', bool(self.required))
         kwargs['group'] = kwargs.get('group', copy.deepcopy(self.group))
         kwargs['description'] = kwargs.get('description', str(self.description))
+        kwargs['minimum'] = kwargs.get('minimum', copy.deepcopy(self.minimum))
+        kwargs['maximum'] = kwargs.get('maximum', copy.deepcopy(self.maximum))
+        kwargs['options'] = kwargs.get('options', copy.deepcopy(self.options))
         kwargs['check'] = kwargs.get('check', bool(self.check))
         kwargs['command'] = kwargs.get('command', copy.deepcopy(self.command))
         # return new instances of Constant
@@ -436,11 +441,11 @@ def _check_type(cname, variable, value, dtype, instance=None, check=True):
             raise PathException(value, funcname=func_name,
                                 message=emsg.format(*eargs))
     # -------------------------------------------------------------------------
-    if dtype == bool:
-        if value in ['1', 1, True, 'True', 'T', 'Y', 'true', 'yes', 'YES']:
-            value = True
+    if dtype in ['bool', bool]:
+        if value in TRUE_VALUES:
+            return True
         else:
-            value = False
+            return False
     # -------------------------------------------------------------------------
     # do we check? if not just return
     if not check:

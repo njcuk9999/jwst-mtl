@@ -13,8 +13,8 @@ from ami_sim_mtl.core.core import constant_functions
 
 # set very basic constants
 __NAME__ = 'core.instruments.constants.py'
-__VERSION__ = '0.0.001'
-__DATE__ = '2020-05-21'
+__VERSION__ = '0.0.004'
+__DATE__ = '2020-06-02'
 
 # get constants class
 Consts = constant_functions.Constants(__NAME__)
@@ -46,7 +46,7 @@ Consts = constant_functions.Constants(__NAME__)
 group = 'General'
 
 # Define the user config file
-Consts.add('USER_CONFIG_FILE', value=None, dtype='path',
+Consts.add('USER_CONFIG_FILE', value=None, dtype=str,
            source=__NAME__, user=False, argument=True, group=group,
            description='Define the user config file', command='--config')
 
@@ -65,6 +65,18 @@ Consts.add('PACKAGE_VERSION_DATE', value=__DATE__, dtype=str,
            source=__NAME__, user=False, group=group,
            description='Define the package version date')
 
+# Define package log theme
+Consts.add('PACKAGE_THEME', value='DARK', dtype=str,
+           source=__NAME__, user=False, argument=True, group=group,
+           description='Define package log theme',
+           command=['--theme'], options=['DARK', 'LIGHT', 'OFF'])
+
+# Define the package directory
+Consts.add('PACKAGE_DIRECTORY', value='ami_sim_data', dtype=str, source=__NAME__,
+           user=False, group=group,
+           description='Define the default file directory name'
+                       'contains input/output/log/config directories')
+
 # Define whether we want to generate a config file
 Consts.add('GENERATE_CONFIG_FILE', value=False, dtype=bool,
            source=__NAME__, user=False, argument=True, group=group,
@@ -72,10 +84,25 @@ Consts.add('GENERATE_CONFIG_FILE', value=False, dtype=bool,
            command='--getconfig')
 
 # Define an output directory
-Consts.add('OUTDIR', value=None, dtype=str, source=__NAME__, user=True,
-           argument=True, group=group, description='Define an output directory',
-           command='--out')
+Consts.add('DIRECTORY', value=None, dtype=str, source=__NAME__, user=False,
+           argument=True, group=group,
+           description='Define the working directory '
+                       '(note this can also be set by setting the AMIDIR '
+                       'environmental variable',
+           command='--dir')
 
+# set the environmental variable for ami sim dir
+Consts.add('ENV_DIR', value='AMIDIR', dtype=str, source=__NAME__, user=False,
+           argument=False, group=group,
+           description='set the environmental variable for ami sim directory'
+                       '(If unset defaults to ~/{PACKAGE_NAME}/')
+
+# set debug mode
+Consts.add('DEBUG', value=0, dtype=int, source=__NAME__, user=True,
+           argument=True, group=group,
+           description='Set debug mode (1-9) the higher the number the '
+                       'more verbose',
+           command='--debug')
 
 # =============================================================================
 #   Simulation constants

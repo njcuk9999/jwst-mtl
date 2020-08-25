@@ -10,17 +10,23 @@ Created on 2020-05-21
 @author: cook
 """
 import argparse
+from astropy.time import Time
 from collections import OrderedDict
 import copy
 import numpy as np
 import os
 from pathlib import Path
+import logging
+import random
+import string
+import sys
+import time
 from typing import Union, List, Type
 
 from ami_sim_mtl.core.core import general
 from ami_sim_mtl.core.core import exceptions
 from ami_sim_mtl.core.instrument import constants
-
+from ami_sim_mtl.core.core import log_functions
 
 # =============================================================================
 # Define variables
@@ -37,6 +43,10 @@ PACKAGE = consts.constants['PACKAGE_NAME'].value
 display_func = general.display_func
 # get exceptions
 ParamException = exceptions.ParamDictException
+# get all chars
+CHARS = string.ascii_uppercase + string.digits
+# define true values
+TRUE_VALUES = constants.constant_functions.TRUE_VALUES
 # Define user config file header
 CONFIG_FILE_HEADER = """
 # =============================================================================
@@ -53,7 +63,10 @@ CONFIG_GROUP_HEADER = """
 # {0} constants
 # -----------------------------------------------------------------------------
 """
-
+# get the environmental variable for ami sim dir
+AMIDIR = str(consts.constants['ENV_DIR'])
+# get the default directory otherwise (put in the home dir)
+AMIPATH = str(consts.constants['PACKAGE_DIRECTORY'])
 
 
 # =============================================================================
@@ -275,6 +288,8 @@ class ParamDict(CaseInsensitiveDict):
         self.pfmt_ns = '\t{1:45s}'
         # whether the parameter dictionary is locked for editing
         self.locked = False
+        # define a log attachment
+        self.log = None
         # run the super class (CaseInsensitiveDict <-- dict)
         super(ParamDict, self).__init__(*arg, **kw)
 
@@ -1172,8 +1187,9 @@ class ParamDict(CaseInsensitiveDict):
 # =============================================================================
 # Define functions
 # =============================================================================
-def setup(lconsts: constants.Consts, kwargs: dict,
-          description: str) -> ParamDict:
+def setup(lconsts: constants.Consts, kwargs: dict, desc: str,
+          log: Union[None, log_functions.Log] = None,
+          quiet: bool = False, name: Union[None, str] = None) -> ParamDict:
     """
     Setup the code
 
@@ -1185,16 +1201,41 @@ def setup(lconsts: constants.Consts, kwargs: dict,
 
     :param lconsts: Constants instance
     :param kwargs: dictionary of arguments from function call
-    :param description: str, the description of the input code
+    :param desc: str, the description of the input code
+    :param log: None or log instance, the log instance to attach
+    :param quiet: bool, if True does not print header
+
     :return:
     """
     # get parameters from constants
     params = ParamDict()
     # ----------------------------------------------------------------------
+    # attach log
+    if log is None:
+        params.log = log_functions.Log()
+    else:
+        params.log = log
+    # ----------------------------------------------------------------------
+    # deal with name (remove .py from end)
+    if name is not None:
+        name = name.split('.py')[0]
+    # ----------------------------------------------------------------------
     # Lowest priority: params from constants file (lconsts.constants)
     # ----------------------------------------------------------------------
+    # get debug from the command line
+    params = _quick_look_args(params, kwargs)
+    # set function name (after param + log definition)
+    func_name = display_func('setup', __NAME__, params=params)
+    # ----------------------------------------------------------------------
+    # Lowest priority: params from constants file (lconsts.constants)
+    # ----------------------------------------------------------------------
+    # debug print out
+    params.log.ldebug('Lowest priority: params from constants', 7)
+
     # loop around constants
     for cname in lconsts.constants:
+        # debug print out
+        params.log.ldebug('Processing parameter: {0}'.format(cname), 8)
         # get constant
         constant = lconsts.constants[cname]
         # copy constant into parameters
@@ -1202,24 +1243,45 @@ def setup(lconsts: constants.Consts, kwargs: dict,
         # set source and instance
         params.set_source(cname, constant.source)
         params.set_instance(cname, constant.copy())
-
+    # ----------------------------------------------------------------------
     # read arguments from cmdline (need to update user_config_file)
-    args = _read_from_cmdline(params, description)
-
+    args = _read_from_cmdline(params, desc)
     # ----------------------------------------------------------------------
     # next priority: params from config file
     # ----------------------------------------------------------------------
     params = _read_from_config_file(params, args)
-
     # ----------------------------------------------------------------------
     # next priority: params from call to main (kwargs)
     # ----------------------------------------------------------------------
     params = _read_from_kwargs(params, kwargs)
-
     # ----------------------------------------------------------------------
     # next priority: params from command line arguments (sys.argv)
     # ----------------------------------------------------------------------
     params = _update_from_cmdline(params, args)
+    # ----------------------------------------------------------------------
+    # recheck the quick look args (this time just to update now params is
+    # updated
+    params = _quick_look_args(params, kwargs, check_only=True)
+    # ----------------------------------------------------------------------
+    # Set up a unique name (for logging etc)
+    # ----------------------------------------------------------------------
+    # set up process id
+    pid, htime = _assign_pid()
+    params.set('PID', value=pid, source=func_name)
+    params.set('PIDTIME', value=htime, source=func_name)
+
+    # ----------------------------------------------------------------------
+    # Now we need to check/create some paths
+    # ----------------------------------------------------------------------
+    params = _setup_working_directory(params, name)
+
+    # add a log file
+    params.log.add_log_file(params['LOGFILE'])
+
+    # ----------------------------------------------------------------------
+    # print header
+    # ----------------------------------------------------------------------
+    _splash(params, quiet=quiet, name=name)
 
     # ----------------------------------------------------------------------
     # deal with config file generation
@@ -1398,43 +1460,78 @@ def _read_from_config_file(params: ParamDict, args: argparse.Namespace,
 
     :return:
     """
+    # set function name
+    func_name = display_func('_read_from_config_file', __NAME__)
     # get user config file and out dir from args
     cmd_userconfig = getattr(args, 'USER_CONFIG_FILE', None)
-    cmd_outdir = getattr(args, 'OUTDIR', None)
+    cmd_outdir = getattr(args, 'DIRECTORY', None)
+    # get from params
+    package_dir = str(params['PACKAGE_DIRECTORY'])
     # ----------------------------------------------------------------------
     # if we have a config file defined use it
     if configfile is not None:
         user_config_file = str(configfile)
-        params['USER_CONFIG_FILE'] = user_config_file
+        params.set('USER_CONFIG_FILE', user_config_file, source=func_name)
     # if we have a command line argument use it
     elif cmd_userconfig is not None:
         user_config_file = cmd_userconfig
         params['USER_CONFIG_FILE'] = user_config_file
+        params.set_source('USER_CONFIG_FILE', 'sys.argv')
+        params.append_source('USER_CONFIG_FILE', func_name)
     # get the config file
     elif params['USER_CONFIG_FILE'] is not None:
         user_config_file = params['USER_CONFIG_FILE']
     else:
         user_config_file = None
     # ----------------------------------------------------------------------
+    # get the output directory
+    if cmd_outdir is not None:
+        workingdir = Path(cmd_outdir)
+        params['DIRECTORY'] = cmd_outdir
+        params.set_source('DIRECTORY', 'sys.argv')
+        params.append_source('DIRECTORY', func_name)
+    # else if it is already in params
+    elif params['DIRECTORY'] is not None:
+        workingdir = Path(str(params['DIRECTORY']))
+    elif AMIDIR in os.environ:
+        workingdir = Path(os.environ[AMIDIR])
+    else:
+        workingdir = Path.home().joinpath(package_dir)
+        params['DIRECTORY'] = str(workingdir)
+        params.set_source('DIRECTORY', func_name)
+    # ----------------------------------------------------------------------
+    # at this stage we need to test directory and config directory exist
+    if not workingdir.exists():
+        try:
+            os.makedirs(workingdir)
+        except Exception as e:
+            emsg = 'Cannot make working directory: {0}'.format(workingdir)
+            emsg += '\nError {0}: {1}'.format(e.__name__, e)
+            raise exceptions.ConstantException(emsg, kind='workingdir')
+    # now make config sub-directory
+    configdir = workingdir.joinpath('config')
+    if not configdir.exists():
+        configdir.mkdir()
+    # set config directory
+    params['CONFIGDIR'] = configdir
+    params.set_source('CONFIGDIR', func_name)
+    # ----------------------------------------------------------------------
     # deal with no user_config_file
     if user_config_file is None:
         return params
     # ----------------------------------------------------------------------
-    # get the output directory
-    if cmd_outdir is not None:
-        outdir = Path(cmd_outdir)
-        params['OUTDIR'] = cmd_outdir
-    # else if it is already in params
-    elif params['OUTDIR'] is not None:
-        outdir = Path(str(params['OUTDIR']))
-    else:
-        outdir = Path.cwd().joinpath('outputs')
-        params['OUTDIR'] = str(outdir)
-    # construct out path
+    # if user_config_file exists copy it to config dif
     if Path(user_config_file).exists():
-        outpath = Path(user_config_file)
+        # construct new path for user config file
+        outpath = Path(user_config_file).name
     else:
-        outpath = outdir.joinpath(user_config_file)
+        # else the config is assumed to be in the config path
+        outpath = configdir.joinpath(Path(user_config_file).name)
+
+    # now test whether outpath exists (if it doesn't then we just return, no
+    #   config is to be used)
+    if not outpath.exists():
+        return params
     # ----------------------------------------------------------------------
     # read constants file to directory
     keys, values = np.loadtxt(outpath, delimiter='=', unpack=True, comments='#',
@@ -1447,23 +1544,24 @@ def _read_from_config_file(params: ParamDict, args: argparse.Namespace,
     for cname in params:
         # get constant
         constant = params.instances[cname]
-        assert isinstance(constant, constants.constant_functions.Constant)
-        # only add constatns that have user=True
-        if constant.user:
-            # check if we have it in config dictionary
-            if cname in configdict.keys():
-                # get config dictionary value
-                configvalue = configdict[cname]
-                # deal with a None value
-                if configvalue in [None, 'None', '']:
-                    configvalue = None
-                # update value
-                constant.value = configvalue
-                # check values
-                constant.check_value()
-                # now add to params
-                params[cname] = constant.value
-                params.set_source(cname, str(outpath))
+        # only update parameters with constants instance
+        if isinstance(constant, constants.constant_functions.Constant):
+            # only add constatns that have user=True
+            if constant.user:
+                # check if we have it in config dictionary
+                if cname in configdict.keys():
+                    # get config dictionary value
+                    configvalue = configdict[cname]
+                    # deal with a None value
+                    if configvalue in [None, 'None', '']:
+                        configvalue = None
+                    # update value
+                    constant.value = configvalue
+                    # check values
+                    constant.check_value()
+                    # now add to params
+                    params[cname] = constant.value
+                    params.set_source(cname, str(outpath))
     # return params
     return params
 
@@ -1478,29 +1576,106 @@ def _read_from_kwargs(params: ParamDict, kwargs: dict) -> ParamDict:
 
     :return: the updated parameter dictionary
     """
+    # set function name
+    _ = display_func('_read_from_kwargs', __NAME__)
     # convert kwargs to case insensitive dictionary
     kwargs = CaseInsensitiveDict(kwargs)
     # loop around keyword arguments
     for cname in params:
         # get constant
         constant = params.instances[cname]
-        assert isinstance(constant, constants.constant_functions.Constant)
-        # only add constatns that have user=True
-        if constant.user:
-            # check if we have it in config dictionary
-            if cname in kwargs:
-                # get config dictionary value
-                configvalue = kwargs[cname]
-                # deal with a None value
-                if configvalue in [None, 'None', '']:
-                    configvalue = None
-                # update value
-                constant.value = configvalue
-                # check values
-                constant.check_value()
-                # now add to params
-                params[cname] = constant.value
-                params.set_source(cname, 'kwargs')
+        # only update parameters with constants instance
+        if isinstance(constant, constants.constant_functions.Constant):
+            # only add constatns that have user=True
+            if constant.user:
+                # check if we have it in config dictionary
+                if cname in kwargs:
+                    # get config dictionary value
+                    configvalue = kwargs[cname]
+                    # deal with a None value
+                    if configvalue in [None, 'None', '']:
+                        configvalue = None
+                    # update value
+                    constant.value = configvalue
+                    # check values
+                    constant.check_value()
+                    # now add to params
+                    params[cname] = constant.value
+                    params.set_source(cname, 'kwargs')
+    # return params
+    return params
+
+
+def _quick_look_args(params: ParamDict, kwargs: dict,
+                     check_only: bool = False) -> ParamDict:
+    """
+    Quick look arguments: Arguments required as soon as possible
+    (i.e. debug mode) look in sys.argv and kwargs
+
+    :param params:
+    :param kwargs:
+    :return:
+    """
+    # set function name (cannot use params here as debug is not set)
+    func_name = display_func('_quick_look_args', __NAME__)
+    # ----------------------------------------------------------------------
+    # Debug
+    # ----------------------------------------------------------------------
+    # assume debug = 0 initially
+    debug = params.get('DEBUG', 0)
+    # only do this to check
+    if not check_only:
+        # check sys.argv
+        for it, arg in enumerate(sys.argv):
+            if arg.startswith('--debug='):
+                try:
+                    debug = int(arg.split('--debug=')[-1])
+                except Exception as _:
+                    pass
+            elif arg.startswith('--debug') and it != len(sys.argv):
+                try:
+                    debug = int(sys.argv[it + 1])
+                except Exception as _:
+                    pass
+
+        # check for debug in kwargs
+        if 'DEBUG' in kwargs:
+            try:
+                debug = int(kwargs['DEBUG'])
+            except Exception as _:
+                pass
+        # set debug in params
+        params.set('DEBUG', debug, source=func_name)
+    # set debug mode in log
+    if debug > 0:
+        params.log.set_lvl_debug(debug)
+    # ----------------------------------------------------------------------
+    # assume theme is dark initially
+    theme = params.get('PACKAGE_THEME', 'DARK')
+    # only do this to check
+    if not check_only:
+        # check sys.argv
+        for it, arg in enumerate(sys.argv):
+            if arg.startswith('--theme='):
+                try:
+                    theme = str(arg.split('--theme=')[-1])
+                except Exception as _:
+                    pass
+            elif arg.startswith('--theme') and it != len(sys.argv):
+                try:
+                    theme = str(sys.argv[it + 1])
+                except Exception as _:
+                    pass
+        # check for debug in kwargs
+        if 'THEME' in kwargs:
+            try:
+                theme = int(kwargs['THEME'])
+            except Exception as _:
+                pass
+    # update theme
+    if params.log.theme != theme:
+        params.log.update_theme(theme)
+    # ----------------------------------------------------------------------
     # return params
     return params
 
@@ -1515,64 +1690,233 @@ def _read_from_cmdline(params: ParamDict,
 
     :return: the argparse argument holder
     """
+    # set function name
+    func_name = display_func('_read_from_cmdline', __NAME__, params=params)
+    # basic check that sys.argv passed correctly
+    if isinstance(sys.argv, str):
+        emsg = 'sys.argv must be a list not a string (hint: use .split())'
+        raise exceptions.ConstantException(emsg, kind='log', funcname=func_name)
+
+    # print progress
+    logging.debug('Reading args from command line:')
+    logging.debug('\t sys.argv: {0}'.format(' '.join(sys.argv)))
     # set up parser
     parser = argparse.ArgumentParser(description=description)
     # loop around keyword arguments
     for cname in params:
         # get constant
         constant = params.instances[cname]
-        assert isinstance(constant, constants.constant_functions.Constant)
-        # only add constants that have argument=True
-        if constant.argument:
-            # deal with no command set
-            if constant.command is None:
-                # generate error
-                emsg = ('Constant {0} must have a "command" defined (as '
-                        '"argument=True")')
-                exceptions.ConstantException(emsg.format(cname),
-                                             kind='command')
-            # deal with casting data type
-            if constant.dtype in [int, float, str, bool]:
-                dtype = constant.dtype
-            else:
-                dtype = None
-            # add argument
-            parser.add_argument(*constant.command, type=dtype,
-                                action='store', default=None,
-                                dest=cname, help=constant.description)
+        # only update parameters with constants instance
+        if isinstance(constant, constants.constant_functions.Constant):
+            # only add constants that have argument=True
+            if constant.argument:
+                # deal with no command set
+                if constant.command is None:
+                    # generate error
+                    emsg = ('Constant {0} must have a "command" defined (as '
+                            '"argument=True")')
+                    exceptions.ConstantException(emsg.format(cname),
+                                                 kind='command')
+                # deal with casting data type
+                if constant.dtype in [int, float, str]:
+                    dtype = constant.dtype
+                else:
+                    dtype = None
+                # add argument
+                parser.add_argument(*constant.command, type=dtype,
+                                    action='store', default=None,
+                                    dest=cname, help=constant.description)
     # parse arguments
     args = parser.parse_args()
     # return parser arguments
     return args
 
 
-def _update_from_cmdline(params: ParamDict, args: argparse.Namespace):
+def _update_from_cmdline(params: ParamDict,
+                         args: argparse.Namespace) -> ParamDict:
+    """
+    Update arguments set from command line (sys.argv)
+
+    :param params:
+    :param args:
+    :return:
+    """
+    # set function name
+    _ = display_func('_update_from_cmdline', __NAME__,
+                             params=params)
     # ----------------------------------------------------------------------
     # now loop around and add to params
     # loop around keyword arguments
     for cname in params:
         # get constant
         constant = params.instances[cname]
-        assert isinstance(constant, constants.constant_functions.Constant)
-        # only add constant that have argument=True
-        if constant.argument:
-            # check if we have it in config dictionary
-            if hasattr(args, cname):
-                # get config dictionary value
-                configvalue = getattr(args, cname, None)
-                # deal with a None value
-                if configvalue in [None, 'None', '']:
-                    continue
-                # update value
-                constant.value = configvalue
-                # check values
-                constant.check_value()
-                # now add to params
-                params[cname] = constant.value
-                params.set_source(cname, 'sys.argv')
+        # only update parameters with constants instance
+        if isinstance(constant, constants.constant_functions.Constant):
+            # only add constant that have argument=True
+            if constant.argument:
+                # check if we have it in config dictionary
+                if hasattr(args, cname):
+                    # get config dictionary value
+                    configvalue = getattr(args, cname, None)
+                    # deal with a None value
+                    if configvalue in [None, 'None', '']:
+                        continue
+                    # update value
+                    constant.value = configvalue
+                    # check values
+                    constant.check_value()
+                    # now add to params
+                    params[cname] = constant.value
+                    params.set_source(cname, 'sys.argv')
     # return params
     return params
 
+
+def _setup_working_directory(params: ParamDict,
+                             name: Union[None, str] = None) -> ParamDict:
+    """
+    Setup the working directory based on the state of params
+    :param params:
+    :return:
+    """
+    # set function name
+    func_name = display_func('_setup_working_directory', __NAME__,
+                             params=params)
+    # get parameters from params
+    package_name = str(params['PACKAGE_NAME'])
+    package_dir = str(params['PACKAGE_DIRECTORY'])
+    workingdir = str(params['DIRECTORY'])
+    # default default working directory path
+    if AMIDIR in os.environ:
+        default_dir = Path(os.environ[AMIDIR])
+    else:
+        default_dir = Path.home().joinpath(package_name, package_dir)
+    # ----------------------------------------------------------------------
+    # at this point it should not be None but check again any way
+    if workingdir in ['', 'None']:
+        workingdir = Path(default_dir)
+    # else we try to make this directroy
+    else:
+        try:
+            workingdir = Path(workingdir)
+        # if we cannot create it go with default
+        except Exception as e:
+            msg = 'Invalid working dir. Setting to default'
+            msg += '\n\t{0}: {1}'.format(type(e), str(e))
+            msg += '\n\tDefault = {0}'.format(workingdir)
+            params.log.info(msg)
+            workingdir = Path(default_dir)
+
+    # ----------------------------------------------------------------------
+    # now check if path exists
+    while not workingdir.exists():
+        try:
+            workingdir.mkdir()
+        except Exception as e:
+            # if working directory is the default working dir we have to stop
+            #   here
+            if workingdir == default_dir:
+                emsg = 'Cannot create default working dir: {0}'
+                raise exceptions.ConstantException(emsg.format(default_dir),
+                                                   kind='mkdir')
+            # else set the working directory to default
+            msg = 'Cannot create working dir. Setting to default'
+            msg += '\n\t{0}: {1}'.format(type(e), str(e))
+            msg += '\n\tDefault = {0}'.format(workingdir)
+            params.log.info(msg)
+            workingdir = Path(default_dir)
+
+    # ----------------------------------------------------------------------
+    # now we have the working dir we can set some paths
+    inputdir = Path(workingdir).joinpath('inputs')
+    outputdir = Path(workingdir).joinpath('outputs')
+    logdir = Path(workingdir).joinpath('log')
+    # construct log file name
+    if name is not None:
+        logfile = 'LOG-{0}-{1}.log'.format(name, str(params['PID']))
+    else:
+        logfile = '{0}.log'.format(str(params['PID']))
+    # add to params
+    params.set('INPUTDIR', inputdir, source=func_name)
+    params.set('OUTPUTDIR', outputdir, source=func_name)
+    params.set('LOGDIR', logdir, source=func_name)
+    # set the log file name
+    params.set('LOGFILE', logdir.joinpath(logfile), source=func_name)
+    # ----------------------------------------------------------------------
+    # now check that these paths exist and if not create them
+    values = [inputdir, outputdir, logdir]
+    names = ['input', 'output', 'log']
+    # loop around values
+    for it in range(len(values)):
+        # get this iterations values
+        value = values[it]
+        name = names[it]
+        # check input directory
+        if not value.exists():
+            try:
+                value.mkdir()
+            except Exception as e:
+                emsg = 'Cannot create {0} dir: {1}'.format(name, value)
+                emsg += '\nError {0}: {1}'.format(e.__name__, e)
+                kind = '{0}dir'.format(name)
+                raise exceptions.ConstantException(emsg, kind=kind)
+    # ----------------------------------------------------------------------
+    return params
+
+
+def _assign_pid():
+    """
+    Assign a process id based on the time now and return it and the
+    time now
+
+    :return: the process id and the human time at creation
+    :rtype: tuple[str, str]
+    """
+    # get unix char code
+    unixtime, humantime, rval = unix_char_code()
+    # write pid
+    pid = 'PID-{0:020d}-{1}'.format(int(unixtime), rval)
+    # return pid and human time
+    return pid, humantime
+
+
+def unix_char_code():
+    # we need a random seed
+    np.random.seed(random.randint(1, 2**30))
+    # generate a random number (in case time is too similar)
+    #  -- happens a lot in multiprocessing
+    rint = np.random.randint(1000, 9999, 1) / 1e7
+    # wait a fraction of time (between 1us and 1ms)
+    time.sleep(rint)
+    # get the time now from astropy
+    timenow = Time.now()
+    # get unix and human time from astropy time now
+    unixtime = timenow.unix * 1e7
+    humantime = timenow.iso
+    # generate random four characters to make sure pid is unique
+    rval = ''.join(np.random.choice(list(CHARS), size=4))
+    return unixtime, humantime, rval
+
+
+def _splash(params: ParamDict, quiet: bool = False,
+            name: Union[str, None] = None):
+    # if quiet do nothing
+    if quiet:
+        return
+    # else print a header
+    package_name = params['PACKAGE_NAME']
+    package_version = params['PACKAGE_VERSION']
+    # set up text
+    headertext = '\t{0}\tVersion: {1}'
+    # push to log
+    params.log.header()
+    params.log.empty(headertext.format(package_name, package_version), 'g')
+    params.log.header()
+    # deal with adding the code name (if set)
+    if name is not None:
+        nametext = '\tCode: {0}'
+        params.log.empty(nametext.format(name), 'b')
+        params.log.header()
 
 def _generate_config_file(params: ParamDict):
     """
@@ -1581,16 +1925,19 @@ def _generate_config_file(params: ParamDict):
     :param lconsts:
     :return:
     """
-    # get the config file
-    if params['USER_CONFIG_FILE'] is not None:
-        user_config_file = params['USER_CONFIG_FILE']
-    else:
+    # set function name
+    func_name = display_func('_setup_working_directory', __NAME__,
+                             params=params)
+    # get parameters from params
+    user_config_file = str(params['USER_CONFIG_FILE'])
+    # deal with unset user config file
+    if params['USER_CONFIG_FILE'] in ['', 'None']:
         user_config_file = 'user_config.ini'
     # get the output directory
-    if params['OUTDIR'] is not None:
-        outdir = params['OUTDIR']
+    if Path(user_config_file).exists():
+        outdir = Path(user_config_file)
     else:
-        outdir = os.path.join('.', 'outputs')
+        outdir = Path(params['CONFIGDIR']).joinpath(Path(user_config_file).name)
     # ----------------------------------------------------------------------
     # set up lines for adding to constants file
     lines = CONFIG_FILE_HEADER.split('\n')
@@ -1600,32 +1947,32 @@ def _generate_config_file(params: ParamDict):
     for cname in params:
         # get constant
         constant = params.instances[cname]
-        assert isinstance(constant, constants.constant_functions.Constant)
-        # only add constants that have user=True
-        if constant.user:
-            # --------------------------------------------------------------
-            # deal with adding group section
-            if constant.group not in used_groups:
-                lines += CONFIG_GROUP_HEADER.format(constant.group).split('\n')
-                # add group to used groups
-                used_groups.append(constant.group)
-            # --------------------------------------------------------------
-            # get description lines
-            dlines = _wraptext(constant.description)
-            # loop around description lines and add to lines as comments
-            for dline in dlines:
-                lines.append('# ' + dline)
-            # --------------------------------------------------------------
-            # then add the line NAME = VALUE
-            lines.append('{0} = {1}'.format(constant.name, constant.value))
-            lines.append('')
+        # only update parameters with constants instance
+        if isinstance(constant, constants.constant_functions.Constant):
+            # only add constants that have user=True
+            if constant.user:
+                # --------------------------------------------------------------
+                # deal with adding group section
+                if constant.group not in used_groups:
+                    line = CONFIG_GROUP_HEADER.format(constant.group)
+                    lines += line.split('\n')
+                    # add group to used groups
+                    used_groups.append(constant.group)
+                # --------------------------------------------------------------
+                # get description lines
+                dlines = _wraptext(constant.description)
+                # loop around description lines and add to lines as comments
+                for dline in dlines:
+                    lines.append('# ' + dline)
+                # --------------------------------------------------------------
+                # then add the line NAME = VALUE
+                lines.append('{0} = {1}'.format(constant.name, constant.value))
+                lines.append('')
     # ----------------------------------------------------------------------
     # construct out path
-    outpath = os.path.join(outdir, user_config_file)
-
-    print('Writing constants file to {0}'.format(outpath))
+    params.log.info('Writing constants file to {0}'.format(outdir))
     # write constants file to directory
-    with open(outpath, 'w') as f:
+    with open(outdir, 'w') as f:
         for line in lines:
             f.write(line + '\n')
 
