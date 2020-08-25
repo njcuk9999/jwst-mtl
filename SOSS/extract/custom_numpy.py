@@ -102,3 +102,14 @@ def arange_2d(*args, dtype=None, return_mask=False):
         return out, mask
     else:
         return out
+    
+def arange_R_cst(x1, x2, R):
+    '''
+    Return an array with constant resolution so
+    that x/dx = R = constant
+    '''
+    
+    log_dx = np.log(1.0 + 1.0/R)
+    log_x = np.arange(np.log(x1), np.log(x2), log_dx)
+    
+    return np.exp(log_x)
