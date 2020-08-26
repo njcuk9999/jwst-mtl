@@ -15,7 +15,7 @@ from throughput import ThroughputSOSS
 from regularisation import Tikhonov, tikho_solve
 
 
-class _BaseOverlap():
+class _BaseOverlap:
     """
     Base class for overlaping extraction of the form:
     (B_T * B) * f = (data/sig)_T * B
@@ -29,56 +29,57 @@ class _BaseOverlap():
     The classes inheriting from this class should specify the
     methods get_w which computes the 'k' associated to each pixel 'i'.
     These depends of the type of interpolation used.
-
-    Parameters
-    ----------
-    p_list : (N_ord, N, M) list or array of 2-D arrays
-        A list or array of the spatial profile for each order
-        on the detector. It has to have the same (N, M) as `scidata`.
-    lam_list : (N_ord, N, M) list or array of 2-D arrays
-        A list or array of the central wavelength position for each
-        order on the detector.
-        It has to have the same (N, M) as `scidata`.
-    scidata : (N, M) array_like, optional
-        A 2-D array of real values representing the detector image.
-    lam_grid : (N_k) array_like, optional
-        The grid on which f(lambda) will be projected.
-        Default still has to be improved.
-    lam_bounds : list or array-like (N_ord, 2), optional
-        Boundary wavelengths covered by each orders.
-        Default is the wavelength covered by `lam_list`.
-    i_bounds : list or array-like (N_ord, 2), optional
-        Index of `lam_bounds`on `lam_grid`.
-    c_list : array or sparse, optional
-        Convolution kernel to be applied on f_k for each orders.
-        If array, the shape has to be (N_ker, N_k_c) and it will
-        be passed to `convolution.get_c_matrix` function.
-        If sparse, the shape has to be (N_k_c, N_k) and it will
-        be used directly. N_ker is the length of the effective kernel
-        and N_k_c is the length of f_k convolved.
-        Default is given by convolution.WebbKer(wv_map, n_os=10, n_pix=21).
-    t_list : (N_ord [, N_k]) list or array of callable, optional
-        A list of functions or array of the throughput at each order.
-        If callable, the function depend on the wavelength.
-        If array, projected on `lam_grid`.
-        Default is given by `throughput.ThroughputSOSS`.
-    c_kwargs : list of N_ord dictionnaries, optional
-        Inputs keywords arguments to pass to
-        `convolution.get_c_matrix` function.
-    sig : (N, M) array_like, optional
-        Estimate of the error on each pixel. Default is one everywhere.
-    mask : (N, M) array_like boolean, optional
-        Boolean Mask of the bad pixels on the detector.
-    tresh : float, optional:
-        The pixels where the estimated spatial profile is less than
-        this value will be masked. Default is 1e-5.
-    verbose : bool, optional
-        Print steps. Default is False.
     """
     def __init__(self, p_list, lam_list, scidata=None, lam_grid=None,
                  lam_bounds=None, i_bounds=None, c_list=None,
                  c_kwargs=None, t_list=None, sig=None,
                  mask=None, thresh=1e-5, orders=[1, 2], verbose=False):
+        """
+        Parameters
+        ----------
+        p_list : (N_ord, N, M) list or array of 2-D arrays
+            A list or array of the spatial profile for each order
+            on the detector. It has to have the same (N, M) as `scidata`.
+        lam_list : (N_ord, N, M) list or array of 2-D arrays
+            A list or array of the central wavelength position for each
+            order on the detector.
+            It has to have the same (N, M) as `scidata`.
+        scidata : (N, M) array_like, optional
+            A 2-D array of real values representing the detector image.
+        lam_grid : (N_k) array_like, optional
+            The grid on which f(lambda) will be projected.
+            Default still has to be improved.
+        lam_bounds : list or array-like (N_ord, 2), optional
+            Boundary wavelengths covered by each orders.
+            Default is the wavelength covered by `lam_list`.
+        i_bounds : list or array-like (N_ord, 2), optional
+            Index of `lam_bounds`on `lam_grid`.
+        c_list : array or sparse, optional
+            Convolution kernel to be applied on f_k for each orders.
+            If array, the shape has to be (N_ker, N_k_c) and it will
+            be passed to `convolution.get_c_matrix` function.
+            If sparse, the shape has to be (N_k_c, N_k) and it will
+            be used directly. N_ker is the length of the effective kernel
+            and N_k_c is the length of f_k convolved.
+            Default is given by convolution.WebbKer(wv_map, n_os=10, n_pix=21).
+        t_list : (N_ord [, N_k]) list or array of callable, optional
+            A list of functions or array of the throughput at each order.
+            If callable, the function depend on the wavelength.
+            If array, projected on `lam_grid`.
+            Default is given by `throughput.ThroughputSOSS`.
+        c_kwargs : list of N_ord dictionnaries, optional
+            Inputs keywords arguments to pass to
+            `convolution.get_c_matrix` function.
+        sig : (N, M) array_like, optional
+            Estimate of the error on each pixel. Default is one everywhere.
+        mask : (N, M) array_like boolean, optional
+            Boolean Mask of the bad pixels on the detector.
+        tresh : float, optional:
+            The pixels where the estimated spatial profile is less than
+            this value will be masked. Default is 1e-5.
+        verbose : bool, optional
+            Print steps. Default is False.
+        """
 
         ############################
         # Check input
@@ -232,14 +233,19 @@ class _BaseOverlap():
         self.data[self.mask] = 0
 
     def _get_masks(self, mask):
-
+        """
+        Compute a global mask on the detector and for each orders.
+        Depends on the spatial profile, the wavelength grid
+        and the user defined mask (optional). These are all specified
+        when initiating the object.
+        """
         # Get needed attributes
         thresh, n_ord \
             = self.getattrs('thresh', 'n_ord')
         t_list, p_list, lam_list  \
             = self.getattrs('t_list', 'p_list', 'lam_list')
 
-        # Mask according to the global troughput (spectral and spatial)
+        # Mask according to the spatial profile
         mask_P = [P < thresh for P in p_list]
 
         # Mask pixels not covered by the wavelength grid
@@ -269,7 +275,7 @@ class _BaseOverlap():
 
     def _get_i_bnds(self, lam_bounds):
         """
-        Define wavelength boundaries for each orders using the order's mask
+        Define wavelength boundaries for each orders using the order's mask.
         """
 
         # TODO: define this function for only a given order
@@ -297,32 +303,35 @@ class _BaseOverlap():
 
         return i_bnds_new
 
-    def rebuild(self, f, orders=None):
+    def rebuild(self, f_lam, orders=None):
         """
         Build current model of the detector.
 
         Parameters
         ----------
-        f: array-like or callable
+        f_lam: array-like or callable
             flux as a function of wavelength if callable
             or flux projected on the wavelength grid
         orders: iterable, ooptional
             Order index to model on detector. Default is
             all available orders.
+        Output
+        ------
+        2D array-like image of the detector
         """
 
         # If f is callable, project on grid
-        if callable(f):
+        if callable(f_lam):
             grid = self.lam_grid
 
             # Project on wavelength grid
-            f = f(grid)
+            f_lam = f_lam(grid)
 
         # Iterate over all orders by default
         if orders is None:
             orders = range(self.n_ord)
 
-        return self._rebuild(f, orders)
+        return self._rebuild(f_lam, orders)
 
     def _rebuild(self, f_k, orders):
         """
@@ -334,8 +343,10 @@ class _BaseOverlap():
             Flux projected on the wavelength grid
         orders: iterable
             Order index to model on detector.
+        Output
+        ------
+        2D array-like image of the detector
         """
-
         # Get needed class attribute
         ma = self.mask
 
@@ -403,6 +414,9 @@ class _BaseOverlap():
         quick: bool, optional
             If True, only perform one matrix multiplication
             instead of the whole system: (P/sig).(w.T.lambda.c_n)
+        Output
+        ------
+        sparse matrix of b_n coefficients
         """
         #### Input management ######
 
@@ -447,14 +461,17 @@ class _BaseOverlap():
             # then weights
             product = w_n.dot(product)
             # Save this product for quick mode
-            self.save_w_t_lam_c(i_ord, product)
+            self._save_w_t_lam_c(i_ord, product)
             # Then spatial profile
             b_n = diags(p_n).dot(product)
 
         return b_n
 
-    def save_w_t_lam_c(self, order, product):
-
+    def _save_w_t_lam_c(self, order, product):
+        """
+        Save the matrix product of the weighs (w), the throughput (t),
+        the wavelength (lam) and the convolution matrix for faster computation.
+        """
         # Get needed attributes
         n_ord = self.n_ord
 
@@ -494,6 +511,9 @@ class _BaseOverlap():
             A list or array of the spatial profile for each order
             on the detector. It has to have the same (N, M) as `scidata`.
             Default is the object attribute `p_list`
+        Output
+        ------
+        A and b from Ax = b beeing the system to solve.
         """
         ##### Input management ######
 
@@ -542,8 +562,11 @@ class _BaseOverlap():
 
     def extract(self, tikhonov=False, tikho_kwargs=None, **kwargs):
         """
-        Build linear system arising from the logL maximisation.
+        Extract underlying flux on the detector.
         All parameters are passed to `build_sys` method.
+        TIPS: To be quicker, only specify the psf (`p_list`) in kwargs.
+              There will be only one matrix multiplication:
+              (P/sig).(w.T.lambda.c_n).
         Parameters
         ----------
         tikhonov : bool, optional
@@ -567,6 +590,9 @@ class _BaseOverlap():
             Estimate of the error on each pixel`
             Same shape as `scidata`.
             Default is the object attribute `sig`.
+        Ouput
+        -----
+        f_k: solution of the linear system
         """
         # Build the system to solve
         matrix, result = self.build_sys(**kwargs)
@@ -618,7 +644,13 @@ class _BaseOverlap():
 
     def get_logl(self, f_k=None):
         """
-        Return the log likelihood compute on each pixels
+        Return the log likelihood computed on each pixels.
+
+        Parameters
+        ----------
+        f_k: array-like, optional
+            Flux projected on the wavelength grid. If not specified,
+            it will be computed using `extract` method.
         """
         data = self.data
         sig = self.sig
@@ -712,6 +744,23 @@ class _BaseOverlap():
         return np.unique(os_grid)
 
     def get_tikho_tests(self, factors, tikho=None, estimate=None, **kwargs):
+        """
+        Test different factors for Tikhonov regularisation.
+
+        Parameters
+        ----------
+        factors: 1D list or array-like
+            Factors to be tested.
+        tikho: Tikhonov object, optional
+            Tikhonov regularisation object (see regularisation.Tikhonov).
+            If not given, an object will be initiated using the linear system
+            from `build_sys` method and kwargs will be passed.
+        estimate: 1D array-like, optional
+            Estimate of the flux projected on the wavelength grid.
+        Output
+        ------
+        dictonnary of the tests results
+        """
 
         # Build the system to solve
         matrix, result = self.build_sys()
@@ -743,8 +792,27 @@ class _BaseOverlap():
 
         return tikho.test
 
-    def plot_tikho_factors(self):
+    @staticmethod
+    def _check_plot_inputs(fig, ax):
+        """
+        Method to manage inputs for plots methods.
+        """
+        # Use ax or fig if given. Else, init the figure
+        if (fig is None) and (ax is None):
+            fig, ax = plt.subplots(1, 1, sharex=True)
+        elif ax is None:
+            ax = fig.subplots(1, 1, sharex=True)
 
+        return fig, ax
+
+    def plot_tikho_factors(self):
+        """
+        Plot results of tikhonov tests.
+        Output
+        ------
+        figure and axes (for plot)
+        """
+        # Use tikhonov extraction from object
         tikho = self.tikho
 
         # Init figure
@@ -760,25 +828,36 @@ class _BaseOverlap():
 
         return fig, ax
 
-    @staticmethod
-    def _check_plot_inputs(fig, ax):
-        """
-        Method to manage inputs for plots methods.
-        """
-        # Use ax or fig if given. Else, init the figure
-        if (fig is None) and (ax is None):
-            fig, ax = plt.subplots(1, 1, sharex=True)
-        elif ax is None:
-            ax = fig.subplots(1, 1, sharex=True)
-
-        return fig, ax
-
     def plot_sln(self, f_k, fig=None, ax=None, i_ord=0,
                  ylabel='Flux', xlabel=r'Wavelength [$\mu$m]', **kwargs):
+        """
+        Plot extracted spectrum
+
+        Parameters
+        ----------
+        f_k: array-like
+            Flux projected on the wavelength grid
+        fig: matplotlib figure, optional
+            Figure to use for plot
+            If not given and ax is None, new figure is initiated
+        ax: matplotlib axis, optional
+            axis to use for plot. If not given, a new axis is initiated.
+        i_ord: int, optional
+            index of the order to plot.
+            Default is 0 (so the first order given).
+        ylabel: str, optional
+            Label of y axis
+        xlabel: str, optional
+            Label of x axis
+        kwargs:
+            other kwargs to be passed to plt.plot
+        Output
+        ------
+        fig, ax
+        """
 
         # Manage method's inputs
-        args = (fig, ax)
-        fig, ax = self._check_plot_inputs(*args)
+        fig, ax = self._check_plot_inputs(fig, ax)
 
         # Set values to plot
         x = self.lam_grid_c(i_ord)
@@ -794,10 +873,41 @@ class _BaseOverlap():
     def plot_err(self, f_k, f_th_ord, fig=None, ax=None,
                  i_ord=0, error='relative', ylabel='Error',
                  xlabel=r'Wavelength [$\mu$m]', **kwargs):
+        """
+        Plot error on extracted spectrum
+
+        Parameters
+        ----------
+        f_k: array-like
+            Flux projected on the wavelength grid
+        f_th_ord: array-like
+            Injected flux projected on the wavelength grid
+            and convolved at `i_ord` resolution
+        fig: matplotlib figure, optional
+            Figure to use for plot
+            If not given and ax is None, new figure is initiated
+        ax: matplotlib axis, optional
+            axis to use for plot. If not given, a new axis is initiated.
+        i_ord: int, optional
+            index of the order to plot. Default is 0 (so the first order given)
+        error: str, optional
+            Which type of error to plot.
+            Possibilities: 'relative', 'absolute', 'to_noise'
+            Default is 'relative'. To noise is the error relative
+            to the expected Poisson noise error
+        ylabel: str, optional
+            Label of y axis
+        xlabel: str, optional
+            Label of x axis
+        kwargs:
+            other kwargs to be passed to plt.plot
+        Output
+        ------
+        fig, ax
+        """
 
         # Manage method's inputs
-        args = (fig, ax)
-        fig, ax = self._check_plot_inputs(*args)
+        fig, ax = self._check_plot_inputs(fig, ax)
 
         # Set values to plot
         x = self.lam_grid_c(i_ord)
@@ -846,7 +956,18 @@ class _BaseOverlap():
         return self.lam_grid[index]
 
     def getattrs(self, *args, n=None):
+        """
+        Return list of attributes
 
+        Parameters
+        ----------
+        args: str
+            All attributes to return.
+        n: None or int, optionoal
+            Index of order to extract. If specified, it will
+            be applied to all attributes in args, so it cannot
+            be mixed with non-order dependent attributes).
+        """
         if n is None:
             out = [getattr(self, arg) for arg in args]
         else:
@@ -858,15 +979,77 @@ class _BaseOverlap():
             return out[0]
 
     def v_print(self, *args, **kwargs):
-
+        """
+        Print if verbose if true. Same as `print`function.
+        """
         if self.verbose:
             print(*args, **kwargs)
 
 
 class LagrangeOverlap(_BaseOverlap):
+    """
+    (Not fully tested. Better to use `TrpzOverlap`)
+    Version of overlaping extraction with lagrange interpolation.
+    overlaping extraction solve the equation of the form:
+    (B_T * B) * f = (data/sig)_T * B
+    where B is a matrix and f is an array.
+    The matrix multiplication B * f is the 2d model of the detector.
+    We want to solve for the array f.
+    The elements of f are labelled by 'k'.
+    The pixels are labeled by 'i'.
+    Every pixel 'i' is covered by a set of 'k' for each order
+    of diffraction.
+    """
 
     def __init__(self, *args, lagrange_ord=1, lam_grid=None, **kwargs):
-
+        """
+        Parameters
+        ----------
+        p_list : (N_ord, N, M) list or array of 2-D arrays
+            A list or array of the spatial profile for each order
+            on the detector. It has to have the same (N, M) as `scidata`.
+        lam_list : (N_ord, N, M) list or array of 2-D arrays
+            A list or array of the central wavelength position for each
+            order on the detector.
+            It has to have the same (N, M) as `scidata`.
+        lagrange_ord: int, optional
+            order of the lagrange interpolation method. Default is 1.
+        scidata : (N, M) array_like, optional
+            A 2-D array of real values representing the detector image.
+        lam_grid : (N_k) array_like, optional
+            The grid on which f(lambda) will be projected.
+            Default still has to be improved.
+        lam_bounds : list or array-like (N_ord, 2), optional
+            Boundary wavelengths covered by each orders.
+            Default is the wavelength covered by `lam_list`.
+        i_bounds : list or array-like (N_ord, 2), optional
+            Index of `lam_bounds`on `lam_grid`.
+        c_list : array or sparse, optional
+            Convolution kernel to be applied on f_k for each orders.
+            If array, the shape has to be (N_ker, N_k_c) and it will
+            be passed to `convolution.get_c_matrix` function.
+            If sparse, the shape has to be (N_k_c, N_k) and it will
+            be used directly. N_ker is the length of the effective kernel
+            and N_k_c is the length of f_k convolved.
+            Default is given by convolution.WebbKer(wv_map, n_os=10, n_pix=21).
+        t_list : (N_ord [, N_k]) list or array of callable, optional
+            A list of functions or array of the throughput at each order.
+            If callable, the function depend on the wavelength.
+            If array, projected on `lam_grid`.
+            Default is given by `throughput.ThroughputSOSS`.
+        c_kwargs : list of N_ord dictionnaries, optional
+            Inputs keywords arguments to pass to
+            `convolution.get_c_matrix` function.
+        sig : (N, M) array_like, optional
+            Estimate of the error on each pixel. Default is one everywhere.
+        mask : (N, M) array_like boolean, optional
+            Boolean Mask of the bad pixels on the detector.
+        tresh : float, optional:
+            The pixels where the estimated spatial profile is less than
+            this value will be masked. Default is 1e-5.
+        verbose : bool, optional
+            Print steps. Default is False.
+        """
         # Attribute specific to the interpolation method
         self.lagrange_ord = lagrange_ord
 
@@ -875,7 +1058,7 @@ class LagrangeOverlap(_BaseOverlap):
         super().__init__(*args, lam_grid=lam_grid, **kwargs)
 
     def get_mask_lam(self, n):
-
+        """ Mask according to wavelength grid """
         lam, i_bnds   \
             = self.getattrs('lam_list', 'i_bounds', n=n)
         lam_min = self.lam_grid[i_bnds[0]]
@@ -886,7 +1069,19 @@ class LagrangeOverlap(_BaseOverlap):
         return mask
 
     def get_w(self, n):
+        """
+        Compute integration weights for each grid points and each pixels.
+        Depends on the order `n`.
 
+        Output
+        ------
+        w_n: 2d array
+            weights at this specific order `n`. The shape is given by:
+            (number of pixels, max number of wavelenghts covered by a pixel)
+        k_n: 2d array
+            index of the wavelength grid corresponding to the weights.
+            Same shape as w_n
+        """
         # Get needed attributes
         order = self.lagrange_ord
 
@@ -917,12 +1112,12 @@ class LagrangeOverlap(_BaseOverlap):
         w_n = np.ones((order+1, n_i)) * np.nan
         k_n = np.ones((order+1, n_i), dtype=int) * -1
         # Compute values in grid range
-        w_n[:,~ma] = interp.get_coeffs(lam[~ma])
+        w_n[:, ~ma] = interp.get_coeffs(lam[~ma])
         i_segment = interp.get_index(lam[~ma])
-        k_n[:,~ma] = interp.index[:,i_segment]
+        k_n[:, ~ma] = interp.index[:, i_segment]
 
         # Include delta lambda in the weights
-        w_n[:,~ma] = w_n[:,~ma] * d_lam[~ma]
+        w_n[:, ~ma] = w_n[:, ~ma] * d_lam[~ma]
 
         return w_n.T, k_n.T
 
@@ -939,55 +1134,55 @@ class TrpzOverlap(_BaseOverlap):
     The pixels are labeled by 'i'.
     Every pixel 'i' is covered by a set of 'k' for each order
     of diffraction.
-
-    Parameters
-    ----------
-    p_list : (N_ord, N, M) list or array of 2-D arrays
-        A list or array of the spatial profile for each order
-        on the detector. It has to have the same (N, M) as `scidata`.
-    lam_list : (N_ord, N, M) list or array of 2-D arrays
-        A list or array of the central wavelength position for each
-        order on the detector.
-        It has to have the same (N, M) as `scidata`.
-    scidata : (N, M) array_like, optional
-        A 2-D array of real values representing the detector image.
-    lam_grid : (N_k) array_like, optional
-        The grid on which f(lambda) will be projected.
-        Default still has to be improved.
-    lam_bounds : list or array-like (N_ord, 2), optional
-        Boundary wavelengths covered by each orders.
-        Default is the wavelength covered by `lam_list`.
-    i_bounds : list or array-like (N_ord, 2), optional
-        Index of `lam_bounds`on `lam_grid`.
-    c_list : array or sparse, optional
-        Convolution kernel to be applied on f_k for each orders.
-        If array, the shape has to be (N_ker, N_k_c) and it will
-        be passed to `convolution.get_c_matrix` function.
-        If sparse, the shape has to be (N_k_c, N_k) and it will
-        be used directly. N_ker is the length of the effective kernel
-        and N_k_c is the length of f_k convolved.
-        Default is given by convolution.WebbKer(wv_map, n_os=10, n_pix=21).
-    t_list : (N_ord [, N_k]) list or array of callable, optional
-        A list of functions or array of the throughput at each order.
-        If callable, the function depend on the wavelength.
-        If array, projected on `lam_grid`.
-        Default is given by `throughput.ThroughputSOSS`.
-    c_kwargs : list of N_ord dictionnaries, optional
-        Inputs keywords arguments to pass to
-        `convolution.get_c_matrix` function.
-    sig : (N, M) array_like, optional
-        Estimate of the error on each pixel. Default is one everywhere.
-    mask : (N, M) array_like boolean, optional
-        Boolean Mask of the bad pixels on the detector.
-    tresh : float, optional:
-        The pixels where the estimated spatial profile is less than
-        this value will be masked. Default is 1e-5.
-    verbose : bool, optional
-        Print steps. Default is False.
     """
 
     def __init__(self, p_list, lam_list, **kwargs):
-
+        """
+        Parameters
+        ----------
+        p_list : (N_ord, N, M) list or array of 2-D arrays
+            A list or array of the spatial profile for each order
+            on the detector. It has to have the same (N, M) as `scidata`.
+        lam_list : (N_ord, N, M) list or array of 2-D arrays
+            A list or array of the central wavelength position for each
+            order on the detector.
+            It has to have the same (N, M) as `scidata`.
+        scidata : (N, M) array_like, optional
+            A 2-D array of real values representing the detector image.
+        lam_grid : (N_k) array_like, optional
+            The grid on which f(lambda) will be projected.
+            Default still has to be improved.
+        lam_bounds : list or array-like (N_ord, 2), optional
+            Boundary wavelengths covered by each orders.
+            Default is the wavelength covered by `lam_list`.
+        i_bounds : list or array-like (N_ord, 2), optional
+            Index of `lam_bounds`on `lam_grid`.
+        c_list : array or sparse, optional
+            Convolution kernel to be applied on f_k for each orders.
+            If array, the shape has to be (N_ker, N_k_c) and it will
+            be passed to `convolution.get_c_matrix` function.
+            If sparse, the shape has to be (N_k_c, N_k) and it will
+            be used directly. N_ker is the length of the effective kernel
+            and N_k_c is the length of f_k convolved.
+            Default is given by convolution.WebbKer(wv_map, n_os=10, n_pix=21).
+        t_list : (N_ord [, N_k]) list or array of callable, optional
+            A list of functions or array of the throughput at each order.
+            If callable, the function depend on the wavelength.
+            If array, projected on `lam_grid`.
+            Default is given by `throughput.ThroughputSOSS`.
+        c_kwargs : list of N_ord dictionnaries, optional
+            Inputs keywords arguments to pass to
+            `convolution.get_c_matrix` function.
+        sig : (N, M) array_like, optional
+            Estimate of the error on each pixel. Default is one everywhere.
+        mask : (N, M) array_like boolean, optional
+            Boolean Mask of the bad pixels on the detector.
+        tresh : float, optional:
+            The pixels where the estimated spatial profile is less than
+            this value will be masked. Default is 1e-5.
+        verbose : bool, optional
+            Print steps. Default is False.
+        """
         # Get wavelength at the boundary of each pixel
         # TODO? Could also be an input??
         lam_p, lam_m = [], []
@@ -1003,6 +1198,11 @@ class TrpzOverlap(_BaseOverlap):
         """
         Find the lowest (L) and highest (H) index
         of lam_grid for each pixels and orders.
+
+        Output:
+        -------
+        1d array of the lowest and 1d array of the highest index.
+        the length is the number of non-masked pixels
         """
         self.v_print('Compute LH')
 
@@ -1033,7 +1233,7 @@ class TrpzOverlap(_BaseOverlap):
         return L, H
 
     def get_mask_lam(self, n):
-
+        """ Mask according to wavelength grid """
         lam_p, lam_m, i_bnds   \
             = self.getattrs('lam_p', 'lam_m', 'i_bounds', n=n)
         lam_min = self.lam_grid[i_bnds[0]]
@@ -1044,7 +1244,19 @@ class TrpzOverlap(_BaseOverlap):
         return mask
 
     def get_w(self, n):
+        """
+        Compute integration weights for each grid points and each pixels.
+        Depends on the order `n`.
 
+        Output
+        ------
+        w_n: 2d array
+            weights at this specific order `n`. The shape is given by:
+            (number of pixels, max number of wavelenghts covered by a pixel)
+        k_n: 2d array
+            index of the wavelength grid corresponding to the weights.
+            Same shape as w_n
+        """
         self.v_print('Compute weigths and k')
 
         # Get needed attributes
@@ -1120,8 +1332,8 @@ class TrpzOverlap(_BaseOverlap):
         self.v_print('compute w')
 
         # Valid for every cases
-        w_n[:,0] = grid[k_n[:,1]] - lam_m
-        w_n[i,n_k-1] = lam_p - grid[k_n[i,n_k-2]]
+        w_n[:, 0] = grid[k_n[:, 1]] - lam_m
+        w_n[i, n_k-1] = lam_p - grid[k_n[i, n_k-2]]
 
         ##################
         # Case 1, n_k == 2
@@ -1130,14 +1342,14 @@ class TrpzOverlap(_BaseOverlap):
         if case.any():
             self.v_print('n_k = 2')
             # if k_i[0] != L_i
-            cond = case & (k_n[:,0] != L)
-            w_n[cond,1] += lam_m[cond] - grid[k_n[cond,0]]
+            cond = case & (k_n[:, 0] != L)
+            w_n[cond, 1] += lam_m[cond] - grid[k_n[cond, 0]]
             # if k_i[-1] != H_i
-            cond = case & (k_n[:,1] != H)
-            w_n[cond,0] += grid[k_n[cond,1]] - lam_p[cond]
+            cond = case & (k_n[:, 1] != H)
+            w_n[cond, 0] += grid[k_n[cond, 1]] - lam_p[cond]
             # Finally
-            w_n[case,:] *= ((lam_p[case] - lam_m[case])
-                          / d_grid[k_n[case,0]])[:,None]
+            w_n[case, :] *= ((lam_p[case] - lam_m[case])
+                             / d_grid[k_n[case, 0]])[:, None]
 
         ##################
         # Case 2, n_k >= 3
@@ -1146,22 +1358,23 @@ class TrpzOverlap(_BaseOverlap):
         if case.any():
             self.v_print('n_k = 3')
             n_ki = n_k[case]
-            w_n[case,1] = grid[k_n[case,1]] - lam_m[case]
-            w_n[case,n_ki-2] += lam_p[case] - grid[k_n[case,n_ki-2]]
+            w_n[case, 1] = grid[k_n[case, 1]] - lam_m[case]
+            w_n[case, n_ki-2] += lam_p[case] - grid[k_n[case, n_ki-2]]
             # if k_i[0] != L_i
-            cond = case & (k_n[:,0] != L)
-            w_n[cond,0] *= (grid[k_n[cond,1]] - lam_m[cond]) / d_grid[k_n[cond,0]]
-            w_n[cond,1] += ((grid[k_n[cond,1]] - lam_m[cond])
-                          * (lam_m[cond] - grid[k_n[cond,0]])
-                          / d_grid[k_n[cond,0]])
+            cond = case & (k_n[:, 0] != L)
+            w_n[cond, 0] *= ((grid[k_n[cond, 1]] - lam_m[cond])
+                             / d_grid[k_n[cond, 0]])
+            w_n[cond, 1] += ((grid[k_n[cond, 1]] - lam_m[cond])
+                             * (lam_m[cond] - grid[k_n[cond, 0]])
+                             / d_grid[k_n[cond, 0]])
             # if k_i[-1] != H_i
-            cond = case & (k_n[i,n_k-1] != H)
+            cond = case & (k_n[i, n_k-1] != H)
             n_ki = n_k[cond]
-            w_n[cond,n_ki-1] *= ((lam_p[cond] - grid[k_n[cond,n_ki-2]])
-                               / d_grid[k_n[cond,n_ki-2]])
-            w_n[cond,n_ki-2] += ((grid[k_n[cond,n_ki-1]] - lam_p[cond])
-                               * (lam_p[cond] - grid[k_n[cond,n_ki-2]])
-                               / d_grid[k_n[cond,n_ki-2]])
+            w_n[cond, n_ki-1] *= ((lam_p[cond] - grid[k_n[cond, n_ki-2]])
+                                  / d_grid[k_n[cond, n_ki-2]])
+            w_n[cond, n_ki-2] += ((grid[k_n[cond, n_ki-1]] - lam_p[cond])
+                                  * (lam_p[cond] - grid[k_n[cond, n_ki-2]])
+                                  / d_grid[k_n[cond, n_ki-2]])
 
         ##################
         # Case 3, n_k >= 4
@@ -1170,8 +1383,9 @@ class TrpzOverlap(_BaseOverlap):
         if case.any():
             self.v_print('n_k = 4')
             n_ki = n_k[case]
-            w_n[case,1] += grid[k_n[case,2]] - grid[k_n[case,1]]
-            w_n[case,n_ki-2] += grid[k_n[case,n_ki-2]] - grid[k_n[case,n_ki-3]]
+            w_n[case, 1] += grid[k_n[case, 2]] - grid[k_n[case, 1]]
+            w_n[case, n_ki-2] += (grid[k_n[case, n_ki-2]]
+                                  - grid[k_n[case, n_ki-3]])
 
         ##################
         # Case 4, n_k > 4
@@ -1180,9 +1394,10 @@ class TrpzOverlap(_BaseOverlap):
         if case.any():
             self.v_print('n_k > 4')
             i_k = np.indices(k_n.shape)[-1]
-            cond = case[:,None] & (2 <= i_k) & (i_k < n_k[:,None]-2)
+            cond = case[:, None] & (2 <= i_k) & (i_k < n_k[:, None]-2)
             ind1, ind2 = np.where(cond)
-            w_n[ind1,ind2] = d_grid[k_n[ind1,ind2]-1] + d_grid[k_n[ind1,ind2]]
+            w_n[ind1, ind2] = (d_grid[k_n[ind1, ind2]-1]
+                               + d_grid[k_n[ind1, ind2]])
 
         # Finally, divide w_n by 2
         w_n /= 2.
@@ -1191,6 +1406,7 @@ class TrpzOverlap(_BaseOverlap):
         w_n[k_n < 0] = np.nan
 
         self.v_print('Done')
+
         return w_n, k_n
 
 
@@ -1217,6 +1433,17 @@ def sparse_k(val, k, n_k):
 
 
 def unsparse(matrix, fill_value=np.nan):
+    """
+    Convert a sparse matrix to a 2D array of values and a 2D array of position.
+
+    Output
+    ------
+    out: 2d array
+        values of the matrix. The shape of the array is given by:
+        (matrix.shape[0], maximum number of defined value in a column).
+    col_out: 2d array
+        position of the columns. Same shape as `out`.
+    """
 
     col, row, val = find(matrix.T)
     n_row, n_col = matrix.shape
@@ -1226,7 +1453,7 @@ def unsparse(matrix, fill_value=np.nan):
     # Define the new position in columns
     i_col = np.indices((n_row, counts.max()))[1]
     i_col = i_col[good_rows]
-    i_col = i_col[i_col < counts[:,None]]
+    i_col = i_col[i_col < counts[:, None]]
 
     # Create outputs and assign values
     col_out = np.ones((n_row, counts.max()), dtype=int) * -1
