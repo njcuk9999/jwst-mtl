@@ -1,0 +1,6 @@
+.DS_Store
+Makefile
+*.mod
+*.o
+__pycache__
+*.so
