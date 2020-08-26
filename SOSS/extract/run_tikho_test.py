@@ -182,7 +182,7 @@ class TikhoTest:
         # Plot solution using this extraction
         fig, ax = extra.plot_sln(f_k, fig=fig, ax=ax, i_ord=i_ord, **kwargs)
 
-        return
+        return fig, ax
 
     def plot_sln_err(self, factor=None, index=None, fig=None, ax=None,
                      results=None, i_ord=0, error='relative', **kwargs):
