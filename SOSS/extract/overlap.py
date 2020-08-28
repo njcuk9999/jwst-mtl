@@ -660,7 +660,7 @@ class _BaseOverlap:
 
         model = self.rebuild(f_k)
 
-        return - np.nansum((model-data)**2/sig**2)
+        return -np.nansum((model-data)**2/sig**2)
 
     def get_adapt_grid(self, f_k=None, n_max=3, **kwargs):
         """
@@ -1059,8 +1059,9 @@ class LagrangeOverlap(_BaseOverlap):
 
     def get_mask_lam(self, n):
         """ Mask according to wavelength grid """
-        lam, i_bnds   \
-            = self.getattrs('lam_list', 'i_bounds', n=n)
+        gargs = ['lam_list', 'i_bounds']
+        lam, i_bnds = self.getattrs(*gargs, n=n)
+
         lam_min = self.lam_grid[i_bnds[0]]
         lam_max = self.lam_grid[i_bnds[1]-1]
 
@@ -1086,11 +1087,11 @@ class LagrangeOverlap(_BaseOverlap):
         order = self.lagrange_ord
 
         # Get needed attributes
-        grid, mask, order \
-            = self.getattrs('lam_grid', 'mask', 'lagrange_ord')
+        gargs = ['lam_grid', 'mask', 'lagrange_ord']
+        grid, mask, order = self.getattrs(*gargs)
         # ... diffraction-order dependent attributes
-        lam, mask_ord, i_bnds  \
-            = self.getattrs('lam_list', 'mask_ord', 'i_bounds', n=n)
+        gargs = ['lam_list', 'mask_ord', 'i_bounds']
+        lam, mask_ord, i_bnds = self.getattrs(*gargs, n=n)
 
         # Use the convolved grid (depends on the order)
         grid = grid[i_bnds[0]:i_bnds[1]]
@@ -1194,9 +1195,9 @@ class TrpzOverlap(_BaseOverlap):
         # Init upper class
         super().__init__(p_list, lam_list, **kwargs)
 
-    def _get_LH(self, grid, n):
+    def _get_lo_hi(self, grid, n):
         """
-        Find the lowest (L) and highest (H) index
+        Find the lowest (lo) and highest (hi) index
         of lam_grid for each pixels and orders.
 
         Output:
@@ -1204,38 +1205,38 @@ class TrpzOverlap(_BaseOverlap):
         1d array of the lowest and 1d array of the highest index.
         the length is the number of non-masked pixels
         """
-        self.v_print('Compute LH')
+        self.v_print('Compute low high')
 
         # Get needed attributes
         mask = self.mask
         # ... order dependent attributes
-        lam_p, lam_m, mask_ord  \
-            = self.getattrs('lam_p', 'lam_m', 'mask_ord', n=n)
+        gargs = ['lam_p', 'lam_m', 'mask_ord']
+        lam_p, lam_m, mask_ord = self.getattrs(*gargs, n=n)
 
         # Compute only for valid pixels
         lam_p = lam_p[~mask]
         lam_m = lam_m[~mask]
 
-        # Find lower (L) index in the pixel
+        # Find lower (lo) index in the pixel
         #
-        L = np.searchsorted(grid, lam_m, side='right')
+        lo = np.searchsorted(grid, lam_m, side='right')
 
-        # Find higher (H) index in the pixel
+        # Find higher (hi) index in the pixel
         #
-        H = np.searchsorted(grid, lam_p) - 1
+        hi = np.searchsorted(grid, lam_p) - 1
 
-        # Set invalid pixels for this order to L=-1 and H=-2
+        # Set invalid pixels for this order to lo=-1 and hi=-2
         ma = mask_ord[~mask]
-        L[ma], H[ma] = -1, -2
+        lo[ma], hi[ma] = -1, -2
 
         self.v_print('Done')
 
-        return L, H
+        return lo, hi
 
     def get_mask_lam(self, n):
         """ Mask according to wavelength grid """
-        lam_p, lam_m, i_bnds   \
-            = self.getattrs('lam_p', 'lam_m', 'i_bounds', n=n)
+        gargs = ['lam_p', 'lam_m', 'i_bounds']
+        lam_p, lam_m, i_bnds = self.getattrs(*gargs, n=n)
         lam_min = self.lam_grid[i_bnds[0]]
         lam_max = self.lam_grid[i_bnds[1]-1]
 
@@ -1260,12 +1261,10 @@ class TrpzOverlap(_BaseOverlap):
         self.v_print('Compute weigths and k')
 
         # Get needed attributes
-        grid, mask  \
-            = self.getattrs('lam_grid', 'mask')
+        grid, mask = self.getattrs('lam_grid', 'mask')
         # ... order dependent attributes
-        lam_p, lam_m, mask_ord, i_bnds  \
-            = self.getattrs('lam_p', 'lam_m',
-                            'mask_ord', 'i_bounds', n=n)
+        gargs = ['lam_p', 'lam_m', 'mask_ord', 'i_bounds']
+        lam_p, lam_m, mask_ord, i_bnds = self.getattrs(*gargs, n=n)
 
         # Use the convolved grid (depends on the order)
         grid = grid[i_bnds[0]:i_bnds[1]]
@@ -1273,15 +1272,15 @@ class TrpzOverlap(_BaseOverlap):
         # Compute the wavelength coverage of the grid
         d_grid = np.diff(grid)
 
-        # Get LH
-        L, H = self._get_LH(grid, n)  # Get indexes
+        # Get lo hi
+        lo, hi = self._get_lo_hi(grid, n)  # Get indexes
 
         # Compute only valid pixels
         lam_p, lam_m = lam_p[~mask], lam_m[~mask]
         ma = mask_ord[~mask]
 
         # Number of used pixels
-        n_i = len(L)
+        n_i = len(lo)
         i = np.arange(n_i)
 
         self.v_print('Compute k')
@@ -1293,26 +1292,26 @@ class TrpzOverlap(_BaseOverlap):
         # If lowest value close enough to the exact grid value,
         # NOTE: Could be approximately equal to the exact grid
         # value. It would look like that.
-        # >>> L_dgrid = L
-        # >>> L_dgrid[L_dgrid==len(d_grid)] = len(d_grid) - 1
-        # >>> cond = (grid[L]-lam_m)/d_grid[L_dgrid] <= 1.0e-8
+        # >>> lo_dgrid = lo
+        # >>> lo_dgrid[lo_dgrid==len(d_grid)] = len(d_grid) - 1
+        # >>> cond = (grid[lo]-lam_m)/d_grid[lo_dgrid] <= 1.0e-8
         # But let's stick with the exactly equal
-        cond = (grid[L] == lam_m)
-        # special case (no need for L_i - 1)
-        k_first[cond & ~ma] = L[cond & ~ma]
-        lam_m[cond & ~ma] = grid[L[cond & ~ma]]
-        # else, need L_i - 1
-        k_first[~cond & ~ma] = L[~cond & ~ma] - 1
+        cond = (grid[lo] == lam_m)
+        # special case (no need for lo_i - 1)
+        k_first[cond & ~ma] = lo[cond & ~ma]
+        lam_m[cond & ~ma] = grid[lo[cond & ~ma]]
+        # else, need lo_i - 1
+        k_first[~cond & ~ma] = lo[~cond & ~ma] - 1
         # Same situation for highest value. If we follow the note
         # above (~=), the code could look like
-        # >>> cond = (lam_p-grid[H])/d_grid[H-1] <= 1.0e-8
+        # >>> cond = (lam_p-grid[hi])/d_grid[hi-1] <= 1.0e-8
         # But let's stick with the exactly equal
-        cond = (lam_p == grid[H])
-        # special case (no need for H_i - 1)
-        k_last[cond & ~ma] = H[cond & ~ma]
-        lam_p[cond & ~ma] = grid[H[cond & ~ma]]
-        # else, need H_i + 1
-        k_last[~cond & ~ma] = H[~cond & ~ma] + 1
+        cond = (lam_p == grid[hi])
+        # special case (no need for hi_i - 1)
+        k_last[cond & ~ma] = hi[cond & ~ma]
+        lam_p[cond & ~ma] = grid[hi[cond & ~ma]]
+        # else, need hi_i + 1
+        k_last[~cond & ~ma] = hi[~cond & ~ma] + 1
 
         # Generate array of all k_i. Set to -1 if not valid
         k_n, bad = arange_2d(k_first, k_last+1, dtype=int, return_mask=True)
@@ -1341,15 +1340,16 @@ class TrpzOverlap(_BaseOverlap):
         case = (n_k == 2) & ~ma
         if case.any():
             self.v_print('n_k = 2')
-            # if k_i[0] != L_i
-            cond = case & (k_n[:, 0] != L)
+            # if k_i[0] != lo_i
+            cond = case & (k_n[:, 0] != lo)
             w_n[cond, 1] += lam_m[cond] - grid[k_n[cond, 0]]
-            # if k_i[-1] != H_i
-            cond = case & (k_n[:, 1] != H)
+            # if k_i[-1] != hi_i
+            cond = case & (k_n[:, 1] != hi)
             w_n[cond, 0] += grid[k_n[cond, 1]] - lam_p[cond]
             # Finally
-            w_n[case, :] *= ((lam_p[case] - lam_m[case])
-                             / d_grid[k_n[case, 0]])[:, None]
+            part1 = (lam_p[case] - lam_m[case])
+            part2 = d_grid[k_n[case, 0]]
+            w_n[case, :] *= (part1 / part2)[:, None]
 
         ##################
         # Case 2, n_k >= 3
@@ -1360,21 +1360,21 @@ class TrpzOverlap(_BaseOverlap):
             n_ki = n_k[case]
             w_n[case, 1] = grid[k_n[case, 1]] - lam_m[case]
             w_n[case, n_ki-2] += lam_p[case] - grid[k_n[case, n_ki-2]]
-            # if k_i[0] != L_i
-            cond = case & (k_n[:, 0] != L)
-            w_n[cond, 0] *= ((grid[k_n[cond, 1]] - lam_m[cond])
-                             / d_grid[k_n[cond, 0]])
-            w_n[cond, 1] += ((grid[k_n[cond, 1]] - lam_m[cond])
-                             * (lam_m[cond] - grid[k_n[cond, 0]])
-                             / d_grid[k_n[cond, 0]])
-            # if k_i[-1] != H_i
-            cond = case & (k_n[i, n_k-1] != H)
+            # if k_i[0] != lo_i
+            cond = case & (k_n[:, 0] != lo)
+            nume1 = grid[k_n[cond, 1]] - lam_m[cond]
+            nume2 = lam_m[cond] - grid[k_n[cond, 0]]
+            deno = d_grid[k_n[cond, 0]]
+            w_n[cond, 0] *= (nume1 / deno)
+            w_n[cond, 1] += (nume1 * nume2 / deno)
+            # if k_i[-1] != hi_i
+            cond = case & (k_n[i, n_k-1] != hi)
             n_ki = n_k[cond]
-            w_n[cond, n_ki-1] *= ((lam_p[cond] - grid[k_n[cond, n_ki-2]])
-                                  / d_grid[k_n[cond, n_ki-2]])
-            w_n[cond, n_ki-2] += ((grid[k_n[cond, n_ki-1]] - lam_p[cond])
-                                  * (lam_p[cond] - grid[k_n[cond, n_ki-2]])
-                                  / d_grid[k_n[cond, n_ki-2]])
+            nume1 = lam_p[cond] - grid[k_n[cond, n_ki-2]]
+            nume2 = grid[k_n[cond, n_ki-1]] - lam_p[cond]
+            deno = d_grid[k_n[cond, n_ki-2]]
+            w_n[cond, n_ki-1] *= (nume1 / deno)
+            w_n[cond, n_ki-2] += (nume1 * nume2 / deno)
 
         ##################
         # Case 3, n_k >= 4

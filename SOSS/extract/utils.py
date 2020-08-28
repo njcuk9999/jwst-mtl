@@ -1,5 +1,5 @@
 import numpy as np
-from scipy.integrate.quadrature import AccuracyWarning, _romberg_diff
+from scipy.integrate._quadrature import AccuracyWarning, _romberg_diff
 from warnings import warn
 
 
