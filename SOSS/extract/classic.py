@@ -80,8 +80,8 @@ class OptimalExtract:
     def extract(self):
 
         # Get needed attributes
-        p, t, sig, data, ma, lam, grid =  \
-            self.getattrs('p_ord', 't_ord', 'sig', 'data',
+        psf, sig, data, ma, lam, grid =  \
+            self.getattrs('p_ord', 'sig', 'data',
                           'mask', 'lam_ord', 'lam_grid')
 
         # Define delta lambda for each pixels
@@ -91,14 +91,14 @@ class OptimalExtract:
         # ------------------
         # Define masked array (easier to sum with the mask)
         # First, compute normalisation factor at each columns
-        norm = np.ma.array(p**2/sig**2, mask=ma).sum(axis=0)
+        norm = np.ma.array(psf**2/sig**2, mask=ma).sum(axis=0)
         # Second, define numerator
-        num = np.ma.array(p*data/sig**2 / (d_lam), mask=ma)
+        num = np.ma.array(psf*data/sig**2 / (d_lam), mask=ma)
         # Finally compute flux at each columns
         f = (num / norm).sum(axis=0)
 
-        # Return flux (divided by throughtput)
-        out = (f[~ma.all(axis=0)] / t).data
+        # Return flux
+        out = (f[~ma.all(axis=0)]).data
 
         # Return sorted acoording to lam_grid
         return out[np.argsort(grid)]
