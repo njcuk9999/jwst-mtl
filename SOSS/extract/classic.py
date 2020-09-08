@@ -1,6 +1,6 @@
 import numpy as np
 
-from utils import get_lam_p_or_m
+from utils import get_lam_p_or_m, grid_from_map
 
 
 class OptimalExtract:
@@ -10,15 +10,11 @@ class OptimalExtract:
 
         # Use `lam_grid` at the center of the trace if not specified
         if lam_grid is None:
-            # Where the trace is defined
-            index = np.where((p_ord > 0).any(axis=0))[0]
-            # Take the maximum value of the spatial profile
-            i_max = np.argmax(p_ord[:, index], axis=0)
-            # Assign the wavelength
-            lam_grid = lam_ord[i_max, index]
+            lam_grid, lam_col = grid_from_map(lam_ord, p_ord, out_col=True)
 
         # Save wavelength grid
         self.lam_grid = lam_grid.copy()
+        self.lam_col = lam_col
 
         # Compute delta lambda for the grid
         self.d_lam = -np.diff(get_lam_p_or_m(lam_grid), axis=0)[0]
@@ -58,12 +54,12 @@ class OptimalExtract:
 
         # Get needed attributes
         thresh = self.thresh
-        P = self.p_ord
+        p_ord = self.p_ord
         lam = self.lam_ord
         grid = self.lam_grid
 
         # Mask according to the global troughput (spectral and spatial)
-        mask_P = (P < thresh)
+        mask_p = (p_ord < thresh)
 
         # Mask pixels not covered by the wavelength grid
         lam_min, lam_max = grid.min(), grid.max()
@@ -71,18 +67,18 @@ class OptimalExtract:
 
         # Combine all masks including user's defined mask
         if mask is None:
-            mask = np.any([mask_P, mask_lam], axis=0)
+            mask = np.any([mask_p, mask_lam], axis=0)
         else:
-            mask = np.any([mask_P, mask_lam, mask], axis=0)
+            mask = np.any([mask_p, mask_lam, mask], axis=0)
 
         return mask
 
     def extract(self):
 
         # Get needed attributes
-        psf, sig, data, ma, lam, grid =  \
+        psf, sig, data, ma, lam, grid, lam_col =  \
             self.getattrs('p_ord', 'sig', 'data',
-                          'mask', 'lam_ord', 'lam_grid')
+                          'mask', 'lam_ord', 'lam_grid', 'lam_col')
 
         # Define delta lambda for each pixels
         d_lam = -np.diff(get_lam_p_or_m(lam), axis=0)[0]
@@ -95,13 +91,16 @@ class OptimalExtract:
         # Second, define numerator
         num = np.ma.array(psf*data/sig**2 / (d_lam), mask=ma)
         # Finally compute flux at each columns
-        f = (num / norm).sum(axis=0)
+        out = (num / norm).sum(axis=0)
 
-        # Return flux
-        out = (f[~ma.all(axis=0)]).data
+        # Return flux where lam_grid is defined
+        out = out[lam_col]
+        i_good = ~(ma[:, lam_col]).all(axis=0)
+        out = out[i_good].data
 
-        # Return sorted acoording to lam_grid
-        return out[np.argsort(grid)]
+        # Return sorted according to lam_grid
+        i_sort = np.argsort(grid[i_good])
+        return grid[i_sort], out[i_sort]
 
     def f_th_to_pixel(self, f_th):
 
