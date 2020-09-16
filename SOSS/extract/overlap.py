@@ -10,7 +10,7 @@ from scipy.interpolate import interp1d
 from custom_numpy import arange_2d
 from interpolate import SegmentedLagrangeX
 from convolution import get_c_matrix, WebbKer
-from utils import get_lam_p_or_m, get_n_nodes, oversample_grid, grid_from_map
+from utils import get_lam_p_or_m, get_n_nodes, oversample_grid, _grid_from_map
 from throughput import ThroughputSOSS
 from regularisation import Tikhonov, tikho_solve, TikhoConvMatrix
 
@@ -95,6 +95,9 @@ class _BaseOverlap:
 
         # Number of orders
         self.n_ord = len(lam_list)
+
+        # Orders
+        self.orders = orders
 
         # Non-convolved grid length
         self.n_k = len(lam_grid)
@@ -836,6 +839,10 @@ class _BaseOverlap:
         # Save in tikho's tests
         tikho.test['-logl'] = -1 * np.array(logl_list)
 
+        # Save also grid
+        tikho.test["grid"] = self.lam_grid[i_grid]
+        tikho.test["i_grid"] = i_grid
+
         return tikho.test
 
     def bin_to_pixel(self, i_ord=0, grid_pix=None, grid_f_k=None, f_k_c=None,
@@ -847,10 +854,11 @@ class _BaseOverlap:
         i_ord: int, optional
             index of the order to be integrated, default is 0, so
             the first order specified.
-        grid_pix: tuple of two 1d-arrays
-            arrays of the lower and upper integration ranges. If not given,
-            the wavelength map and the psf map of `i_ord` will be used to
-            compute a pixel grid.
+        grid_pix: tuple of two 1d-arrays or 1d-array
+            If a tuple of 2 arrays is given, assume it is the lower and upper
+            integration ranges. If 1d-array, assume it is the center
+            of the pixels. If not given, the wavelength map and the psf map
+            of `i_ord` will be used to compute a pixel grid.
         grid_f_k: 1d array, optional
             grid on which the convolved flux is projected.
             Default is the wavelength grid for `i_ord`.
@@ -877,14 +885,22 @@ class _BaseOverlap:
                 f_k_c = self.c_list[i_ord].dot(f_k)
         # ... and for the pixel bins
         if grid_pix is None:
-            wv_map, psf = self.getattrs('lam_list', 'p_list', n=i_ord)
-            pix_center = grid_from_map(wv_map, psf)
+            pix_center, _ = self._grid_from_map(i_ord)
             # Get pixels borders (plus and minus)
-            grid_pix = get_lam_p_or_m(pix_center)
-        else:
-            # Compute pixel center
-            d_pix = np.diff(grid_pix, axis=0).squeeze()
-            pix_center = grid_pix[0] + d_pix
+            pix_p, pix_m = get_lam_p_or_m(pix_center)
+        else:  # Else, unpack grid_pix
+            # Could be a scalar or a 2-elements object)
+            if len(grid_pix) == 2:
+                # 2-elements object, so we have the borders
+                pix_m, pix_p = grid_pix
+                # Need to compute pixel center
+                d_pix = (pix_p - pix_m)
+                pix_center = grid_pix[0] + d_pix
+            else:
+                # 1-element object, so we have the pix centers
+                pix_center = grid_pix
+                # Need to compute the borders
+                pix_p, pix_m = get_lam_p_or_m(pix_center)
 
         # Interpolate
         kwargs['bounds_error'] = bounds_error
@@ -892,7 +908,7 @@ class _BaseOverlap:
 
         # Intergrate over each bins
         bin_val = []
-        for x2, x1 in zip(*grid_pix):
+        for x1, x2 in zip(pix_m, pix_p):
             # Grid points that fall inside the pixel range
             i_grid = (x1 < grid_f_k) & (grid_f_k < x2)
             x_grid = grid_f_k[i_grid]
@@ -903,6 +919,53 @@ class _BaseOverlap:
 
         # Convert to array and return with the pixel centers.
         return pix_center, np.array(bin_val)
+
+    def grid_from_map(self, i_ord=0):
+        """
+        Return the wavelength grid and the columns associated
+        to a given order index (i_ord)
+        """
+        gargs = ("lam_list", "p_list")
+        wv_map, psf = self.getattrs(*gargs, n=i_ord)
+        return _grid_from_map(wv_map, psf, out_col=True)
+
+    def estim_noise(self, i_ord=0, sig=None, mask=None):
+        """
+        Relative noise estimate over columns.
+        Parameters
+        ----------
+        i_ord: int, optional
+            index of diffraction order. Default is 0
+        sig: 2d array, optional
+            map of the estimate of the detector noise.
+            Default is `self.sig`
+        mask: 2d array, optional
+            Bool map of the masked pixels for order `i_ord`.
+            Default is `self.mask_ord[i_ord]`
+        Output
+        ------
+        lam_grid, noise
+        """
+
+        if sig is None:
+            sig = self.sig
+
+        if mask is None:
+            mask = self.mask_ord[i_ord]
+
+        noise = np.ma.array(sig, mask=mask)
+        # RMS over columns
+        noise = np.sqrt((noise**2).sum(axis=0))
+        # Relative
+        noise /= np.ma.array(self.data, mask=mask).sum(axis=0)
+        # Convert to array with nans
+        noise = noise.filled(fill_value=np.nan)
+
+        # Get associated wavelengths
+        lam_grid, i_col = self.grid_from_map(i_ord)
+
+        # Return sorted according to wavelenghts
+        return lam_grid, noise[i_col]
 
     @staticmethod
     def _check_plot_inputs(fig, ax):
