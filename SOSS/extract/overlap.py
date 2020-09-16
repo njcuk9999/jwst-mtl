@@ -32,7 +32,7 @@ class _BaseOverlap:
     """
     def __init__(self, p_list, lam_list, scidata=None, lam_grid=None,
                  lam_bounds=None, i_bounds=None, c_list=None,
-                 c_kwargs=None, t_list=None, sig=None,
+                 c_kwargs=None, t_list=None, sig=None, n_os=2,
                  mask=None, thresh=1e-5, orders=[1, 2], verbose=False):
         """
         Parameters
@@ -48,7 +48,11 @@ class _BaseOverlap:
             A 2-D array of real values representing the detector image.
         lam_grid : (N_k) array_like, optional
             The grid on which f(lambda) will be projected.
-            Default still has to be improved.
+            Default is a grid from `utils.get_soss_grid`.
+            `n_os` will be passed to this function.
+        n_os  : int, optional
+            if `lam_grid`is None, it will be used to generate
+            a grid. Default is 2.
         lam_bounds : list or array-like (N_ord, 2), optional
             Boundary wavelengths covered by each orders.
             Default is the wavelength covered by `lam_list`.
@@ -81,14 +85,6 @@ class _BaseOverlap:
             Print steps. Default is False.
         """
 
-        ############################
-        # Check input
-        ############################
-
-        # lam_grid must be specified
-        if lam_grid is None:
-            raise ValueError("`lam_grid` kwarg must be specified.")
-
         ###########################
         # Save basic parameters
         ###########################
@@ -98,9 +94,6 @@ class _BaseOverlap:
 
         # Orders
         self.orders = orders
-
-        # Non-convolved grid length
-        self.n_k = len(lam_grid)
 
         # Shape of the detector used
         # (the wavelength map should have the same shape)
@@ -124,6 +117,16 @@ class _BaseOverlap:
 
         # Save pixel wavelength for each orders
         self.lam_list = [lam.copy() for lam in lam_list]
+
+        # Generate lam_grid if not given
+        if lam_grid is None:
+            if self.n_ord == 2:
+                lam_grid = get_soss_grid(p_list, lam_list, n_os=n_os)
+            else:
+                lam_grid, _ = self.grid_from_map()
+
+        # Non-convolved grid length
+        self.n_k = len(lam_grid)
 
         # Save non-convolved wavelength grid
         self.lam_grid = lam_grid.copy()
