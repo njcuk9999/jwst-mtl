@@ -10,7 +10,8 @@ from scipy.interpolate import interp1d
 from custom_numpy import arange_2d
 from interpolate import SegmentedLagrangeX
 from convolution import get_c_matrix, WebbKer
-from utils import get_lam_p_or_m, get_n_nodes, oversample_grid, _grid_from_map
+from utils import (get_lam_p_or_m, get_n_nodes,
+                   oversample_grid, _grid_from_map, get_soss_grid)
 from throughput import ThroughputSOSS
 from regularisation import Tikhonov, tikho_solve, TikhoConvMatrix
 
