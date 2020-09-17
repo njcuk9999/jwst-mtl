@@ -9,6 +9,7 @@ TimeSeries objects for simulations of SOSS observations
 # General imports.
 from copy import deepcopy
 from pkg_resources import resource_filename
+import os
 
 # General science imports.
 import numpy as np
@@ -53,6 +54,14 @@ class TimeSeries(object):
 
         self.modif_str = '_mod'  # string encoding the modifications
 
+        # Here, I hardcoded the path but really we should read it from the config file
+        # /genesis/jwst/jwst-mtl-user/jwst-mtl_configpath.txt 
+        # NOISE_FILES is the parameter in that file
+        self.noisefiles_dir = '/genesis/jwst/jwst-mtl-ref/noise_files/' # PATH where reference detector noise files can be found. 
+        # Same here, we need to pass this or read it from teh config path
+        # USER_PATH is the parameter in that file
+        self.output_path = '/genesis/jwst/jwst-mtl-user/'
+
     def get_normfactor(self, full_well=FULL_WELL):
         """Determine a re-normalization factor so that the highest pixel value in the simulation
          will match the full well capacity"""
@@ -95,7 +104,8 @@ class TimeSeries(object):
         """Add non-linearity on top of the linear integration-long ramp."""
 
         if coef_file is None:
-            coef_file = resource_filename('detector', 'files/jwst_niriss_linearity_0011_bounds_0_60000_npoints_100_deg_5.fits')
+            coef_file = self.noisefiles_dir+'/jwst_niriss_linearity_0011_bounds_0_60000_npoints_100_deg_5.fits'
+            #coef_file = resource_filename('detector', 'files/jwst_niriss_linearity_0011_bounds_0_60000_npoints_100_deg_5.fits')
 
         # Read the coefficients of the non-linearity function.
         with fits.open(coef_file) as hdu:
@@ -142,7 +152,7 @@ class TimeSeries(object):
 
         # In the current implementation the pca0 file goes unused, but it is a mandatory input of HxRG.
         if pca0_file is None:
-            pca0_file = resource_filename('detector', 'files/niriss_pca0.fits')
+            pca0_file = self.noisefiles_dir+'/niriss_pca0.fits'
 
         if noise_seed is None:
             noise_seed = 7 + int(np.random.uniform() * 4000000000.)
@@ -211,7 +221,7 @@ class TimeSeries(object):
         """Apply the flat field correction to the simulation."""
 
         if flatfile is None:
-            flatfile = resource_filename('detector', 'files/jwst_niriss_flat_0181.fits')
+            flatfile = self.noisefiles_dir+'/jwst_niriss_flat_0181.fits'
 
         # Read the flat-field from file (in science coordinates).
         with fits.open(flatfile) as hdu:
@@ -238,7 +248,7 @@ class TimeSeries(object):
         """Add the bias level to the simulation."""
 
         if biasfile is None:
-            biasfile = resource_filename('detector', 'files/jwst_niriss_superbias_0137.fits')
+            biasfile = self.noisefiles_dir+'/jwst_niriss_superbias_0137.fits'
 
         # Read the super bias from file (in science coordinates).
         with fits.open(biasfile) as hdu:
@@ -285,7 +295,7 @@ class TimeSeries(object):
         """Add the zodiacal background signal to the simulation."""
 
         if zodifile is None:
-            zodifile = resource_filename('detector', 'files/background_detectorfield_normalized.fits')
+            zodifile = self.noisefiles_dir+'/background_detectorfield_normalized.fits'
 
         # Read the background file.
         with fits.open(zodifile) as hdu:
@@ -325,7 +335,7 @@ class TimeSeries(object):
         hdu_new[1].data = (self.data/gain).astype('uint16')  # Convert to ADU in 16 bit integers.
 
         if filename is None:
-            filename = self.ima_path[:-5] + self.modif_str + '.fits'
+            filename = self.output_path +os.path.basename(self.ima_path) + self.modif_str + '.fits'
             hdu_new.writeto(filename, overwrite=True)
 
         print('Writing to file: ' + filename)

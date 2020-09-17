@@ -1,0 +1,82 @@
+##################################
+# SOSS Simulation Parameter file #
+##################################
+# Lines that start with '#' are considered comments.  
+#
+# Blank lines are ignored
+#
+# Format is space separated KEYWORD and VALUE. Any input after VALUE
+# is ignored.
+#
+# KEYWORD entry must start on first column of line.
+#
+# KEYWORDs are case insensitive. 
+#
+# VALUEs of STARMODEL and RPRSFILE are limited to 80 characters
+# VALUEs of DETECTOR and PRODTYPE are limited to 8 characters
+#
+# At minimum STARMODEL must be provided. Other parameters are optional.
+
+##########################
+# Integration Parameters #
+##########################
+TSTART    0.0  #Start time of simulation [hours]
+TEND      0.1  #End time of simulation [hours]
+EXPTIME  30.0  #Exposure time until reset [seconds]
+DEADTIME  0.0  #Dead time between reset and start of next exposure [seconds]
+
+######################
+# Stellar Parameters #
+######################
+RHOSTAR   1.0  #Mean stellar density [cgs]
+STARMODEL t6000g450p000_ldnl.dat  #Star spectral model.
+STARTYPE  2    #Model type.  2 = ATLAS + non-linear limb-darkening
+VSINI     0.0  #Projected rotation velocity [km/s]
+
+#####################
+# Planet Parameters #
+#####################
+# Last digit at end of keyword marks planet number.  
+# Up to 9 planets can be included.
+RPRSFILE1 hd209458.csv  #Filename with Rp/R* spectral model.
+EMISFILE1 null #Filename for planet emission model 
+EP1       0.0  #Center of transit time [days]
+PE1       3.0  #Orbital period [days]
+BB1       0.4  #Impact parameter
+ES1       0.0  #sqrt(e)sin(omega)
+EC1       0.0  #sqrt(e)cos(omega)
+RV1       0.0  #Radial velocity semi-amplitude [m/s]
+AL1       0.0  #Geometric albedo (needs emission model)
+EL1       0.0  #Ellipsoidal variations (applied to star model)
+TTVFILE1  null #File with transit timing offsets (null==None) 
+
+####################
+# Image Parameters #
+####################
+XOUT         3000    #Size of image array along dispersion axis [pixels]
+YOUT          300    #Size of image array along spatial axis [pixels]
+OVERSAMPLE      1    #Oversampling used to generate simulation 
+SATURATION  65536    #Maximum pixel value allowed. [ADU]
+NGROUP         10    #Number of samples up ramp
+XCOO            500.0  #X-coordinate shift of trace [pixels]
+YCOO            0.0  #Y-coordinate shift of trace [pixels]
+ROLL            10.0  #Rotation of trace [degrees]
+XCEN         1850.0  #Center of detector for rotation [pixels]
+YCEN         211.0  #Center of detector for rotation  [pixels]
+XJIT            0.01 #X-coordinate translation pointing jitter [pixels]
+YJIT            0.01 #Y-coordinate translation pointing jitter [pixels]
+ROLLJIT         1.0  #Rotation jitter [degrees]
+
+#####################
+# Naming Parameters #
+#####################
+PID       1        # Program ID
+ONUM      1        # Observation Number
+VNUM      1        # Visit Number
+GNUM      1        # Group Visit
+SPSEQ     1        # Parallel sequence
+ANUMB     1        # Activity number
+ENUM      1        # Exposure number
+ENUMOS    1        # Exposure number of oversampled output
+DETECTOR  NISRAPID # Detector name
+PRODTYPE  cal      # Product Type
