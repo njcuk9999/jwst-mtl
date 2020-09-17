@@ -5,11 +5,246 @@ Created on Tue Apr 14 12:06:06 2020
 
 @author: albert
 """
+# kona version
 
 from astropy.io import ascii
 import numpy as np
 import matplotlib.pyplot as plt
+from astropy.io import fits
 
+
+
+
+
+
+def expected_flux_calibration(filtername, magnitude, model_um, model_flux,
+                              list_orders, convert_to_adupersec=False, 
+                              F277=None, verbose=None,
+                              trace_file = None,
+                              response_file = None,
+                              pathfilter = None,
+                              pathvega = None):
+    
+    # This function establishes what the absolute electron flux (e- per second)
+    # is when integrating the flux over the image (each order being treated
+    # separately). It accepts a filter name and magnitude as the normalization
+    # anchor. The input stellar spectrum needs to be in the following units:
+    # 1) wavelengths in microns; 2) flux in energy per wavelength bin (Flambda)
+    # (NOT per frequency bin - Fnu). Another input is the list_orders array
+    # which lists the orders to make the calculations for. As of June 26 2020,
+    # only orders 0 to 3 are supported.
+    #
+    # The steps are the following:
+    # 1) Use the binned model_um and binned model_flux to calibrate the flux
+    #    based on a a filter magnitude
+    # 2) Integrate the calibrated flux within the SOSS Order 1 wavelength span
+    #    Use Geert Jan's p2w to determine the wavelength coverage.
+    
+    # model_um is the stellar model in microns, it should be sorted.
+    # model_flux i sthe stellar model in F lambda (energy flux per wavelength)
+    # filtername is an ascii representing the filter to normalize with. The 
+    #     choice of filter name is large, see readFilter below.
+    # magnitude is the magnitude in the Vega or AB system used for that filter
+    #
+    # OUTPUT:
+    # The output is an array containing as many entries as there are orders
+    # in list_orders. The output is the expected count rate (electrons per
+    # second) integrated over the full 256x2048 subarray.
+    # A few assumptions are made:
+    # 1) The JWST surface area is assumed to be 25 m2
+    # 2) The SOSS throughput from the reference file is used
+    # 3) The quantum yield from the reference file is used
+    # 4) NO detector gain is applied (e-/sec to adu/sec is to performed) 
+    #    by default
+    # Note: the count rate is by default in electrons per second. The optional
+    #       keyword convert_to_adupersec will trigger output to be in adu/sec.
+    
+    # NOTE: This could fail for subarrays different than 256x2048 because it
+    # uses the mask output by trace.x2wavelength which itself assumes that
+    # subarray by default. We would need improving the trace package to
+    # change the mask according to the subarray it uses.
+    
+    # To return the expectd counts of an F277W + GR700XD exposure rather than
+    # the default CLEAR + F277W exposure, use the F277=True option. It will
+    # calibrate based on the model flux (without F277) but compute the expected
+    # counts based on the model flux being multiplied by the F277 transmission
+    # curve.
+
+    # Import trace position library
+    import tracepol as tp
+    
+    #filtername = 'J'
+    #magnitude = 8.5
+    
+    # Choice of filter names can be found here: 
+    # synthesizeMagnitude.py --> readFilter
+    # When you embed in specgen, replace paths by relative path in the github
+    # hierarchy.
+    if pathvega == None: pathvega = './specgen/FilterSVO/'
+    if pathfilter == None: pathfilter = './specgen/FilterSVO/'
+    if trace_file == None: trace_file = './trace/NIRISS_GR700_trace_extended.csv'
+    if response_file == None: response_file = './tables/NIRISS_Throughput_STScI.fits'
+    
+    # Some more constants
+    hc = 6.62607015e-34 * 299792458.0 # J * m
+    JWST_area = 25.0 # m2
+    detector_gain = 1.6 # e-/adu
+    
+    # initialize some variables
+    lba = np.copy(model_um)
+    
+    # Prepare output array
+    output_elec_per_sec = np.zeros(np.size(list_orders))
+    
+    # Do the synthetic magnitude call on the model spectrum
+    # waves should be in microns
+    # Flux should be Flambda, not Fnu (Make sure that is the case)
+    syntmag = syntMag(model_um,model_flux,filtername,
+                        path_filter_transmission=pathfilter,
+                        path_vega_spectrum=pathvega,verbose=verbose)
+    if verbose is True:
+        print(syntmag)
+        print('Synthetic magnitude of input spectrum: {:6.2f}'.format(syntmag))
+    
+    # The nromalization scale is the difference between synthetic mag and 
+    # requested mag. So Flba is the flux normalized expressed in W/m2/um
+    model_flux_norm = model_flux * 10**(-0.4*(magnitude-syntmag))
+    
+    # Check that thsi worked by re synthesizing the magnitude
+    syntmag_check = syntMag(model_um,model_flux_norm,filtername, 
+                            path_filter_transmission=pathfilter,
+                            path_vega_spectrum=pathvega,verbose=verbose)
+    if verbose is True:
+        print('Synthetic magnitude of normalized spectrum: {:6.2f}'.format(syntmag_check))
+    
+    
+    
+    
+    # Now that our spectrum is normalized in flux (W/m2/um), 
+    # compute what the flux count (in electrons) should be for each order.
+
+    # Get the trace parameters, function found in tracepol imported above
+    tracepars = tp.get_tracepars(trace_file)
+    
+    # Loop for each spectral order
+    for eachorder in range(np.size(list_orders)):
+        m = list_orders[eachorder]
+        
+        # Get wavelength (in um) of first and last pixel of the Order m trace
+        pixels = np.linspace(1,2048,2048)
+        lbabounds, mask = tp.specpix_to_wavelength(pixels, tracepars, m=m, frame='sim',oversample=1)
+        # It is important to apply the mask to make sure we will sum flux that
+        # actually falls on the detector.
+        lbabound1 = np.min(lbabounds)#[mask])
+        lbabound2 = np.max(lbabounds)#[mask])
+        
+        # The number of photons per second integrated over that range is
+        # (Flambda: J/sec/m2/um requires dividing by photon energy to get counts)
+        # Ephoton = h*c/lambda
+        #
+        # Model spectrum wavelength step size (in microns).
+        # The only assumption is arrays is sorted but not nec. equal steps.
+        wv_sampling_width = np.copy(model_um)
+        wv_sampling_width[1:] = model_um[1:]-model_um[0:-1]
+        wv_sampling_width[0] = wv_sampling_width[1]
+        if verbose is True:
+            plt.figure(figsize=(15,8))
+            plt.scatter(model_um,wv_sampling_width,marker='.')
+            plt.xlabel('Wavelength [angstroms]')
+            plt.ylabel('Sample width [angstroms]')
+            plt.title('Binned Stellar Spectrum going into Trace Seeding')
+        
+        # Wavelength indices of all pixels in Order m
+        order_m_range = (model_um >= lbabound1) & (model_um <= lbabound2)
+        
+        # Get the throughput (response) and quantum yield
+        T_um, Throughput = read_throughput(m, response_file)
+        QY_um, QuantumYield = read_quantumyield(response_file)
+        
+        # In case an F277W filter exposure is needed. Read the F277W transmis-
+        # sion curve and resample it on the same grid as the model flux.
+        if F277 is True:
+            f277_um,f277_t,f277_system = \
+                readFilter('NIRISS.F277W',
+                           path_filter_transmission=pathfilter,
+                           keepPeakAbsolute=True,returnWidth=False,
+                           verbose = False)
+            # Resample the transmission curve on the model grid
+            f277_transmission = np.interp(model_um,f277_um,f277_t)
+        
+        # NOW. CONVERT THE NORMALIZED SPECTRUM TO PHOTON COUNTS ON THE DETECTOR
+        # THAT REQUIRES ADDITIONAL ASSUMPTIONS: AREA, QUANTUM YIELD, THROUGHPUT
+        
+        # Photon energy depends on wavelength (lba is in um, so convert to m)
+        Ephot = hc / (lba * 1e-6)
+        
+        # e-/sec = area [m2] x SUM(  Flambda [J/s/m2/um] 
+        #                          x Throughput [no dim]
+        #                          x Quantum_yield [e-/photon]
+        #                          x dlambda [um]
+        #                          / E_photon [J]  )
+        A = np.copy(JWST_area) # surface area of JWST in m2
+        lba = np.copy(model_um) # wavelengths in um
+        if F277 is True:
+            Flba = model_flux_norm * f277_transmission
+        else:
+            Flba = np.copy(model_flux_norm) # Flambda in J/sec/m2/um
+        dlba = np.copy(wv_sampling_width) # wavelengths sampling steps in um
+        QY = np.interp(model_um, QY_um, QuantumYield)
+        T = np.interp(model_um, T_um, Throughput)
+        mi = np.copy(order_m_range)
+        elec_per_sec = A * np.sum(Flba[mi]*T[mi]*QY[mi]*dlba[mi]/Ephot[mi])
+        if verbose is True:
+            print('Best calculations for the estimated electron counts for the whole order {:} trace:'.format(m))
+            print('elec_per_sec', elec_per_sec)
+
+        # Assign value to output array
+        output_elec_per_sec[eachorder] = np.copy(elec_per_sec)
+
+    if convert_to_adupersec == True:
+        if verbose is True:
+            print('expected_flux_calibration returns adu/sec using a detector gain of {:} e-/adu.'.format(detector_gain))
+        return(output_elec_per_sec/detector_gain)
+    else:
+        if verbose is True:
+            print('expected_flux_calibration returns e-/sec. Use convert_to_adupersec if you want adu/sec instead.')
+        return(output_elec_per_sec)
+
+    
+
+
+def read_throughput(order, throughput_file=None):
+    if throughput_file is None:
+        throughput_file = './tables/NIRISS_Throughput_STScI.fits'
+    a = fits.open(throughput_file)
+    lba = np.array(a[1].data['LAMBDA'][0]) # in nanometers
+    lba_um = lba / 1000.0
+    order0 = np.array(a[1].data['SOSS_ORDER0'][0])
+    order1 = np.array(a[1].data['SOSS_ORDER1'][0])
+    order2 = np.array(a[1].data['SOSS_ORDER2'][0])
+    order3 = np.array(a[1].data['SOSS_ORDER3'][0])
+    
+    if order == 0:
+        return(lba_um, order0)
+    elif order == 1:
+        return(lba_um, order1)
+    elif order == 2:
+        return(lba_um, order2)    
+    elif order == 3:
+        return(lba_um, order3)
+    else:
+        print('The reference throughput file only accepts order 0 to 3.')
+        stop
+
+def read_quantumyield(throughput_file=None):
+    if throughput_file is None:
+        throughput_file = './tables/NIRISS_Throughput_STScI.fits'
+    a = fits.open(throughput_file)
+    lba = np.array(a[1].data['LAMBDA'][0]) # in nanometers
+    lba_um = lba / 1000.0
+    quantum_yield = np.array(a[1].data['YIELD'][0])
+    
+    return(lba_um, quantum_yield)
 
 
 def example_1(wave_micron, flux_W_m2_micron):
@@ -193,7 +428,7 @@ def ABmag_to_Vegamag(magAB, filterlist, path_filter_transmission=None,
     # Read the Vega and AB spectra. Both share the same wavelength sampling
     # (that of the Vega spectrum).
     wave_Vega, Flambda_Vega = readVega(path_vega_spectrum=path_vega_spectrum)
-    lba = wave_Vega*1.0
+    lba = np.copy(wave_Vega)
     wave_AB, Flambda_AB = readAB(wave_sampling=lba)
     
     # Each wavelength sample has a width, determined here: 
@@ -277,8 +512,14 @@ def sample_width(lba):
 
 
 def syntMag(lba,Flba,filterlist,path_filter_transmission=None,
-            path_vega_spectrum=None):
+            path_vega_spectrum=None,verbose=None):
     # Computes the synthetic magnitude of a spectrum through an input list of filters
+    
+    # Make sure that the input spectrum has its wavelengths sorted.
+    indsorted = np.argsort(lba)
+    if np.array_equal(lba,lba[indsorted]) is False:
+        print('Input spectrum to syntMag has its wavelengths not sorted in increasing order.')
+        stop
 
     #Check if a path for the Vega spectrum was passed. If not, assume some
     # local path
@@ -318,7 +559,10 @@ def syntMag(lba,Flba,filterlist,path_filter_transmission=None,
             Flux_filter = np.sum(Flba * filter_t * dlba) / np.sum(filter_t * dlba)
             mag[f] = -2.5*np.log10(Flux_filter/Flux_AB)
 
-    return(mag)
+    if np.size(mag) == 1:
+        return(mag[0])
+    else:
+        return(mag)
 
 
 
@@ -390,6 +634,11 @@ def readVega(wave_sampling=None,path_vega_spectrum=None):
     #Lejeune spectrum is in angstrom, Flambda (erg/s/cm2/angstrom)
     l = tab['wave_nm']  # First column
     f = tab['Flambda']  # Second column
+    #Make sure that wavelengths are sorted
+    ind = np.argsort(l)
+    l = l[ind]
+    f = f[ind]
+    # Convert to microns and W/m2/um
     l_micron = l / 10000.
     Flambda_uncal = f * 1.0e-7 * 1.0e+4 * 10000.0    #to W/m2/um
 
@@ -520,11 +769,11 @@ def readFilter(requestedFilterName,path_filter_transmission=None,
     dico.append(('HST_NICMOS1.F190N.dat.txt','Vega',['NICMOS1.F190N']))
     dico.append(('HST_NICMOS1.F170M.dat.txt','Vega',['NICMOS1.F170M']))
     # JWST - NIRISS
+    dico.append(('JWST_NIRISS.F277W.dat','Vega',['NIRISS.F277W']))
     dico.append(('JWST_NIRISS.F380M.dat.txt','Vega',['NIRISS.F380M']))
     dico.append(('JWST_NIRISS.F430M.dat.txt','Vega',['NIRISS.F430M']))
     dico.append(('JWST_NIRISS.F480M.dat.txt','Vega',['NIRISS.F480M']))
     # JWST - NIRCam
-    #
     dico.append(('JWST_NIRCam.F070W.dat','Vega',['NIRCam.F070W']))
     dico.append(('JWST_NIRCam.F090W.dat','Vega',['NIRCam.F090W']))
     dico.append(('JWST_NIRCam.F115W.dat','Vega',['NIRCam.F115W']))
@@ -649,7 +898,7 @@ def readFilter(requestedFilterName,path_filter_transmission=None,
         t = t/np.max(t)
 
     if (wave_sampling is None):
-        transmission = t
+        transmission = np.copy(t)
     else:
         transmission = np.interp(wave_sampling, wave_micron, t)
         # make sure that extremes are set to zero

@@ -486,17 +486,17 @@ Outputs:
                    'pixel' input parameter.
     """
     
-    pixel = 2048-pixel/noversample            # tp.flipX(pixel)                     # Subtracting from 2048 each pixel value to ensure that the spectral axis from
+    #pixel = 2048-pixel/noversample            # tp.flipX(pixel)                     # Subtracting from 2048 each pixel value to ensure that the spectral axis from
                                                      # left-to-right corresponds to decreasing wavelength values
     #pixel = pixel / noversample              # Adjusts the pixel values based on oversampling
     
-    wave_MICRON = tp.x2wavelength(pixel,tracePars,m=ntrace) # From 'jwst-mtl/SOSS/trace/tracepol.py'
+    wave_MICRON, mask = tp.specpix_to_wavelength(pixel,tracePars,m=ntrace,oversample=noversample,frame='sim') # From 'jwst-mtl/SOSS/trace/tracepol.py'
     
     if maskON:   # Decides whether or not to return the masking provided by the x2wavelength routine. Default is 'False' 
                     # because this functionality was not present before in J Rowe's previous implementation of 'p2w'
-        return wave_MICRON[0] * 10000 , wave_MICRON[1]
+        return wave_MICRON * 10000 , mask
     
-    return wave_MICRON[0] * 10000    # Factor of 10000 used to get wavelengths in units of (Avatar) Aang-stroms
+    return wave_MICRON * 10000    # Factor of 10000 used to get wavelengths in units of (Avatar) Aang-stroms
 
 
 def w2p(tracePars, wave_ANG , noversample=1 , ntrace=1 , maskON=False):
@@ -518,18 +518,19 @@ Outputs:
                    'wave_ANG' input parameter.
     """
     
-    pixel = list( tp.wavelength2x(wave_ANG/10000,tracePars,m=ntrace) )  # From 'jwst-mtl/SOSS/trace/tracepol.py'.
-                                                                           # Routine requires microns instead of Angstroms 
-    pixel[0] = pixel[0] * noversample  # Adjust pixels based on oversampling
+    specpix, spatpix, mask = tp.wavelength_to_pix(wave_ANG/10000,tracePars,
+                             m=ntrace,frame='sim',oversample=noversample,
+                             subarray='SUBSTRIP256')  # From 'jwst-mtl/SOSS/trace/tracepol.py'.
+                                                      # Routine requires microns instead of Angstroms 
+    #pixel[0] = pixel[0] * noversample  # Adjust pixels based on oversampling
     
     if maskON:   # Decides whether or not to return the masking provided by the wavelength2x routine. Default is 'False' 
                     # because this functionality was not present before in J Rowe's previous implementation of 'w2p'
-        #return tp.flipX(pixel[0]) , pixel[1]
-        return noversample*2048-pixel[0], pixel[1]
+        return specpix, mask
     
-    #return tp.flipX(pixel[0])  # Subtracting from 2048 each pixel value to ensure that the spectral axis from left-to-right
-    return noversample*2048-pixel[0]
-                             # corresponds to decreasing wavelength values
+    #return noversample*2048-pixel[0]   # Subtracting from 2048 each pixel value to ensure that the spectral axis from left-to-right
+                                        # corresponds to decreasing wavelength values
+    return specpix
 
 def ptrace(tracePars, pixel, noversample=1, ntrace=1 , maskON=False):
     
@@ -551,13 +552,14 @@ Outputs:
                    'pixel' input parameter.
     """
     
-    wv_ANG = p2w(tracePars, pixel,noversample=noversample , ntrace=ntrace , maskON=maskON)
+    wv_ANG, mask = p2w(tracePars, pixel,noversample=noversample , ntrace=ntrace , maskON=True)
+    specpix, spatpix, mask = tp.wavelength_to_pix(wv_ANG/10000,tracePars,m=ntrace,frame='sim',oversample=noversample)
     if maskON:
-        y , mask = tp.wavelength2y(wv_ANG[0]/10000, tracePars, m=ntrace)  # Need to input microns instead of Angstroms
-        return y*noversample , mask
+        #y , mask = tp.wavelength2y(wv_ANG[0]/10000, tracePars, m=ntrace)  # Need to input microns instead of Angstroms
+        return spatpix, mask
     else:
-        y = tp.wavelength2y(wv_ANG/10000, tracePars, m=ntrace)
-        return y[0]*noversample
+        #y = tp.wavelength2y(wv_ANG/10000, tracePars, m=ntrace)
+        return spatpix
 
 
 def addflux2pix(px,py,pixels,fmod):
@@ -846,7 +848,9 @@ def readkernels(workdir,\
     while wl<=wle:
         
         wname='{0:.6f}'.format(int(wl*100+0.1)/100)
-        fname=workdir+kerneldir+kdir+prename+wname+extname
+        #fname=workdir+kerneldir+kdir+prename+wname+extname
+        # (2020/09/02) New path in order to harmonize with rest of code
+        fname=workdir+prename+wname+extname
         #print(fname)
         hdulist = fits.open(fname)
         
