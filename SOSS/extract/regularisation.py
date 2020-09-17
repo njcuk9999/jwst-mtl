@@ -3,8 +3,8 @@ import numpy as np
 from scipy.sparse import diags, identity
 from scipy.sparse.linalg import spsolve
 # Local imports
-from utils import grid_from_map, oversample_grid
-from convolution import get_c_matrix, WebbKer
+from .utils import grid_from_map, oversample_grid
+from .convolution import get_c_matrix, WebbKer
 
 
 def finite_diff(x):
