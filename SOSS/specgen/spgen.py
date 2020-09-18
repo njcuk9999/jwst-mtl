@@ -17,15 +17,16 @@ class ModelPars:
     
     nplanetmax=9 #code is hardwired to have upto 9 transiting planets. 
     #default parameters -- these will cause the program to end quickly
-    tstart=0.0e0 #start time (hours)
-    tend=0.0e0 #end time (hours)
-    exptime=0.0e0 #exposure time (s)
-    deadtime=0.0e0 #dead time (s)
+    tstart=0.0 #start time (hours)
+    tend=0.0 #end time (hours)
+    exptime=0.0 #exposure time (s)
+    deadtime=0.0 #dead time (s)
     modelfile='null' #stellar spectrum file name
     nmodeltype=2 #stellar spectrum type. 1=BT-Settl, 2=Atlas-9+NL limbdarkening
-    rvstar=0.0e0 #radial velocity of star (km/s)
-    vsini=0.0e0 #projected rotation of star (km/s)
-    pmodelfile=[None]*nplanetmax #file with Rp/Rs values 
+    rvstar=0.0 #radial velocity of star (km/s)
+    vsini=0.0 #projected rotation of star (km/s)
+    pmodelfile=[None]*nplanetmax #file with Rp/Rs values
+    pmodeltype=[None]*nplanetmax #Type of planet file
     emisfile=[None]*nplanetmax #file with emission spectrum
     ttvfile=[None]*nplanetmax #file with O-C measurements
     #nplanet is tracked by pmodelfile. 
@@ -35,7 +36,7 @@ class ModelPars:
     xout=2048  #dispersion axis
     yout=256   #spatial axis
     noversample=1 #oversampling
-    saturation=65536.0e0 #saturation
+    saturation=65536.0 #saturation
     ngroup=1 #samples up ramp
     pid = 1 #programID
     onum = 1 #observation number
@@ -47,7 +48,8 @@ class ModelPars:
     enumos = 1 #exposure number for oversampling
     detectorname = 'NISRAPID' #confirm this 
     prodtype='cal'
-    
+    orderlist = np.array([0,1,2,3]) # the spectral orders to simulate
+
 
 def read_pars(filename,pars):
     """Usage:  pars=read_pars(filename,pars)
@@ -144,6 +146,14 @@ def read_pars(filename,pars):
                                 pars.pmodelfile[npl-1]=str(columns[1])
                             else:
                                 print('Error: Planet number is Invalid ',npl )
+                                print('Linenumber: ',linenumber)
+                    elif command[0:nlcom-1] == 'rprstype':
+                        if str(columns[1]) != 'null':
+                            npl=int(np.float(command[nlcom-1]))
+                            if (npl <= pars.nplanetmax) & (npl>0):
+                                pars.pmodeltype[npl-1]=str(columns[1])
+                            else:
+                                print('Error: Planet number is Invalid for planetmodel type ',npl)
                                 print('Linenumber: ',linenumber)
                     elif command[0:nlcom-1] == 'emisfile':
                         if str(columns[1]) != 'null':
@@ -248,7 +258,7 @@ class response_class:
         self.response_order=[]
         self.quantum_yield=[]
 
-def readresponse(response_file):
+def readresponse(response_file, quiet=False):
     """Usage: response=readresponse(response_file)
     Inputs
      response_file - FITS file for instrument response.
@@ -261,7 +271,7 @@ def readresponse(response_file):
        response_order(norder) : order index
        quantum_yield(npt) : quantum yield
     """
-
+    if not quiet: print('Reading response file (instrument throughput) {:}'.format(response_file))
     response=response_class() #class to contain response info
 
     hdulist = fits.open(response_file)
@@ -300,7 +310,7 @@ def readresponse_old(response_file):
 
     return reponse_ld,reponse_n0,reponse_n1,reponse_n2,reponse_n3,quantum_yield;
 
-def readstarmodel(starmodel_file,nmodeltype):
+def readstarmodel(starmodel_file, nmodeltype, quiet=False):
     """Usage: starmodel_wv,starmodel_flux=readstarmodel(starmodel_file,smodeltype)
     Inputs:
       starmodel_file - full path and filename to star spectral model
@@ -311,6 +321,8 @@ def readstarmodel(starmodel_file,nmodeltype):
       starmodel_flux : flux
       ld_coeff : non-linear limb-darkening coefficients
     """
+    if not quiet: print('Reading star model atmosphere {:}'.format(starmodel_file))
+
     starmodel_wv=[]
     starmodel_flux=[]
     ld_coeff=[]
@@ -338,7 +350,7 @@ def readstarmodel(starmodel_file,nmodeltype):
 
     return starmodel_wv,starmodel_flux,ld_coeff;
 
-def readplanetmodel(planetmodel_file,pmodeltype):
+def readplanetmodel(planetmodel_file, pmodeltype, quiet=False):
     """Usage: planetmodel_wv,planetmodel_depth=readplanetmodel(planetmodel_file,pmodeltype)
     Inputs
       planetmodel_file : full path to planet model (wavelength,r/R*)
@@ -350,6 +362,9 @@ def readplanetmodel(planetmodel_file,pmodeltype):
       planetmodel_wv : array with model wavelengths (A)
       planetmodel_depth : array with model r/R* values.
     """
+
+    if not quiet: print('Reading planet atmosphere model {:}'.format(planetmodel_file))
+
     planetmodel_wv=[]
     planetmodel_depth=[]
     f = open(planetmodel_file,'r')

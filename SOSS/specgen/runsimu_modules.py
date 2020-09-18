@@ -19,19 +19,6 @@
 
 
 
-def example1():
-
-    # Read in all paths used to locate reference files and directories
-    config_paths_filename = '/genesis/jwst/jwst-mtl-user/jwst-mtl_configpath.txt'
-    read_config_path(config_paths_filename)
-
-    # Make the libraries imports. This needs to come after read_config_path
-    # because the system needs to have the path to libraries first.
-    init_imports()
-
-
-
-
 def read_config_path(config_paths_filename):
     # Read a configuration file used for the whole SOSS pipeline
     # It gives the path to various files.
@@ -118,6 +105,8 @@ def init_imports():
     def barupdate(result):
         pbar.update()
 
+    import spgen as spgen #Python Routines for SpecGen Routines and wrappers for fast-Transit-model.
+
 
 def flux_calibrate_simulation(parameters):
     # This is a one call function that uses the same parameters as the actual simulation
@@ -134,3 +123,4 @@ def flux_calibrate_simulation(parameters):
 
 
     print()
+
