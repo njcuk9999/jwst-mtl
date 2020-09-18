@@ -5,9 +5,21 @@ from astropy.io import fits
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm  # for better display
 
+###############################################
+# Hack to get the path of module. To be changed.
+from os.path import abspath, dirname
+
+
+def get_module_path(file):
+
+    dir_path = abspath(file)
+    dir_path = dirname(dir_path) + '/'
+
+    return dir_path
+###############################################
 
 # Sepcify some default reference files (used in WebbKer)
-DEF_PATH = "Ref_files/spectral_kernel_matrix/"
+DEF_PATH = get_module_path(__file__) + "Ref_files/spectral_kernel_matrix/"
 DEF_FILE_FRAME = "spectral_kernel_matrix_os_{}_width_{}pixels.fits"
 
 

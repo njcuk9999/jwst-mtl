@@ -7,12 +7,13 @@ from scipy.sparse.linalg import spsolve
 from scipy.interpolate import interp1d
 
 # Local imports
-from custom_numpy import arange_2d
-from interpolate import SegmentedLagrangeX
-from convolution import get_c_matrix, WebbKer
-from utils import _get_lam_p_or_m, get_n_nodes, oversample_grid
-from throughput import ThroughputSOSS
-from regularisation import Tikhonov, tikho_solve
+from .custom_numpy import arange_2d
+from .interpolate import SegmentedLagrangeX
+from .convolution import get_c_matrix, WebbKer
+from .utils import (get_lam_p_or_m, get_n_nodes,
+                    oversample_grid, _grid_from_map, get_soss_grid)
+from .throughput import ThroughputSOSS
+from .regularisation import Tikhonov, tikho_solve, TikhoConvMatrix
 
 
 class _BaseOverlap:
@@ -32,7 +33,7 @@ class _BaseOverlap:
     """
     def __init__(self, p_list, lam_list, scidata=None, lam_grid=None,
                  lam_bounds=None, i_bounds=None, c_list=None,
-                 c_kwargs=None, t_list=None, sig=None,
+                 c_kwargs=None, t_list=None, sig=None, n_os=2,
                  mask=None, thresh=1e-5, orders=[1, 2], verbose=False):
         """
         Parameters
@@ -48,7 +49,11 @@ class _BaseOverlap:
             A 2-D array of real values representing the detector image.
         lam_grid : (N_k) array_like, optional
             The grid on which f(lambda) will be projected.
-            Default still has to be improved.
+            Default is a grid from `utils.get_soss_grid`.
+            `n_os` will be passed to this function.
+        n_os  : int, optional
+            if `lam_grid`is None, it will be used to generate
+            a grid. Default is 2.
         lam_bounds : list or array-like (N_ord, 2), optional
             Boundary wavelengths covered by each orders.
             Default is the wavelength covered by `lam_list`.
@@ -81,14 +86,6 @@ class _BaseOverlap:
             Print steps. Default is False.
         """
 
-        ############################
-        # Check input
-        ############################
-
-        # lam_grid must be specified
-        if lam_grid is None:
-            raise ValueError("`lam_grid` kwarg must be specified.")
-
         ###########################
         # Save basic parameters
         ###########################
@@ -96,8 +93,8 @@ class _BaseOverlap:
         # Number of orders
         self.n_ord = len(lam_list)
 
-        # Non-convolved grid length
-        self.n_k = len(lam_grid)
+        # Orders
+        self.orders = orders
 
         # Shape of the detector used
         # (the wavelength map should have the same shape)
@@ -121,6 +118,16 @@ class _BaseOverlap:
 
         # Save pixel wavelength for each orders
         self.lam_list = [lam.copy() for lam in lam_list]
+
+        # Generate lam_grid if not given
+        if lam_grid is None:
+            if self.n_ord == 2:
+                lam_grid = get_soss_grid(p_list, lam_list, n_os=n_os)
+            else:
+                lam_grid, _ = self.grid_from_map()
+
+        # Non-convolved grid length
+        self.n_k = len(lam_grid)
 
         # Save non-convolved wavelength grid
         self.lam_grid = lam_grid.copy()
@@ -608,12 +615,13 @@ class _BaseOverlap:
         # Only solve for valid range `i_grid` (on the detector).
         # It will be a singular matrix otherwise.
         if tikhonov:
+            t_mat = self.get_tikho_conv()
+            default_kwargs = {'grid': self.lam_grid,
+                              'index': i_grid,
+                              't_mat': t_mat}
             if tikho_kwargs is None:
-                tikho_kwargs = {'index': i_grid}
-            else:
-                default_kwargs = {'grid': self.lam_grid,
-                                  'index': i_grid}
-                tikho_kwargs = {**default_kwargs, **tikho_kwargs}
+                tikho_kwargs = {}
+            tikho_kwargs = {**default_kwargs, **tikho_kwargs}
             f_k[i_grid] = self._solve_tikho(matrix, result, **tikho_kwargs)
         else:
             f_k[i_grid] = self._solve(matrix, result, index=i_grid)
@@ -631,6 +639,48 @@ class _BaseOverlap:
         """Solve system using Tikhonov regularisation"""
         # Note that the indexing is applied inside the function
         return tikho_solve(matrix, result, index=index, **kwargs)
+
+    def get_tikho_conv(self, wv_map=None, psf=None, **kwargs):
+        """
+        Convolution matrix to be used as
+        Tikhonov regularisation matrix.
+        This way, the solution of the system can be
+        deviated towards solutions closed to a solution
+        at a resolution close to `n_os` times the resolution
+        given by the `wv_map`.
+
+        Parameters
+        ----------
+        wv_map : (N, M) 2-D arrays, optional
+            array of the central wavelength position each pixels
+            on the detector. It has to have the same (N, M) as the detector.
+            Default is the wv_map from the last specified order.
+        psf : (N, M) 2-D array, optional
+            array of the spatial profile on the detector.
+            It has to have the same (N, M) as the detector.
+            Default is the psf from the last specified order.
+        n_os: int, optional
+            Dictates the resolution of the convolution kernel.
+            The resolution will be `n_os` times the resolution
+            of order 2. Default is 2 times (n_os=2).
+        thresh: float, optional
+            Used to define the maximum length of the kernel.
+            Truncate when kernel < `thresh`. Default is 1e-5
+        """
+
+        # Use grid from object
+        grid = self.lam_grid
+        # Take maps from last specified order (highest resolution)
+        if wv_map is None:
+            wv_map = self.lam_list[-1]
+        if psf is None:
+            psf = self.p_list[-1]
+
+        # Generate convolution object
+        conv_fct = TikhoConvMatrix(wv_map, psf, **kwargs)
+
+        # Project on grid and return
+        return conv_fct(grid)
 
     def get_i_grid(self, d):
         """ Return the index of the grid that are well defined, so d != 0 """
@@ -757,6 +807,10 @@ class _BaseOverlap:
             from `build_sys` method and kwargs will be passed.
         estimate: 1D array-like, optional
             Estimate of the flux projected on the wavelength grid.
+        kwargs:
+            passed to init Tikhonov object. Possible options
+            are `t_mat`, `grid` and `verbose`
+        index:
         Output
         ------
         dictonnary of the tests results
@@ -769,14 +823,13 @@ class _BaseOverlap:
         i_grid = self.get_i_grid(result)
 
         if tikho is None:
-            if kwargs:
-                default_kwargs = {'grid': self.lam_grid,
-                                  'index': i_grid}
-                kwargs = {**default_kwargs, **kwargs}
-                tikho = Tikhonov(matrix, result, **kwargs)
-                self.tikho = tikho
-            else:
-                tikho = self.tikho
+            t_mat = self.get_tikho_conv()
+            default_kwargs = {'grid': self.lam_grid,
+                              'index': i_grid,
+                              't_mat': t_mat}
+            kwargs = {**default_kwargs, **kwargs}
+            tikho = Tikhonov(matrix, result, **kwargs)
+            self.tikho = tikho
 
         # Test all factors
         tests = tikho.test_factors(factors, estimate)
@@ -790,7 +843,133 @@ class _BaseOverlap:
         # Save in tikho's tests
         tikho.test['-logl'] = -1 * np.array(logl_list)
 
+        # Save also grid
+        tikho.test["grid"] = self.lam_grid[i_grid]
+        tikho.test["i_grid"] = i_grid
+
         return tikho.test
+
+    def bin_to_pixel(self, i_ord=0, grid_pix=None, grid_f_k=None, f_k_c=None,
+                     f_k=None, bounds_error=False, **kwargs):
+        """
+        Integrate f_k_c over a pixel grid using the trapezoidal rule.
+        f_k_c is interpolated using scipy.interpolate.interp1d and the
+        kwargs and bounds_error are passed to interp1d.
+        i_ord: int, optional
+            index of the order to be integrated, default is 0, so
+            the first order specified.
+        grid_pix: tuple of two 1d-arrays or 1d-array
+            If a tuple of 2 arrays is given, assume it is the lower and upper
+            integration ranges. If 1d-array, assume it is the center
+            of the pixels. If not given, the wavelength map and the psf map
+            of `i_ord` will be used to compute a pixel grid.
+        grid_f_k: 1d array, optional
+            grid on which the convolved flux is projected.
+            Default is the wavelength grid for `i_ord`.
+        f_k_c: 1d array, optional
+            Convolved flux to be integrated. If not given, `f_k`
+            will be used (and convolved to `i_ord` resolution)
+        f_k: 1d array, optional
+            non-convolved flux (result of the `extract` method).
+            Not used if `f_k_c` is specified.
+        bounds_error and kwargs:
+            passed to interp1d function to interpolate f_k_c.
+        """
+        # Take the value from the order if not given...
+        # ... for the flux grid ...
+        if grid_f_k is None:
+            grid_f_k = self.lam_grid_c(i_ord)
+        # ... for the convolved flux ...
+        if f_k_c is None:
+            # Use f_k if f_k_c not given
+            if f_k is None:
+                raise ValueError("`f_k` or `f_k_c` must be specified.")
+            else:
+                # Convolve f_k
+                f_k_c = self.c_list[i_ord].dot(f_k)
+        # ... and for the pixel bins
+        if grid_pix is None:
+            pix_center, _ = self._grid_from_map(i_ord)
+            # Get pixels borders (plus and minus)
+            pix_p, pix_m = get_lam_p_or_m(pix_center)
+        else:  # Else, unpack grid_pix
+            # Could be a scalar or a 2-elements object)
+            if len(grid_pix) == 2:
+                # 2-elements object, so we have the borders
+                pix_m, pix_p = grid_pix
+                # Need to compute pixel center
+                d_pix = (pix_p - pix_m)
+                pix_center = grid_pix[0] + d_pix
+            else:
+                # 1-element object, so we have the pix centers
+                pix_center = grid_pix
+                # Need to compute the borders
+                pix_p, pix_m = get_lam_p_or_m(pix_center)
+
+        # Interpolate
+        kwargs['bounds_error'] = bounds_error
+        fct_f_k = interp1d(grid_f_k, f_k_c, **kwargs)
+
+        # Intergrate over each bins
+        bin_val = []
+        for x1, x2 in zip(pix_m, pix_p):
+            # Grid points that fall inside the pixel range
+            i_grid = (x1 < grid_f_k) & (grid_f_k < x2)
+            x_grid = grid_f_k[i_grid]
+            # Add boundaries values to the integration grid
+            x_grid = np.concatenate([[x1], x_grid, [x2]])
+            # Integrate
+            bin_val.append(np.trapz(fct_f_k(x_grid), x_grid))
+
+        # Convert to array and return with the pixel centers.
+        return pix_center, np.array(bin_val)
+
+    def grid_from_map(self, i_ord=0):
+        """
+        Return the wavelength grid and the columns associated
+        to a given order index (i_ord)
+        """
+        gargs = ("lam_list", "p_list")
+        wv_map, psf = self.getattrs(*gargs, n=i_ord)
+        return _grid_from_map(wv_map, psf, out_col=True)
+
+    def estim_noise(self, i_ord=0, sig=None, mask=None):
+        """
+        Relative noise estimate over columns.
+        Parameters
+        ----------
+        i_ord: int, optional
+            index of diffraction order. Default is 0
+        sig: 2d array, optional
+            map of the estimate of the detector noise.
+            Default is `self.sig`
+        mask: 2d array, optional
+            Bool map of the masked pixels for order `i_ord`.
+            Default is `self.mask_ord[i_ord]`
+        Output
+        ------
+        lam_grid, noise
+        """
+
+        if sig is None:
+            sig = self.sig
+
+        if mask is None:
+            mask = self.mask_ord[i_ord]
+
+        noise = np.ma.array(sig, mask=mask)
+        # RMS over columns
+        noise = np.sqrt((noise**2).sum(axis=0))
+        # Relative
+        noise /= np.ma.array(self.data, mask=mask).sum(axis=0)
+        # Convert to array with nans
+        noise = noise.filled(fill_value=np.nan)
+
+        # Get associated wavelengths
+        lam_grid, i_col = self.grid_from_map(i_ord)
+
+        # Return sorted according to wavelenghts
+        return lam_grid, noise[i_col]
 
     @staticmethod
     def _check_plot_inputs(fig, ax):
@@ -1098,7 +1277,7 @@ class LagrangeOverlap(_BaseOverlap):
 
         # Compute delta lamda of each pixel
         # delta_lambda = lambda_plus - lambda_minus
-        d_lam = - np.diff(_get_lam_p_or_m(lam), axis=0).squeeze()
+        d_lam = - np.diff(get_lam_p_or_m(lam), axis=0).squeeze()
 
         # Compute only for valid pixels
         lam, d_lam = lam[~mask], d_lam[~mask]
@@ -1188,7 +1367,7 @@ class TrpzOverlap(_BaseOverlap):
         # TODO? Could also be an input??
         lam_p, lam_m = [], []
         for lam in lam_list:  # For each order
-            lp, lm = _get_lam_p_or_m(lam)  # Lambda plus or minus
+            lp, lm = get_lam_p_or_m(lam)  # Lambda plus or minus
             lam_p.append(lp), lam_m.append(lm)
         self.lam_p, self.lam_m = lam_p, lam_m  # Save values
 
