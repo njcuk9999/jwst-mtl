@@ -3,3 +3,4 @@ Test.ipynb
 test_regularisation.py
 Test_tikhonov.ipynb
 test_overlap.py
+personal_utils.py

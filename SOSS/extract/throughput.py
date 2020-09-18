@@ -1,9 +1,23 @@
 from scipy.interpolate import interp1d
 from astropy.io import fits
 
+###############################################
+# Hack to get the path of module. To be changed.
+from os.path import abspath, dirname
+
+
+def get_module_path(file):
+
+    dir_path = abspath(file)
+    dir_path = dirname(dir_path) + '/'
+
+    return dir_path
+###############################################
+
 # Default file parameters
 FILE_SOSS = "NIRISS_Throughput_STScI.fits"
-DEF_PATH = "Ref_files/"
+
+DEF_PATH = get_module_path(__file__) + "Ref_files/"
 
 
 class ThroughputSOSS(interp1d):

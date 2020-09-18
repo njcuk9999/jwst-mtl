@@ -3,7 +3,7 @@ from scipy.integrate._quadrature import AccuracyWarning, _romberg_diff
 from warnings import warn
 
 
-def _get_lam_p_or_m(lam):
+def get_lam_p_or_m(lam):
     """
     Compute lambda_plus and lambda_minus of pixel map,
     given the pixel central value
@@ -113,6 +113,7 @@ def _grid_from_map(wv_map, psf, out_col=False):
     Define wavelength grid by taking the center wavelength
     at each columns at the center of mass of
     the spatial profile.
+    If out_col is True, return the columns positions
     """
     # Normalisation for each column
     col_sum = psf.sum(axis=0)
@@ -127,14 +128,17 @@ def _grid_from_map(wv_map, psf, out_col=False):
     center_wv /= col_sum[good]
     center_wv = center_wv.sum(axis=0)
 
-    # Return sorted and unique
-    out = np.unique(center_wv)
+    # Return sorted
+    i_sort = np.argsort(center_wv)
+    out = center_wv[i_sort]
 
     # Return index of columns if specified
     if out_col:
-        return out, np.arange(len(good))[good]
+        cols = np.where(good)[0]
+        return out, cols[i_sort]
     else:
-        return out
+        # Return sorted and unique if out_cols is False
+        return np.unique(out)
 
 
 def _extrapolate_grid(grid, poly_ord, wv_range):
