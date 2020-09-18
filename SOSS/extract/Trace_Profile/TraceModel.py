@@ -684,7 +684,7 @@ def makemod(clear, F277, do_plots=False, filename=None):
     newmap = newmap / np.nanmax(newmap, axis=0)
     # Create a mask to remove the influence of the second order
     # in the CLEAR data.
-    O1frame = mask_order(newmap, flat_samples, xOM, yOM)
+    O1frame = mask_order(newmap, xCV, yCV)
 
     # Write the trace model to disk if requested.
     if filename is not None:
@@ -697,40 +697,29 @@ def makemod(clear, F277, do_plots=False, filename=None):
         return O1frame
 
 
-def mask_order(frame, flat_samples, xOM, yOM, order=1):
-    ''' Utility function to create a pixel mask to remove the second
-    order trace from the CLEAR exposure once it has been stitched into
-    the full order 1 trace model.
+def mask_order(frame, xCV, yCV):
+    ''' Create a pixel mask to isolate only the detector pixels
+    belonging to a specific diffraction order.
 
     Parameters
     ----------
-    frame : numpy array of floats
-        Data frame.
-    flat_samples : numpy array of floats
-        MCMC samples from which the optics model to detector transformation
-        are determined. For example: as returned by do_emcee.
-    xOM, yOM : numpy array of floats
-        X and Y centroids coordinates respectively in the optics
-        model coordinate frame.
-    order : int
-        Diffraction order to isolate on the detector.
+    frame : np.array
+        Science data frame.
+    xCV : np.array
+        Data x centroids for the desired order
+    yCV : np.array
+        Data y centroids for the desired order
 
     Returns
     -------
-    O1frame : numpy array of floats
-        The input data frame, with all pixels not within
-        the first order trace profile masked.
+    O1frame : np.array
+        The input data frame, with all pixels other than those
+        within +/- 20 pixels of yCV masked.
     '''
 
     mask = np.zeros([256, 2048])
-
-    # Get trace centroids in the detctor frame.
-    xMod, yMod = rot_om2det(np.percentile(flat_samples[:, 0], 50),
-                            np.percentile(flat_samples[:, 1], 50),
-                            np.percentile(flat_samples[:, 2], 50), xOM, yOM,
-                            order=order, bound=True)
-    xx = xMod.astype(int)
-    yy = yMod.astype(int)
+    xx = np.round(xCV, 0).astype(int)
+    yy = np.round(yCV, 0).astype(int)
     xr = np.linspace(np.min(xx), np.max(xx), np.max(xx)+1).astype(int)
 
     # Set all pixels within the extent of the order 1 trace to 1 in the mask.
