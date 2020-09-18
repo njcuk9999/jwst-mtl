@@ -201,7 +201,7 @@ def do_emcee(xOM, yOM, xCV, yCV):
         for example: returned by get_om_centroids.
     xCV, yCV : array of floats
         X and Y trace centroids determined from the data, for example:
-        returned by get_data_centroids.
+        returned by get_o1_data_centroids.
 
     Returns
     -------
@@ -223,7 +223,7 @@ def do_emcee(xOM, yOM, xCV, yCV):
     return sampler
 
 
-def get_data_centroids(stack, atthesex=None):
+def get_o1_data_centroids(stack, atthesex=None):
     ''' Determine the x, y positions of the order 1 trace centroids from an
     exposure using a center-of-mass analysis.
     This is an adaptation of Loïc's get_order1_centroids which can better
@@ -332,6 +332,61 @@ def get_data_centroids(stack, atthesex=None):
     tracey_best = np.array(tracey)
 
     return tracex_best, tracey_best
+
+
+def get_o2_data_centroids(clear, return_o1=False):
+    ''' Get the order 2 trace centroids via fitting the optics model
+    to the first order, and using the known relationship between the
+    positions of the first and second orders.
+
+    Parameters
+    ----------
+    clear : np.ndarray
+        CLEAR SOSS exposure data frame.
+    return_o1 : bool
+        Whether to include the order 1 centroids in the returned value
+
+    Returns
+    -------
+    xM2 : list
+        X-centroids for the order 2 trace.
+    yM2 : list
+        y-centroids for the order 2 trace.
+    xM1 : list (optional)
+        x-centroids for the order 1 trace.
+    yM1 : list (optional)
+        y-centroids for the order 1 trace.
+
+    '''
+
+    # Determine optics model centroids for both orders
+    # as well as order 1 data centroids
+    atthesex = np.arange(2048)
+    xOM1, yOM1, tp1 = get_om_centroids(atthesex)
+    xOM2, yOM2, tp2 = get_om_centroids(atthesex, order=2)
+    xCV, yCV = get_o1_data_centroids(clear, atthesex)
+
+    # Fit the OM to the data for order 1
+    AA = do_emcee(xOM1, yOM1, xCV, yCV)
+
+    # Get fitted rotation parameters
+    flat_samples = AA.get_chain(discard=500, thin=15, flat=True)
+    ang = np.percentile(flat_samples[:, 0], 50)
+    xanch = np.percentile(flat_samples[:, 1], 50)
+    yanch = np.percentile(flat_samples[:, 2], 50)
+
+    # Get rotated OM centroids for order 2
+    xM2, yM2 = rot_om2det(ang, xanch, yanch, xOM2, yOM2, order=2, bound=True)
+    # Ensure that the second order centroids cover the whole detector
+    aa = np.polyfit(xM2, yM2, 10)
+    yM2 = np.polyval(aa, atthesex)
+    inds = np.where((yM2 >= 0) & (yM2 < 256))[0]
+    # Also return order 1 centroids if necessary
+    if return_o1 is True:
+        xM1, yM1 = rot_om2det(ang, xanch, yanch, xOM1, yOM1, bound=True)
+        return atthesex[inds], yM2[inds], xM1, yM1
+    else:
+        return atthesex[inds], yM2[inds]
 
 
 def get_om_centroids(atthesex=None, order=1):
@@ -488,7 +543,7 @@ def makemod(clear, F277, do_plots=False, filename=None):
     # Get the centroid positions from the optics model and the data.
     pixels = np.linspace(0, 2047, 2048)+0.5
     xOM, yOM, tp2 = get_om_centroids(atthesex=np.linspace(0, 2047, 2048))  # OM
-    xCV, yCV = get_data_centroids(clear, atthesex=pixels)  # data
+    xCV, yCV = get_o1_data_centroids(clear, atthesex=pixels)  # data
     # Overplot the data centroids on the CLEAR exposure if necessary
     # to verify accuracy.
     if do_plots is True:
