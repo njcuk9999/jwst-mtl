@@ -889,7 +889,7 @@ class _BaseOverlap:
                 f_k_c = self.c_list[i_ord].dot(f_k)
         # ... and for the pixel bins
         if grid_pix is None:
-            pix_center, _ = self._grid_from_map(i_ord)
+            pix_center, _ = self.grid_from_map(i_ord)
             # Get pixels borders (plus and minus)
             pix_p, pix_m = get_lam_p_or_m(pix_center)
         else:  # Else, unpack grid_pix
