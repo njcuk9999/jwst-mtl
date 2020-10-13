@@ -4,7 +4,7 @@ from scipy.sparse import diags, identity
 from scipy.sparse.linalg import spsolve
 # Local imports
 from .utils import grid_from_map, oversample_grid
-from .convolution import get_c_matrix, WebbKer
+from .convolution import get_c_matrix, WebbKer, NyquistKer
 
 
 def finite_diff(x):
@@ -90,6 +90,53 @@ def finite_zeroth_d(grid):
     return identity(len(grid))
 
 
+def get_nyquist_matrix(grid, integrate=True, n_sampling=2,
+                       thresh=1e-5, **kwargs):
+    """
+    Get the tikhonov regularisation matrix based on
+    a Nyquist convolution matrix (convolution with
+    a kernel with a resolution given by the sampling
+    of a grid). The Tikhonov matrix will be given by
+    the difference of the nominal solution and
+    the convolved solution.
+
+    Parameters
+    ----------
+    grid: 1d-array
+        Grid to project the kernel
+    integrate: bool, optional
+        If True, add integration weights to the tikhonov matrix, so
+        when the squared norm is computed, the result is equivalent
+        to the integral of the integrand squared.
+    n_sampling: int, optional
+        sampling of the grid. Default is 2, so we assume that
+        the grid is Nyquist sampled.
+    thresh: float, optional
+        Used to define the maximum length of the kernel.
+        Truncate when `kernel` < `thresh`
+    kwargs:
+        `interp1d` kwargs used to get FWHM as a function of the grid.
+    """
+
+    # Get nyquist kernel function
+    ker = NyquistKer(grid, n_sampling=n_sampling, **kwargs)
+
+    # Build convolution matrix
+    conv_matrix = get_c_matrix(ker, grid, thresh=thresh)
+
+    # Build tikhonov matrix
+    t_mat = conv_matrix - identity(conv_matrix.shape[0])
+
+    if integrate:
+        # The grid may not be evenly spaced, so
+        # add an integration weight
+        d_grid = np.diff(grid)
+        d_grid = np.concatenate([d_grid, [d_grid[-1]]])
+        t_mat = diags(np.sqrt(d_grid)).dot(t_mat)
+
+    return t_mat
+
+
 class TikhoConvMatrix:
     """
     Convolution matrix to be used as
@@ -145,6 +192,12 @@ class TikhoConvMatrix:
                                  grid, thresh=thresh)
         # Build tikhonov matrix
         t_mat = conv_ord2 - identity(conv_ord2.shape[0])
+
+        # The grid may not be evenly spaced, so
+        # add an integration weight
+        d_grid = np.diff(grid)
+        d_grid = np.concatenate([d_grid, [d_grid[-1]]])
+        t_mat = diags(np.sqrt(d_grid)).dot(t_mat)
 
         return t_mat
 
@@ -433,7 +486,7 @@ class Tikhonov:
         return fig, ax
 
     def l_plot(self, fig=None, ax=None, factors=None, label=None,
-               test=None, text_label=True):
+               test=None, text_label=True, factor_norm=False):
         """
         make an 'l plot'
 
@@ -466,6 +519,10 @@ class Tikhonov:
 
         # Compute norm of regularisation term
         reg_norm = (test['reg']**2).sum(axis=-1)
+
+        # Factors
+        if factor_norm:
+            reg_norm *= test['factors']**2
 
         # Plot
         ax.loglog(err_norm, reg_norm, '.:', label=label)
