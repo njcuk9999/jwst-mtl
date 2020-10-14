@@ -850,7 +850,7 @@ class _BaseOverlap:
         return tikho.test
 
     def bin_to_pixel(self, i_ord=0, grid_pix=None, grid_f_k=None, f_k_c=None,
-                     f_k=None, bounds_error=False, **kwargs):
+                     f_k=None, bounds_error=False, throughput=None, **kwargs):
         """
         Integrate f_k_c over a pixel grid using the trapezoidal rule.
         f_k_c is interpolated using scipy.interpolate.interp1d and the
@@ -876,9 +876,11 @@ class _BaseOverlap:
             passed to interp1d function to interpolate f_k_c.
         """
         # Take the value from the order if not given...
+
         # ... for the flux grid ...
         if grid_f_k is None:
             grid_f_k = self.lam_grid_c(i_ord)
+
         # ... for the convolved flux ...
         if f_k_c is None:
             # Use f_k if f_k_c not given
@@ -887,6 +889,7 @@ class _BaseOverlap:
             else:
                 # Convolve f_k
                 f_k_c = self.c_list[i_ord].dot(f_k)
+
         # ... and for the pixel bins
         if grid_pix is None:
             pix_center, _ = self.grid_from_map(i_ord)
@@ -906,6 +909,10 @@ class _BaseOverlap:
                 # Need to compute the borders
                 pix_p, pix_m = get_lam_p_or_m(pix_center)
 
+        # Set the throughput to ones if not given
+        if throughput is None:
+            def throughput(x): return np.ones_like(x)
+
         # Interpolate
         kwargs['bounds_error'] = bounds_error
         fct_f_k = interp1d(grid_f_k, f_k_c, **kwargs)
@@ -919,7 +926,8 @@ class _BaseOverlap:
             # Add boundaries values to the integration grid
             x_grid = np.concatenate([[x1], x_grid, [x2]])
             # Integrate
-            bin_val.append(np.trapz(fct_f_k(x_grid), x_grid))
+            integrand = fct_f_k(x_grid) * x_grid * throughput(x_grid)
+            bin_val.append(np.trapz(integrand, x_grid))
 
         # Convert to array and return with the pixel centers.
         return pix_center, np.array(bin_val)
