@@ -234,7 +234,7 @@ def to_2d(kernel, grid, grid_range):
     return np.tile(kernel, (n_k_c, 1)).T
 
 
-def fct_to_array(fct, grid, grid_range, thresh=1e-8, length=None):
+def fct_to_array(fct, grid, grid_range, thresh=1e-5, length=None):
     """
     Build a compact kernel 2d array based on a kernel function
     and a grid to project the kernel
