@@ -77,8 +77,8 @@ print(simuPars.pmodeltype[0])
 # Here one can manually edit the parameters but we encourage rather to change
 # the simulation parameter file directly.
 simuPars.noversample=1  #example of changing a model parameter
-simuPars.xout=3000      #spectral axis
-simuPars.yout=300       #spatial (cross-dispersed axis)
+simuPars.xout = 3000      #spectral axis
+simuPars.yout = 300       #spatial (cross-dispersed axis)
 
 
 #detector.add_noise('/genesis/jwst/userland-soss/totoune.fits')
