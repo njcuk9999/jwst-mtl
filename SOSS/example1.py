@@ -13,6 +13,9 @@ sys.path.insert(0, '/genesis/jwst/github/jwst-mtl/SOSS/detector/')
 sys.path.insert(0, '/genesis/jwst/jwst-ref-soss/fortran_lib/')
 sys.path.insert(0, '/genesis/jwst/jwst-user-soss/')
 
+# TODO: Update all paths
+WORKING_DIR = '/genesis/jwst/jwst-user-soss/loic_review_run/'
+
 import os
 # os.environ["OMP_NUM_THREADS"] = "24"
 import numpy as np
@@ -59,7 +62,7 @@ import itsosspipeline as soss
 ###############################################################################
 
 # Read in all paths used to locate reference files and directories
-config_paths_filename = '/genesis/jwst/jwst-user-soss/jwst-mtl_configpath.txt'
+config_paths_filename = os.path.join(WORKING_DIR, 'jwst-mtl_configpath.txt')
 pathPars = soss.paths()
 soss.readpaths(config_paths_filename, pathPars)
 
@@ -83,7 +86,7 @@ simuPars.yout = 300       #spatial (cross-dispersed axis)
 
 #detector.add_noise('/genesis/jwst/userland-soss/totoune.fits')
 from jwst.pipeline import Detector1Pipeline
-result = Detector1Pipeline.call('totoune_mod_poisson_noise_zodibackg_flat_dark_nonlin_bias_detector.fits')
+result = Detector1Pipeline.call('/genesis/jwst/jwst-user-soss/totoune_mod_poisson_noise_zodibackg_flat_dark_nonlin_bias_detector.fits')
 print('Exiting the test...')
 sys.exit()
 
