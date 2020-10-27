@@ -28,6 +28,7 @@ import numpy as np
 from skimage.transform import downscale_local_mean, resize
 
 
+
 def write_dmsready_fits(image, filename, os=1, input_frame='sim'):
     print('Start of write_dmsready_fits')
     # Expects a numpy array with n dimensions =2 or 3, representing a single

@@ -57,10 +57,10 @@ class TimeSeries(object):
         # Here, I hardcoded the path but really we should read it from the config file
         # /genesis/jwst/jwst-mtl-user/jwst-mtl_configpath.txt 
         # NOISE_FILES is the parameter in that file
-        self.noisefiles_dir = '/genesis/jwst/jwst-mtl-ref/noise_files/' # PATH where reference detector noise files can be found. 
+        self.noisefiles_dir = '/genesis/jwst/jwst-ref-soss/noise_files/' # PATH where reference detector noise files can be found.
         # Same here, we need to pass this or read it from teh config path
         # USER_PATH is the parameter in that file
-        self.output_path = '/genesis/jwst/jwst-mtl-user/'
+        self.output_path = '/genesis/jwst/userland-soss/'
 
     def get_normfactor(self, full_well=FULL_WELL):
         """Determine a re-normalization factor so that the highest pixel value in the simulation
@@ -335,7 +335,9 @@ class TimeSeries(object):
         hdu_new[1].data = (self.data/gain).astype('uint16')  # Convert to ADU in 16 bit integers.
 
         if filename is None:
-            filename = self.output_path +os.path.basename(self.ima_path) + self.modif_str + '.fits'
+            dir_and_filename, suffix = os.path.splitext(self.ima_path)
+            #filename = self.output_path +os.path.basename(self.ima_path) + self.modif_str + '.fits'
+            filename = dir_and_filename + self.modif_str + '.fits'
             hdu_new.writeto(filename, overwrite=True)
 
         print('Writing to file: ' + filename)

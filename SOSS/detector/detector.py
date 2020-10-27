@@ -37,8 +37,15 @@ def add_noise(filelist, normalize=False, zodibackg=True, flatfield=True, darkfra
     :return:
     """
 
+    # Check that the input is a string (a single filename) or a list (of filenames)
+    if isinstance(filelist,str) == True:
+        filelist_checked = [filelist]
+    else:
+        filelist_checked = filelist
+
     normfactor = None
-    for filename in filelist:
+
+    for filename in filelist_checked:
 
         tso = timeseries.TimeSeries(filename)
 

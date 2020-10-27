@@ -33,9 +33,12 @@ class ModelPars:
     nplanet=0 #number of planets -- default is no planets - you will get staronly sim.
     sol=np.zeros(nplanetmax*8+1)
     sol[0]=1.0 #mean stellar density [g/cc]
+    subarray='SUBSTRIP256' #SOSS subarray name SUBSTRIP96, SUBSTRIP256 or FF
+    granularity='FRAME' # FRAME or INTEGRAION, an image is created at each XXX
     xout=2048  #dispersion axis
     yout=256   #spatial axis
     noversample=1 #oversampling
+    gain=1.6 # electronic gain [e-/adu]
     saturation=65536.0 #saturation
     ngroup=1 #samples up ramp
     pid = 1 #programID
@@ -48,8 +51,12 @@ class ModelPars:
     enumos = 1 #exposure number for oversampling
     detectorname = 'NISRAPID' #confirm this 
     prodtype='cal'
-    orderlist = np.array([0,1,2,3]) # the spectral orders to simulate
-
+    orderlist = np.array([1,2],dtype=np.int) # the spectral orders to simulate
+    frametime = np.nan # not selectable in the config file. Will be filled in the code.
+    nint = np.nan # not selectable in the config file. Will be filled in the code.
+    magnitude = 10.0
+    filter = 'J'
+    f277wcal = True
 
 def read_pars(filename,pars):
     """Usage:  pars=read_pars(filename,pars)
@@ -92,6 +99,19 @@ def read_pars(filename,pars):
                             print('Linenumber: ',linenumber)
                     elif command == 'vsini':
                         pars.vsini = np.float(columns[1])
+                    elif command == 'magnitude':
+                        pars.magnitude = np.float(columns[1])
+                    elif command == 'filter':
+                        pars.filter = str(columns[1])
+                    elif command == 'f277wcal':
+                        if isinstance(columns[1],str):
+                            pars.f277wcal = (columns[1] == 'True')
+                        else:
+                            pars.f277wcal = bool(columns[1])
+                    elif command == 'subarray':
+                        pars.subarray = columns[1]
+                    elif command == 'granularity':
+                        pars.granularity = columns[1]
                     elif command == 'xout':
                         pars.xout = int(np.float(columns[1]))
                     elif command == 'yout':
@@ -114,6 +134,17 @@ def read_pars(filename,pars):
                         pars.xcen = np.float(columns[1])
                     elif command == 'oversample':
                         pars.noversample = int(np.float(columns[1]))
+                    elif command == 'orderlist':
+                        print('spgen.py - warning - fix the bug with orderlist')
+                        # Bug. I cannot process a string of format '[1,2]'
+                        # to be converted to a numpy array of 2 integers.
+                        # until then, hard code the input in spgen.py
+                        # in the initiation of the parameters.
+                        #pars.orderlist = int(columns[1])
+                        #print('qqq{:}qqq'.format(pars.orderlist))
+                        #print(np.shape(pars.orderlist))
+                    elif command == 'gain':
+                        pars.gain = np.float(columns[1])
                     elif command == 'saturation':
                         pars.saturation = np.float(columns[1])
                     elif command == 'ngroup':
@@ -151,7 +182,7 @@ def read_pars(filename,pars):
                         if str(columns[1]) != 'null':
                             npl=int(np.float(command[nlcom-1]))
                             if (npl <= pars.nplanetmax) & (npl>0):
-                                pars.pmodeltype[npl-1]=str(columns[1])
+                                pars.pmodeltype[npl-1]=int(columns[1])
                             else:
                                 print('Error: Planet number is Invalid for planetmodel type ',npl)
                                 print('Linenumber: ',linenumber)
@@ -356,7 +387,7 @@ def readplanetmodel(planetmodel_file, pmodeltype, quiet=False):
       planetmodel_file : full path to planet model (wavelength,r/R*)
       pmodeltype : type of mode
         1 : space seperated - wavelength(A) R/R*
-        2 : CSV - wavelength(A),transit-depth(ppm)
+        2 : CSV - wavelength(um),transit-depth(ppm)
 
     Outputs
       planetmodel_wv : array with model wavelengths (A)
@@ -364,33 +395,36 @@ def readplanetmodel(planetmodel_file, pmodeltype, quiet=False):
     """
 
     if not quiet: print('Reading planet atmosphere model {:}'.format(planetmodel_file))
+    if not quiet: print('pmodeltype = {:}'.format(pmodeltype))
 
     planetmodel_wv=[]
     planetmodel_depth=[]
     f = open(planetmodel_file,'r')
     for line in f:
-        
-        if pmodeltype==2:
+        if pmodeltype == 2:
             line = line.strip() #get rid of \n at the end of the line
             columns = line.split(',') #break into columns with comma
-            if is_number(columns[0]): #ignore lines that start with '#' 
+            if is_number(columns[0]): #ignore lines that start with '#'
                 planetmodel_wv.append(float(columns[0])*10000.0) #wavelength (um -> A)   
                 tdepth=np.abs(float(columns[1]))/1.0e6 #transit depth ppm -> relative
                 planetmodel_depth.append(np.sqrt(tdepth)) #transit depth- > r/R*
 
-        elif pmodeltype==1:
+        elif pmodeltype == 1:
             line = line.strip() #get rid of \n at the end of the line
             columns = line.split() #break into columns with comma
             if is_number(columns[0]): #ignore lines that start with '#' 
                 planetmodel_wv.append(float(columns[0])) #wavelength (A)   
                 planetmodel_depth.append(float(columns[1])) #r/R*
+        else:
+            print('Not a valid planet model type (1 or 2)')
+            sys.exit()
             
     f.close()
 
     planetmodel_wv=np.array(planetmodel_wv)       #convert to numpy array
     planetmodel_depth=np.array(planetmodel_depth)
     
-    return planetmodel_wv,planetmodel_depth;
+    return planetmodel_wv,planetmodel_depth
 
 def is_number(s):
     try:
@@ -698,6 +732,7 @@ def get_dw(starmodel_wv,planetmodel_wv,pars,tracePars):
 
     #get spectral resolution of planet spectra
     nplanetmodel=len(planetmodel_wv)
+    print(nplanetmodel)
     dw_planet_array=np.zeros(nplanetmodel-1)
     sortidx=np.argsort(planetmodel_wv)
     for i in range(nplanetmodel-1):
@@ -781,6 +816,14 @@ def resample_models(dw,starmodel_wv,starmodel_flux,ld_coeff,\
         planetmodel_wv,planetmodel_rprs,\
         bin_starmodel_wv,bin_starmodel_flux,bin_ld_coeff,bin_planetmodel_wv,bin_planetmodel_rprs)
 
+    # Make sure the array is sorted in increasing wavelengths
+    ind = np.argsort(bin_starmodel_wv)
+    bin_starmodel_wv = bin_starmodel_wv[ind]
+    bin_starmodel_flux = bin_starmodel_flux[ind]
+    bin_planetmodel_wv = planetmodel_wv[ind]
+    bin_planetmodel_rprs = bin_planetmodel_rprs[ind]
+    bin_ld_coeff = bin_ld_coeff[ind]
+
     return bin_starmodel_wv,bin_starmodel_flux,bin_ld_coeff,bin_planetmodel_wv,bin_planetmodel_rprs
 
 
@@ -841,16 +884,14 @@ def resample_models_old(dw,starmodel_wv,starmodel_flux,ld_coeff,\
     
     return bin_starmodel_wv,bin_starmodel_flux,bin_ld_coeff,bin_planetmodel_wv,bin_planetmodel_rprs
 
-def readkernels(workdir,\
-                wls=0.5,wle=5.2,dwl=0.05,kerneldir='Kernel/',os=1):
+def readkernels(psfdir, wls=0.5, wle=5.2, dwl=0.05, os=1):
     """ kernels=readkernels(wls=0.5,wle=5.2,dwl=0.05,Kerneldir='Kernel',os=1)
     Inputs
-     workdir   : base directory
+     psfdir    : psf FITS files directory
      wls       : wavelength start for Kernels, inclusive (um)
      wle       : wavelength end for Kernels, inclusive (um)
      dwl       : wavelength spacing for Kernels (uw)
-     kerneldir : location of Kernels (workdir+Kernels is the full path)
-     os        : amount of oversampling.  Much be an integer >=1. 
+     os        : amount of oversampling.  Much be an integer >=1.
     """
     
     kernels=[]
@@ -865,7 +906,7 @@ def readkernels(workdir,\
         wname='{0:.6f}'.format(int(wl*100+0.1)/100)
         #fname=workdir+kerneldir+kdir+prename+wname+extname
         # (2020/09/02) New path in order to harmonize with rest of code
-        fname=workdir+prename+wname+extname
+        fname=psfdir+prename+wname+extname
         #print(fname)
         hdulist = fits.open(fname)
         
