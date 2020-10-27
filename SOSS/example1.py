@@ -87,6 +87,7 @@ simuPars.yout = 300       #spatial (cross-dispersed axis)
 #detector.add_noise('/genesis/jwst/userland-soss/totoune.fits')
 from jwst.pipeline import Detector1Pipeline
 result = Detector1Pipeline.call(os.path.join(WORKING_DIR, 'totoune_mod_poisson_noise_zodibackg_flat_dark_nonlin_bias_detector.fits'))
+
 print('Exiting the test...')
 sys.exit()
 
