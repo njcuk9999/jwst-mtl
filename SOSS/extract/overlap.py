@@ -32,10 +32,10 @@ class _BaseOverlap:
     methods get_w which computes the 'k' associated to each pixel 'i'.
     These depends of the type of interpolation used.
     """
-    def __init__(self, p_list, lam_list, data=None, lam_grid=None,
-                 lam_bounds=None, i_bounds=None, c_list=None,
-                 c_kwargs=None, t_list=None, sig=None, n_os=2,
-                 mask=None, thresh=1e-5, orders=[1, 2], verbose=False, scidata=None):
+    def __init__(self, p_list, lam_list, t_list, c_list,
+                 data=None, lam_grid=None, lam_bounds=None, i_bounds=None,
+                 c_kwargs=None, sig=None, n_os=2, mask=None, thresh=1e-5,
+                 orders=[1, 2], verbose=False, scidata=None):
         """
         Parameters
         ----------
@@ -46,6 +46,22 @@ class _BaseOverlap:
             A list or array of the central wavelength position for each
             order on the detector.
             It has to have the same (N, M) as `data`.
+        t_list : (N_ord [, N_k]) list of array or callable
+            A list of functions or array of the throughput at each order.
+            If callable, the functions depend on the wavelength.
+            If array, projected on `lam_grid`.
+        c_list : array, callable or sparse matrix
+            Convolution kernel to be applied on f_k for each orders.
+            Can be array of the shape (N_ker, N_k_c).
+            Can be a callable with the form f(x, x0) where x0 is
+            the position of the center of the kernel. In this case, it must
+            return a 1D array (len(x)), so a kernel value
+            for each pairs of (x, x0). If array or callable,
+            it will be passed to `convolution.get_c_matrix` function
+            and the `c_kwargs` can be passed to this function.
+            If sparse, the shape has to be (N_k_c, N_k) and it will
+            be used directly. N_ker is the length of the effective kernel
+            and N_k_c is the length of f_k convolved.
         data : (N, M) array_like, optional
             A 2-D array of real values representing the detector image.
         lam_grid : (N_k) array_like, optional
@@ -60,22 +76,10 @@ class _BaseOverlap:
             Default is the wavelength covered by `lam_list`.
         i_bounds : list or array-like (N_ord, 2), optional
             Index of `lam_bounds`on `lam_grid`.
-        c_list : array or sparse, optional
-            Convolution kernel to be applied on f_k for each orders.
-            If array, the shape has to be (N_ker, N_k_c) and it will
-            be passed to `convolution.get_c_matrix` function.
-            If sparse, the shape has to be (N_k_c, N_k) and it will
-            be used directly. N_ker is the length of the effective kernel
-            and N_k_c is the length of f_k convolved.
-            Default is given by convolution.WebbKer(wv_map, n_os=10, n_pix=21).
-        t_list : (N_ord [, N_k]) list or array of callable, optional
-            A list of functions or array of the throughput at each order.
-            If callable, the function depend on the wavelength.
-            If array, projected on `lam_grid`.
-            Default is given by `throughput.ThroughputSOSS`.
-        c_kwargs : list of N_ord dictionnaries, optional
+        c_kwargs : list of N_ord dictionnaries or dictionnary, optional
             Inputs keywords arguments to pass to
-            `convolution.get_c_matrix` function.
+            `convolution.get_c_matrix` function for each orders.
+            If dictionnary, the same c_kwargs will be used for each orders.
         sig : (N, M) array_like, optional
             Estimate of the error on each pixel. Default is one everywhere.
         mask : (N, M) array_like boolean, optional
@@ -137,21 +141,7 @@ class _BaseOverlap:
         # Save non-convolved wavelength grid
         self.lam_grid = lam_grid.copy()
 
-        ################################
-        # Define throughput
-        ################################
-
-        # If None, read throughput from file
-        if t_list is None:
-            if self.n_ord != len(orders):
-                message = 'New implementation:'
-                message += ' When extracting or simulating only one order,'
-                message += ' you need to specify the `orders` input keyword.'
-                raise ValueError(message)
-            t_list = [ThroughputSOSS(order=n)
-                      for n in orders]
-
-        # Save t_list for each orders
+        # Save throughput for each orders
         self.update_lists(t_list=t_list)
 
         #####################################################
@@ -188,13 +178,6 @@ class _BaseOverlap:
         # Build convolution matrix
         ####################################
 
-        # Set convolution to predefined kernels if not given
-        # Take maximum oversampling and kernel width available
-        # (n_os=10 and n_pix=21)
-        if c_list is None:
-            c_list = [WebbKer(wv_map, n_os=10, n_pix=21)
-                      for wv_map in lam_list]
-
         # Check c_kwargs input
         if c_kwargs is None:
             c_kwargs = [{} for _ in range(self.n_ord)]
@@ -202,17 +185,17 @@ class _BaseOverlap:
             c_kwargs = [c_kwargs for _ in range(self.n_ord)]
 
         # Define convolution sparse matrix
-        c = []
+        conv_ker = []
         for i, c_n in enumerate(c_list):
             if not issparse(c_n):
                 c_n = get_c_matrix(c_n, lam_grid,
                                    i_bounds=self.i_bounds[i],
                                    **c_kwargs[i])
-            c.append(c_n)
-        self.c_list = c
+            conv_ker.append(c_n)
+        self.c_list = conv_ker
 
         #############################
-        # Compute weights
+        # Compute integration weights
         #############################
 
         # The weights depend on the integration method used solve
@@ -1344,6 +1327,22 @@ class LagrangeOverlap(_BaseOverlap):
             A list or array of the central wavelength position for each
             order on the detector.
             It has to have the same (N, M) as `data`.
+        t_list : (N_ord [, N_k]) list of array or callable
+            A list of functions or array of the throughput at each order.
+            If callable, the functions depend on the wavelength.
+            If array, projected on `lam_grid`.
+        c_list : array, callable or sparse matrix
+            Convolution kernel to be applied on f_k for each orders.
+            Can be array of the shape (N_ker, N_k_c).
+            Can be a callable with the form f(x, x0) where x0 is
+            the position of the center of the kernel. In this case, it must
+            return a 1D array (len(x)), so a kernel value
+            for each pairs of (x, x0). If array or callable,
+            it will be passed to `convolution.get_c_matrix` function
+            and the `c_kwargs` can be passed to this function.
+            If sparse, the shape has to be (N_k_c, N_k) and it will
+            be used directly. N_ker is the length of the effective kernel
+            and N_k_c is the length of f_k convolved.
         lagrange_ord: int, optional
             order of the lagrange interpolation method. Default is 1.
         data : (N, M) array_like, optional
@@ -1356,22 +1355,10 @@ class LagrangeOverlap(_BaseOverlap):
             Default is the wavelength covered by `lam_list`.
         i_bounds : list or array-like (N_ord, 2), optional
             Index of `lam_bounds`on `lam_grid`.
-        c_list : array or sparse, optional
-            Convolution kernel to be applied on f_k for each orders.
-            If array, the shape has to be (N_ker, N_k_c) and it will
-            be passed to `convolution.get_c_matrix` function.
-            If sparse, the shape has to be (N_k_c, N_k) and it will
-            be used directly. N_ker is the length of the effective kernel
-            and N_k_c is the length of f_k convolved.
-            Default is given by convolution.WebbKer(wv_map, n_os=10, n_pix=21).
-        t_list : (N_ord [, N_k]) list or array of callable, optional
-            A list of functions or array of the throughput at each order.
-            If callable, the function depend on the wavelength.
-            If array, projected on `lam_grid`.
-            Default is given by `throughput.ThroughputSOSS`.
-        c_kwargs : list of N_ord dictionnaries, optional
+        c_kwargs : list of N_ord dictionnaries or dictionnary, optional
             Inputs keywords arguments to pass to
-            `convolution.get_c_matrix` function.
+            `convolution.get_c_matrix` function for each orders.
+            If dictionnary, the same c_kwargs will be used for each orders.
         sig : (N, M) array_like, optional
             Estimate of the error on each pixel. Default is one everywhere.
         mask : (N, M) array_like boolean, optional
@@ -1469,7 +1456,7 @@ class TrpzOverlap(_BaseOverlap):
     of diffraction.
     """
 
-    def __init__(self, p_list, lam_list, **kwargs):
+    def __init__(self, p_list, lam_list, *args, **kwargs):
         """
         Parameters
         ----------
@@ -1480,6 +1467,22 @@ class TrpzOverlap(_BaseOverlap):
             A list or array of the central wavelength position for each
             order on the detector.
             It has to have the same (N, M) as `data`.
+        t_list : (N_ord [, N_k]) list of array or callable
+            A list of functions or array of the throughput at each order.
+            If callable, the functions depend on the wavelength.
+            If array, projected on `lam_grid`.
+        c_list : array, callable or sparse matrix
+            Convolution kernel to be applied on f_k for each orders.
+            Can be array of the shape (N_ker, N_k_c).
+            Can be a callable with the form f(x, x0) where x0 is
+            the position of the center of the kernel. In this case, it must
+            return a 1D array (len(x)), so a kernel value
+            for each pairs of (x, x0). If array or callable,
+            it will be passed to `convolution.get_c_matrix` function
+            and the `c_kwargs` can be passed to this function.
+            If sparse, the shape has to be (N_k_c, N_k) and it will
+            be used directly. N_ker is the length of the effective kernel
+            and N_k_c is the length of f_k convolved.
         data : (N, M) array_like, optional
             A 2-D array of real values representing the detector image.
         lam_grid : (N_k) array_like, optional
@@ -1490,22 +1493,10 @@ class TrpzOverlap(_BaseOverlap):
             Default is the wavelength covered by `lam_list`.
         i_bounds : list or array-like (N_ord, 2), optional
             Index of `lam_bounds`on `lam_grid`.
-        c_list : array or sparse, optional
-            Convolution kernel to be applied on f_k for each orders.
-            If array, the shape has to be (N_ker, N_k_c) and it will
-            be passed to `convolution.get_c_matrix` function.
-            If sparse, the shape has to be (N_k_c, N_k) and it will
-            be used directly. N_ker is the length of the effective kernel
-            and N_k_c is the length of f_k convolved.
-            Default is given by convolution.WebbKer(wv_map, n_os=10, n_pix=21).
-        t_list : (N_ord [, N_k]) list or array of callable, optional
-            A list of functions or array of the throughput at each order.
-            If callable, the function depend on the wavelength.
-            If array, projected on `lam_grid`.
-            Default is given by `throughput.ThroughputSOSS`.
-        c_kwargs : list of N_ord dictionnaries, optional
+        c_kwargs : list of N_ord dictionnaries or dictionnary, optional
             Inputs keywords arguments to pass to
-            `convolution.get_c_matrix` function.
+            `convolution.get_c_matrix` function for each orders.
+            If dictionnary, the same c_kwargs will be used for each orders.
         sig : (N, M) array_like, optional
             Estimate of the error on each pixel. Default is one everywhere.
         mask : (N, M) array_like boolean, optional
@@ -1525,7 +1516,7 @@ class TrpzOverlap(_BaseOverlap):
         self.lam_p, self.lam_m = lam_p, lam_m  # Save values
 
         # Init upper class
-        super().__init__(p_list, lam_list, **kwargs)
+        super().__init__(p_list, lam_list, *args, **kwargs)
 
     def _get_lo_hi(self, grid, n):
         """
@@ -1865,8 +1856,8 @@ class TrpzBox(TrpzOverlap):
         trput = fct_ones
 
         # Init
-        super().__init__([aperture], [wv_map], lam_grid=lam_grid, thresh=0.,
-                         mask=mask, c_list=[conv_ker], t_list=[trput],
+        super().__init__([aperture], [wv_map], [trput], [conv_ker],
+                         lam_grid=lam_grid, thresh=0., mask=mask,
                          orders=[order], **kwargs)
 
     @staticmethod
