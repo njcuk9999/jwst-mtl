@@ -1802,7 +1802,7 @@ class TrpzBox(TrpzOverlap):
     is no tilt, the result is sensibly the same as
     a box extraction.
     """
-    def __init__(self, aperture, wv_map, lam_grid=None,
+    def __init__(self, aperture, wv_map, lam_grid=None, mask=None,
                  thresh=1e-5, order=1, box_width=20, **kwargs):
         """
         Setup for extraction
@@ -1829,13 +1829,20 @@ class TrpzBox(TrpzOverlap):
             for the user as a way to identify the object.
         box_width: float, optional
             width of the extraction box in pixels. Default is 20 pixels.
+        mask : (N, M) array_like boolean, optional
+            Boolean Mask of the bad pixels on the detector.
         kwargs:
             the use of other kwargs is NOT recommended, but is available.
             They will be passed to `TrpzOverlap` during initiation.
         """
+        # Define default mask if not given
+        if mask is None:
+            mask = np.zeros(aperture.shape, dtype=bool)
+
         # Compute box weights
         aperture = self.get_aperture_weights(aperture, n_pix=box_width)
-        mask = (aperture <= 0.)
+        # TODO mask should be applied inside `get_aperture_weights`
+        mask |= (aperture <= 0.)
 
         # Define grid if not given
         if lam_grid is None:
@@ -1884,7 +1891,7 @@ class TrpzBox(TrpzOverlap):
 
         return col, center
 
-    def get_aperture_weights(self, aperture, n_pix=20, interp_kwargs=None):
+    def get_aperture_weights(self, aperture, n_pix=20):
         """
         Return the weights of a box aperture given the aperture
         profile and the width of the box in pixels.
@@ -1902,15 +1909,8 @@ class TrpzBox(TrpzOverlap):
         # Find trace center
         cols, center = self.get_trace_center(aperture)
 
-        # Interpolate
-        if interp_kwargs is None:
-            interp_kwargs = {"bounds_error": False,
-                             "fill_value": "extrapolate"}
-        f_center = interp1d(cols, center, **interp_kwargs)
-
-        # Compute center for all columns
-        cols = np.arange(aperture.shape[-1])
-        center = f_center(cols)
+        # Save the shape of aperture with good columns
+        shape = (aperture.shape[0], len(cols))
 
         # Box limits for all cols (+/- n_pix/2)
         row_lims = [center - n_pix/2, center + n_pix/2]
@@ -1921,7 +1921,7 @@ class TrpzBox(TrpzOverlap):
         # w = center + n_pix/2 - (rows - 0.5)
         # For min lim:
         # w = rows + 0.5 - center + n_pix/2
-        rows = np.indices(aperture.shape)[0]
+        rows = np.indices(shape)[0]
         weights = rows[:, :, None] - row_lims[None, :, :]
         weights *= np.array([1, -1])
         weights += 0.5
@@ -1932,4 +1932,14 @@ class TrpzBox(TrpzOverlap):
         # Normalize
         weights /= weights.sum(axis=0)
 
-        return weights
+        # TODO: apply mask here. (bad pixel)
+        # How do you normalize the weights?
+        # - Sum over non-masked pixels?
+        # - Simply set to zero without re-normalization?
+
+        # Return with the same shape as aperture and
+        # with zeros where the aperture is not define
+        out = np.zeros(aperture.shape, dtype=float)
+        out[:, cols] = weights
+
+        return out
