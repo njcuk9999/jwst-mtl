@@ -11,10 +11,9 @@ sys.path.insert(0, '/genesis/jwst/github/jwst-mtl/SOSS/trace/')
 sys.path.insert(0, '/genesis/jwst/github/jwst-mtl/SOSS/specgen/')
 sys.path.insert(0, '/genesis/jwst/github/jwst-mtl/SOSS/detector/')
 sys.path.insert(0, '/genesis/jwst/jwst-ref-soss/fortran_lib/')
-sys.path.insert(0, '/genesis/jwst/jwst-user-soss/')
 
 # TODO: Update all paths
-WORKING_DIR = '/genesis/jwst/jwst-user-soss/loic_review_run/'
+WORKING_DIR = '/genesis/jwst/jwst-user-soss/loic_review/'
 
 import os
 # os.environ["OMP_NUM_THREADS"] = "24"
@@ -57,6 +56,8 @@ pyfftw.config.NUM_THREADS = ncpu
 
 import itsosspipeline as soss
 
+from jwst.pipeline import Detector1Pipeline
+
 ###############################################################################
 # Start of the flow
 ###############################################################################
@@ -84,12 +85,12 @@ simuPars.xout = 3000      #spectral axis
 simuPars.yout = 300       #spatial (cross-dispersed axis)
 
 
-#detector.add_noise('/genesis/jwst/userland-soss/totoune.fits')
-from jwst.pipeline import Detector1Pipeline
-result = Detector1Pipeline.call(os.path.join(WORKING_DIR, 'totoune_mod_poisson_noise_zodibackg_flat_dark_nonlin_bias_detector.fits'))
-
-print('Exiting the test...')
-sys.exit()
+if False:
+    #detector.add_noise(os.path.join(WORKING_DIR, 'test.fits')
+    from jwst.pipeline import Detector1Pipeline
+    result = Detector1Pipeline.call(os.path.join(WORKING_DIR, 'test_mod_poisson_noise_zodibackg_flat_dark_nonlin_bias_detector.fits'))
+    print('Exiting the test...')
+    sys.exit()
 
 # Instrument response (Throughput)
 response = spgen.readresponse(pathPars.responsefile, quiet=False)
@@ -131,22 +132,22 @@ imagelist = soss.generate_traces(pathPars, simuPars, tracePars, response,
 # the normalization scale that will anchor to a requested magnitude.
 normalization_scale = np.ones(norders)*10000.0
 expected_counts = smag.expected_flux_calibration(
-                    filtername, magnitude, model_um,
-                    model_flamba, order_list, verbose=True,
-                    trace_file=trace_file,
+                    simuPars.filter, simuPars.magnitude,
+                    starmodel_angstrom, starmodel_flambda,
+                    simuPars.orderlist, verbose=True,
+                    trace_file=pathPars.tracefile,
                     response_file=pathPars.responsefile,
-                    pathfilter=pathPars.path_filtertra==nsmission,
+                    pathfilter=pathPars.path_filtertransmission,
                     pathvega=pathPars.path_filtertransmission)
-                    #pathfilter='/genesis/jwst/jwst-mtl/SOSS/specgen/FilterSVO/',
-                    #pathvega='/genesis/jwst/jwst-mtl/SOSS/specgen/FilterSVO/')
 
 # All simulations are normalized, all orders summed and gathered in a single array
 # with the 3rd dimension being the number of time steps.
 data = soss.write_dmsready_fits_init(imagelist, normalization_scale, simuPars)
 # All simulations (e-/sec) are converted to up-the-ramp images.
-write_dmsready_fits(data[:,:,0:256,0:2048], '/genesis/jwst/userland-soss/totoune.fits',
+write_dmsready_fits(data[:,:,0:256,0:2048], os.path.join(WORKING_DIR,'test.fits'),
                     os=simuPars.noversample, input_frame='sim')
 
-detector.add_noise(['/genesis/jwst/userland-soss/totoune.fits'])
+detector.add_noise(os.path.join(WORKING_DIR,'test.fits'),os.path.join(WORKING_DIR,'test_noisy.fits'))
 
+result = Detector1Pipeline.call(os.path.join(WORKING_DIR, 'test_noisy.fits'))
 

@@ -12,7 +12,7 @@ import timeseries
 
 
 def add_noise(filelist, normalize=False, zodibackg=True, flatfield=True, darkframe=True, nonlinearity=True,
-              superbias=True, detector=True):
+              superbias=True, detector=True, outputfilename=None):
     """
     A function to add detector noise to the simulations.
 
@@ -77,7 +77,7 @@ def add_noise(filelist, normalize=False, zodibackg=True, flatfield=True, darkfra
         if detector:
             tso.add_detector_noise()
 
-        tso.write_to_fits()
+        tso.write_to_fits(outputfilename)
 
     return
 

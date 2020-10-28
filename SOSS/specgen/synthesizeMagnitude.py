@@ -17,7 +17,7 @@ from astropy.io import fits
 
 
 
-def expected_flux_calibration(filtername, magnitude, model_um, model_flux,
+def expected_flux_calibration(filtername, magnitude, model_angstrom, model_flux,
                               list_orders, convert_to_adupersec=False, 
                               F277=None, verbose=None,
                               trace_file = None,
@@ -89,7 +89,10 @@ def expected_flux_calibration(filtername, magnitude, model_um, model_flux,
     hc = 6.62607015e-34 * 299792458.0 # J * m
     JWST_area = 25.0 # m2
     detector_gain = 1.6 # e-/adu
-    
+
+    # Use wavelength in microns internally
+    model_um = model_angstrom / 10000.
+
     # initialize some variables
     lba = np.copy(model_um)
     

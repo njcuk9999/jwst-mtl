@@ -54,6 +54,7 @@ class TimeSeries(object):
 
         self.modif_str = '_mod'  # string encoding the modifications
 
+        # TODO: Handle paths properly.
         # Here, I hardcoded the path but really we should read it from the config file
         # /genesis/jwst/jwst-mtl-user/jwst-mtl_configpath.txt 
         # NOISE_FILES is the parameter in that file
@@ -338,6 +339,8 @@ class TimeSeries(object):
             dir_and_filename, suffix = os.path.splitext(self.ima_path)
             #filename = self.output_path +os.path.basename(self.ima_path) + self.modif_str + '.fits'
             filename = dir_and_filename + self.modif_str + '.fits'
+            hdu_new.writeto(filename, overwrite=True)
+        elif filename is True:
             hdu_new.writeto(filename, overwrite=True)
 
         print('Writing to file: ' + filename)
