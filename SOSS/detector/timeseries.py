@@ -336,14 +336,13 @@ class TimeSeries(object):
         hdu_new[1].data = (self.data/gain).astype('uint16')  # Convert to ADU in 16 bit integers.
 
         if filename is None:
+            print('Forging output noisy file...')
             dir_and_filename, suffix = os.path.splitext(self.ima_path)
             #filename = self.output_path +os.path.basename(self.ima_path) + self.modif_str + '.fits'
             filename = dir_and_filename + self.modif_str + '.fits'
-            hdu_new.writeto(filename, overwrite=True)
-        elif filename is True:
-            hdu_new.writeto(filename, overwrite=True)
 
         print('Writing to file: ' + filename)
+        hdu_new.writeto(filename, overwrite=True)
 
     def plot_image(self, i_group=0, i_integ=0, log=False, reverse_y=True, save=False, filename=None):
         """Plot the detector image for a chosen frame."""

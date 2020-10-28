@@ -147,7 +147,7 @@ data = soss.write_dmsready_fits_init(imagelist, normalization_scale, simuPars)
 write_dmsready_fits(data[:,:,0:256,0:2048], os.path.join(WORKING_DIR,'test.fits'),
                     os=simuPars.noversample, input_frame='sim')
 
-detector.add_noise(os.path.join(WORKING_DIR,'test.fits'),os.path.join(WORKING_DIR,'test_noisy.fits'))
+detector.add_noise(os.path.join(WORKING_DIR,'test.fits'),outputfilename=os.path.join(WORKING_DIR,'test_noisy.fits'))
 
 result = Detector1Pipeline.call(os.path.join(WORKING_DIR, 'test_noisy.fits'))
 
