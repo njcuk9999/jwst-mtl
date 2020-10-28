@@ -356,7 +356,6 @@ def get_o2_data_centroids(clear, return_o1=False):
         x-centroids for the order 1 trace.
     yM1 : list (optional)
         y-centroids for the order 1 trace.
-
     '''
 
     # Determine optics model centroids for both orders
@@ -587,7 +586,7 @@ def makemod(clear, F277, do_plots=False, filename=None):
             # I'm also not including it in GitHub atm as its a large-ish
             # fits file and realistically I'll be the only one using this code.
             # Thus I'll just use my local copy.
-            stand = fits.open('../simu_F277_CLEAR/f277.fits')[0].data[::-1, :]
+            stand = fits.open('/Users/michaelradica/Documents/School/Ph.D./Research/SOSS/Extraction/simu_F277_CLEAR/f277.fits')[0].data[::-1, :]
         except FileNotFoundError:
             sys.exit('The standard red anchor profile was not found.')
         # Find the appropriate X and Y centroids.
