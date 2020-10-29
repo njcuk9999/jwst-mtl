@@ -334,7 +334,7 @@ def get_o1_data_centroids(stack, atthesex=None):
     return tracex_best, tracey_best
 
 
-def get_o2_data_centroids(clear, return_o1=False):
+def get_o2_data_centroids(clear, return_o1=True):
     ''' Get the order 2 trace centroids via fitting the optics model
     to the first order, and using the known relationship between the
     positions of the first and second orders.
@@ -364,6 +364,8 @@ def get_o2_data_centroids(clear, return_o1=False):
     xOM1, yOM1, tp1 = get_om_centroids(atthesex)
     xOM2, yOM2, tp2 = get_om_centroids(atthesex, order=2)
     xCV, yCV = get_o1_data_centroids(clear, atthesex)
+    p_o1 = np.polyfit(xCV, yCV, 5)
+    ycen_o1 = np.polyval(p_o1, atthesex)
 
     # Fit the OM to the data for order 1
     AA = do_emcee(xOM1, yOM1, xCV, yCV)
@@ -375,15 +377,14 @@ def get_o2_data_centroids(clear, return_o1=False):
     yanch = np.percentile(flat_samples[:, 2], 50)
 
     # Get rotated OM centroids for order 2
-    xM2, yM2 = rot_om2det(ang, xanch, yanch, xOM2, yOM2, order=2, bound=True)
+    xcen_o2, ycen_o2 = rot_om2det(ang, xanch, yanch, xOM2, yOM2, order=2, bound=True)
     # Ensure that the second order centroids cover the whole detector
-    aa = np.polyfit(xM2, yM2, 10)
-    yM2 = np.polyval(aa, atthesex)
-    inds = np.where((yM2 >= 0) & (yM2 < 256))[0]
+    p_o2 = np.polyfit(xcen_o2, ycen_o2, 10)
+    ycen_o2 = np.polyval(p_o2, atthesex)
+    inds = np.where((ycen_o2 >= 0) & (ycen_o2 < 256))[0]
     # Also return order 1 centroids if necessary
     if return_o1 is True:
-        xM1, yM1 = rot_om2det(ang, xanch, yanch, xOM1, yOM1, bound=True)
-        return atthesex[inds], yM2[inds], xM1, yM1
+        return atthesex[inds], ycen_o2[inds], atthesex, ycen_o1
     else:
         return atthesex[inds], yM2[inds]
 
@@ -426,10 +427,12 @@ def log_likelihood(theta, xvals, yvals, xCV, yCV):
     ''' Definition of the log likelihood. Called by do_emcee.
     '''
     ang, orx, ory = theta
-    modelx, modely = rot_om2det(ang, orx, ory, xvals, yvals)
+    # Calculate rotated model
+    modelx, modely = rot_om2det(ang, orx, ory, xvals, yvals, bound=True)
+    # Interpolate rotated model onto same x scale as data
+    modely = np.interp(xCV, modelx, modely)
 
-    return -0.5 * np.sum(((xCV[:1000] - modelx[4:1004])**2 + (yCV[:1000] - modely[4:1004])**2)
-                         - 0.5 * np.log(2 * np.pi * 1))
+    return -0.5 * np.sum((yCV - modely)**2 - 0.5 * np.log(2 * np.pi * 1))
 
 
 def log_prior(theta):
@@ -835,25 +838,25 @@ def rot_om2det(ang, cenx, ceny, xval, yval, order=1, bound=False):
     # Map OM onto detector - the parameters for this transformation
     # are already well known.
     if order == 1:
-        t = 1.5*np.pi / 180
+        t = 1.489*np.pi / 180  #old 1.5
         R = np.array([[np.cos(t), -np.sin(t)], [np.sin(t), np.cos(t)]])
-        points1 = np.array([xval - 1535, yval - 205])
+        points1 = np.array([xval - 1514, yval - 456])  # old 1535 & 205
         b = R @ points1
 
-        b[0] += 1535
-        b[1] += 205
+        b[0] += 1514
+        b[1] += 456
 
     if order == 2:
-        t = 1.8*np.pi / 180
+        t = 1.84*np.pi / 180  # old 1.8
         R = np.array([[np.cos(t), -np.sin(t)], [np.sin(t), np.cos(t)]])
-        points1 = np.array([xval - 1347, yval - 141])
+        points1 = np.array([xval - 1366, yval - 453])  # old 1347 & 141
         b = R @ points1
 
-        b[0] += 1347
-        b[1] += 141
+        b[0] += 1366
+        b[1] += 453
 
     # Required rotation in the detector frame to match the data.
-    t = (ang+0.95)*np.pi / 180
+    t = (ang)*np.pi / 180 # old+0.95
     R = np.array([[np.cos(t), -np.sin(t)], [np.sin(t), np.cos(t)]])
 
     points1 = np.array([b[0] - cenx, b[1] - ceny])
