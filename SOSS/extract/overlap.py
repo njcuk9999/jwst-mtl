@@ -220,6 +220,9 @@ class _BaseOverlap:
         # IDEA: try setting to np.nan instead of zero?
         self.data[self.mask] = 0
 
+        # Init b_n_list attribute, compute later
+        self.b_n_list = {}
+
     def _get_masks(self, mask):
         """
         Compute a global mask on the detector and for each orders.
@@ -407,7 +410,7 @@ class _BaseOverlap:
         out = np.zeros(self.shape)
         for n in orders:
             # Compute `b_n` at each pixels w/o `sig`
-            b_n = self.get_b_n(n, sig=False)
+            b_n = self.get_b_n(n, same=True, sig=False)
             # Add flux to pixels
             out[~ma] += b_n.dot(f_k)
 
@@ -442,7 +445,60 @@ class _BaseOverlap:
             message += ' `update_lists` method.'
             raise TypeError(message)
 
-    def get_b_n(self, i_ord, sig=True, quick=False):
+    def get_b_n(self, i_ord, same=False, sig=True, quick=False):
+        """
+        Compute the matrix `b_n = (P/sig).w.T.lambda.c_n` ,
+        where `P` is the spatial profile matrix (diag),
+        `w` is the integrations weights matrix,
+        `T` is the throughput matrix (diag),
+        `lambda` is the convolved wavelength grid matrix (diag),
+        `c_n` is the convolution kernel.
+        The model of the detector at order n (`model_n`)
+        is given by the system:
+        model_n = b_n.c_n.f ,
+        where f is the incoming flux projected on the wavelenght grid.
+        This methods updates the `b_n_list` attribute.
+        Parameters
+        ----------
+        i_ord: integer
+            Label of the order (depending on the initiation of the object).
+        same: bool, optional
+            Do not recompute, b_n. Take the last b_n computed.
+            Useful to speed up code. Default is False.
+        sig: bool or (N, M) array_like, optional
+            If 2-d array, `sig` is the new error estimation map.
+            It is the same shape as `sig` initiation input. If bool,
+            wheter to apply sigma or not. The method will return
+            b_n/sigma if True or array_like and b_n if False. If True,
+            the default object attribute `sig` will be use.
+        quick: bool, optional
+            If True, only perform one matrix multiplication
+            instead of the whole system: (P/sig).(w.T.lambda.c_n)
+        Output
+        ------
+        sparse matrix of b_n coefficients
+        """
+        # Force to compute if b_n never computed.
+        try:
+            # Check if exists
+            self.b_n_list[i_ord]
+        except KeyError:
+            # Force `same` to False, so need to compute b_n
+            same = False
+
+        # Take the last b_n computed if nothing changes
+        if same:
+            b_n = self.b_n_list[i_ord]
+
+        # Else, compute b_n
+        else:
+            b_n = self._get_b_n(i_ord, sig=sig, quick=quick)
+            # Save new b_n
+            self.b_n_list[i_ord] = b_n
+
+        return b_n
+
+    def _get_b_n(self, i_ord, sig=True, quick=False):
         """
         Compute the matrix `b_n = (P/sig).w.T.lambda.c_n` ,
         where `P` is the spatial profile matrix (diag),
