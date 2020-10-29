@@ -174,6 +174,10 @@ class _BaseOverlap:
         # Re-build global mask and masks for each orders
         self.mask, self.mask_ord = self._get_masks(mask)
 
+        # Save mask here as the general mask,
+        # since `mask` attribute can be changed.
+        self.general_mask = self.mask.copy()
+
         ####################################
         # Build convolution matrix
         ####################################
@@ -197,21 +201,10 @@ class _BaseOverlap:
         #############################
         # Compute integration weights
         #############################
-
         # The weights depend on the integration method used solve
         # the integral of the flux over a pixel and are encoded
-        # in the class method `_get_w()`.
-
-        w_list, k_list = [], []
-        for n in range(self.n_ord):  # For each orders
-            w_n, k_n = self.get_w(n)  # Compute weigths
-            # Convert to sparse matrix
-            # First get the dimension of the convolved grid
-            n_kc = np.diff(self.i_bounds[n]).astype(int)[0]
-            # Then convert to sparse
-            w_n = sparse_k(w_n, k_n, n_kc)
-            w_list.append(w_n), k_list.append(k_n)
-        self.w_list, self.k_list = w_list, k_list  # Save values
+        # in the class method `get_w()`.
+        self.w_list, self.k_list = self.compute_weights()
 
         #########################
         # Save remaining inputs
@@ -241,34 +234,76 @@ class _BaseOverlap:
             = self.getattrs('t_list', 'p_list', 'lam_list')
 
         # Mask according to the spatial profile
-        mask_P = [P < thresh for P in p_list]
+        mask_p = [p_ord < thresh for p_ord in p_list]
 
         # Mask pixels not covered by the wavelength grid
         mask_lam = [self.get_mask_lam(n) for n in range(n_ord)]
 
         # Apply user's defined mask
         if mask is None:
-            mask_ord = np.any([mask_P, mask_lam], axis=0)
+            mask_ord = np.any([mask_p, mask_lam], axis=0)
         else:
             mask = [mask for n in range(n_ord)]  # For each orders
-            mask_ord = np.any([mask_P, mask_lam, mask], axis=0)
+            mask_ord = np.any([mask_p, mask_lam, mask], axis=0)
 
         # Mask pixels that are masked at each orders
         global_mask = np.all(mask_ord, axis=0)
 
-        # Mask if mask_P not masked but mask_lam is.
+        # Mask if mask_p not masked but mask_lam is.
         # This means that an order is contaminated by another
         # order, but the wavelength range does not cover this part
         # of the spectrum. Thus, it cannot be treated correctly.
         global_mask |= (np.any(mask_lam, axis=0)
-                        & (~np.array(mask_P)).all(axis=0))
+                        & (~np.array(mask_p)).all(axis=0))
 
         # Apply this new global mask to each orders
         mask_ord = np.any([mask_lam, global_mask[None, :, :]], axis=0)
 
         return global_mask, mask_ord
 
-    def _get_i_bnds(self, lam_bounds):
+    def update_mask(self, mask):
+        """
+        Update `mask` attribute by completing the
+        `general_mask` attribute with the input `mask`.
+        Everytime the mask is changed, the integration weights
+        need to be recomputed since the pixels change.
+        """
+        # Get general mask
+        general_mask = self.general_mask
+
+        # Complete with the input mask
+        new_mask = (general_mask | mask)
+
+        # Update attribute
+        self.mask = new_mask
+
+        # Correct i_bounds if it was not specified
+        # self.update_i_bnds()
+
+        # Re-compute weights
+        self.w_list, self.k_list = self.compute_weights()
+
+    def update_i_bnds(self):
+        """
+        Update the grid limits to extract
+        Needs to be done after modification of the mask
+        """
+        # Get old and new boundaries
+        i_bnds_old = self.i_bounds
+        i_bnds_new = self._get_i_bnds()
+
+        for i_ord in range(self.n_ord):
+            # Take most restrictive lower bound
+            low_bnds = [i_bnds_new[i_ord][0], i_bnds_old[i_ord][0]]
+            i_bnds_new[i_ord][0] = np.max(low_bnds)
+            # Take most restrictive upper bound
+            up_bnds = [i_bnds_new[i_ord][1], i_bnds_old[i_ord][1]]
+            i_bnds_new[i_ord][1] = np.min(up_bnds)
+
+        # Update attribute
+        self.i_bounds = i_bnds_new
+
+    def _get_i_bnds(self, lam_bounds=None):
         """
         Define wavelength boundaries for each orders using the order's mask.
         """
@@ -297,6 +332,29 @@ class _BaseOverlap:
             i_bnds_new.append([a, b])
 
         return i_bnds_new
+
+    def compute_weights(self):
+        """
+        Compute integration weights
+
+        The weights depend on the integration method used solve
+        the integral of the flux over a pixel and are encoded
+        in the class method `get_w()`.
+
+        Returns the lists of weights and corresponding grid indices
+        """
+        # Init lists
+        w_list, k_list = [], []
+        for i_ord in range(self.n_ord):  # For each orders
+            w_n, k_n = self.get_w(i_ord)  # Compute weigths
+            # Convert to sparse matrix
+            # First get the dimension of the convolved grid
+            n_kc = np.diff(self.i_bounds[i_ord]).astype(int)[0]
+            # Then convert to sparse
+            w_n = sparse_k(w_n, k_n, n_kc)
+            w_list.append(w_n), k_list.append(k_n)
+
+        return  w_list, k_list
 
     def rebuild(self, f_lam, orders=None):
         """
@@ -480,7 +538,7 @@ class _BaseOverlap:
         # Assign value
         self.w_t_lam_c[order] = product.copy()
 
-    def build_sys(self, data=None, sig=True, **kwargs):
+    def build_sys(self, data=None, sig=True, mask=None, **kwargs):
         """
         Build linear system arising from the logL maximisation.
         TIPS: To be quicker, only specify the psf (`p_list`) in kwargs.
@@ -506,11 +564,23 @@ class _BaseOverlap:
             A list or array of the spatial profile for each order
             on the detector. It has to have the same (N, M) as `data`.
             Default is the object attribute `p_list`
+        mask : (N, M) array_like boolean, optional
+            Additionnal mask for a given exposure. Will be added
+            to the object general mask.
         Output
         ------
         A and b from Ax = b beeing the system to solve.
         """
         ##### Input management ######
+
+        # Check if inputs are suited for quick mode;
+        # Quick mode if `t_list` is not specified.
+        quick = ('t_list' not in kwargs)
+        # and if mask doesn't change
+        quick &= (mask is None)
+        quick &= hasattr(self, 'w_t_lam_c')  # Pre-computed
+        if quick:
+            self.v_print('Quick mode is on!')
 
         # Use data from object as default
         if data is None:
@@ -519,7 +589,10 @@ class _BaseOverlap:
             # Update data
             self.data = data
 
-        # Take mask from object
+        # Update mask if given
+        if mask is not None:
+            self.update_mask(mask)
+        # Take (updated) mask from object
         mask = self.mask
 
         # Get some dimensions infos
@@ -527,13 +600,6 @@ class _BaseOverlap:
 
         # Update p_list and t_list if given.
         self.update_lists(**kwargs)
-
-        # Check if inputs are suited for quick mode;
-        # Quick mode if `t_list` is not specified.
-        quick = ('t_list' not in kwargs)
-        quick &= hasattr(self, 'w_t_lam_c')  # Pre-computed
-        if quick:
-            self.v_print('Quick mode is on!')
 
         ####### Calculations ########
 
@@ -589,6 +655,9 @@ class _BaseOverlap:
             Estimate of the error on each pixel`
             Same shape as `data`.
             Default is the object attribute `sig`.
+        mask : (N, M) array_like boolean, optional
+            Additionnal mask for a given exposure. Will be added
+            to the object general mask.
         Ouput
         -----
         f_k: solution of the linear system
@@ -1295,7 +1364,7 @@ class _BaseOverlap:
 
     def v_print(self, *args, **kwargs):
         """
-        Print if verbose if true. Same as `print`function.
+        Print if verbose is true. Same as `print`function.
         """
         if self.verbose:
             print(*args, **kwargs)
