@@ -681,7 +681,48 @@ class _BaseOverlap:
 
         return matrix, result.toarray().squeeze()
 
-    def extract(self, tikhonov=False, tikho_kwargs=None, factor=None, **kwargs):
+    def __call__(self, **kwargs):
+        """
+        Extract underlying flux on the detector by calling
+        the `extract` method.
+        All parameters are passed to `build_sys` method.
+        TIPS: To be quicker, only specify the psf (`p_list`) in kwargs.
+              There will be only one matrix multiplication:
+              (P/sig).(w.T.lambda.c_n).
+        Parameters
+        ----------
+        tikhonov : bool, optional
+            Wheter to use tikhonov extraction
+            (see regularisation.tikho_solve function).
+            Default is False.
+        tikho_kwargs : dictionnary or None, optional
+            Arguments passed to `tikho_solve`.
+        data : (N, M) array_like, optional
+            A 2-D array of real values representing the detector image.
+            Default is the object attribute `data`.
+        t_list : (N_ord [, N_k]) list or array of functions, optional
+            A list or array of the throughput at each order.
+            The functions depend on the wavelength
+            Default is the object attribute `t_list`
+        p_list : (N_ord, N, M) list or array of 2-D arrays, optional
+            A list or array of the spatial profile for each order
+            on the detector. It has to have the same (N, M) as `data`.
+            Default is the object attribute `p_list`
+        sig : (N, M) array_like, optional
+            Estimate of the error on each pixel`
+            Same shape as `data`.
+            Default is the object attribute `sig`.
+        mask : (N, M) array_like boolean, optional
+            Additionnal mask for a given exposure. Will be added
+            to the object general mask.
+        Output
+        -----
+        f_k: solution of the linear system
+        """
+        return self.extract(**kwargs)
+
+    def extract(self, tikhonov=False, tikho_kwargs=None,
+                factor=None, **kwargs):
         """
         Extract underlying flux on the detector.
         All parameters are passed to `build_sys` method.
