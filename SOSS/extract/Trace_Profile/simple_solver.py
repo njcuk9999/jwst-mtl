@@ -413,9 +413,9 @@ def simple_solver(xc, yc, order=1):
 
     # Open the reference trace profile for the desired order
     if order == 1:
-        ref_frame = fits.open('trace_profile_m1.fits')[0].data[::-1, :]
+        ref_frame = fits.open('../Ref_files/trace_profile_om1.fits')[0].data[::-1, :]
     if order == 2:
-        ref_frame = fits.open('trace_profile_m2.fits')[0].data[::-1, :]
+        ref_frame = fits.open('../Ref_files/trace_profile_om2.fits')[0].data[::-1, :]
 
     # Initalize black frame
     rot_frame = np.zeros((256, 2048))
