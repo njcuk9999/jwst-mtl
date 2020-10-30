@@ -367,3 +367,36 @@ def rot_om2det(ang, cenx, ceny, xval, yval, order=1, bound=True):
         return rot_pix[0][inds], rot_pix[1][inds]
     else:
         return rot_pix[0], rot_pix[1]
+
+
+def simple_solver(xc, yc, order=1):
+    '''
+    '''
+
+    if order == 1:
+        ref_frame = fits.open('trace_profile_m1.fits')[0].data[::-1,:]
+    if order == 2:
+        ref_frame = fits.open('trace_profile_m2.fits')[0].data[::-1,:]
+
+    rot_frame = np.zeros((256, 2048))
+
+    xcen, ycen, tp = get_om_centroids(atthesex=np.arange(2048), order=order)
+    ycen = (np.round(ycen*10, 0)).astype(int)
+
+    for i in range(len(xc)):
+        if order == 2 and i > 1710:
+            I = 1710
+        else:
+            I = i
+
+        ax_os = np.linspace(-341, 512, 8531)  # 10x oversampled
+        slice_os = np.interp(ax_os, np.arange(256), ref_frame[:, I])
+        tslice = slice_os[(3411+ycen[I]-340):(3411+ycen[I]+351)]
+
+        axis = np.linspace(-34, 34, 690) + yc[i] - 1
+        inds = np.where((axis < 256) & (axis >= 0))[0]
+        newslice = np.interp(np.arange(256), axis[inds], tslice[inds])
+
+        rot_frame[:, i] = newslice
+
+    return rot_frame
