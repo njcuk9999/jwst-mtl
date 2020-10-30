@@ -9,17 +9,120 @@ Functions for the 'simple solver' - calculating rotation and offset of
 reference order 1 and 2 trace profiles.
 """
 
-import warnings
-warnings.filterwarnings('ignore')
 import numpy as np
 from astropy.io import fits
 import matplotlib.pyplot as plt
 import emcee
 import corner
 import sys
-tppath = '/Users/michaelradica/Documents/GitHub/jwst-mtl/SOSS/trace'
+tppath = '../../trace'
 sys.path.insert(1, tppath)
 import tracepol as tp
+
+
+def get_contam_centroids(clear, return_rot_params=False, doplot=False):
+    '''Get the trace centroids for both orders when there is
+    contaminationof the first order by the second on the detector.
+    Fits the first order centroids using the uncontaminated method, and
+    determines the second order centroids via the well-calibrated relationship
+    between the first and second order profiles in the optics model.
+
+    Parameters
+    ----------
+    clear : np.ndarray (2D)
+        CLEAR SOSS exposure data frame.
+    return_rot_params : bool
+        Whether to return the rotation angle and anchor point required to
+        transform the optics model to match the data.
+    doplot : bool
+        Whether to plot the corner plot of the optics model fit to the
+        first order centroids.
+
+    Returns
+    -------
+    atthesex : np.array
+        X-centroids for the order 1 trace.
+    ycen_o1 : np.array
+        y-centroids for the order 1 trace.
+    atthesex[inds] : np.array
+        x-centroids for the order 2 trace.
+    ycen_o2 : np.array
+        y-centroids for the order 2 trace.
+    ang : float (optional)
+        rotation angle for optics model to data transformation.
+    xanch : float (optional)
+        x coordinate of rotation center for optics model to data transform.
+    yanch : float (optional)
+        y coordinate of rotation center for optics model to data transform.
+    '''
+
+    # Determine optics model centroids for both orders
+    # as well as order 1 data centroids
+    atthesex = np.arange(2048)
+    xOM1, yOM1, tp1 = get_om_centroids(atthesex)
+    xOM2, yOM2, tp2 = get_om_centroids(atthesex, order=2)
+    xcen_o1, ycen_o1 = get_uncontam_centroids(clear, atthesex)
+    p_o1 = np.polyfit(xcen_o1, ycen_o1, 5)
+    ycen_o1 = np.polyval(p_o1, atthesex)
+
+    # Fit the OM to the data for order 1
+    AA = _do_emcee(xOM1, yOM1, atthesex, ycen_o1)
+
+    # Plot MCMC results if required
+    if doplot is True:
+        _plot_corner(AA)
+
+    # Get fitted rotation parameters
+    flat_samples = AA.get_chain(discard=500, thin=15, flat=True)
+    ang = np.percentile(flat_samples[:, 0], 50)
+    xanch = np.percentile(flat_samples[:, 1], 50)
+    yanch = np.percentile(flat_samples[:, 2], 50)
+
+    # Get rotated OM centroids for order 2
+    xcen_o2, ycen_o2 = rot_om2det(ang, xanch, yanch, xOM2, yOM2, order=2)
+    # Ensure that the second order centroids cover the whole detector
+    p_o2 = np.polyfit(xcen_o2, ycen_o2, 5)
+    ycen_o2 = np.polyval(p_o2, atthesex)
+    inds = np.where((ycen_o2 >= 0) & (ycen_o2 < 256))[0]
+
+    # Also return rotation parameters if requested
+    if return_rot_params is True:
+        return atthesex, ycen_o1, atthesex[inds], ycen_o2[inds], (ang, xanch, yanch)
+    else:
+        return atthesex, ycen_o1, atthesex[inds], ycen_o2[inds]
+
+
+def get_om_centroids(atthesex=None, order=1):
+    '''Get trace profile centroids from the NIRISS SOSS optics model.
+
+    Parameters
+    ----------
+    atthesex : list of floats
+        Pixel x values at which to evaluate the centroid position.
+    order : int
+        Diffraction order for which to return the optics model solution.
+
+    Returns
+    -------
+    xOM : list of floats
+        Optics model x centroids.
+    yOM : list of floats
+        Optics model y centroids.
+    tp2 : list of floats
+        trace polynomial coefficients.
+    '''
+
+    if atthesex is None:
+        atthesex = np.linspace(0, 2047, 2048)
+
+    # Derive the trace polynomials.
+    tp2 = tp.get_tracepars(filename='%s/NIRISS_GR700_trace.csv' % tppath)
+
+    # Evaluate the trace polynomials at the desired coordinates.
+    w = tp.specpix_to_wavelength(atthesex, tp2, order, frame='nat')[0]
+    xOM, yOM, mas = tp.wavelength_to_pix(w, tp2, order, frame='nat')
+
+    return xOM, yOM[::-1], tp2
 
 
 def get_uncontam_centroids(stack, atthesex=None):
@@ -133,111 +236,6 @@ def get_uncontam_centroids(stack, atthesex=None):
     tracey_best = np.array(tracey)
 
     return tracex_best, tracey_best
-
-
-def get_contam_centroids(clear, return_rot_params=False, doplot=False):
-    '''Get the trace centroids for both orders when there is
-    contaminationof the first order by the second on the detector.
-    Fits the first order centroids using the uncontaminated method, and
-    determines the second order centroids via the well-calibrated relationship
-    between the first and second order profiles in the optics model.
-
-    Parameters
-    ----------
-    clear : np.ndarray (2D)
-        CLEAR SOSS exposure data frame.
-    return_rot_params : bool
-        Whether to return the rotation angle and anchor point required to
-        transform the optics model to match the data.
-    doplot : bool
-        Whether to plot the corner plot of the optics model fit to the
-        first order centroids.
-
-    Returns
-    -------
-    atthesex : np.array
-        X-centroids for the order 1 trace.
-    ycen_o1 : np.array
-        y-centroids for the order 1 trace.
-    atthesex[inds] : np.array
-        x-centroids for the order 2 trace.
-    ycen_o2 : np.array
-        y-centroids for the order 2 trace.
-    ang : float (optional)
-        rotation angle for optics model to data transformation.
-    xanch : float (optional)
-        x coordinate of rotation center for optics model to data transform.
-    yanch : float (optional)
-        y coordinate of rotation center for optics model to data transform.
-    '''
-
-    # Determine optics model centroids for both orders
-    # as well as order 1 data centroids
-    atthesex = np.arange(2048)
-    xOM1, yOM1, tp1 = get_om_centroids(atthesex)
-    xOM2, yOM2, tp2 = get_om_centroids(atthesex, order=2)
-    xcen_o1, ycen_o1 = get_uncontam_centroids(clear, atthesex)
-    p_o1 = np.polyfit(xcen_o1, ycen_o1, 5)
-    ycen_o1 = np.polyval(p_o1, atthesex)
-
-    # Fit the OM to the data for order 1
-    AA = _do_emcee(xOM1, yOM1, atthesex, ycen_o1)
-
-    # Plot MCMC results if required
-    if doplot is True:
-        _plot_corner(AA)
-
-    # Get fitted rotation parameters
-    flat_samples = AA.get_chain(discard=500, thin=15, flat=True)
-    ang = np.percentile(flat_samples[:, 0], 50)
-    xanch = np.percentile(flat_samples[:, 1], 50)
-    yanch = np.percentile(flat_samples[:, 2], 50)
-
-    # Get rotated OM centroids for order 2
-    xcen_o2, ycen_o2 = rot_om2det(ang, xanch, yanch, xOM2, yOM2, order=2)
-    # Ensure that the second order centroids cover the whole detector
-    p_o2 = np.polyfit(xcen_o2, ycen_o2, 5)
-    ycen_o2 = np.polyval(p_o2, atthesex)
-    inds = np.where((ycen_o2 >= 0) & (ycen_o2 < 256))[0]
-
-    # Also return rotation parameters if requested
-    if return_rot_params is True:
-        return atthesex, ycen_o1, atthesex[inds], ycen_o2[inds], (ang, xanch, yanch)
-    else:
-        return atthesex, ycen_o1, atthesex[inds], ycen_o2[inds]
-
-
-def get_om_centroids(atthesex=None, order=1):
-    '''Get trace profile centroids from the NIRISS SOSS optics model.
-
-    Parameters
-    ----------
-    atthesex : list of floats
-        Pixel x values at which to evaluate the centroid position.
-    order : int
-        Diffraction order for which to return the optics model solution.
-
-    Returns
-    -------
-    xOM : list of floats
-        Optics model x centroids.
-    yOM : list of floats
-        Optics model y centroids.
-    tp2 : list of floats
-        trace polynomial coefficients.
-    '''
-
-    if atthesex is None:
-        atthesex = np.linspace(0, 2047, 2048)
-
-    # Derive the trace polynomials.
-    tp2 = tp.get_tracepars(filename='%s/NIRISS_GR700_trace.csv' % tppath)
-
-    # Evaluate the trace polynomials at the desired coordinates.
-    w = tp.specpix_to_wavelength(atthesex, tp2, order, frame='nat')[0]
-    xOM, yOM, mas = tp.wavelength_to_pix(w, tp2, order, frame='nat')
-
-    return xOM, yOM[::-1], tp2
 
 
 def _do_emcee(xOM, yOM, xCV, yCV):
