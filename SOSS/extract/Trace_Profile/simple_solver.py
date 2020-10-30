@@ -340,7 +340,7 @@ def rot_om2det(ang, cenx, ceny, xval, yval, order=1, bound=True):
 
     Returns
     -------
-    rot_pix[0], rot_pix[1] : float
+    rot_xpix, rot_ypix : float
         xval and yval respectively transformed into the
         detector coordinate system.
     '''
@@ -375,14 +375,20 @@ def rot_om2det(ang, cenx, ceny, xval, yval, order=1, bound=True):
     rot_pix[0] += cenx
     rot_pix[1] += ceny
 
+    # Polynomial fit to rotated centroids to ensure there is a centroid at
+    # each pixel on the detector
+    pp = np.polyfit(rot_pix[0], rot_pix[1], 5)
+    rot_xpix = np.arange(2048)
+    rot_ypix = np.polyval(pp, rot_xpix)
+
     # Check to ensure all points are on the subarray.
     if bound is True:
-        inds = [(rot_pix[1] >= 0) & (rot_pix[1] < 256) & (rot_pix[0] >= 0) &
-                (rot_pix[0] < 2048)]
+        inds = [(rot_ypix >= 0) & (rot_ypix < 256) & (rot_xpix >= 0) &
+                (rot_xpix < 2048)]
 
-        return rot_pix[0][inds], rot_pix[1][inds]
+        return rot_xpix[inds], rot_ypix[inds]
     else:
-        return rot_pix[0], rot_pix[1]
+        return rot_xpix, rot_ypix
 
 
 def simple_solver(xc, yc, order=1):
