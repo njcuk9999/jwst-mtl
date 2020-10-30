@@ -20,6 +20,7 @@ from pathlib import Path
 # define name
 __NAME__ = 'core.core.exceptions.py'
 
+
 # =============================================================================
 # Define classes
 # =============================================================================
@@ -37,6 +38,7 @@ class ConstantException(Exception):
         :param instance: object, a constants instance or None
         :param funcname: the function name that error was raise in
         """
+        self.__name__ = 'ConstantException'
         self.constant = instance
         self.kind = kind
         self.message = message
@@ -50,6 +52,9 @@ class ConstantException(Exception):
         emsg = '[{0}] {1}'.format(self.kind, self.message)
         emsg += '\n\tFunc: {0}'.format(self.funcname)
         return emsg
+
+    def __log__(self):
+        return '{0}: {1}'.format(self.__name__, self.__str__())
 
 
 class PathException(Exception):
@@ -68,6 +73,7 @@ class PathException(Exception):
         :param funcname: the function name that error was raise in
         :param message: if set this is the error that is printed
         """
+        self.__name__ = 'PathException'
         self.exception = exception
         self.path = path
         self.funcname = funcname
@@ -90,6 +96,9 @@ class PathException(Exception):
             emsg += '\n\tFunc: {0}'.format(self.funcname)
         return emsg
 
+    def __log__(self):
+        return '{0}: {1}'.format(self.__name__, self.__str__())
+
 
 class ParamDictException(Exception):
     def __init__(self, message: str, kind: str,
@@ -107,6 +116,7 @@ class ParamDictException(Exception):
         :param funcname: the function name that error was raise in
         :param exception: store the exception if given
         """
+        self.__name__ = 'ParamDictException'
         self.constant = instance
         self.kind = kind
         self.message = message
@@ -121,6 +131,9 @@ class ParamDictException(Exception):
         emsg = '[{0}] {1}'.format(self.kind, self.message)
         emsg += '\n\tFunc: {0}'.format(self.funcname)
         return emsg
+
+    def __log__(self):
+        return '{0}: {1}'.format(self.__name__, self.__str__())
 
 
 class ImportException(Exception):
@@ -150,6 +163,9 @@ class ImportException(Exception):
         emsg = '[{0}] {1}'.format(self.kind, self.message)
         emsg += '\n\tFunc: {0}'.format(self.funcname)
         return emsg
+
+    def __log__(self):
+        return '{0}: {1}'.format(self.__name__, self.__str__())
 
 
 # =============================================================================

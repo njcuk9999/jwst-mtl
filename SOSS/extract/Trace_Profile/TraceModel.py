@@ -201,7 +201,7 @@ def do_emcee(xOM, yOM, xCV, yCV):
         for example: returned by get_om_centroids.
     xCV, yCV : array of floats
         X and Y trace centroids determined from the data, for example:
-        returned by get_o1_data_centroids.
+        returned by get_data_centroids.
 
     Returns
     -------

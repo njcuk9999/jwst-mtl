@@ -5,6 +5,7 @@ Created on Mon Feb 17 13:31:58 2020
 """
 
 import numpy as np
+from numpy.polynomial import Legendre
 
 from astropy.io import ascii
 
@@ -47,11 +48,11 @@ def trace_polynomial(trace, m=1, maxorder=15):
     order = 0
     while order <= maxorder:
 
-        spatpars = np.polyfit(wave, spatpix_ref, order)
-        specpars = np.polyfit(wave, specpix_ref, order)
+        spatpol = Legendre.fit(np.log(wave), spatpix_ref, order)
+        specpol = Legendre.fit(np.log(wave), specpix_ref, order)
 
-        spatpixp_nat = np.polyval(spatpars, wave)
-        specpixp_nat = np.polyval(specpars, wave)
+        spatpixp_nat = spatpol(np.log(wave))
+        specpixp_nat = specpol(np.log(wave))
 
         if np.all(np.abs(spatpix_ref - spatpixp_nat) < 0.5) & np.all(np.abs(specpix_ref - specpixp_nat) < 0.5):
             break
@@ -60,18 +61,17 @@ def trace_polynomial(trace, m=1, maxorder=15):
     
     # Compute the transform back to wavelength.
     wavegrid = wavemin + (wavemax - wavemin)*np.linspace(0., 1., 501)
-    specgrid = np.polyval(specpars, wavegrid)
-    wavepars = np.polyfit(specgrid, wavegrid, order)
+    specgrid = specpol(np.log(wavegrid))
+    wavepol = Legendre.fit(specgrid, np.log(wavegrid), order)
 
     # Add the parameters to a dictionary.
     pars = dict()
-    pars['spatpars'] = spatpars
-    pars['specpars'] = specpars
-    pars['specmin'] = specmin
-    pars['specmax'] = specmax
-    pars['wavepars'] = wavepars
-    pars['wavemin'] = wavemin
-    pars['wavemax'] = wavemax
+    pars['spat_coef'] = spatpol.coef
+    pars['spat_domain'] = spatpol.domain
+    pars['spec_coef'] = specpol.coef
+    pars['spec_domain'] = specpol.domain
+    pars['wave_coef'] = wavepol.coef
+    pars['wave_domain'] = wavepol.domain
     
     return pars
 
@@ -325,9 +325,12 @@ def wavelength_to_pix(wavelength, tracepars, m=1, frame='dms', subarray='SUBSTRI
     """
 
     # Convert wavelenght to nat pixel coordinates.
-    specpix_nat = np.polyval(tracepars[m]['specpars'], wavelength)
-    spatpix_nat = np.polyval(tracepars[m]['spatpars'], wavelength)
-    mask = bounds_check(wavelength, tracepars[m]['wavemin'], tracepars[m]['wavemax'])
+    w2spec = Legendre(tracepars[m]['spec_coef'], domain=tracepars[m]['spec_domain'])
+    w2spat = Legendre(tracepars[m]['spat_coef'], domain=tracepars[m]['spat_domain'])
+
+    specpix_nat = w2spec(np.log(wavelength))
+    spatpix_nat = w2spat(np.log(wavelength))
+    mask = bounds_check(np.log(wavelength), tracepars[m]['spec_domain'][0], tracepars[m]['spec_domain'][1])
 
     # Convert coordinates to the requested frame.
     specpix, spatpix = pix_ref_to_frame(specpix_nat, spatpix_nat, frame=frame, subarray=subarray)
@@ -366,8 +369,11 @@ def specpix_to_wavelength(specpix, tracepars, m=1, frame='dms', oversample=1):
     specpix_nat = specpix_frame_to_ref(specpix, frame=frame)
 
     # Convert the specpix coordinates to wavelength.
-    wavelength = np.polyval(tracepars[m]['wavepars'], specpix_nat)
-    mask = bounds_check(specpix_nat, tracepars[m]['specmin'], tracepars[m]['specmax'])
+    spec2w = Legendre(tracepars[m]['wave_coef'], domain=tracepars[m]['wave_domain'])
+
+    with np.errstate(over='ignore'):
+        wavelength = np.exp(spec2w(specpix_nat))
+    mask = bounds_check(specpix_nat, tracepars[m]['wave_domain'][0], tracepars[m]['wave_domain'][1])
 
     return wavelength, mask
 

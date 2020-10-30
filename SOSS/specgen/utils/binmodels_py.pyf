@@ -1,0 +1,32 @@
+!    -*- f90 -*-
+! Note: the context of this file is case sensitive.
+
+python module binmodels_py ! in 
+    interface  ! in :binmodels_py
+        subroutine binmodels_py(wv1,wv2,dw,snpt,starmodel_wv,starmodel_flux,ld_coeff,pnpt,planetmodel_wv,planetmodel_rprs,bmax,bin_starmodel_wv,bin_starmodel_flux,bin_ld_coeff,bin_planetmodel_wv,bin_planetmodel_rprs) ! in :binmodels_py:binmodels_py.f90
+            use precision
+            real(kind=8) :: wv1
+            real(kind=8) :: wv2
+            real(kind=8) :: dw
+            integer, optional,check(len(starmodel_wv)>=snpt),depend(starmodel_wv) :: snpt=len(starmodel_wv)
+            real(kind=8) dimension(snpt) :: starmodel_wv
+            real(kind=8) dimension(snpt),depend(snpt) :: starmodel_flux
+            real(kind=8) dimension(snpt,4),depend(snpt) :: ld_coeff
+            integer, optional,check(len(planetmodel_wv)>=pnpt),depend(planetmodel_wv) :: pnpt=len(planetmodel_wv)
+            real(kind=8) dimension(pnpt) :: planetmodel_wv
+            real(kind=8) dimension(pnpt),depend(pnpt) :: planetmodel_rprs
+            integer, optional,check(len(bin_starmodel_wv)>=bmax),depend(bin_starmodel_wv) :: bmax=len(bin_starmodel_wv)
+            real(kind=8) dimension(bmax),intent(inout) :: bin_starmodel_wv
+            real(kind=8) dimension(bmax),depend(bmax),intent(inout) :: bin_starmodel_flux
+            real(kind=8) dimension(bmax,4),depend(bmax),intent(inout) :: bin_ld_coeff
+            real(kind=8) dimension(bmax),depend(bmax),intent(inout) :: bin_planetmodel_wv
+            real(kind=8) dimension(bmax),depend(bmax),intent(inout) :: bin_planetmodel_rprs
+        end subroutine binmodels_py
+        module precision ! in :binmodels_py:precision.f90
+            integer, parameter,optional :: double_bn=8
+        end module precision
+    end interface 
+end python module binmodels_py
+
+! This file was auto-generated with f2py (version:2).
+! See http://cens.ioc.ee/projects/f2py2e/
