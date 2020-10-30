@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Web Oct 28 11:15 2020
+Created on Wed Oct 28 11:15 2020
 
 @author: MCR
 
@@ -11,7 +11,6 @@ reference order 1 and 2 trace profiles.
 
 import warnings
 warnings.filterwarnings('ignore')
-import webbpsf
 import numpy as np
 from astropy.io import fits
 import matplotlib.pyplot as plt
@@ -24,23 +23,25 @@ import tracepol as tp
 
 
 def get_uncontam_centroids(stack, atthesex=None):
-    ''' Determine the x, y positions of the order 1 trace centroids from an
-    exposure using a center-of-mass analysis.
+    '''Determine the x, y positions of the trace centroids from an
+    exposure using a center-of-mass analysis. Works for either order if there
+    is no contamination, or for order 1 on a detector where the two orders
+    are overlapping.
     This is an adaptation of Loïc's get_order1_centroids which can better
     deal with a bright second order.
 
     Parameters
     ----------
-    stack : numpy array of floats
+    stack : array of floats (2D)
         Data frame.
     atthesex : list of floats
         Pixel x values at which to extract the trace centroids.
 
     Returns
     -------
-    tracexbest : list of floats
+    tracexbest : np.array
         Best estimate data x centroid.
-    traceybest : list of floats
+    traceybest : np.array
         Best estimate data y centroids.
     '''
 
@@ -134,28 +135,40 @@ def get_uncontam_centroids(stack, atthesex=None):
     return tracex_best, tracey_best
 
 
-def get_contam_centroids(clear, return_rot_params=False):
-    ''' Get the order 2 trace centroids via fitting the optics model
-    to the first order, and using the known relationship between the
-    positions of the first and second orders.
+def get_contam_centroids(clear, return_rot_params=False, doplot=False):
+    '''Get the trace centroids for both orders when there is
+    contaminationof the first order by the second on the detector.
+    Fits the first order centroids using the uncontaminated method, and
+    determines the second order centroids via the well-calibrated relationship
+    between the first and second order profiles in the optics model.
 
     Parameters
     ----------
-    clear : np.ndarray
+    clear : np.ndarray (2D)
         CLEAR SOSS exposure data frame.
-    return_o1 : bool
-        Whether to include the order 1 centroids in the returned value
+    return_rot_params : bool
+        Whether to return the rotation angle and anchor point required to
+        transform the optics model to match the data.
+    doplot : bool
+        Whether to plot the corner plot of the optics model fit to the
+        first order centroids.
 
     Returns
     -------
-    xM2 : list
-        X-centroids for the order 2 trace.
-    yM2 : list
-        y-centroids for the order 2 trace.
-    xM1 : list (optional)
-        x-centroids for the order 1 trace.
-    yM1 : list (optional)
+    atthesex : np.array
+        X-centroids for the order 1 trace.
+    ycen_o1 : np.array
         y-centroids for the order 1 trace.
+    atthesex[inds] : np.array
+        x-centroids for the order 2 trace.
+    ycen_o2 : np.array
+        y-centroids for the order 2 trace.
+    ang : float (optional)
+        rotation angle for optics model to data transformation.
+    xanch : float (optional)
+        x coordinate of rotation center for optics model to data transform.
+    yanch : float (optional)
+        y coordinate of rotation center for optics model to data transform.
     '''
 
     # Determine optics model centroids for both orders
@@ -168,7 +181,11 @@ def get_contam_centroids(clear, return_rot_params=False):
     ycen_o1 = np.polyval(p_o1, atthesex)
 
     # Fit the OM to the data for order 1
-    AA = do_emcee(xOM1, yOM1, atthesex, ycen_o1)
+    AA = _do_emcee(xOM1, yOM1, atthesex, ycen_o1)
+
+    # Plot MCMC results if required
+    if doplot is True:
+        _plot_corner(AA)
 
     # Get fitted rotation parameters
     flat_samples = AA.get_chain(discard=500, thin=15, flat=True)
@@ -191,8 +208,7 @@ def get_contam_centroids(clear, return_rot_params=False):
 
 
 def get_om_centroids(atthesex=None, order=1):
-    ''' Utility function to get order 1 trace profile centroids from the
-    JWST NIRISS SOSS optics model.
+    '''Get trace profile centroids from the NIRISS SOSS optics model.
 
     Parameters
     ----------
@@ -204,7 +220,7 @@ def get_om_centroids(atthesex=None, order=1):
     Returns
     -------
     xOM : list of floats
-        Optics model x centroid.
+        Optics model x centroids.
     yOM : list of floats
         Optics model y centroids.
     tp2 : list of floats
@@ -224,8 +240,8 @@ def get_om_centroids(atthesex=None, order=1):
     return xOM, yOM[::-1], tp2
 
 
-def do_emcee(xOM, yOM, xCV, yCV):
-    ''' Utility function which calls the emcee package to preform
+def _do_emcee(xOM, yOM, xCV, yCV):
+    '''Utility function which calls the emcee package to preform
     an MCMC determination of the best fitting rotation angle/center to
     map the OM onto the data.
 
@@ -249,7 +265,7 @@ def do_emcee(xOM, yOM, xCV, yCV):
     pos = initial + 0.5*np.random.randn(32, 3)
     nwalkers, ndim = pos.shape
 
-    sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability,
+    sampler = emcee.EnsembleSampler(nwalkers, ndim, _log_probability,
                                     args=[xOM, yOM, xCV, yCV])
     # Run the MCMC for 5000 steps - it has generally converged
     # within ~3000 steps in trial runs.
@@ -258,8 +274,8 @@ def do_emcee(xOM, yOM, xCV, yCV):
     return sampler
 
 
-def log_likelihood(theta, xvals, yvals, xCV, yCV):
-    ''' Definition of the log likelihood. Called by do_emcee.
+def _log_likelihood(theta, xvals, yvals, xCV, yCV):
+    '''Definition of the log likelihood. Called by do_emcee.
     '''
     ang, orx, ory = theta
     # Calculate rotated model
@@ -270,8 +286,8 @@ def log_likelihood(theta, xvals, yvals, xCV, yCV):
     return -0.5 * np.sum((yCV - modely)**2 - 0.5 * np.log(2 * np.pi * 1))
 
 
-def log_prior(theta):
-    ''' Definition of the priors. Called by do_emcee.
+def _log_prior(theta):
+    '''Definition of the priors. Called by do_emcee.
     '''
     ang, orx, ory = theta
 
@@ -281,19 +297,19 @@ def log_prior(theta):
         return -np.inf
 
 
-def log_probability(theta, xvals, yvals, xCV, yCV):
-    ''' Definition of the final probability. Called by do_emcee.
+def _log_probability(theta, xvals, yvals, xCV, yCV):
+    '''Definition of the final probability. Called by do_emcee.
     '''
-    lp = log_prior(theta)
+    lp = _log_prior(theta)
     if not np.isfinite(lp):
         return -np.inf
 
-    return lp + log_likelihood(theta, xvals, yvals, xCV, yCV)
+    return lp + _log_likelihood(theta, xvals, yvals, xCV, yCV)
 
 
-def plot_corner(sampler):
-    ''' Utility function to produce the corner plot
-    for the results of do_emcee. Called by makemod.
+def _plot_corner(sampler):
+    '''Utility function to produce the corner plot
+    for the results of do_emcee.
     '''
     labels = [r"ang", "cenx", "ceny"]
     flat_samples = sampler.get_chain(discard=500, thin=15, flat=True)
@@ -303,7 +319,7 @@ def plot_corner(sampler):
 
 
 def rot_om2det(ang, cenx, ceny, xval, yval, order=1, bound=True):
-    ''' Utility function to map coordinates in the optics model
+    '''Utility function to map coordinates in the optics model
     reference frame, onto the detector reference frame, given
     the correct transofmration parameters.
 
@@ -370,33 +386,67 @@ def rot_om2det(ang, cenx, ceny, xval, yval, order=1, bound=True):
 
 
 def simple_solver(xc, yc, order=1):
-    '''
+    '''Calculate and preform corrections to the reference trace profiles
+    due to rotation and vertical/horizontal offsets.
+
+    Parameters
+    ----------
+    xc : list
+        List of data x-centroids for the desired order.
+    yc : list
+        List of data y-centroids for the desired order
+    order : int
+        Desired order, either 1 or 2.
+
+    Returns
+    -------
+    rot_frame : np.ndarray
+        Reference trace frame (2D) with rotation and offset corrections
+        applied.
     '''
 
+    # Open the reference trace profile for the desired order
     if order == 1:
-        ref_frame = fits.open('trace_profile_m1.fits')[0].data[::-1,:]
+        ref_frame = fits.open('trace_profile_m1.fits')[0].data[::-1, :]
     if order == 2:
-        ref_frame = fits.open('trace_profile_m2.fits')[0].data[::-1,:]
+        ref_frame = fits.open('trace_profile_m2.fits')[0].data[::-1, :]
 
+    # Initalize black frame
     rot_frame = np.zeros((256, 2048))
 
+    # Get the optics model centroids (which are the reference trace centroids)
     xcen, ycen, tp = get_om_centroids(atthesex=np.arange(2048), order=order)
+    # Convert the y-centroids to ints
+    # Scale by 10 to allow for 10x oversampling
     ycen = (np.round(ycen*10, 0)).astype(int)
 
-    for i in range(len(xc)):
-        if order == 2 and i > 1710:
-            I = 1710
+    # Loop over all columns for which the data centroids fall on the detector
+    for newi in range(len(xc)):
+        # For the second order, the reference trace is only defined
+        # for the first 1710 spectral pixels.
+        # If more spectral pixels are required, reuse the 1710 profile.
+        if order == 2 and newi > 1710:
+            refi = 1710
         else:
-            I = i
+            refi = newi
 
-        ax_os = np.linspace(-341, 512, 8531)  # 10x oversampled
-        slice_os = np.interp(ax_os, np.arange(256), ref_frame[:, I])
-        tslice = slice_os[(3411+ycen[I]-340):(3411+ycen[I]+351)]
+        # 10x oversampled axis accounting for trace profile extending above
+        # or below the detector (in spatial direction)
+        ax_os = np.linspace(-341, 512, 8531)
+        # Oversample the reference trace slice
+        slice_os = np.interp(ax_os, np.arange(256), ref_frame[:, refi])
+        # Extract the trace spetial profile
+        tslice = slice_os[(3411+ycen[refi]-340):(3411+ycen[refi]+351)]
 
-        axis = np.linspace(-34, 34, 690) + yc[i] - 1
+        # New 10x oversampled axis for corrected frame, shifted to
+        # spatial position of data
+        axis = np.linspace(-34, 34, 690) + yc[newi] - 1
+        # Keep only positions where the new axis is on the detector
         inds = np.where((axis < 256) & (axis >= 0))[0]
+        # interpolate oversampled trace profile back to native resolution
         newslice = np.interp(np.arange(256), axis[inds], tslice[inds])
 
-        rot_frame[:, i] = newslice
+        # Add corrected slice to new frame
+        rot_frame[:, newi] = newslice
 
     return rot_frame
