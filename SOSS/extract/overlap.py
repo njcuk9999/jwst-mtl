@@ -359,7 +359,7 @@ class _BaseOverlap:
 
         return  w_list, k_list
 
-    def rebuild(self, f_lam, orders=None):
+    def rebuild(self, f_lam, orders=None, same=False):
         """
         Build current model of the detector.
 
@@ -371,6 +371,9 @@ class _BaseOverlap:
         orders: iterable, ooptional
             Order index to model on detector. Default is
             all available orders.
+        same: bool, optional
+            Do not recompute, b_n. Take the last b_n computed.
+            Useful to speed up code. Default is False.
         Output
         ------
         2D array-like image of the detector
@@ -387,9 +390,9 @@ class _BaseOverlap:
         if orders is None:
             orders = range(self.n_ord)
 
-        return self._rebuild(f_lam, orders)
+        return self._rebuild(f_lam, orders, same)
 
-    def _rebuild(self, f_k, orders):
+    def _rebuild(self, f_k, orders, same):
         """
         Build current model of the detector.
 
@@ -399,6 +402,9 @@ class _BaseOverlap:
             Flux projected on the wavelength grid
         orders: iterable
             Order index to model on detector.
+        same: bool
+            Do not recompute, b_n. Take the last b_n computed.
+            Useful to speed up code.
         Output
         ------
         2D array-like image of the detector
@@ -410,7 +416,7 @@ class _BaseOverlap:
         out = np.zeros(self.shape)
         for n in orders:
             # Compute `b_n` at each pixels w/o `sig`
-            b_n = self.get_b_n(n, same=True, sig=False)
+            b_n = self.get_b_n(n, sig=False, same=same)
             # Add flux to pixels
             out[~ma] += b_n.dot(f_k)
 
@@ -864,7 +870,7 @@ class _BaseOverlap:
 
         return self.i_grid
 
-    def get_logl(self, f_k=None):
+    def get_logl(self, f_k=None, same=False):
         """
         Return the log likelihood computed on each pixels.
 
@@ -873,6 +879,10 @@ class _BaseOverlap:
         f_k: array-like, optional
             Flux projected on the wavelength grid. If not specified,
             it will be computed using `extract` method.
+        same: bool, optional
+            Do not recompute, b_n when calling `rebuild` method.
+            Take the last b_n computed.
+            Useful to speed up code. Default is False.
         """
         data = self.data
         sig = self.sig
@@ -880,7 +890,7 @@ class _BaseOverlap:
         if f_k is None:
             f_k = self.extract()
 
-        model = self.rebuild(f_k)
+        model = self.rebuild(f_k, same=same)
 
         return -np.nansum((model-data)**2/sig**2)
 
@@ -1024,11 +1034,15 @@ class _BaseOverlap:
         tests = tikho.test_factors(factors, estimate)
         # Generate logl using solutions for each factors
         logl_list = []
+        # Compute b_n only the first iteration. Then
+        # use the same value to rebuild the detector.
+        same = False
         for sln in tests['solution']:
             # Init f_k with nan, so it has the adequate shape
             f_k = np.ones(result.shape[-1]) * np.nan
             f_k[i_grid] = sln  # Assign valid values
-            logl_list.append(self.get_logl(f_k))  # log_l
+            logl_list.append(self.get_logl(f_k, same=same))  # log_l
+            same = True
         # Save in tikho's tests
         tikho.test['-logl'] = -1 * np.array(logl_list)
 
