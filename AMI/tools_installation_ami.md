@@ -12,6 +12,15 @@ Install via git clone:
 git clone https://github.com/agreenbaum/ami_sim
 ```
 
+python requirements:
+```
+conda install numpy
+conda install astropy
+pip install --upgrade webbpsf
+```
+pysynphot (see section [here](#pysynphot))
+
+
 ## Codes
 
 ### `driver_binary.py`

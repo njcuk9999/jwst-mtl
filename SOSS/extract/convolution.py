@@ -1,13 +1,25 @@
 import numpy as np
 from scipy.sparse import diags
-from scipy.interpolate import RectBivariateSpline
+from scipy.interpolate import RectBivariateSpline, interp1d
 from astropy.io import fits
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm  # for better display
 
+###############################################
+# Hack to get the path of module. To be changed.
+from os.path import abspath, dirname
+
+
+def get_module_path(file):
+
+    dir_path = abspath(file)
+    dir_path = dirname(dir_path) + '/'
+
+    return dir_path
+###############################################
 
 # Sepcify some default reference files (used in WebbKer)
-DEF_PATH = "Ref_files/spectral_kernel_matrix/"
+DEF_PATH = get_module_path(__file__) + "Ref_files/spectral_kernel_matrix/"
 DEF_FILE_FRAME = "spectral_kernel_matrix_os_{}_width_{}pixels.fits"
 
 
@@ -32,8 +44,8 @@ def get_c_matrix(kernel, grid, bounds=None, i_bounds=None, norm=True,
         giving the kernel for each items of the convolved grid.
         Can be 1D (N_ker), so the kernel is the same. Can be a callable
         with the form f(x, x0) where x0 is the position of the center of
-        the kernel. Must return a 2D array (len(x), len(x0)), so a kernel
-        for each element of x0. If kernel is callable, the additional
+        the kernel. Must return a 1D array (len(x)), so a kernel value
+        for each pairs of (x, x0). If kernel is callable, the additional
         kwargs `thresh` and `length` will be used to project the kernel.
     grid: one-d-array:
         The grid on which the convolution will be applied.
@@ -222,7 +234,7 @@ def to_2d(kernel, grid, grid_range):
     return np.tile(kernel, (n_k_c, 1)).T
 
 
-def fct_to_array(fct, grid, grid_range, thresh=1e-8, length=None):
+def fct_to_array(fct, grid, grid_range, thresh=1e-5, length=None):
     """
     Build a compact kernel 2d array based on a kernel function
     and a grid to project the kernel
@@ -627,3 +639,83 @@ class WebbKer():
         plt.tight_layout()
 
         return fig1, fig2
+
+
+class NyquistKer:
+    """
+    Define a gaussian convolution kernel at the nyquist
+    sampling. For a given point on the grid x_i, the kernel
+    is given by a gaussian with
+    FWHM = n_sampling * (dx_(i-1) + dx_i) / 2.
+    The FWHM is computed for each elements of the grid except
+    the extremities (not defined). We can then generate FWHM as
+    a function of thegrid and interpolate/extrapolate to get
+    the kernel as a function of its position relative to the grid.
+    """
+    def __init__(self, grid, n_sampling=2, bounds_error=False,
+                 fill_value="extrapolate", **kwargs):
+        """
+        Parameters
+        ----------
+        grid : 1d array
+            Grid used to define the kernels
+        n_sampling: int, optional
+            sampling of the grid. Default is 2, so we assume that
+            the grid is Nyquist sampled.
+        bounds_error, fill_value and kwargs:
+            `interp1d` kwargs used to get FWHM as a function of the grid.
+        """
+        # Delta grid
+        d_grid = np.diff(grid)
+
+        # The full width half max is n_sampling
+        # times the mean of d_grid
+        fwhm = (d_grid[:-1] + d_grid[1:]) / 2
+        fwhm *= n_sampling
+
+        # What we really want is sigma, not FWHM
+        sig = fwhm2sigma(fwhm)
+
+        # Now put sigma as a function of the grid
+        sig = interp1d(grid[1:-1], sig, bounds_error=bounds_error,
+                       fill_value=fill_value, **kwargs)
+
+        self.fct_sig = sig
+
+    def __call__(self, x, x0):
+        """
+        Parameters
+        ----------
+        x: 1d array
+            position where the kernel is evaluated
+        x0: 1d array (same shape as x)
+            position of the kernel center for each x.
+
+        Returns
+        -------
+        Value of the gaussian kernel for each sets of (x, x0)
+        """
+
+        # Get the sigma of each gaussians
+        sig = self.fct_sig(x0)
+
+        return gaussians(x, x0, sig)
+
+
+def gaussians(x, x0, sig, amp=None):
+    """
+    Gaussian function
+    """
+
+    # Amplitude term
+    if amp is None:
+        amp = 1/np.sqrt(2 * np.pi * sig**2)
+
+    return amp * np.exp(-0.5*((x - x0) / sig)**2)
+
+
+def fwhm2sigma(fwhm):
+    """
+    Convert a full width half max to a standard deviation, assuming a gaussian
+    """
+    return fwhm / np.sqrt(8 * np.log(2))
