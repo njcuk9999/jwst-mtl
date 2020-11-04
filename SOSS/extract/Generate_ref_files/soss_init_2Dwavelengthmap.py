@@ -175,7 +175,7 @@ def image_native_to_DMS(image):
 
 
 def make_2D_wavemap(fitsmap_name, subarray_name='SUBSTRIP256', coordinate_system='DMS',
-                    tilt_constant=None, oversampling=1):
+                    tilt_constant=None, oversampling=1, padding=10):
 
     # This script generates and writes on disk the reference file that
     # describes the wavelength at the center of each pixel in the subarray.
@@ -193,13 +193,13 @@ def make_2D_wavemap(fitsmap_name, subarray_name='SUBSTRIP256', coordinate_system
     #    bypasses the tilt described in the tilt_table.
     # The convention for the tilt sign is described in the 
     # tilt_vs_spectralpixel() function above.
-    
-    
+    # padding: the number of native pixels to add as padding on each sides
+    # and top/bottom of the generated map. That will allow the extract 1D Solver
+    # to simply apply rotation+offsets without incurring border artifacts.
+
     # Assuming that tracepol is oriented in the ds9 (native detector) coordinates,
     # i.e. the spectral axis is along Y, the spatial axis is along X, with the red
     # wavelengths going up and blue curving left.
-    
-    
     if subarray_name == 'SUBSTRIP96':
         # Seed the larger subarray then we will shrink it later to 96
         dimy = 2048 # spectral axis
@@ -222,8 +222,8 @@ def make_2D_wavemap(fitsmap_name, subarray_name='SUBSTRIP256', coordinate_system
         
     # xpad and ypad are not currently necessary but may prove to be in the
     # the future. Keep for now. They are given in native pixel size.
-    xpad = 0 # not required
-    ypad = 0 # not required
+    xpad = np.copy(padding) # not required
+    ypad = np.copy(padding) # not required
     # The oversampling is an integer number that will scale the output 2D map
     os = np.copy(oversampling)
     lambda_map = np.zeros((norder,(dimy+2*ypad)*os,(dimx+2*xpad)*os))
@@ -257,10 +257,13 @@ def make_2D_wavemap(fitsmap_name, subarray_name='SUBSTRIP256', coordinate_system
             for j in range((dimy+2*ypad)*os): # the spectral axis
                 x_queried = np.float(i)/os-xpad
                 y_queried = np.float(j)/os-ypad
+                # Debugging for os > 1
+                #x_queried = (np.float(i)-xpad)/os
+                #y_queried = (np.float(j)-ypad)/os
                 delta_y = 0.0
                 for iter in range(5):
                     # Assume all x have same lambda
-                    lba_queried = np.interp(y_queried+gain*delta_y,y,lba)
+                    lba_queried = np.interp(y_queried+gain*delta_y,y/os,lba)
                     #print(x_queried, y_queried, lba_queried)
                     # Monochromatic tilt at that wavelenength is:
                     if tilt_constant != None:
@@ -286,10 +289,10 @@ def make_2D_wavemap(fitsmap_name, subarray_name='SUBSTRIP256', coordinate_system
         # The SUBSTRIP96 subarray is offset relative to the SUBSTRIP256 by
         # nnn pixels
         offset = 11
-        lambda_map = lambda_map[:,256-96-offset:256-offset,:]
+        lambda_map = lambda_map[:, :, os*(2*xpad+256-96-offset):os*(xpad+256-offset)]
     elif subarray_name == 'FF':
         tmp = np.zeros((norder,(dimy+2*ypad)*os,(dimy+2*xpad)*os)) * np.nan
-        tmp[:,:,os*(xpad+0):os*(xpad+dimx)] = lambda_map
+        tmp[:,:,os*(xpad+0):os*(2*xpad+dimx)] = lambda_map
         lambda_map = tmp
     else:
         # Nothing to do for other sizes.
@@ -313,11 +316,14 @@ def make_2D_wavemap(fitsmap_name, subarray_name='SUBSTRIP256', coordinate_system
     
     hdu = fits.PrimaryHDU()
     hdu.data = lambda_map
+    hdu.header['oversamp'] = (int(os), 'Pixel oversampling')
+    hdu.header['padding'] = (int(padding), 'Native pixel-size padding around the image.')
     hdu.writeto(fitsmap_name, overwrite=True)
     
     return(lambda_map)
 
-make_2D_wavemap('/genesis/jwst/userland-soss/loic_review/wave2Dmap.fits')
+make_2D_wavemap('/genesis/jwst/userland-soss/loic_review/wave2Dmap_os1.fits',
+                subarray_name = 'SUBSTRIP256', oversampling=1)
 
 #
 # IDL CODE -------------------------------------------------------------------
