@@ -81,7 +81,7 @@ y_FF_3, x_FF_3, mask = tp.wavelength_to_pix(wave_micron, tracepars, m = 3,
 
 
 
-# Finally, you need to save that in a single file
+# TODO: Finally, you need to save that in a single file. The format is TBD.
 
 # wave_micron
 # th_order1
