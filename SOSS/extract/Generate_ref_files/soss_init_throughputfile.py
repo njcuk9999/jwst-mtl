@@ -8,6 +8,12 @@ Created on Wed Nov  4 15:35:32 2020
 
 from astropy.io import fits
 
+import numpy as np
+
+import sys
+sys.path.insert(0, "/genesis/jwst/github/jwst-mtl/SOSS/trace/")
+import tracepol as tp
+
 # Bit that reads our current best estimate of the SOSS total throughput.
 a, hdr = fits.getdata('/genesis/jwst/jwst-ref-soss/trace_model/NIRISS_Throughput_STScI.fits',ext=1,header=True)
 
@@ -49,7 +55,6 @@ tilt_degrees_o3 = np.interp(wave_micron, w, o3)
 
 
 # Bit about the trace position from tracepol
-import tracepol as tp
 
 # Get the trace parameters, function found in tracepol imported above
 trace_file = '/genesis/jwst/jwst-ref-soss/trace_model/NIRISS_GR700_trace_extended.csv'
@@ -72,6 +77,9 @@ y_96_2, x_96_2, mask = tp.wavelength_to_pix(wave_micron, tracepars, m = 2,
 y_96_3, x_96_3, mask = tp.wavelength_to_pix(wave_micron, tracepars, m = 3,
                                   frame = 'dms', subarray = 'SUBSTRIP96')
 # Full Frame
+# TODO: You need to enable a FF subarray option in tracepol.py for this
+# to work. In the DMS coordinates system, that is litteraly only adding
+# 1792 to the y value, I believe.
 y_FF_1, x_FF_1, mask = tp.wavelength_to_pix(wave_micron, tracepars, m = 1,
                                   frame = 'dms', subarray = 'FF')
 y_FF_2, x_FF_2, mask = tp.wavelength_to_pix(wave_micron, tracepars, m = 2,
