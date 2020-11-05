@@ -131,6 +131,9 @@ imagelist = soss.generate_traces(pathPars, simuPars, tracePars, response,
 # Here, a single out-of-transit simulation is used to establish
 # the normalization scale that will anchor to a requested magnitude.
 normalization_scale = np.ones(norders)*10000.0
+# To override the simpar parameters:
+# simuPars.filter = 'J'
+# simuPars.magnitude = 8.5
 expected_counts = smag.expected_flux_calibration(
                     simuPars.filter, simuPars.magnitude,
                     starmodel_angstrom, starmodel_flambda,
