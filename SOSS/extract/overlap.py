@@ -1124,7 +1124,7 @@ class _BaseOverlap:
             throughput = interp1d(x, y)
 
         # Apply throughput on flux
-        f_k_c *= throughput(grid_f_k)
+        f_k_c = f_k_c * throughput(grid_f_k)
 
         # Interpolate
         kwargs['bounds_error'] = bounds_error
