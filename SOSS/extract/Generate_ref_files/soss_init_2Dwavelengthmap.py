@@ -11,62 +11,72 @@ sys.path.insert(0, "../../trace/")
 import numpy as np
 import tracepol as tp
 from astropy.io import fits
+from astropy.table import Table
 
 
-def read_tilt_file(
-        filename='./SOSS_wavelength_dependent_tilt.txt'):
-    """
-    Read a file containing the tilt angle for orders 1, 2 and 3.
-    """
+def get_tiltpars(filename=None):
+    """Read a file containing the tilt angle for orders 1, 2 and 3.
 
-    # Use the best guess estimate for what the tilt is from CV3
-    # Initialize arrays read from reference file.
-    w = []
-    o1, o2, o3 = [], [], []
+    :param filename: The file containing the tilt data.
 
-    # Read in the reference tilt file
-    f = open(filename, 'r')
-    for line in f:
+    :type filename: str
 
-        # Ignore comments (lines starting with #
-        if line[0] != '#':
-            columns = line.split()
-            w.append(float(columns[0]))
-            o1.append(float(columns[1]))
-            o2.append(float(columns[2]))
-            o3.append(float(columns[3]))
-
-    # Make sure to convert from lists to numpy arrays
-    w = np.array(w)
-    o1 = np.array(o1)
-    o2 = np.array(o2)
-    o3 = np.array(o3)
-
-    return w, o1, o2, o3
-
-
-def tilt_solution(wave_queried, tilt_columns, m=1):
-    """
-    Interpolate the tilt values to the input wavelength grid.
+    :returns: wavegrid, tilt_o1, tilt_o2, tilt_o3 - A grid of wavelengths and corresponding tilt angles for each order.
+    :rtype: Tuple(array[float], array[float], array[float], array[float])
     """
 
-    w, o1, o2, o3 = tilt_columns
+    if filename is None:
+        filename = 'SOSS_wavelength_dependent_tilt.ecsv'  # TODO Switch to pkg_resources in the future.
+
+    tab = Table.read(filename)
+    wavegrid = tab['Wavelength']
+    tilt_o1 = tab['order 1']
+    tilt_o2 = tab['order 2']
+    tilt_o3 = tab['order 3']
+
+    # TODO make polynomial fit like tp.get_tracepars?
+
+    return wavegrid, tilt_o1, tilt_o2, tilt_o3
+
+
+def wavelength_to_tilt(wavelength, tiltpars, m=1):
+    """Interpolate the tilt values to the input wavelength grid.
+
+    :param wavelength: wavelength values in microns.
+    :param tiltpars: the tilt parameters returned by get_tiltpars.
+    :param m: the spectral order.
+
+    :type wavelength: array[float]
+    :type tiltpars: Tuple(array[float], array[float], array[float], array[float])
+    :type m: int
+
+    :returns: tilt - The tilt angles corresponding to wavelength for order m.
+    :rtype: array[float]
+    """
+
+    wavegrid, tilt_o1, tilt_o2, tilt_o3 = tiltpars
 
     if m == 1:
-        tilt_queried = np.interp(wave_queried, w, o1)
+        tilt = np.interp(wavelength, wavegrid, tilt_o1)
     elif m == 2:
-        tilt_queried = np.interp(wave_queried, w, o2)
+        tilt = np.interp(wavelength, wavegrid, tilt_o2)
     elif m == 3:
-        tilt_queried = np.interp(wave_queried, w, o3)
+        tilt = np.interp(wavelength, wavegrid, tilt_o3)
     else:
-        raise ValueError('order m must be 1, 2, or 3')
+        raise ValueError('Order m must be 1, 2, or 3.')
 
-    return tilt_queried
+    return tilt
 
      
-def image_ds9_to_dms(image):
-    """
-    This function converts images from ds9 (native) to DMS coordinates.
+def image_nat_to_dms(image):
+    """This function converts images from native (ds9) to DMS coordinates.
+
+    :param image: The input image data in native coordinates.
+
+    :type image: array[float]
+
+    :returns: out - the image in DMS coordinates.
+    :rtype: array[float]
     """
 
     ndim = image.ndim
@@ -83,40 +93,43 @@ def image_ds9_to_dms(image):
     return out
 
 
-def make_2d_wavemap(m=1, subarray='SUBSTRIP256', frame='dms',
-                    tilt_angle=None, oversampling=1, padding=10):
-    """This script generates and writes on disk the reference file that
-    describes the wavelength at the center of each pixel in the subarray.
-    The map will have two 'slices', i.e. a cube of 2 layers, one for each
-    spectral order of SOSS.
+def make_2d_wavemap(m=1, subarray='SUBSTRIP256', frame='dms', tilt_angle=None, oversample=1, padding=10, maxiter=5,
+                    dtol=1e-2):
+    """Compute the 2D wavelength map for NIRISS SOSS.
 
-    subarray_name: SUBSTRIP96, SUBSTRIP256, FF
-    coordinate_system: DS9 (native) or DMS or Jason's
-    tilt_table: the name of the 4-column table describing the monochromatic
-       tilt as a function of wavelength (in microns). Interpolation will be
-       made from that table. Col 1 = microns, col 2 = first order, col 3 =
-       second order. No longer used here. Put in tilt_vs_spectralpixel instead.
-    tilt_constant: if that is set then its value is the monochromatic tilt
-       in degrees whose value is constant for all wavelengths. It then
-       bypasses the tilt described in the tilt_table.
-    The convention for the tilt sign is described in the
-    tilt_vs_spectralpixel() function above.
-    padding: the number of native pixels to add as padding on each sides
-    and top/bottom of the generated map. That will allow the extract 1D Solver
-    to simply apply rotation+offsets without incurring border artifacts.
+    :param m: the spectral order.
+    :param subarray: the subarray of the output coordinates (SUBARRAY256 or SUBARRAY96).
+    :param frame: the coordinate frame of the input coordinates (nat, dms or sim).
+    :param tilt_angle: a constant tilt angle to use.
+    :param oversample: the oversampling factor of the output array.
+    :param padding: the padding of the output array in pixels.
+    :param maxiter: the maximum number of iterations to use when solving the wavelength map.
+    :param dtol: the tolerance in pixels at which to end the iterations.
+
+    :type m: int
+    :type subarray: str
+    :type frame: str
+    :type tilt_angle: float
+    :type oversample: int
+    :type padding: int
+    :type maxiter: int
+    :type dtol: float
+
+    :returns: wave_map_2d - A 2D array of wavelength values across the detector.
+    :rtype: array[float]
     """
 
-    # Assuming that tracepol is oriented in the ds9 (native detector) coordinates,
+    # Assuming that tracepol is oriented in native (ds9) coordinates,
     # i.e. the spectral axis is along Y, the spatial axis is along X, with the red
     # wavelengths going up and blue curving left.
-    if subarray == 'SUBSTRIP96':
-        # Seed the larger subarray then we will shrink it later to 96
-        dimy = 2048  # spectral axis
-        dimx = 256  # spatial axis
-    elif subarray == 'FF':
+    if subarray == 'FF':
         # Assume a spatial dimension of 300 and at the end pad with NaNs.
         dimy = 2048  # spectral axis
         dimx = 300  # spatial axis
+    elif subarray == 'SUBSTRIP96':
+        # Use the same dimensions as SUBSTRIP256 and at the end shrink it down.
+        dimy = 2048  # spectral axis
+        dimx = 256  # spatial axis
     elif subarray == 'SUBSTRIP256':
         dimy = 2048  # spectral axis
         dimx = 256  # spatial axis
@@ -127,75 +140,71 @@ def make_2d_wavemap(m=1, subarray='SUBSTRIP256', frame='dms',
     xpad = np.copy(padding)
     ypad = np.copy(padding)
 
-    # The oversampling is an integer number that will scale the output 2D map
-    os = np.copy(oversampling)
-    wave_map_2d = np.zeros(((dimy + 2*ypad)*os, (dimx + 2*xpad)*os))
+    # The oversampling is an integer number that will scale the output 2D map.
+    os = np.copy(oversample)
 
-    # Inititalize the tilt solution
-    tilt_columns = read_tilt_file()
+    # Get the tilt parameters.
+    tiltpars = get_tiltpars()
 
-    # The gain is for the iterative approach to finding the wavelength
-    gain = -1.0
-
-    # First, query the x,y for order m+1 (so order 1 or 2 or 3)
-    # Get the trace parameters, function found in tracepol imported above
+    # Get the trace parameters.
     trace_file = '../../trace/NIRISS_GR700_trace_extended.csv'
     tracepars = tp.get_tracepars(trace_file)
 
-    # Get wavelength (in um) of first and last pixel of the Order m trace
+    # Compute the trace x, y positions for order m.
     wave = np.linspace(0.5, 3.0, 2501)
-    y, x, mask = tp.wavelength_to_pix(wave, tracepars, m=m,
-                                      frame='nat',
-                                      subarray=subarray,
-                                      oversample=oversampling)
+    y_trace, x_trace, mask = tp.wavelength_to_pix(wave, tracepars, m=m, frame='nat')
 
-    # Loop over spectral order (m), spatial axis (x) and spectral axis (y)
-    # For each pixel, project back to trace center iteratively to
-    # recover the wavelength.
-    for i in range((dimx + 2*xpad)*os):  # the spatial axis
+    # Generate the oversampled grid of pixel coordinates.
+    x_vec = np.arange((dimx + 2*xpad)*os)/os - (os - 1)/(2*os) - xpad
+    y_vec = np.arange((dimy + 2*ypad)*os)/os - (os - 1)/(2*os) - ypad
+    x_pixel, y_pixel = np.meshgrid(x_vec, y_vec)
 
-        for j in range((dimy + 2*ypad)*os):  # the spectral axis
+    # The gain is for the iterative approach to finding the wavelength.
+    gain = -1.0
+    delta_y = 0.0
 
-            x_queried = np.float(i)/os - xpad
-            y_queried = np.float(j)/os - ypad
+    # Iteratively compute the wavelength at each pixel.
+    for niter in range(maxiter):
 
-            delta_y = 0.0
-            for niter in range(5):
+        # Assume all x have same wavelength.
+        wave_iterated = np.interp(y_pixel + gain*delta_y, y_trace, wave)  # TODO why not use tp.specpix_to_wavelength?
 
-                # Assume all x have same lambda
-                wave_queried = np.interp(y_queried + gain*delta_y, y/os, wave)
+        # Compute the tilt angle at the wavelengths.
+        if tilt_angle is not None:
+            tilt_tmp = np.copy(tilt_angle)
+        else:
+            tilt_tmp = wavelength_to_tilt(wave_iterated, tiltpars, m=m)
 
-                # Monochromatic tilt at that wavelenength is:
-                if tilt_angle is not None:
-                    tilt_tmp = np.copy(tilt_angle)
-                else:
-                    tilt_tmp = tilt_solution(wave_queried, tilt_columns, m=m)
+        # Compute the trace position at the wavelengths.
+        x_estimate = np.interp(wave_iterated, wave, x_trace)  # TODO why not use tp.wavelength_to_pix?
+        y_estimate = np.interp(wave_iterated, wave, y_trace)
 
-                # Plug the lambda to spit out the x, y.
-                x_estimate = np.interp(wave_queried, wave, x)
-                y_estimate = np.interp(wave_queried, wave, y)
+        # Project that back to pixel coordinates.
+        y_iterated = y_estimate + (x_pixel - x_estimate)*np.tan(np.deg2rad(tilt_tmp))
 
-                # Project that back to requested x assuming a tilt of tilt_degree
-                # x_iterated = np.copy(x_queried) not used?
-                y_iterated = y_estimate + \
-                    (x_queried-x_estimate) * \
-                    np.tan(np.deg2rad(tilt_tmp))
+        # Measure error between requested and iterated position.
+        delta_y = delta_y + (y_iterated - y_pixel)
 
-                # Measure error between requested and iterated position.
-                delta_y = delta_y + (y_iterated - y_queried)
+        # If the desired precision has been reached end iterations.
+        if np.all(np.abs(y_iterated - y_pixel) < dtol):
+            break
 
-            wave_map_2d[j, i] = wave_queried
+    wave_map_2d = wave_iterated
 
     # Crop or expand to the appropriate size for the subarray.
-    if subarray == 'SUBSTRIP96':
-        # The SUBSTRIP96 subarray is offset relative to the SUBSTRIP256 by
-        # nnn pixels
-        offset = 11
-        wave_map_2d = wave_map_2d[:, :, os*(2*xpad+256-96-offset):os*(xpad+256-offset)]
-    elif subarray == 'FF':
-        tmp = np.zeros(((dimy+2*ypad)*os, (dimy+2*xpad)*os)) * np.nan
-        tmp[:, os*(xpad+0):os*(2*xpad+dimx)] = wave_map_2d
+    if subarray == 'FF':
+        # We padd the FF subarray with NaNs now.
+        tmp = np.full((os*(dimy + 2*ypad), os*(dimy + 2*xpad)), fill_value=np.nan)
+        lx = 0
+        ux = os*(dimx + 2*xpad)
+        tmp[:, lx:ux] = wave_map_2d
         wave_map_2d = tmp
+    elif subarray == 'SUBSTRIP96':
+        # The SUBSTRIP96 subarray is offset relative to the SUBSTRIP256 by N pixels.
+        offset = 11
+        lx = os*(dimx - offset - 96)
+        ux = os*(dimx - offset + 2*xpad)
+        wave_map_2d = wave_map_2d[:, lx:ux]
     else:
         pass
 
@@ -203,9 +212,9 @@ def make_2d_wavemap(m=1, subarray='SUBSTRIP256', frame='dms',
     if frame == 'nat':
         pass
     elif frame == 'dms':
-        wave_map_2d = image_ds9_to_dms(wave_map_2d)
+        wave_map_2d = image_nat_to_dms(wave_map_2d)
     elif frame == 'sim':
-        wave_map_2d = image_ds9_to_dms(wave_map_2d)
+        wave_map_2d = image_nat_to_dms(wave_map_2d)
         wave_map_2d = np.flip(wave_map_2d, axis=1)
     else:
         raise ValueError('Unknown coordinate frame: {}'.format(frame))
@@ -214,18 +223,36 @@ def make_2d_wavemap(m=1, subarray='SUBSTRIP256', frame='dms',
 
 
 def main():
+    """Generate the NIRISS SOSS 2D wavelength reference file."""
 
-    # Generate the 2D wavelength map for order 1.
-    wave_map_2d = make_2d_wavemap()
+    padding = 10
+    oversample = 3
+    fitsmap_name = './SOSS_wave2D_os{}_pad{}.fits'.format(oversample, padding)
 
-    # Save the 2D wavelength map.
-    fitsmap_name = './SOSS_wave2D_ref.fits'
+    # Generate the 2D wavelength map for each order.
+    wave_map_2d_o1 = make_2d_wavemap(m=1, oversample=oversample, padding=padding)
+    wave_map_2d_o2 = make_2d_wavemap(m=2, oversample=oversample, padding=padding)
+    wave_map_2d_o3 = make_2d_wavemap(m=3, oversample=oversample, padding=padding)
 
-    hdu = fits.PrimaryHDU()
-    hdu.data = wave_map_2d
-    hdu.header['oversamp'] = (1, 'Pixel oversampling')
-    hdu.header['padding'] = (10, 'Native pixel-size padding around the image.')
-    hdu.writeto(fitsmap_name, overwrite=True)
+    # Save the 2D wavelength maps.
+    hdu1 = fits.PrimaryHDU(wave_map_2d_o1)
+    hdu1.header['ORDER'] = (1, 'Spectral order.')
+    hdu1.header['OVERSAMP'] = (oversample, 'Pixel oversampling.')
+    hdu1.header['PADDING'] = (padding, 'Native pixel-size padding around the image.')
+
+    hdu2 = fits.ImageHDU(wave_map_2d_o2)
+    hdu2.header['ORDER'] = (2, 'Spectral order.')
+    hdu2.header['OVERSAMP'] = (oversample, 'Pixel oversampling.')
+    hdu2.header['PADDING'] = (padding, 'Native pixel-size padding around the image.')
+
+    hdu3 = fits.ImageHDU(wave_map_2d_o3)
+    hdu3.header['ORDER'] = (3, 'Spectral order.')
+    hdu3.header['OVERSAMP'] = (oversample, 'Pixel oversampling.')
+    hdu3.header['PADDING'] = (padding, 'Native pixel-size padding around the image.')
+
+    hdul = fits.HDUList([hdu1, hdu2, hdu3])
+
+    hdul.writeto(fitsmap_name, overwrite=True)
 
     return
 
