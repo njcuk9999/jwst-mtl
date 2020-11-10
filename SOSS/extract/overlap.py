@@ -87,6 +87,8 @@ class _BaseOverlap:
         tresh : float, optional:
             The pixels where the estimated spatial profile is less than
             this value will be masked. Default is 1e-5.
+        orders: list, optional:
+            List of orders considered. Default is orders = [1, 2]
         verbose : bool, optional
             Print steps. Default is False.
         """
@@ -104,6 +106,10 @@ class _BaseOverlap:
 
         # Orders
         self.orders = orders
+
+        # Raise error if the number of orders is not consitent
+        if self.n_ord != len(orders):
+            raise ValueError(" Please specify `orders` argumnent.")
 
         # Shape of the detector used
         # (the wavelength map should have the same shape)
@@ -1546,6 +1552,8 @@ class LagrangeOverlap(_BaseOverlap):
         tresh : float, optional:
             The pixels where the estimated spatial profile is less than
             this value will be masked. Default is 1e-5.
+        orders: list, optional:
+            List of orders considered. Default is orders = [1, 2]
         verbose : bool, optional
             Print steps. Default is False.
         """
@@ -1684,6 +1692,8 @@ class TrpzOverlap(_BaseOverlap):
         tresh : float, optional:
             The pixels where the estimated spatial profile is less than
             this value will be masked. Default is 1e-5.
+        orders: list, optional:
+            List of orders considered. Default is orders = [1, 2]
         verbose : bool, optional
             Print steps. Default is False.
         """
