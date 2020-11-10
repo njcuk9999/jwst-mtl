@@ -183,6 +183,12 @@ def spatpix_ref_to_frame(spatpix_ref, frame='dms', subarray='SUBSTRIP256', overs
         spatpix = 245*oversample - spatpix_ref
     elif (frame == 'sim') & (subarray == 'SUBSTRIP96'):
         spatpix = spatpix_ref - 150*oversample
+    elif (frame == 'nat') & (subarray == 'FULL'):
+        spatpix = spatpix_ref
+    elif (frame == 'dms') & (subarray == 'FULL'):
+        spatpix = 2047*oversample - spatpix_ref
+    elif (frame == 'sim') & (subarray == 'FULL'):
+        spatpix = 1791*oversample + spatpix_ref
     else:
         raise ValueError('Unknown coordinate frame or subarray: {} {}'.format(frame, subarray))
 
@@ -271,6 +277,12 @@ def spatpix_frame_to_ref(spatpix, frame='dms', subarray='SUBSTRIP256', oversampl
         spatpix_ref = 245*oversample - spatpix
     elif (frame == 'sim') & (subarray == 'SUBSTRIP96'):
         spatpix_ref = spatpix + 150*oversample
+    elif (frame == 'nat') & (subarray == 'FULL'):
+        spatpix_ref = spatpix
+    elif (frame == 'dms') & (subarray == 'FULL'):
+        spatpix_ref = 2047*oversample - spatpix
+    elif (frame == 'sim') & (subarray == 'FULL'):
+        spatpix_ref = spatpix - 1791*oversample
     else:
         raise ValueError('Unknown coordinate frame or subarray: {} {}'.format(frame, subarray))
 
