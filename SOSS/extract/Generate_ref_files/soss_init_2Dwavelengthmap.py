@@ -122,7 +122,7 @@ def make_2d_wavemap(m=1, subarray='SUBSTRIP256', frame='dms', tilt_angle=None, o
     # Assuming that tracepol is oriented in native (ds9) coordinates,
     # i.e. the spectral axis is along Y, the spatial axis is along X, with the red
     # wavelengths going up and blue curving left.
-    if subarray == 'FF':
+    if subarray == 'FULL':
         # Assume a spatial dimension of 300 and at the end pad with NaNs.
         dimy = 2048  # spectral axis
         dimx = 300  # spatial axis
@@ -134,7 +134,7 @@ def make_2d_wavemap(m=1, subarray='SUBSTRIP256', frame='dms', tilt_angle=None, o
         dimy = 2048  # spectral axis
         dimx = 256  # spatial axis
     else:
-        raise ValueError('subarray must be one of SUBSTRIP256, SUBSTRIP96 or FF')
+        raise ValueError('subarray must be one of SUBSTRIP256, SUBSTRIP96 or FULL')
 
     # Padding so that an oversampled array may be safely shifted.
     xpad = np.copy(padding)
@@ -192,8 +192,8 @@ def make_2d_wavemap(m=1, subarray='SUBSTRIP256', frame='dms', tilt_angle=None, o
     wave_map_2d = wave_iterated
 
     # Crop or expand to the appropriate size for the subarray.
-    if subarray == 'FF':
-        # We padd the FF subarray with NaNs now.
+    if subarray == 'FULL':
+        # We pad the FULL subarray with NaNs now.
         tmp = np.full((os*(dimy + 2*ypad), os*(dimy + 2*xpad)), fill_value=np.nan)
         lx = 0
         ux = os*(dimx + 2*xpad)
@@ -205,8 +205,12 @@ def make_2d_wavemap(m=1, subarray='SUBSTRIP256', frame='dms', tilt_angle=None, o
         lx = os*(dimx - offset - 96)
         ux = os*(dimx - offset + 2*xpad)
         wave_map_2d = wave_map_2d[:, lx:ux]
+    elif subarray == 'SUBSTRIP256':
+        lx = 0
+        ux = os*(256 + 2*xpad)
+        wave_map_2d = wave_map_2d[:, lx:ux]
     else:
-        pass
+        raise ValueError('subarray must be one of SUBSTRIP256, SUBSTRIP96 or FULL')
 
     # Transform to the correct coordinate frame.
     if frame == 'nat':
@@ -227,32 +231,37 @@ def main():
 
     padding = 10
     oversample = 3
-    fitsmap_name = './SOSS_wave2D_os{}_pad{}.fits'.format(oversample, padding)
+    filename = 'SOSS_wave2D_os{}_pad{}.fits'.format(oversample, padding)
 
     # Generate the 2D wavelength map for each order.
-    wave_map_2d_o1 = make_2d_wavemap(m=1, oversample=oversample, padding=padding)
-    wave_map_2d_o2 = make_2d_wavemap(m=2, oversample=oversample, padding=padding)
-    wave_map_2d_o3 = make_2d_wavemap(m=3, oversample=oversample, padding=padding)
+    wave_map_2d_order1 = make_2d_wavemap(m=1, oversample=oversample, padding=padding)
+    wave_map_2d_order2 = make_2d_wavemap(m=2, oversample=oversample, padding=padding)
+    wave_map_2d_order3 = make_2d_wavemap(m=3, oversample=oversample, padding=padding)
 
-    # Save the 2D wavelength maps.
-    hdu1 = fits.PrimaryHDU(wave_map_2d_o1)
+    # Create the reference file.
+    hdu0 = fits.PrimaryHDU()
+    hdu0.header['CREATOR'] = 'Geert Jan Talens'
+
+    # Order 1 wavelength map.
+    hdu1 = fits.ImageHDU(wave_map_2d_order1)
     hdu1.header['ORDER'] = (1, 'Spectral order.')
     hdu1.header['OVERSAMP'] = (oversample, 'Pixel oversampling.')
     hdu1.header['PADDING'] = (padding, 'Native pixel-size padding around the image.')
 
-    hdu2 = fits.ImageHDU(wave_map_2d_o2)
+    # Order 2 wavelength map.
+    hdu2 = fits.ImageHDU(wave_map_2d_order2)
     hdu2.header['ORDER'] = (2, 'Spectral order.')
     hdu2.header['OVERSAMP'] = (oversample, 'Pixel oversampling.')
     hdu2.header['PADDING'] = (padding, 'Native pixel-size padding around the image.')
 
-    hdu3 = fits.ImageHDU(wave_map_2d_o3)
+    # Order 3 wavelength map.
+    hdu3 = fits.ImageHDU(wave_map_2d_order3)
     hdu3.header['ORDER'] = (3, 'Spectral order.')
     hdu3.header['OVERSAMP'] = (oversample, 'Pixel oversampling.')
     hdu3.header['PADDING'] = (padding, 'Native pixel-size padding around the image.')
 
-    hdul = fits.HDUList([hdu1, hdu2, hdu3])
-
-    hdul.writeto(fitsmap_name, overwrite=True)
+    hdul = fits.HDUList([hdu0, hdu1, hdu2, hdu3])
+    hdul.writeto(filename, overwrite=True)
 
     return
 
