@@ -19,7 +19,7 @@ def main():
     """Generate the NIRISS SOSS 1D trace reference file."""
 
     throughput_ref = 'NIRISS_Throughput_STScI.fits'
-    tilt_ref = 'SOSS_wavelength_dependent_tilt.ecsv'
+    tilt_ref = '../../trace/SOSS_wavelength_dependent_tilt.ecsv'
     trace_xy_ref = '../../trace/NIRISS_GR700_trace_extended.csv'
     trace_1d_ref = 'SOSS_trace_ref.fits'
 
