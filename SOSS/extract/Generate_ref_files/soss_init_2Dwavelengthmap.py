@@ -17,7 +17,7 @@ def main():
 
     # Fixed parameters for the 2D wavelength map reference file.
     padding = 10
-    oversample = 3
+    oversample = 2
     orders = [1, 2, 3]
     trace_ref = 'SOSS_trace_ref.fits'
     wave2d_ref = 'SOSS_wave2d_ref.fits'
