@@ -95,8 +95,6 @@ def fitCCF(ref, cur, fitfunc='gauss', fitradius=3, makeplot=False):
 
 
 
-psfname = PSF_DIR + 'SOSS_os10_128x128_{:8.6F}.fits'.format(wave[i])
-
 def soss_get_tilt(psfname):
     # Read PSF fits file
     a = fits.open(psfname)

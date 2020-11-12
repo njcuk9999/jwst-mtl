@@ -11,7 +11,7 @@ import numpy as np
 from astropy.io import fits
 
 
-def loicpsf(wavelist=None, wfe_real=None, save_to_disk=True):
+def loicpsf(wavelist=None, wfe_real=None, save_to_disk=True, savepath=None):
     '''Utility function which calls the WebbPSF package to create monochromatic
     PSFs for NIRISS SOSS mode obserations.
 
@@ -32,6 +32,11 @@ def loicpsf(wavelist=None, wfe_real=None, save_to_disk=True):
     psf-list : list
         List of np.ndarrays with the PSF data.
     '''
+
+    if savepath != None:
+        PSF_DIR = savepath
+    else:
+        PSF_DIR = '/genesis/jwst/jwst-ref-soss/monochromatic_PSFs/'
 
     if wavelist is None:
         # List of wavelengths to generate PSFs for
@@ -66,8 +71,8 @@ def loicpsf(wavelist=None, wfe_real=None, save_to_disk=True):
         # Save psf realization to disk if desired
         if save_to_disk is True:
             text = '{0:5f}'.format(wave*1e+6)
-            psf.writeto('SOSS_os'+str(oversampling)+'_'+str(pixel)
-                        + 'x'+str(pixel)+'_'+text+'.fits', overwrite=True)
+            psf.writeto(PSF_DIR + 'SOSS_os'+str(oversampling)+'_'+str(pixel)
+                        + 'x'+str(pixel)+'_'+text+'_test.fits', overwrite=True)
         else:
             psf_list.append(psf[0].data)
 
@@ -75,3 +80,6 @@ def loicpsf(wavelist=None, wfe_real=None, save_to_disk=True):
         return psf_list
     else:
         return None
+
+loicpsf(wavelist=None, wfe_real=None, save_to_disk=True,
+        savepath='/genesis/jwst/userland-soss/loic_review/')

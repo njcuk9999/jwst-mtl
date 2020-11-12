@@ -16,6 +16,7 @@ from astropy.io import fits
 from scipy.stats import binned_statistic
 from scipy import ndimage
 import os.path
+import soss_get_tilt as titi
 
 def webbpsf_return_listof(verbose=None, psf_path=None):
     
@@ -74,11 +75,11 @@ def webbpsf_read_and_rotate(filename, angle, verbose=None):
         plt.figure(figsize=(10,10))
         plt.imshow(np.log10(imagewarped[500:-500]),origin='bottom')
         
-        ## Save the rotated PSF on disk
-        #hdu = fits.PrimaryHDU()
-        #hdu.data = imagewarped
-        #hdu.writeto(psfPath+'test.fits',overwrite=True)
-    
+    ## Save the rotated PSF on disk
+    hdu = fits.PrimaryHDU()
+    hdu.data = imagewarped
+    hdu.writeto('/genesis/jwst/userland-soss/loic_review/test.fits',overwrite=True)
+
     return(imagewarped, oversampling, dim)
 
 
@@ -128,9 +129,10 @@ def generate_kernel(output_path, verbose=None, psf_path=None, kernel_semi_width=
     # The core_semi_width is a pixel distance along the spatial axis that 
     # defines what region of the trace to keep in the analysis.
     core_semi_width = 15
+
+
     
-    
-    osmax = 10
+    osmax = 10 # maximum oversampling to make calculations for
     for i in range(osmax):
         osamp = i+1
         # Initialize the matrix at that oversampling
@@ -140,7 +142,9 @@ def generate_kernel(output_path, verbose=None, psf_path=None, kernel_semi_width=
         matrix_name = '{:}/spectral_kernel_matrix_os_{:}_width_{:}pixels.fits'.format(output_path,osamp,ksw*2+1)
         for n in range(np.size(lambdalist)):
             # Read and apply a rotation to the original oversampled webbpsf image.
-            angle = -3.0 # That is the tilt angle empirically seen in webbpsf's PSFs
+            # angle = -3.0 # That is the tilt angle empirically seen in webbpsf's PSFs
+            # Actually measure teh tilt on each PSF fits file
+            angle = titi.soss_get_tilt(filename[n])
             imagewarped, arg2, dim = webbpsf_read_and_rotate(filename[n], 
                                                            angle,
                                                            verbose=verbose)
@@ -232,7 +236,9 @@ def generate_kernel(output_path, verbose=None, psf_path=None, kernel_semi_width=
         hdu.data = [kernel_matrix,wavelength_matrix]
         hdu.writeto(matrix_name,overwrite=True)
 
-
+# Call the scripts
+generate_kernel('/genesis/jwst/userland-soss/loic_review/', verbose=False,
+                psf_path='/genesis/jwst/jwst-ref-soss/monochromatic_PSFs/', kernel_semi_width=None)
 
 
 
