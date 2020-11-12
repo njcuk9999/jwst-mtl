@@ -1,6 +1,3 @@
-# This script is to generate a tilt table reference file specifically
-# for the simulations using the webbPSF monochromatic PSFs.
-
 import numpy as np
 
 from astropy.io import fits
@@ -12,6 +9,7 @@ import scipy.signal as signal
 from scipy.optimize import curve_fit
 
 import sys
+
 sys.path.insert(0, '/genesis/jwst/github/jwst-mtl/SOSS/')
 sys.path.insert(0, '/genesis/jwst/github/jwst-mtl/SOSS/trace/')
 sys.path.insert(0, '/genesis/jwst/github/jwst-mtl/SOSS/specgen/')
@@ -96,70 +94,21 @@ def fitCCF(ref, cur, fitfunc='gauss', fitradius=3, makeplot=False):
     return (dx)
 
 
-WORKING_DIR = '/genesis/jwst/jwst-user-soss/loic_review/'
 
-PSF_DIR = '/genesis/jwst/jwst-ref-soss/monochromatic_PSFs/'
+psfname = PSF_DIR + 'SOSS_os10_128x128_{:8.6F}.fits'.format(wave[i])
 
-wave = np.linspace(0.5,5.2,48)
-tilt = np.copy(wave)*0.0
-print(wave)
-
-col = np.linspace(511,762,252) # pixel column number
-row = np.arange(1280) # the pixel row number
-com = np.copy(col)*0.0 # center of mass along the y axis
-pek = np.copy(col)*0.0 # peak value along y
-ccf = np.copy(col)*0.0 # CCF gauss fit along y
-
-for i in range(len(wave)):
-#for i in range(1):
-    # Open each PSF fits file
-    psfname = PSF_DIR + 'SOSS_os10_128x128_{:8.6F}.fits'.format(wave[i])
+def soss_get_tilt(psfname):
+    # Read PSF fits file
     a = fits.open(psfname)
     psf = a[0].data
+    # Define two arrays representing vertical cuts through both peaks of the PSF
+    leftslice = np.sum(psf[640 - 100:640 + 100, 518:604], axis=1)
+    righslice = np.sum(psf[640 - 100:640 + 100, 697:765], axis=1)
+    # The number of columns between both slices
+    dx = np.mean([697, 765]) - np.mean([604, 518])
+    # Perform a cross-correlation correlation and fit its peak using a gaussian
+    ccf2 = fitCCF(leftslice, righslice, fitfunc='gauss', fitradius=40, makeplot=False)
+    # The monochromatic tilt is then:
+    tilt = np.rad2deg(np.arctan(ccf2 / dx))
 
-    if False:
-        refslice = np.sum(psf[640-100:640+100, int(col[0])-5:int(col[0])+5],axis=1)
-        # For each column between x=511 and x=762, find the centroid position
-        for j in range(len(col)):
-            # center of mass
-            x = int(np.copy(col[j]))
-            com[j] = np.sum(row * psf[:,x]) / np.sum(psf[:,x])
-            # peak value
-            pek[j] = row[np.argmax(psf[:,x])]
-            # gauss CCF fit
-            curslice = np.sum(psf[640-100:640+100,x-5:x+5],axis=1)
-            ccf[j] = fitCCF(refslice, curslice, fitfunc='gauss', fitradius=40, makeplot=False)
-            refslice = np.sum(psf[640-100:640+100,x-5:x+5],axis=1)
-        tilt[i] = np.rad2deg(np.arctan(np.median(ccf)))
-    # Two peaks CCF
-    if True:
-        leftslice = np.sum(psf[640-100:640+100,518:604],axis=1)
-        righslice = np.sum(psf[640-100:640+100,697:765],axis=1)
-        # The number of columns between both slices
-        dx = np.mean([697,765]) - np.mean([604,518])
-        #print(dx)
-        #plt.figure()
-        #plt.plot(leftslice)
-        #plt.plot(righslice)
-        #plt.show()
-        ccf2 = fitCCF(leftslice, righslice, fitfunc='gauss', fitradius=40, makeplot=False)
-        tilt[i] = np.rad2deg(np.arctan(ccf2/dx))
-
-    print(wave[i],tilt[i])
-
-plt.figure()
-plt.scatter(wave,tilt)
-plt.savefig('/genesis/jwst/userland-soss/loic_review/soss_simtilt.pdf')
-plt.show()
-
-wavefine = np.linspace(0.5,3.0,2501)
-tiltfine = np.interp(wavefine,wave,tilt)
-
-
-from astropy.table import Table
-
-meta = {'description': 'This file was created by soss_characterize_sim_tilt.py'}
-formats = {'Wavelength':'{:.4f}','order1':'{:.4f}','order2':'{:.4f}','order3':'{:.4f}'}
-tab = Table([wavefine,tiltfine,tiltfine,tiltfine], names=formats, meta=meta)
-tab.write('SOSS_wavelength_dependent_tilt_sim.ecsv', formats=formats)
-
+    return(tilt)
