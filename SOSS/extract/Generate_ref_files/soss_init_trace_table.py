@@ -23,6 +23,11 @@ throughput_order1 = tab[0]['SOSS_ORDER1']
 throughput_order2 = tab[0]['SOSS_ORDER2']
 throughput_order3 = tab[0]['SOSS_ORDER3']
 
+# Fix small negative throughput values.
+throughput_order1 = np.where(throughput_order1 < 0, 0, throughput_order1)
+throughput_order2 = np.where(throughput_order2 < 0, 0, throughput_order2)
+throughput_order3 = np.where(throughput_order3 < 0, 0, throughput_order3)
+
 # Read the tilt as a function of wavelength.
 filename = 'SOSS_wavelength_dependent_tilt.ecsv'
 tab = Table.read(filename)
@@ -33,10 +38,10 @@ tilt_order2 = tab['order 2']
 tilt_order3 = tab['order 3']
 
 # Interpolate the tilt to the same wavelengths as the throughput.
+# Default bounds handling (constant boundary) is fine.
 tilt_order1 = np.interp(throughput_wave, tilt_wave, tilt_order1)
 tilt_order2 = np.interp(throughput_wave, tilt_wave, tilt_order2)
 tilt_order3 = np.interp(throughput_wave, tilt_wave, tilt_order3)
-# TODO: Should handle out of bounds values explicitely here.
 
 # Get the trace parameters, function found in tracepol imported above.
 filename = '../../trace/NIRISS_GR700_trace_extended.csv'
@@ -66,8 +71,8 @@ hdu0.header['CREATOR'] = 'Geert Jan Talens'
 col1 = fits.Column(name='WAVELENGTH', format='F', array=throughput_wave)
 col2 = fits.Column(name='THROUGHPUT', format='F', array=throughput_order1)
 col3 = fits.Column(name='TILT', format='F', array=tilt_order1)
-col4 = fits.Column(name='X_SUBARRAY256', format='F', array=x_sub256_order1)
-col5 = fits.Column(name='Y_SUBARRAY256', format='F', array=y_sub256_order1)
+col4 = fits.Column(name='X_SUBSTRIP256', format='F', array=x_sub256_order1)
+col5 = fits.Column(name='Y_SUBSTRIP256', format='F', array=y_sub256_order1)
 cols = fits.ColDefs([col1, col2, col3, col4, col5])
 
 hdu1 = fits.BinTableHDU.from_columns(cols)
@@ -79,8 +84,8 @@ hdu1.header['DY_SUB96'] = (-10, 'Y offset for SUBSTRIP96 images.')
 col1 = fits.Column(name='WAVELENGTH', format='F', array=throughput_wave)
 col2 = fits.Column(name='THROUGHPUT', format='F', array=throughput_order2)
 col3 = fits.Column(name='TILT', format='F', array=tilt_order2)
-col4 = fits.Column(name='X_SUBARRAY256', format='F', array=x_sub256_order2)
-col5 = fits.Column(name='Y_SUBARRAY256', format='F', array=y_sub256_order2)
+col4 = fits.Column(name='X_SUBSTRIP256', format='F', array=x_sub256_order2)
+col5 = fits.Column(name='Y_SUBSTRIP256', format='F', array=y_sub256_order2)
 cols = fits.ColDefs([col1, col2, col3, col4, col5])
 
 hdu2 = fits.BinTableHDU.from_columns(cols)
@@ -92,8 +97,8 @@ hdu2.header['DY_SUB96'] = (-10, 'Y offset for SUBSTRIP96 images.')
 col1 = fits.Column(name='WAVELENGTH', format='F', array=throughput_wave)
 col2 = fits.Column(name='THROUGHPUT', format='F', array=throughput_order3)
 col3 = fits.Column(name='TILT', format='F', array=tilt_order3)
-col4 = fits.Column(name='X_SUBARRAY256', format='F', array=x_sub256_order3)
-col5 = fits.Column(name='Y_SUBARRAY256', format='F', array=y_sub256_order3)
+col4 = fits.Column(name='X_SUBSTRIP256', format='F', array=x_sub256_order3)
+col5 = fits.Column(name='Y_SUBSTRIP256', format='F', array=y_sub256_order3)
 cols = fits.ColDefs([col1, col2, col3, col4, col5])
 
 hdu3 = fits.BinTableHDU.from_columns(cols)
