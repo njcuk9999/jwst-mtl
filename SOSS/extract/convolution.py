@@ -285,8 +285,12 @@ def fct_to_array(fct, grid, grid_range, thresh=1e-5, length=None):
             if (left < thresh).all() and (right < thresh).all():
                 break  # Stop iteration
             else:
-                # Update kernel length and add new values
+                # Update kernel length
                 length += 2
+                # Set value to zero if smaller than threshold
+                left[left < thresh] = 0.
+                right[right < thresh] = 0.
+                # add new values to output
                 out = np.vstack([left, out, right])
 
         # Weights due to integration (from the convolution)
