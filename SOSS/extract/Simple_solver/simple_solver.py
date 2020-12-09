@@ -19,7 +19,6 @@ import emcee
 import corner
 import sys
 from scipy.ndimage.interpolation import rotate
-#tppath = '/Users/michaelradica/Documents/GitHub/jwst-mtl/SOSS/trace/'
 tppath = '../../trace'
 sys.path.insert(1, tppath)
 import tracepol as tp
@@ -521,7 +520,6 @@ def simple_solver(clear):
         # Load the reference trace and wavelength map for the current order
         if order == 1:
             ref_frame = fits.open('../Ref_files/trace_profile_om1.fits')[0].data[::-1, :]
-            #ref_trace = fits.open('../../../../../../GitHub/jwst-mtl/SOSS/extract/Ref_files/trace_profile_om1.fits')[0].data[::-1, :]
             # Clean up the reference trace - no zero pixels and add padding
             ref_trace[np.where(ref_trace == 0)] = 1
             ref_trace = np.pad(ref_trace, ((128, 128), (1024, 1024)), mode='constant', constant_values=((1, 1), (1, 1)))
@@ -532,7 +530,6 @@ def simple_solver(clear):
             # os_w = 1
         if order == 2:
             ref_frame = fits.open('../Ref_files/trace_profile_om2.fits')[0].data[::-1, :]
-            #ref_trace = fits.open('../../../../../../GitHub/jwst-mtl/SOSS/extract/Ref_files/trace_profile_om2.fits')[0].data[::-1, :]
             # Clean up the reference trace - no zero pixels and add padding
             ref_trace[np.where(ref_trace == 0)] = 1
             ref_trace = np.pad(ref_trace, ((128, 128), (1024, 1024)), mode='constant', constant_values=((1, 1), (1, 1)))
