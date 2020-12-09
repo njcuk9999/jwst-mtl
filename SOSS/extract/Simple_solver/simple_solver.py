@@ -19,9 +19,11 @@ import emcee
 import corner
 import sys
 from scipy.ndimage.interpolation import rotate
-tppath = '../../trace'
-sys.path.insert(1, tppath)
+sys.path.insert(0, '../../trace')
 import tracepol as tp
+
+# hack to get around the fact that relative paths are constantly messing up atm
+path = '/Users/michaelradica/Documents/GitHub/jwst-mtl/SOSS/'
 
 
 def _do_emcee(xOM, yOM, xCV, yCV):
@@ -238,7 +240,7 @@ def get_om_centroids(atthesex=None, order=1):
         atthesex = np.linspace(0, 2047, 2048)
 
     # Derive the trace polynomials.
-    tp2 = tp.get_tracepars(filename='%s/NIRISS_GR700_trace.csv' % tppath)
+    tp2 = tp.get_tracepars(filename=path+'/trace/NIRISS_GR700_trace.csv')
 
     # Evaluate the trace polynomials at the desired coordinates.
     w = tp.specpix_to_wavelength(atthesex, tp2, order, frame='nat')[0]
@@ -514,38 +516,46 @@ def simple_solver(clear):
     y_shift = np.int(rot_params[4])
 
     ref_trace_trans = np.empty((2, 256, 2048))
-    # wave_map_trans = np.empty((2, 256, 2048))
+    wave_map_trans = np.empty((2, 256, 2048))
 
     for order in [1, 2]:
         # Load the reference trace and wavelength map for the current order
         if order == 1:
-            ref_frame = fits.open('../Ref_files/trace_profile_om1.fits')[0].data[::-1, :]
+            ref_trace = fits.open(path+'/extract/Ref_files/trace_profile_om1.fits')[0].data[::-1, :]
             # Clean up the reference trace - no zero pixels and add padding
             ref_trace[np.where(ref_trace == 0)] = 1
-            ref_trace = np.pad(ref_trace, ((128, 128), (1024, 1024)), mode='constant', constant_values=((1, 1), (1, 1)))
+            ref_trace = np.pad(ref_trace, ((128, 128), (1024, 1024)),
+                               constant_values=((1, 1), (1, 1)))
             pad_t = 2
             os_t = 1
-            # wave_map = fits.open('')
-            # pad_w = 2
-            # os_w = 1
+            wave_map = fits.open(path+'/extract/Ref_files/wavelengths_m1.fits')[0].data[::-1, :]
+            wave_map = np.pad(wave_map, ((128, 128), (1024, 1024)),
+                              constant_values=((1, 1), (1, 1)))
+            pad_w = 2
+            os_w = 1
         if order == 2:
-            ref_frame = fits.open('../Ref_files/trace_profile_om2.fits')[0].data[::-1, :]
+            ref_trace = fits.open(path+'/extract/Ref_files/trace_profile_om2.fits')[0].data[::-1, :]
             # Clean up the reference trace - no zero pixels and add padding
             ref_trace[np.where(ref_trace == 0)] = 1
-            ref_trace = np.pad(ref_trace, ((128, 128), (1024, 1024)), mode='constant', constant_values=((1, 1), (1, 1)))
+            ref_trace = np.pad(ref_trace, ((128, 128), (1024, 1024)),
+                               constant_values=((1, 1), (1, 1)))
             pad_t = 2
             os_t = 1
-            # wave_map = fits.open('')
-            # pad_w = 2
-            # os_w = 1
+            wave_map = fits.open(path+'/extract/Ref_files/wavelengths_m2.fits')[0].data[::-1, :]
+            wave_map = np.pad(wave_map, ((128, 128), (1024, 1024)),
+                              constant_values=((1, 1), (1, 1)))
+            pad_w = 2
+            os_w = 1
 
-        ref_trace_trans[order-1,:,:] = _do_transform(ref_trace, rot_ang, x_anch,
-                                                     y_anch, x_shift, y_shift,
-                                                     padding_factor=pad_t,
-                                                     oversampling=os_t)
-        #wave_map_trans[order-1,:,:] = _do_transform(wave_map, rot_ang, x_anch,
-        #                                            y_anch, x_shift, y_shift,
-        #                                            padding_factor=pad_w,
-        #                                            oversampling=os_w)
+        ref_trace_trans[order-1, :, :] = _do_transform(ref_trace, rot_ang,
+                                                       x_anch, y_anch, x_shift,
+                                                       y_shift,
+                                                       padding_factor=pad_t,
+                                                       oversampling=os_t)
+        wave_map_trans[order-1, :, :] = _do_transform(wave_map, rot_ang,
+                                                      x_anch, y_anch, x_shift,
+                                                      y_shift,
+                                                      padding_factor=pad_w,
+                                                      oversampling=os_w)
 
-    return ref_trace_trans#, wave_map_trans
+    return ref_trace_trans, wave_map_trans
