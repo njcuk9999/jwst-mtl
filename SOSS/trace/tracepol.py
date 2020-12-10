@@ -40,9 +40,6 @@ def trace_polynomial(trace, m=1, maxorder=15):
     # Find the edges of the domain.
     wavemin = np.amin(wave)
     wavemax = np.amax(wave)
-    
-    specmin = np.amin(specpix_ref)
-    specmax = np.amax(specpix_ref)
 
     # Compute the polynomial parameters for x and y.
     order = 0
