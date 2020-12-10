@@ -131,7 +131,7 @@ def _do_transform(data, rot_ang, x_anch, y_anch, x_shift, y_shift,
         # spatial profile to native resolution
         for i in range(2048*oversampling):
             new_ax = np.arange(256)
-            oversamp_ax = np.arange(256*oversampling)
+            oversamp_ax = np.linspace(0, 256, 256*oversampling, endpoint=False)
             oversamp_prof = data_sub256[:, bleft_x+i]
             data_sub256_nat[:, i] = np.interp(new_ax, oversamp_ax,
                                               oversamp_prof)
@@ -380,7 +380,7 @@ def _log_prior(theta):
     '''
     ang, orx, ory, xshift, yshift = theta
 
-    if -15 <= ang < 15 and 0 < orx < 4048 and 0 < ory < 456 and -2048 <= xshift < 2048 and -256 <= yshift < 256:
+    if -15 <= ang < 15 and 0 < orx < 2048 and 0 < ory < 256 and -2048 <= xshift < 2048 and -256 <= yshift < 256:
         return -1
     else:
         return -np.inf
