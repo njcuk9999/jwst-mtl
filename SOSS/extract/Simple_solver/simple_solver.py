@@ -146,7 +146,7 @@ def get_contam_centroids(clear, return_rot_params=False, doplot=False):
     contaminationof the first order by the second on the detector.
     Fits the first order centroids using the uncontaminated method, and
     determines the second order centroids via the well-calibrated relationship
-    between the first and second order profiles in the optics model.
+    between the first and second order profiles.
 
     Parameters
     ----------
@@ -202,8 +202,8 @@ def get_contam_centroids(clear, return_rot_params=False, doplot=False):
     yshift = np.percentile(flat_samples[:, 4], 50)
 
     # Get rotated OM centroids for order 2
-    xcen_o2, ycen_o2 = rot_om2det(ang, xanch, yanch, xshift, yshift,
-                                  xOM2, yOM2)
+    xcen_o2, ycen_o2 = rot_centroids(ang, xanch, yanch, xshift, yshift,
+                                     xOM2, yOM2)
     # Ensure that the second order centroids cover the whole detector
     p_o2 = np.polyfit(xcen_o2, ycen_o2, 5)
     ycen_o2 = np.polyval(p_o2, atthesex)
@@ -370,8 +370,8 @@ def _log_likelihood(theta, xvals, yvals, xCV, yCV):
     '''
     ang, orx, ory, xshift, yshift = theta
     # Calculate rotated model
-    modelx, modely = rot_om2det(ang, orx, ory, xshift, yshift,
-                                xvals, yvals, bound=True)
+    modelx, modely = rot_centroids(ang, orx, ory, xshift, yshift,
+                                   xvals, yvals, bound=True)
     # Interpolate rotated model onto same x scale as data
     modely = np.interp(xCV, modelx, modely)
 
@@ -410,52 +410,42 @@ def _plot_corner(sampler):
     return None
 
 
-# Should rename
-def rot_om2det(ang, cenx, ceny, xshift, yshift, xval, yval,
-               bound=True):
-    '''Utility function to map coordinates in the optics model
-    reference frame, onto the detector reference frame, given
-    the correct transofmration parameters.
+def rot_centroids(ang, cenx, ceny, xshift, yshift, xval, yval,
+                  bound=True):
+    '''Apply a rotation and shift to the trace centroids positions. This
+    assumes that the trace centroids are already in the CV3 coordinate system.
 
     Parameters
     ----------
     ang : float
         The rotation angle in degrees CCW.
-    cenx, ceny : float
-        The X and Y pixel values to use as the center of rotation
-        in the optics model coordinate system.
-    xval, yval : float
-        Pixel X and Y values in the optics model coordinate system
-        to transform into the detector frame.
-    xshift, yshift : float
-        Offset in the x and y direction to be rigidly applied to
-        the trace model after rotation.
+    cenx : float
+        The X pixel values to use as the center of rotation.
+    ceny : float
+        The Y pixel values to use as the center of rotation.
+    xshift : float
+        Offset in the X direction to be rigidly applied after rotation.
+    yshift : float
+        Offset in the Y direction to be rigidly applied after rotation.
+    xval : float
+        Centroid pixel X values.
+    yval : float
+        Centroid pixel Y values.
     bound : bool
         Whether to trim rotated solutions to fit within the subarray256.
 
     Returns
     -------
-    rot_xpix, rot_ypix : float
-        xval and yval respectively transformed into the
-        detector coordinate system.
+    rot_xpix : float
+        xval after the application of the rotation and translation
+        transformations.
+    rot_ypix : float
+        yval after the application of the rotation and translation
+        transformations.
     '''
 
-    # Map OM onto detector - the parameters for this transformation
-    # are already well known.
-    #t = 1.489*np.pi / 180
-    #R = np.array([[np.cos(t), -np.sin(t)], [np.sin(t), np.cos(t)]])
-    #points1 = np.array([xval - 1514, yval - 456])
-    #b = R @ points1
-
-    #b[0] += 1514
-    #b[1] += 456
-    # Note the major difference here between the old version of the
-    # rotation algorithm is that the parameters are identical for the
-    # first and second order.
-
     # Required rotation in the detector frame to match the data.
-    #t = (ang+0.95)*np.pi / 180
-    t = np.deg2rad(ang)  # CV3 is at a rotation of 0.95 deg
+    t = np.deg2rad(ang)
     R = np.array([[np.cos(t), -np.sin(t)], [np.sin(t), np.cos(t)]])
 
     points1 = np.array([xval - cenx, yval - ceny])
