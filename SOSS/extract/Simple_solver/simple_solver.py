@@ -218,6 +218,9 @@ def get_contam_centroids(clear, return_rot_params=False, doplot=False):
 
 def get_om_centroids(atthesex=None, order=1):
     '''Get trace profile centroids from the NIRISS SOSS optics model.
+    These centroids include the standard rotation of 1.489 rad about
+    (1514, 486) to transform from the optics model into the CV3 coordinate
+    system.
 
     Parameters
     ----------
@@ -380,7 +383,7 @@ def _log_prior(theta):
     '''
     ang, orx, ory, xshift, yshift = theta
 
-    if -15 <= ang < 15 and 0 < orx < 2048 and 0 < ory < 256 and -2048 <= xshift < 2048 and -256 <= yshift < 256:
+    if -15 <= ang < 15 and 0 <= orx < 2048 and 0 <= ory < 256 and -2048 <= xshift < 2048 and -256 <= yshift < 256:
         return -1
     else:
         return -np.inf
@@ -407,6 +410,7 @@ def _plot_corner(sampler):
     return None
 
 
+# Should rename
 def rot_om2det(ang, cenx, ceny, xshift, yshift, xval, yval,
                bound=True):
     '''Utility function to map coordinates in the optics model
@@ -438,22 +442,23 @@ def rot_om2det(ang, cenx, ceny, xshift, yshift, xval, yval,
 
     # Map OM onto detector - the parameters for this transformation
     # are already well known.
-    t = 1.489*np.pi / 180
-    R = np.array([[np.cos(t), -np.sin(t)], [np.sin(t), np.cos(t)]])
-    points1 = np.array([xval - 1514, yval - 456])
-    b = R @ points1
+    #t = 1.489*np.pi / 180
+    #R = np.array([[np.cos(t), -np.sin(t)], [np.sin(t), np.cos(t)]])
+    #points1 = np.array([xval - 1514, yval - 456])
+    #b = R @ points1
 
-    b[0] += 1514
-    b[1] += 456
+    #b[0] += 1514
+    #b[1] += 456
     # Note the major difference here between the old version of the
     # rotation algorithm is that the parameters are identical for the
     # first and second order.
 
     # Required rotation in the detector frame to match the data.
-    t = (ang+0.95)*np.pi / 180
+    #t = (ang+0.95)*np.pi / 180
+    t = np.deg2rad(ang)  # CV3 is at a rotation of 0.95 deg
     R = np.array([[np.cos(t), -np.sin(t)], [np.sin(t), np.cos(t)]])
 
-    points1 = np.array([b[0] - cenx, b[1] - ceny])
+    points1 = np.array([xval - cenx, yval - ceny])
     rot_pix = R @ points1
 
     rot_pix[0] += cenx
