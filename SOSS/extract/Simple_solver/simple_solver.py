@@ -153,6 +153,10 @@ def get_contam_centroids(clear, ref_centroids=None, return_rot_params=False,
     ----------
     clear : np.ndarray (2D)
         CLEAR SOSS exposure data frame.
+    ref_centroids : np.ndarray (2D)
+        Centroids relative to which to determine offset and rotation
+        parameters. Array must contain four lists in the following order: x,
+        and y centroids for order 1 followed by those of order 2.
     return_rot_params : bool
         Whether to return the rotation angle and anchor point required to
         transform the optics model to match the data.
@@ -176,6 +180,11 @@ def get_contam_centroids(clear, ref_centroids=None, return_rot_params=False,
         x coordinate of rotation center for optics model to data transform.
     yanch : float (optional)
         y coordinate of rotation center for optics model to data transform.
+
+    Raises
+    ------
+    ValueError
+        If ref_centroids does not contain four centroids lists.
     '''
 
     # Determine optics model centroids for both orders
@@ -224,6 +233,8 @@ def get_contam_centroids(clear, ref_centroids=None, return_rot_params=False,
         return atthesex, ycen_o1, atthesex[inds], ycen_o2[inds]
 
 
+# Needs to be updated whenever we decide on how we will interact with
+# new reference files
 def get_om_centroids(atthesex=None, order=1):
     '''Get trace profile centroids from the NIRISS SOSS optics model.
     These centroids include the standard rotation of 1.489 rad about
@@ -358,7 +369,6 @@ def get_uncontam_centroids(stack, atthesex=None):
     tracey = []
     row = np.arange(dimy)
     w = 16
-    #for i in range(dimx - 8):
     for i in range(len(tracex_best)):
         miny = np.int(np.nanmax([np.around(tracey_best[i] - w), 0]))
         maxy = np.int(np.nanmax([np.around(tracey_best[i] + w), dimy - 1]))
@@ -368,7 +378,6 @@ def get_uncontam_centroids(stack, atthesex=None):
         thisval = val[ind]
         cx = np.sum(thisrow * thisval) / np.sum(thisval)
 
-        #tracex.append(i + 4)
         tracex.append(tracex_best[i])
         tracey.append(cx)
 
@@ -495,10 +504,11 @@ def simple_solver(clear):
         1. Locate the reference trace centroids.
         2. Open the data files and locate the centroids.
         3. Call get_contam_centroids to determine the correct rotation and
-        offset parameters relative to the reference trace files.
+           offset parameters relative to the reference trace files.
         4. Open the reference files and determine the appropriate padding
-        and oversampling factors.
-        5. Call _do_transform to transform the reference files to match the data.
+           and oversampling factors.
+        5. Call _do_transform to transform the reference files to match the
+           data.
         6. Return the transformed reference traces and wavelength maps.
 
     Parameters
@@ -517,6 +527,7 @@ def simple_solver(clear):
     '''
 
     # Get orders 1 and 2 reference trace centroids
+    # May need to be updated when reference traces are oversampled and padded
     ref_trace = fits.open(path+'/extract/Ref_files/trace_profile_om1.fits')[0].data[::-1, :]
     xref1, yref1, xref2, yref2 = get_contam_centroids(ref_trace)
     ref_centroids = np.array([xref1, yref1, xref2, yref2])
