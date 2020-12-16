@@ -100,7 +100,7 @@ def get_c_matrix(kernel, grid, bounds=None, i_bounds=None, norm=True,
 
     # Normalize if specified
     if norm:
-        kernel = kernel / kernel.sum(axis=0)
+        kernel = kernel / np.nansum(kernel, axis=0)
 
     # Apply cut for kernel at boundaries
     kernel = cut_ker(kernel, n_out, thresh_out)
@@ -517,6 +517,9 @@ class WebbKer():
             i_row, i_col = np.unravel_index(
                 np.argmin(np.abs(wv_map-wv_c)), wv_map.shape
             )
+            # Update wavelength center value
+            # (take the nearest pixel center value)
+            wv_center[i_cen] = wv_map[i_row, i_col]
             # Surrounding columns
             index = i_col + i_surround
             # Make sure it's on the detector
