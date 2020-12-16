@@ -141,7 +141,8 @@ def _do_transform(data, rot_ang, x_anch, y_anch, x_shift, y_shift,
     return data_sub256_nat
 
 
-def get_contam_centroids(clear, return_rot_params=False, doplot=False):
+def get_contam_centroids(clear, ref_centroids=None, return_rot_params=False,
+                         doplot=False):
     '''Get the trace centroids for both orders when there is
     contaminationof the first order by the second on the detector.
     Fits the first order centroids using the uncontaminated method, and
@@ -180,8 +181,15 @@ def get_contam_centroids(clear, return_rot_params=False, doplot=False):
     # Determine optics model centroids for both orders
     # as well as order 1 data centroids
     atthesex = np.arange(2048)
-    xOM1, yOM1, tp1 = get_om_centroids(atthesex)
-    xOM2, yOM2, tp2 = get_om_centroids(atthesex, order=2)
+    if ref_centroids is not None:
+        if len(ref_centroids) != 4:
+            raise ValueError('The first dimension of ref_centroids must be 4.')
+        xOM1, yOM1 = ref_centroids[0], ref_centroids[1]
+        xOM2, yOM2 = ref_centroids[2], ref_centroids[3]
+    else:
+        xOM1, yOM1, tp1 = get_om_centroids(atthesex)
+        xOM2, yOM2, tp2 = get_om_centroids(atthesex, order=2)
+
     xcen_o1, ycen_o1 = get_uncontam_centroids(clear, atthesex)
     p_o1 = np.polyfit(xcen_o1, ycen_o1, 5)
     ycen_o1 = np.polyval(p_o1, atthesex)
@@ -316,7 +324,10 @@ def get_uncontam_centroids(stack, atthesex=None):
         thisrow = (row[miny:maxy])[ind]
         thisval = val[ind]
         cx = np.sum(thisrow * thisval) / np.sum(thisval)
-
+        # Ensure that the centroid position is not getting too close to an edge
+        # such that it is biased.
+        if not np.isfinite(cx) or cx <= 5 or cx >= 250:
+            continue
         # For a bright second order, it is likely that the centroid at this
         # point will be somewhere in between the first and second order.
         # If this is the case (i.e. the pixel value of the centroid is very low
@@ -347,7 +358,8 @@ def get_uncontam_centroids(stack, atthesex=None):
     tracey = []
     row = np.arange(dimy)
     w = 16
-    for i in range(dimx - 8):
+    #for i in range(dimx - 8):
+    for i in range(len(tracex_best)):
         miny = np.int(np.nanmax([np.around(tracey_best[i] - w), 0]))
         maxy = np.int(np.nanmax([np.around(tracey_best[i] + w), dimy - 1]))
         val = backsubtracted[miny:maxy, i + 4] / np.nanmax(backsubtracted[:, i + 4])
@@ -356,7 +368,8 @@ def get_uncontam_centroids(stack, atthesex=None):
         thisval = val[ind]
         cx = np.sum(thisrow * thisval) / np.sum(thisval)
 
-        tracex.append(i + 4)
+        #tracex.append(i + 4)
+        tracex.append(tracex_best[i])
         tracey.append(cx)
 
     tracex_best = np.array(tracex)
@@ -479,13 +492,14 @@ def simple_solver(clear):
     and preform the necessary rotation and offsets to transform the
     reference traces and wavelength maps to match the science data.
     The steps are as follows:
-        1. Open the data files and locate the centroids.
-        2. Call get_contam_centroids to determine the correct rotation and
-        offset parameters.
-        3. Open the reference files and determine the appropriate padding
+        1. Locate the reference trace centroids.
+        2. Open the data files and locate the centroids.
+        3. Call get_contam_centroids to determine the correct rotation and
+        offset parameters relative to the reference trace files.
+        4. Open the reference files and determine the appropriate padding
         and oversampling factors.
-        4. Call _do_transform to transform the reference files to match the data.
-        5. Return the transformed reference traces and wavelength maps.
+        5. Call _do_transform to transform the reference files to match the data.
+        6. Return the transformed reference traces and wavelength maps.
 
     Parameters
     ----------
@@ -502,8 +516,14 @@ def simple_solver(clear):
         to match the science data.
     '''
 
-    # Get data centroids
-    xcen_o1, ycen_o1, xcen_o2, ycen_o2, rot_params = get_contam_centroids(clear, return_rot_params=True)
+    # Get orders 1 and 2 reference trace centroids
+    ref_trace = fits.open(path+'/extract/Ref_files/trace_profile_om1.fits')[0].data[::-1, :]
+    xref1, yref1, xref2, yref2 = get_contam_centroids(ref_trace)
+    ref_centroids = np.array([xref1, yref1, xref2, yref2])
+
+    # Get data centroids and rotation params relative to the reference trace
+    xcen_o1, ycen_o1, xcen_o2, ycen_o2, rot_params = get_contam_centroids(clear, return_rot_params=True,
+                                                                          ref_centroids=ref_centroids)
     rot_ang = rot_params[0]
     x_anch = np.int(rot_params[1])
     y_anch = np.int(rot_params[2])
