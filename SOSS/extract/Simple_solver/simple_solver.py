@@ -515,39 +515,26 @@ def simple_solver(clear):
 
     for order in [1, 2]:
         # Load the reference trace and wavelength map for the current order
-        if order == 1:
-            ref_trace = fits.open(path+'/extract/Ref_files/trace_profile_om1.fits')[0].data[::-1, :]
-            # Clean up the reference trace - no zero pixels and add padding
-            ref_trace[np.where(ref_trace == 0)] = 1
-            ref_trace = np.pad(ref_trace, ((128, 128), (1024, 1024)),
-                               constant_values=((1, 1), (1, 1)))
-            pad_t = 2
-            os_t = 1
-            wave_map = fits.open(path+'/extract/Ref_files/wavelengths_m1.fits')[0].data[::-1, :]
-            wave_map = np.pad(wave_map, ((128, 128), (1024, 1024)),
-                              constant_values=((1, 1), (1, 1)))
-            pad_w = 2
-            os_w = 1
-        if order == 2:
-            ref_trace = fits.open(path+'/extract/Ref_files/trace_profile_om2.fits')[0].data[::-1, :]
-            # Clean up the reference trace - no zero pixels and add padding
-            ref_trace[np.where(ref_trace == 0)] = 1
-            ref_trace = np.pad(ref_trace, ((128, 128), (1024, 1024)),
-                               constant_values=((1, 1), (1, 1)))
-            pad_t = 2
-            os_t = 1
-            wave_map = fits.open(path+'/extract/Ref_files/wavelengths_m2.fits')[0].data[::-1, :]
-            wave_map = np.pad(wave_map, ((128, 128), (1024, 1024)),
-                              constant_values=((1, 1), (1, 1)))
-            pad_w = 2
-            os_w = 1
+        ref_trace = fits.open(path+'/extract/Ref_files/trace_profile_om%s.fits' % order)[0].data[::-1, :]
+        # Clean up the reference trace - no zero pixels and add padding
+        ref_trace[np.where(ref_trace == 0)] = 1
+        ref_trace = np.pad(ref_trace, ((128, 128), (1024, 1024)),
+                           constant_values=((1, 1), (1, 1)))
+        pad_t = 2
+        os_t = 1
+        wave_map = fits.open(path+'/extract/Ref_files/wavelengths_m%s.fits' % order)[0].data[::-1, :]
+        wave_map = np.pad(wave_map, ((128, 128), (1024, 1024)),
+                          constant_values=((1, 1), (1, 1)))
+        pad_w = 2
+        os_w = 1
 
-        ref_trace_trans[order-1, :, :] = _do_transform(ref_trace, rot_ang,
+        # Pass negative rot_ang to convert from CCW to CW rotation
+        ref_trace_trans[order-1, :, :] = _do_transform(ref_trace, -rot_ang,
                                                        x_anch, y_anch, x_shift,
                                                        y_shift,
                                                        padding_factor=pad_t,
                                                        oversampling=os_t)
-        wave_map_trans[order-1, :, :] = _do_transform(wave_map, rot_ang,
+        wave_map_trans[order-1, :, :] = _do_transform(wave_map, -rot_ang,
                                                       x_anch, y_anch, x_shift,
                                                       y_shift,
                                                       padding_factor=pad_w,
