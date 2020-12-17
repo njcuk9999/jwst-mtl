@@ -271,7 +271,7 @@ def get_om_centroids(atthesex=None, order=1):
     return xOM, yOM[::-1], tp2
 
 
-def get_uncontam_centroids(stack, atthesex=None):
+def get_uncontam_centroids(stack, atthesex=np.arange(2048)):
     '''Determine the x, y positions of the trace centroids from an
     exposure using a center-of-mass analysis. Works for either order if there
     is no contamination, or for order 1 on a detector where the two orders
@@ -298,28 +298,23 @@ def get_uncontam_centroids(stack, atthesex=None):
     dimx = len(atthesex)
     dimy = np.shape(stack)[0]
 
-    # Identify the floor level of all 2040 working pixels to subtract it first.
+    # Identify the floor level of all 2040 working cols to subtract it first.
     floorlevel = np.nanpercentile(stack, 10, axis=0)
-    backsubtracted = stack*1
-    for i in range(dimx-8):
-        backsubtracted[:, i] = stack[:, i] - floorlevel[i]
+    backsub = stack - floorlevel
 
     # Find centroid - first pass, use all pixels in the column.
-    tracex = []
-    tracey = []
-    row = np.arange(dimy)
-    for i in range(dimx - 8):
-        val = backsubtracted[:, i + 4] / np.nanmax(backsubtracted[:, i + 4])
-        ind = np.where(np.isfinite(val))
-        thisrow = row[ind]
-        thisval = val[ind]
-        cx = np.sum(thisrow * thisval) / np.sum(thisval)
-        tracex.append(i + 4)
-        tracey.append(cx)
+    # Normalize each column
+    norm = backsub[:, 4:2044] / np.nanmax(backsub[:, 4:2044], axis=0)
+    # Create 2D Array of pixel positions
+    rows = (np.ones((2040, 256)) * np.arange(256)).T
+    # Mask any nan values
+    norm_mask = np.ma.masked_invalid(norm)
+    # CoM analysis to find centroid
+    cx = (np.nansum(norm_mask * rows, axis=0) / np.nansum(norm, axis=0)).data
 
     # Adopt these trace values as best
-    tracex_best = np.array(tracex) * 1
-    tracey_best = np.array(tracey) * 1
+    tracex_best = np.arange(2040)+4
+    tracey_best = cx
 
     # Second pass, find centroid on a subset of pixels
     # from an area around the centroid determined earlier.
@@ -330,7 +325,7 @@ def get_uncontam_centroids(stack, atthesex=None):
     for i in range(dimx - 8):
         miny = np.int(np.nanmax([np.around(tracey_best[i] - w), 0]))
         maxy = np.int(np.nanmax([np.around(tracey_best[i] + w), dimy - 1]))
-        val = backsubtracted[miny:maxy, i + 4] / np.nanmax(backsubtracted[:, i + 4])
+        val = backsub[miny:maxy, i + 4] / np.nanmax(backsub[:, i + 4])
         ind = np.where(np.isfinite(val))
         thisrow = (row[miny:maxy])[ind]
         thisval = val[ind]
@@ -344,21 +339,17 @@ def get_uncontam_centroids(stack, atthesex=None):
         # If this is the case (i.e. the pixel value of the centroid is very low
         # compared to the column average), restrict the range of pixels
         # considered to be above the current centroid.
-        if backsubtracted[int(cx)][i+4] < np.nanmean(backsubtracted[(int(cx) - w):(int(cx)+w), i+4]):
+        if backsub[int(cx)][i+4] < np.nanmean(backsub[(int(cx) - w):(int(cx)+w), i+4]):
             miny = np.int(np.nanmax([np.around(cx), 0]))
             maxy = np.int(np.nanmin([np.around(cx + 2*w), dimy - 1]))
-            val = backsubtracted[miny:maxy, i + 4] / np.nanmax(backsubtracted[:, i + 4])
+            val = backsub[miny:maxy, i + 4] / np.nanmax(backsub[:, i + 4])
             ind = np.where(np.isfinite(val))
             thisrow = (row[miny:maxy])[ind]
             thisval = val[ind]
             cx = np.sum(thisrow * thisval) / np.sum(thisval)
 
-            tracex.append(i + 4)
-            tracey.append(cx)
-
-        else:
-            tracex.append(i + 4)
-            tracey.append(cx)
+        tracex.append(i + 4)
+        tracey.append(cx)
 
     # Adopt these trace values as best.
     tracex_best = np.array(tracex) * 1
@@ -372,7 +363,7 @@ def get_uncontam_centroids(stack, atthesex=None):
     for i in range(len(tracex_best)):
         miny = np.int(np.nanmax([np.around(tracey_best[i] - w), 0]))
         maxy = np.int(np.nanmax([np.around(tracey_best[i] + w), dimy - 1]))
-        val = backsubtracted[miny:maxy, i + 4] / np.nanmax(backsubtracted[:, i + 4])
+        val = backsub[miny:maxy, i + 4] / np.nanmax(backsub[:, i + 4])
         ind = np.where(np.isfinite(val))
         thisrow = (row[miny:maxy])[ind]
         thisval = val[ind]
