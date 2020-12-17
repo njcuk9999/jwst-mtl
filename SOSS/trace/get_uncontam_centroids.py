@@ -1,4 +1,4 @@
-def get_uncontam_centroids(stack, header=None, specpix=None):
+def get_uncontam_centroids(stack, header=None, badpix=None, specpix=None):
     '''Determine the x, y positions of the trace centroids from an
     exposure using a center-of-mass analysis. Works for either order if there
     is no contamination, or for order 1 on a detector where the two orders
@@ -18,6 +18,9 @@ def get_uncontam_centroids(stack, header=None, specpix=None):
         If the header is passed, then specific keywords will be read in it to assess what
         the stack array is. This ensures that a 2D Trace Reference file will be digested
         properly.
+    badpix : array of floats (2D) with anything different than zero meaning a good pixel
+        Optional input bad pixel mask to apply to the stack. Should be of
+        the same dimensions as the stack.
     specpix : list of floats
         Pixel x values at which to extract the trace centroids.
         It is TBD whether we mean native pixels or oversampled pixels...
@@ -35,7 +38,9 @@ def get_uncontam_centroids(stack, header=None, specpix=None):
     #dimy = np.shape(stack)[0]
     dimy, dimx = np.shape(stack)
 
-    # Determine what is the input stack based either on its dimensions or on the header if passed.
+    # Determine what is the input stack based either on its dimensions or on
+    # the header if passed. Construct a mask of working pixels in case the
+    # stack contains reference pixels.
     if header is None:
         # No header passed - Assume that the stack is a valid SOSS subarray or FF, i.e.
         # 2048x256 or 2040x252 (working pixels) or multiple of if oversampled
@@ -44,12 +49,12 @@ def get_uncontam_centroids(stack, header=None, specpix=None):
         if (dimx % 2048) == 0:
             # stack is a multiple of native pixels.
             xnative = 2048
-            # The oversampling is:
+            # The x-axis oversampling is:
             xos = int(dimx / 2048)
         elif (dimx % 2040) == 0:
             # stack is a multiple of native *** working *** pixels.
             xnative = 2040
-            # The oversampling is:
+            # The y-axis oversampling is:
             xos = int(dimx / 2040)
         else:
             # stack x dimension has unrecognized size.
@@ -68,13 +73,55 @@ def get_uncontam_centroids(stack, header=None, specpix=None):
             # stack y dimension is inconsistent with the x dimension.
             print('Stack Y dimension ({:}) is inconsistent with X dimension ({:}) for acceptable SOSS arrays'.format(dimy,dimx))
             sys.exit()
+        # Construct a mask of working pixels
+        working_pixel_mask = np.full((dimy, dimx), True)
+        # For dimensions where reference pixels would have been included in the stack,
+        # mask those reference pixels out.
+        # Sizes 96, 252 and 2040 should not contain any reference pixel.
+        if xnative == 2048:
+            # Mask out the left and right columns of reference pixels
+            working_pixel_mask[:, 0:xos * 4] = False
+            working_pixel_mask[:, -xos * 4:] = False
+        if ynative == 2048:
+            # Mask out the top and bottom rows of reference pixels
+            working_pixel_mask[0:yos * 4, :] = False
+            working_pixel_mask[-yos * 4:, :] = False
+        if ynative == 256:
+            # Mask the top rows of reference pixels
+            working_pixel_mask[-yos * 4:,:] = False
     else:
         # header was passed
-        print()
+        # Read in the relevant keywords
+        xos, yos = int(header['OVERSAMP']), int(header['OVERSAMP'])
+        padding = int(header['PADDING'])
+        # The 2D Trace profile is for FULL FRAME so 2048x2048
+        xnative, ynative = int(2048), int(2048)
+        # Check that the stack respects its intended format
+        if dimx != ((xnative+2*padding)*xos):
+            # Problem
+            print('The header passed is inconsistent with the X dimension of the stack.')
+            sys.exit()
+        if dimy != ((ynative+2*padding)*yos):
+            # Problem
+            print('The header passed is inconsistent with the Y dimension of the stack.')
+            sys.exit()
+        # Construct a mask of working pixels. The 2D Trace REFERENCE file does
+        # not contain any reference pixel. So all are True.
+        working_pixel_mask = np.full((dimy, dimx), True)
 
     # For debugging purposes...
     if True:
         print('dimx={:}, dimy={:}, xos={:}, yos={:}, xnative={:}, ynative={:}'.format(dimx, dimy, xos, yos, xnative, ynative))
+
+    if badpix != None:
+        # 1) Check the dimension is the same as stack
+        # TODO:
+        # 2) Create the numpy.ma array with it
+        badpix_mask = np.ma.array(np.ones((dimy, dimx)), mask = (badpix != 0) )
+
+    # Multiply working pixel mask and bad pixel mask
+    # TODO:
+
     sys.exit()
 
 
