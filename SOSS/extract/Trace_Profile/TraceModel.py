@@ -223,7 +223,7 @@ def do_emcee(xOM, yOM, xCV, yCV):
     return sampler
 
 
-def get_data_centroids(stack, atthesex=None):
+def get_o1_data_centroids(stack, atthesex=None):
     ''' Determine the x, y positions of the order 1 trace centroids from an
     exposure using a center-of-mass analysis.
     This is an adaptation of Loïc's get_order1_centroids which can better
@@ -245,7 +245,7 @@ def get_data_centroids(stack, atthesex=None):
     '''
 
     # Dimensions of the subarray.
-    dimx = np.shape(stack)[1]
+    dimx = len(atthesex)
     dimy = np.shape(stack)[0]
 
     # Identify the floor level of all 2040 working pixels to subtract it first.
@@ -334,7 +334,62 @@ def get_data_centroids(stack, atthesex=None):
     return tracex_best, tracey_best
 
 
-def get_om_centroids(atthesex=None):
+def get_o2_data_centroids(clear, return_o1=True):
+    ''' Get the order 2 trace centroids via fitting the optics model
+    to the first order, and using the known relationship between the
+    positions of the first and second orders.
+
+    Parameters
+    ----------
+    clear : np.ndarray
+        CLEAR SOSS exposure data frame.
+    return_o1 : bool
+        Whether to include the order 1 centroids in the returned value
+
+    Returns
+    -------
+    xM2 : list
+        X-centroids for the order 2 trace.
+    yM2 : list
+        y-centroids for the order 2 trace.
+    xM1 : list (optional)
+        x-centroids for the order 1 trace.
+    yM1 : list (optional)
+        y-centroids for the order 1 trace.
+    '''
+
+    # Determine optics model centroids for both orders
+    # as well as order 1 data centroids
+    atthesex = np.arange(2048)
+    xOM1, yOM1, tp1 = get_om_centroids(atthesex)
+    xOM2, yOM2, tp2 = get_om_centroids(atthesex, order=2)
+    xCV, yCV = get_o1_data_centroids(clear, atthesex)
+    p_o1 = np.polyfit(xCV, yCV, 5)
+    ycen_o1 = np.polyval(p_o1, atthesex)
+
+    # Fit the OM to the data for order 1
+    AA = do_emcee(xOM1, yOM1, xCV, yCV)
+
+    # Get fitted rotation parameters
+    flat_samples = AA.get_chain(discard=500, thin=15, flat=True)
+    ang = np.percentile(flat_samples[:, 0], 50)
+    xanch = np.percentile(flat_samples[:, 1], 50)
+    yanch = np.percentile(flat_samples[:, 2], 50)
+
+    # Get rotated OM centroids for order 2
+    xcen_o2, ycen_o2 = rot_om2det(ang, xanch, yanch, xOM2, yOM2, order=2, bound=True)
+    # Ensure that the second order centroids cover the whole detector
+    p_o2 = np.polyfit(xcen_o2, ycen_o2, 10)
+    ycen_o2 = np.polyval(p_o2, atthesex)
+    inds = np.where((ycen_o2 >= 0) & (ycen_o2 < 256))[0]
+    # Also return order 1 centroids if necessary
+    if return_o1 is True:
+        return atthesex[inds], ycen_o2[inds], atthesex, ycen_o1
+    else:
+        return atthesex[inds], yM2[inds]
+
+
+def get_om_centroids(atthesex=None, order=1):
     ''' Utility function to get order 1 trace profile centroids from the
     JWST NIRISS SOSS optics model.
 
@@ -342,6 +397,8 @@ def get_om_centroids(atthesex=None):
     ----------
     atthesex : list of floats
         Pixel x values at which to evaluate the centroid position.
+    order : int
+        Diffraction order for which to return the optics model solution.
 
     Returns
     -------
@@ -360,8 +417,8 @@ def get_om_centroids(atthesex=None):
     tp2 = tp.get_tracepars(filename='%s/NIRISS_GR700_trace.csv' % tppath)
 
     # Evaluate the trace polynomials at the desired coordinates.
-    w = tp.specpix_to_wavelength(atthesex, tp2, 1, frame='nat')[0]
-    xOM, yOM, mas = tp.wavelength_to_pix(w, tp2, 1, frame='nat')
+    w = tp.specpix_to_wavelength(atthesex, tp2, order, frame='nat')[0]
+    xOM, yOM, mas = tp.wavelength_to_pix(w, tp2, order, frame='nat')
 
     return xOM, yOM[::-1], tp2
 
@@ -370,10 +427,12 @@ def log_likelihood(theta, xvals, yvals, xCV, yCV):
     ''' Definition of the log likelihood. Called by do_emcee.
     '''
     ang, orx, ory = theta
-    modelx, modely = rot_om2det(ang, orx, ory, xvals, yvals)
+    # Calculate rotated model
+    modelx, modely = rot_om2det(ang, orx, ory, xvals, yvals, bound=True)
+    # Interpolate rotated model onto same x scale as data
+    modely = np.interp(xCV, modelx, modely)
 
-    return -0.5 * np.sum(((xCV[:1000] - modelx[4:1004])**2 + (yCV[:1000] - modely[4:1004])**2)
-                         - 0.5 * np.log(2 * np.pi * 1))
+    return -0.5 * np.sum((yCV - modely)**2 - 0.5 * np.log(2 * np.pi * 1))
 
 
 def log_prior(theta):
@@ -486,7 +545,7 @@ def makemod(clear, F277, do_plots=False, filename=None):
     # Get the centroid positions from the optics model and the data.
     pixels = np.linspace(0, 2047, 2048)+0.5
     xOM, yOM, tp2 = get_om_centroids(atthesex=np.linspace(0, 2047, 2048))  # OM
-    xCV, yCV = get_data_centroids(clear, atthesex=pixels)  # data
+    xCV, yCV = get_o1_data_centroids(clear, atthesex=pixels)  # data
     # Overplot the data centroids on the CLEAR exposure if necessary
     # to verify accuracy.
     if do_plots is True:
@@ -530,7 +589,7 @@ def makemod(clear, F277, do_plots=False, filename=None):
             # I'm also not including it in GitHub atm as its a large-ish
             # fits file and realistically I'll be the only one using this code.
             # Thus I'll just use my local copy.
-            stand = fits.open('../simu_F277_CLEAR/f277.fits')[0].data[::-1, :]
+            stand = fits.open('/Users/michaelradica/Documents/School/Ph.D./Research/SOSS/Extraction/simu_F277_CLEAR/f277.fits')[0].data[::-1, :]
         except FileNotFoundError:
             sys.exit('The standard red anchor profile was not found.')
         # Find the appropriate X and Y centroids.
@@ -627,7 +686,7 @@ def makemod(clear, F277, do_plots=False, filename=None):
     newmap = newmap / np.nanmax(newmap, axis=0)
     # Create a mask to remove the influence of the second order
     # in the CLEAR data.
-    O1frame = mask_order1(newmap, flat_samples, xOM, yOM)
+    O1frame = mask_order(newmap, xCV, yCV)
 
     # Write the trace model to disk if requested.
     if filename is not None:
@@ -640,37 +699,29 @@ def makemod(clear, F277, do_plots=False, filename=None):
         return O1frame
 
 
-def mask_order1(frame, flat_samples, xOM, yOM):
-    ''' Utility function to create a pixel mask to remove the second
-    order trace from the CLEAR exposure once it has been stitched into
-    the full order 1 trace model.
+def mask_order(frame, xCV, yCV):
+    ''' Create a pixel mask to isolate only the detector pixels
+    belonging to a specific diffraction order.
 
     Parameters
     ----------
-    frame : numpy array of floats
-        Data frame.
-    flat_samples : numpy array of floats
-        MCMC samples from which the optics model to detector transformation
-        are determined. For example: as returned by do_emcee.
-    xOM, yOM : numpy array of floats
-        X and Y centroids coordinates respectively in the optics
-        model coordinate frame.
+    frame : np.array
+        Science data frame.
+    xCV : np.array
+        Data x centroids for the desired order
+    yCV : np.array
+        Data y centroids for the desired order
 
     Returns
     -------
-    O1frame : numpy array of floats
-        The input data frame, with all pixels not within
-        the first order trace profile masked.
+    O1frame : np.array
+        The input data frame, with all pixels other than those
+        within +/- 20 pixels of yCV masked.
     '''
 
     mask = np.zeros([256, 2048])
-
-    # Get trace centroids in the detctor frame.
-    xMod, yMod = rot_om2det(np.percentile(flat_samples[:, 0], 50),
-                            np.percentile(flat_samples[:, 1], 50),
-                            np.percentile(flat_samples[:, 2], 50), xOM, yOM)
-    xx = xMod.astype(int)
-    yy = yMod.astype(int)
+    xx = np.round(xCV, 0).astype(int)
+    yy = np.round(yCV, 0).astype(int)
     xr = np.linspace(np.min(xx), np.max(xx), np.max(xx)+1).astype(int)
 
     # Set all pixels within the extent of the order 1 trace to 1 in the mask.
@@ -757,7 +808,7 @@ def plot_interpmodel(waves, nw1, nw2, p1, p2):
     return None
 
 
-def rot_om2det(ang, cenx, ceny, xval, yval):
+def rot_om2det(ang, cenx, ceny, xval, yval, order=1, bound=False):
     ''' Utility function to map coordinates in the optics model
     reference frame, onto the detector reference frame, given
     the correct transofmration parameters.
@@ -772,6 +823,10 @@ def rot_om2det(ang, cenx, ceny, xval, yval):
     xval, yval : float
         Pixel X and Y values in the optics model coordinate system
         to transform into the detector frame.
+    order : int
+        Diffraction order.
+    bound : bool
+        Whether to trim rotated solutions to fit within the subarray256.
 
     Returns
     -------
@@ -782,16 +837,26 @@ def rot_om2det(ang, cenx, ceny, xval, yval):
 
     # Map OM onto detector - the parameters for this transformation
     # are already well known.
-    t = 1.5*np.pi / 180
-    R = np.array([[np.cos(t), -np.sin(t)], [np.sin(t), np.cos(t)]])
-    points1 = np.array([xval - 1535, yval - 205])
-    b = R @ points1
+    if order == 1:
+        t = 1.489*np.pi / 180  #old 1.5
+        R = np.array([[np.cos(t), -np.sin(t)], [np.sin(t), np.cos(t)]])
+        points1 = np.array([xval - 1514, yval - 456])  # old 1535 & 205
+        b = R @ points1
 
-    b[0] += 1535
-    b[1] += 205
+        b[0] += 1514
+        b[1] += 456
+
+    if order == 2:
+        t = 1.84*np.pi / 180  # old 1.8
+        R = np.array([[np.cos(t), -np.sin(t)], [np.sin(t), np.cos(t)]])
+        points1 = np.array([xval - 1366, yval - 453])  # old 1347 & 141
+        b = R @ points1
+
+        b[0] += 1366
+        b[1] += 453
 
     # Required rotation in the detector frame to match the data.
-    t = (ang+0.95)*np.pi / 180
+    t = (ang)*np.pi / 180 # old+0.95
     R = np.array([[np.cos(t), -np.sin(t)], [np.sin(t), np.cos(t)]])
 
     points1 = np.array([b[0] - cenx, b[1] - ceny])
@@ -800,6 +865,11 @@ def rot_om2det(ang, cenx, ceny, xval, yval):
     rot_pix[0] += cenx
     rot_pix[1] += ceny
 
-    # inds = [(b2[0]>=0) & (b2[0]<=2047)]
+    # Check to ensure all points are on the subarray.
+    if bound is True:
+        inds = [(rot_pix[1] >= 0) & (rot_pix[1] < 256) & (rot_pix[0] >= 0) &
+                (rot_pix[0] < 2048)]
 
-    return rot_pix[0], rot_pix[1]
+        return rot_pix[0][inds], rot_pix[1][inds]
+    else:
+        return rot_pix[0], rot_pix[1]
