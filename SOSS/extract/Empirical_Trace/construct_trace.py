@@ -26,42 +26,8 @@ sys.path.insert(0, sspath)
 import simple_solver as ss
 
 
-def chromescale(wave, profile, invert=False):
-    ''' Utility function to remove the lambda/D chromatic PSF scaling by
-    interpolating a monochromatic PSF function onto a standard axis.
-
-    Parameters
-    ----------
-    wave : float
-        Wavelength corresponding to the input 1D PSF profile.
-    profile : np.array of float
-        1D PSF profile to be rescaled.
-    invert : bool
-        If True, add back the lambda/D scaling instead of removing it.
-
-    Returns
-    -------
-    new : np,.array of float
-        Rescaled 1D PSF profile.
-    '''
-
-    # Create the standard axis
-    rnge = np.linspace(0, round(49*(2.5/wave), 0) - 1, 49)
-    offset = rnge[24] - 24
-
-    # Interpolate the profile onto the standard axis.
-    if invert is False:
-        new = np.interp(np.arange(49), rnge - offset, profile)
-    # Or interpolate the profile from the standard axis to re-add
-    # the lambda/D scaling.
-    else:
-        new = np.interp(rnge - offset, np.arange(49), profile)
-
-    return new
-
-
 def calc_interp_coefs(make_psfs=False, doplot=True, F277W=True, filepath=''):
-    ''' Function to calculate the interpolation coefficients necessary to
+    '''Function to calculate the interpolation coefficients necessary to
     construct a monochromatic PSF profile at any wavelength between
     the two 1D PSF anchor profiles. Linear combinations of the blue and red
     anchor are iteratively fit to each intermediate wavelength to find the
@@ -194,122 +160,53 @@ def calc_interp_coefs(make_psfs=False, doplot=True, F277W=True, filepath=''):
     return pb, pr
 
 
-def get_o2_data_centroids(clear, return_o1=True):
-    ''' Get the order 2 trace centroids via fitting the optics model
-    to the first order, and using the known relationship between the
-    positions of the first and second orders.
+def _chromescale(wave, profile, invert=False):
+    '''Utility function to remove the lambda/D chromatic PSF scaling by
+    interpolating a monochromatic PSF function onto a standard axis.
 
     Parameters
     ----------
-    clear : np.ndarray
-        CLEAR SOSS exposure data frame.
-    return_o1 : bool
-        Whether to include the order 1 centroids in the returned value
+    wave : float
+        Wavelength corresponding to the input 1D PSF profile.
+    profile : np.array of float
+        1D PSF profile to be rescaled.
+    invert : bool
+        If True, add back the lambda/D scaling instead of removing it.
 
     Returns
     -------
-    xM2 : list
-        X-centroids for the order 2 trace.
-    yM2 : list
-        y-centroids for the order 2 trace.
-    xM1 : list (optional)
-        x-centroids for the order 1 trace.
-    yM1 : list (optional)
-        y-centroids for the order 1 trace.
+    new : np,.array of float
+        Rescaled 1D PSF profile.
     '''
 
-    # Determine optics model centroids for both orders
-    # as well as order 1 data centroids
-    atthesex = np.arange(2048)
-    xOM1, yOM1, tp1 = get_om_centroids(atthesex)
-    xOM2, yOM2, tp2 = get_om_centroids(atthesex, order=2)
-    xCV, yCV = get_o1_data_centroids(clear, atthesex)
-    p_o1 = np.polyfit(xCV, yCV, 5)
-    ycen_o1 = np.polyval(p_o1, atthesex)
+    # Create the standard axis
+    rnge = np.linspace(0, round(49*(2.5/wave), 0) - 1, 49)
+    offset = rnge[24] - 24
 
-    # Fit the OM to the data for order 1
-    AA = do_emcee(xOM1, yOM1, xCV, yCV)
-
-    # Get fitted rotation parameters
-    flat_samples = AA.get_chain(discard=500, thin=15, flat=True)
-    ang = np.percentile(flat_samples[:, 0], 50)
-    xanch = np.percentile(flat_samples[:, 1], 50)
-    yanch = np.percentile(flat_samples[:, 2], 50)
-
-    # Get rotated OM centroids for order 2
-    xcen_o2, ycen_o2 = rot_om2det(ang, xanch, yanch, xOM2, yOM2, order=2, bound=True)
-    # Ensure that the second order centroids cover the whole detector
-    p_o2 = np.polyfit(xcen_o2, ycen_o2, 10)
-    ycen_o2 = np.polyval(p_o2, atthesex)
-    inds = np.where((ycen_o2 >= 0) & (ycen_o2 < 256))[0]
-    # Also return order 1 centroids if necessary
-    if return_o1 is True:
-        return atthesex[inds], ycen_o2[inds], atthesex, ycen_o1
+    # Interpolate the profile onto the standard axis.
+    if invert is False:
+        new = np.interp(np.arange(49), rnge - offset, profile)
+    # Or interpolate the profile from the standard axis to re-add
+    # the lambda/D scaling.
     else:
-        return atthesex[inds], yM2[inds]
+        new = np.interp(rnge - offset, np.arange(49), profile)
 
-
-def loicpsf(wavelist=None, wfe_real=None, filepath=''):
-    ''' Calls the WebbPSF package to create monochromatic PSFs for NIRISS
-    SOSS observations and save them to disk.
-
-    Parameters
-    ----------
-    wavelist : list
-        List of wavelengths (in meters) for which to generate PSFs.
-    wfe_real : int
-        Index of wavefront realization to use for the PSF (if non-default
-        WFE realization is desired).
-    filepath : str
-        Path to the directory to which the PSFs will be written.
-        Defaults to the current directory.
-    '''
-
-    if wavelist is None:
-        # List of wavelengths to generate PSFs for
-        wavelist = np.linspace(0.5, 5.2, 95) * 1e-6
-    # Dimension of the PSF in native pixels
-    pixel = 128
-    # Pixel oversampling factor
-    oversampling = 10
-
-    # Select the NIRISS instrument
-    niriss = webbpsf.NIRISS()
-
-    # Override the default minimum wavelength of 0.6 microns
-    niriss.SHORT_WAVELENGTH_MIN = 0.5e-6
-    # Set correct filter and pupil wheel components
-    niriss.filter = 'CLEAR'
-    niriss.pupil_mask = 'GR700XD'
-
-    # Change the WFE realization if desired
-    if wfe_real is not None:
-        niriss.pupilopd = ('OPD_RevW_ote_for_NIRISS_predicted.fits.gz',
-                           wfe_real)
-
-    # Loop through all wavelengths to generate PSFs
-    for wave in wavelist:
-        print('Calculating PSF at wavelength ',
-              round(wave/1e-6, 2), ' microns')
-        psf = niriss.calc_psf(monochromatic=wave, fov_pixels=pixel,
-                              oversample=oversampling, display=False)
-
-        # Save psf realization to disk
-        text = '{0:5f}'.format(wave*1e+6)
-        psf.writeto(str(filepath)+'SOSS_os'+str(oversampling)+'_'+str(pixel)
-                    + 'x'+str(pixel)+'_'+text+'_'+str(wfe_real)+'.fits',
-                    overwrite=True)
+    return new
 
 
 def construct_order1(clear, F277, do_plots=False, filename=None):
-    ''' This creates the full order 1 trace profile model. The region
+    '''This creates the full order 1 trace profile model. The region
     contaminated by the second order is interpolated from the CLEAR and F277W
     exposures, or just from the CLEAR exposure and a standard red anchor if
     no F277W exposure is available.
     The steps are as follows:
         1. Fit the optics model to the data centroids to determine the correct
            rotation and offset parameters.
-        2.
+        2. Determine the red and blue anchor profiles for the interpolation.
+        3. Construct the interpolated profile at each wavelength in the
+           overlap region.
+        4. Stitch together the original CLEAR exposure and the interpolated
+           trace model (as well as the F277W exposure if provided).
     This is the main function that the end user will call.
 
     Parameters
@@ -368,7 +265,7 @@ def construct_order1(clear, F277, do_plots=False, filename=None):
     # Extract the 2.2µm anchor profile from the data.
     Banch = clear[(yd22-24):(yd22+25), xd22]
     # Remove the lambda/D scaling.
-    Banch = chromescale(2.2, Banch)
+    Banch = _chromescale(2.2, Banch)
 
     # Determine the anchor profiles - red anchor.
     if F277 is None:
@@ -383,7 +280,7 @@ def construct_order1(clear, F277, do_plots=False, filename=None):
         yom28 = int(round(256 - tp.wavelength_to_pix(2.8, tp2, 1)[1], 0))
         # Extract and rescale the 2.8µm profile.
         Ranch = stand[(yom28-24):(yom28+25), xom28]
-        Ranch = chromescale(2.8, Ranch)
+        Ranch = _chromescale(2.8, Ranch)
 
     else:
         # If an F277W exposure is provided, only interpolate out to 2.5µm.
@@ -397,17 +294,17 @@ def construct_order1(clear, F277, do_plots=False, filename=None):
         xd25, yd25 = int(round(xd25, 0)), int(round(yd25, 0))
         # Extract and rescale the 2.5µm profile.
         Ranch = F277[(yd25-24):(yd25+25), xd25]
-        Ranch = chromescale(2.5, Ranch)
+        Ranch = _chromescale(2.5, Ranch)
 
     # The interpolation polynomial coefficients, calculated via
     # calc_interp_coefs. These have been robust in all tests, and the hope is
     # that they will be robust for all future observations.
     if F277 is None:
-        pb = [1.0311255, -6.81906843, 11.01065922]
-        pr = [-1.0311255, 6.81906843, -10.01065922]
+        coef_b = [1.0311255, -6.81906843, 11.01065922]
+        coef_r = [-1.0311255, 6.81906843, -10.01065922]
     else:
-        pb = [2.04327661, -12.90780135, 19.50319999]
-        pr = [-2.04327661, 12.90780135, -18.50319999]
+        coef_b = [2.04327661, -12.90780135, 19.50319999]
+        coef_r = [-2.04327661, 12.90780135, -18.50319999]
 
     # Create the interpolated order 1 PSF.
     map2D = np.zeros((256, 2048))*np.nan
@@ -419,34 +316,36 @@ def construct_order1(clear, F277, do_plots=False, filename=None):
     else:
         start = 307.5
         rlen = 303
+
+    # Transform OM centroids onto the detector.
+    # Get OM X-pixel values for the region to be interpolated.
+    cenx_om = np.arange(rlen) + start
+    # Find the wavelength at each X centroid
+    lmbda = tp.specpix_to_wavelength(cenx_om, tp2, 1)[0]
+    # Y centroid at each wavelength
+    ceny_om = 256 - tp.wavelength_to_pix(lmbda, tp2, 1)[1]
+    # Transform the OM centroids onto the detector.
+    cenx_d, ceny_d = ss.rot_centroids(ang, xanch, yanch, xshift, yshift,
+                                      cenx_om, ceny_om, fill_det=False)
+
     # Create an interpolated 1D PSF at each required position.
-    for i in range(rlen):
-        cenx_int = start + i
-        lmbd = tp.specpix_to_wavelength(cenx_int, tp2, 1)[0]  # Wavelength at each centroid
-        ceny_int = 256 - tp.wavelength_to_pix(lmbd, tp2, 1)[1]  # Y centroid at each X
-
-        # Transform the OM centroids onto the detector.
-        cenx, ceny = rot_om2det(ang, xanch, yanch, cenx_int, ceny_int)
-
-        # Evaluate the interpolation polynomials at the correct wavelength
-        # and construct the interpolated 1D PSF.
-        wbi = np.polyval(pb, lmbd)
-        wri = np.polyval(pr, lmbd)
-        mixint = (wbi*Banch + wri*Ranch)
-
-        # Re-add the lambda/D scaling to the interpolated profile.
-        newmint = chromescale(lmbd, mixint, invert=True)
+    for i, vals in enumerate(zip(cenx_d, ceny_d, lmbda)):
+        cenx, ceny, lbd = vals[0], vals[1], vals[2]
+        # Evaluate the interpolation polynomials at the current wavelength.
+        wb_i = np.polyval(coef_b, lbd)
+        wr_i = np.polyval(coef_r, lbd)
+        # Construct the interpolated profile.
+        prof_int = (wb_i * Banch + wr_i * Ranch)
+        # Re-add the lambda/D scaling.
+        prof_int_cs = _chromescale(lbd, prof_int, invert=True)
 
         # Put the interpolated profile on the detector.
-        # For whatever reason in the news tracepols implementation all the Y
-        # centroids shifted up by ~1 pixel. So subtract 1 to cancel this until
-        # the root cause can be determined.
-        axis = np.linspace(-24, 24, 49) + ceny - 1
+        axis = np.linspace(-24, 24, 49) + ceny
         inds = np.where((axis < 256) & (axis >= 0))[0]
-        bear = np.interp(np.arange(256), axis[inds], newmint[inds])
+        profile = np.interp(np.arange(256), axis[inds], prof_int_cs[inds])
 
         # Subtract the noisy wing edges.
-        map2D[:, int(cenx)] = bear - np.nanpercentile(bear, 2.5)
+        map2D[:, int(cenx)] = profile - np.nanpercentile(profile, 2.5)
 
         # Note detector coordinates of the edges of the interpolated region.
         if i == rlen - 1:
@@ -454,22 +353,21 @@ def construct_order1(clear, F277, do_plots=False, filename=None):
         elif i == 0:
             rend = int(cenx)
 
-    # Stitch together the interpolation and data to make the complete
-    # order 1 PSF.
+    # Stitch together the interpolation and data.
     newmap = np.zeros((256, 2048))
-    newmap[:, rend:bend] = map2D[:, rend:bend]  # Insert interpolated data
+    # Insert interpolated data
+    newmap[:, rend:bend] = map2D[:, rend:bend]
     # Bluer region is known from the CLEAR exposure.
     newmap[:, bend:2048] = clear[:, bend:2048]
-    # Insert interpolated data to the red as well if no F277W.
     if F277 is None:
+        # Insert interpolated data to the red as well if no F277W.
         newmap[:, 0:rend] = map2D[:, 0:rend]
     # Or add on the F277W frame to the red if available.
     else:
         newmap[:, 0:rend] = F277[:, 0:rend]
     # Normalize the profile in each column.
     newmap = newmap / np.nanmax(newmap, axis=0)
-    # Create a mask to remove the influence of the second order
-    # in the CLEAR data.
+    # Create a mask to remove the second order from the CLEAR data.
     O1frame = mask_order(newmap, xdat, ydat)
 
     # Write the trace model to disk if requested.
@@ -482,29 +380,136 @@ def construct_order1(clear, F277, do_plots=False, filename=None):
         return O1frame
 
 
-def mask_order(frame, xCV, yCV):
-    ''' Create a pixel mask to isolate only the detector pixels
+def get_o2_data_centroids(clear, return_o1=True):
+    '''Get the order 2 trace centroids via fitting the optics model
+    to the first order, and using the known relationship between the
+    positions of the first and second orders.
+
+    Parameters
+    ----------
+    clear : np.ndarray
+        CLEAR SOSS exposure data frame.
+    return_o1 : bool
+        Whether to include the order 1 centroids in the returned value
+
+    Returns
+    -------
+    xM2 : list
+        X-centroids for the order 2 trace.
+    yM2 : list
+        y-centroids for the order 2 trace.
+    xM1 : list (optional)
+        x-centroids for the order 1 trace.
+    yM1 : list (optional)
+        y-centroids for the order 1 trace.
+    '''
+
+    # Determine optics model centroids for both orders
+    # as well as order 1 data centroids
+    atthesex = np.arange(2048)
+    xOM1, yOM1, tp1 = get_om_centroids(atthesex)
+    xOM2, yOM2, tp2 = get_om_centroids(atthesex, order=2)
+    xCV, yCV = get_o1_data_centroids(clear, atthesex)
+    p_o1 = np.polyfit(xCV, yCV, 5)
+    ycen_o1 = np.polyval(p_o1, atthesex)
+
+    # Fit the OM to the data for order 1
+    AA = do_emcee(xOM1, yOM1, xCV, yCV)
+
+    # Get fitted rotation parameters
+    flat_samples = AA.get_chain(discard=500, thin=15, flat=True)
+    ang = np.percentile(flat_samples[:, 0], 50)
+    xanch = np.percentile(flat_samples[:, 1], 50)
+    yanch = np.percentile(flat_samples[:, 2], 50)
+
+    # Get rotated OM centroids for order 2
+    xcen_o2, ycen_o2 = rot_om2det(ang, xanch, yanch, xOM2, yOM2, order=2, bound=True)
+    # Ensure that the second order centroids cover the whole detector
+    p_o2 = np.polyfit(xcen_o2, ycen_o2, 10)
+    ycen_o2 = np.polyval(p_o2, atthesex)
+    inds = np.where((ycen_o2 >= 0) & (ycen_o2 < 256))[0]
+    # Also return order 1 centroids if necessary
+    if return_o1 is True:
+        return atthesex[inds], ycen_o2[inds], atthesex, ycen_o1
+    else:
+        return atthesex[inds], yM2[inds]
+
+
+def loicpsf(wavelist=None, wfe_real=None, filepath=''):
+    '''Calls the WebbPSF package to create monochromatic PSFs for NIRISS
+    SOSS observations and save them to disk.
+
+    Parameters
+    ----------
+    wavelist : list
+        List of wavelengths (in meters) for which to generate PSFs.
+    wfe_real : int
+        Index of wavefront realization to use for the PSF (if non-default
+        WFE realization is desired).
+    filepath : str
+        Path to the directory to which the PSFs will be written.
+        Defaults to the current directory.
+    '''
+
+    if wavelist is None:
+        # List of wavelengths to generate PSFs for
+        wavelist = np.linspace(0.5, 5.2, 95) * 1e-6
+    # Dimension of the PSF in native pixels
+    pixel = 128
+    # Pixel oversampling factor
+    oversampling = 10
+
+    # Select the NIRISS instrument
+    niriss = webbpsf.NIRISS()
+
+    # Override the default minimum wavelength of 0.6 microns
+    niriss.SHORT_WAVELENGTH_MIN = 0.5e-6
+    # Set correct filter and pupil wheel components
+    niriss.filter = 'CLEAR'
+    niriss.pupil_mask = 'GR700XD'
+
+    # Change the WFE realization if desired
+    if wfe_real is not None:
+        niriss.pupilopd = ('OPD_RevW_ote_for_NIRISS_predicted.fits.gz',
+                           wfe_real)
+
+    # Loop through all wavelengths to generate PSFs
+    for wave in wavelist:
+        print('Calculating PSF at wavelength ',
+              round(wave/1e-6, 2), ' microns')
+        psf = niriss.calc_psf(monochromatic=wave, fov_pixels=pixel,
+                              oversample=oversampling, display=False)
+
+        # Save psf realization to disk
+        text = '{0:5f}'.format(wave*1e+6)
+        psf.writeto(str(filepath)+'SOSS_os'+str(oversampling)+'_'+str(pixel)
+                    + 'x'+str(pixel)+'_'+text+'_'+str(wfe_real)+'.fits',
+                    overwrite=True)
+
+
+def mask_order(frame, xpix, ypix):
+    '''Create a pixel mask to isolate only the detector pixels
     belonging to a specific diffraction order.
 
     Parameters
     ----------
-    frame : np.array
+    frame : np.array of float (2D)
         Science data frame.
-    xCV : np.array
+    xpix : np.array of int
         Data x centroids for the desired order
-    yCV : np.array
+    ypix : np.array of int
         Data y centroids for the desired order
 
     Returns
     -------
-    O1frame : np.array
+    O1frame : np.array of float (2D)
         The input data frame, with all pixels other than those
         within +/- 20 pixels of yCV masked.
     '''
 
     mask = np.zeros([256, 2048])
-    xx = np.round(xCV, 0).astype(int)
-    yy = np.round(yCV, 0).astype(int)
+    xx = np.round(xpix, 0).astype(int)
+    yy = np.round(ypix, 0).astype(int)
     xr = np.linspace(np.min(xx), np.max(xx), np.max(xx)+1).astype(int)
 
     # Set all pixels within the extent of the order 1 trace to 1 in the mask.
@@ -516,19 +521,19 @@ def mask_order(frame, xCV, yCV):
     return O1frame
 
 
-def _plot_centroid(clear, xCV, yCV):
-    ''' Utility function to overplot the trace centroids extracted from
+def _plot_centroid(clear, xpix, ypix):
+    '''Utility function to overplot the trace centroids extracted from
     the data over the data isetfl to verify accuracy. Called by makemod.
     '''
     plt.figure(figsize=(15, 3))
-    plt.plot(xCV, yCV, c='black')
+    plt.plot(xpix, ypix, c='black')
     plt.imshow(clear/np.nanmax(clear, axis=0), origin='lower', cmap='jet')
 
     return None
 
 
 def _plot_interpmodel(waves, nw1, nw2, p1, p2):
-    ''' Plot the diagnostic results of the derive_model function. Four plots
+    '''Plot the diagnostic results of the derive_model function. Four plots
     are generated, showing the normalized interpolation coefficients for the
     blue and red anchors for each WFE realization, as well as the mean trend
     across WFE for each anchor profile, and the resulting polynomial fit to
@@ -577,7 +582,7 @@ def _plot_interpmodel(waves, nw1, nw2, p1, p2):
 
 
 def rot_om2det(ang, cenx, ceny, xval, yval, order=1, bound=False):
-    ''' Utility function to map coordinates in the optics model
+    '''Utility function to map coordinates in the optics model
     reference frame, onto the detector reference frame, given
     the correct transofmration parameters.
 
