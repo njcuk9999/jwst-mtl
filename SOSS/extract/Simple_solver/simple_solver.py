@@ -424,7 +424,7 @@ def _plot_corner(sampler):
 
 
 def rot_centroids(ang, cenx, ceny, xshift, yshift, xval, yval,
-                  bound=True):
+                  bound=True, fill_det=True):
     '''Apply a rotation and shift to the trace centroids positions. This
     assumes that the trace centroids are already in the CV3 coordinate system.
 
@@ -446,6 +446,9 @@ def rot_centroids(ang, cenx, ceny, xshift, yshift, xval, yval,
         Centroid pixel Y values.
     bound : bool
         Whether to trim rotated solutions to fit within the subarray256.
+    fill_det : bool
+        if True, return a transformed centroid position for each pixel on
+        the spectral axis.
 
     Returns
     -------
@@ -471,18 +474,28 @@ def rot_centroids(ang, cenx, ceny, xshift, yshift, xval, yval,
     rot_pix[0] += xshift
     rot_pix[1] += yshift
 
-    # Polynomial fit to rotated centroids to ensure there is a centroid at
-    # each pixel on the detector
-    pp = np.polyfit(rot_pix[0], rot_pix[1], 5)
-    rot_xpix = np.arange(2048)
-    rot_ypix = np.polyval(pp, rot_xpix)
+    if fill_det is True:
+        # Polynomial fit to rotated centroids to ensure there is a centroid at
+        # each pixel on the detector
+        pp = np.polyfit(rot_pix[0], rot_pix[1], 5)
+        rot_xpix = np.arange(2048)
+        rot_ypix = np.polyval(pp, rot_xpix)
+    else:
+        rot_xpix = rot_pix[0]
+        rot_ypix = rot_pix[1]
 
     # Check to ensure all points are on the subarray.
     if bound is True:
-        inds = [(rot_ypix >= 0) & (rot_ypix < 256) & (rot_xpix >= 0) &
-                (rot_xpix < 2048)]
+        if rot_xpix.size == 1:
+            if rot_xpix > 0 and rot_xpix < 2048 and rot_ypix > 0 and rot_ypix < 256:
+                return rot_xpix, rot_ypix
+            else:
+                raise ValueError('Rotated pixel is off of frame.')
+        else:
+            inds = [(rot_ypix >= 0) & (rot_ypix < 256) & (rot_xpix >= 0) &
+                    (rot_xpix < 2048)]
 
-        return rot_xpix[inds], rot_ypix[inds]
+            return rot_xpix[inds], rot_ypix[inds]
     else:
         return rot_xpix, rot_ypix
 
