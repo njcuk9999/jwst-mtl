@@ -83,12 +83,12 @@ def derive_model(make_psfs=False, doplot=True, F277W=True, filepath=''):
 
     Returns
     -------
-    pb, pr : numpy array
-        Array of polynomial coefficients of the interpolation index fits
-        for the blue and red anchors respectively.
-    wb, wr : numpy array
-        Array of precise interpolation coefficients determined for
-        each of the monochromatic PSFs for each WFE realization.
+    pb : np.array
+        Polynomial coefficients of the interpolation index fits for the
+        blue anchor.
+    pr : np.array
+        Polynomial coefficients of the interpolation index fits for the
+        red anchor
     '''
 
     # Red anchor is 2.8µm without an F277W exposure.
@@ -120,7 +120,7 @@ def derive_model(make_psfs=False, doplot=True, F277W=True, filepath=''):
                                          .format(filepath, w, i))[0].data)
         PSFs.append(psf_run)
 
-    # Determine interpolation coefficients for all WFEs
+    # Determine specific interpolation coefficients for all WFEs
     wb, wr = [], []
 
     for E in range(10):
@@ -186,7 +186,7 @@ def derive_model(make_psfs=False, doplot=True, F277W=True, filepath=''):
     if doplot is True:
         plot_interpmodel(wave_range, wb, wr, pb, pr)
 
-    return pb, pr, wb, wr
+    return pb, pr
 
 
 def do_emcee(xOM, yOM, xCV, yCV):
@@ -756,56 +756,52 @@ def plot_corner(sampler):
 
 
 def plot_interpmodel(waves, nw1, nw2, p1, p2):
-    ''' Utility function to plot the diagnostic results of the
-    derive_model function. Four plots will be be generated,
-    showing the normalized interpolation coefficients for the blue
-    and red anchors for each WFE realization, as well as the mean
-    trend across WFE for each anchor profile, and the resulting
-    polynomial fit to the mean trends.
+    ''' Plot the diagnostic results of the derive_model function. Four plots
+    are generated, showing the normalized interpolation coefficients for the
+    blue and red anchors for each WFE realization, as well as the mean trend
+    across WFE for each anchor profile, and the resulting polynomial fit to
+    the mean trends.
 
     Parameters
     ----------
-    waves : array of floats
+    waves : np.array of float
         Wavelengths at which WebbPSF monochromatic PSFs were created.
-    nw1, nw2 : array of floats
-        Normalized interpolation coefficient for the blue and red anchor
-        respectively determined for each PSF profile.
-    p1, p2 : array of floats
-        Polynomial coefficients of the fit to the mean interplation
-        coefficients for the blue and red anchors respectively.
-
-    Returns
-    -------
-    None : NoneType
-        Plot is displayed on screen.
+    nw1 : np.array of float
+        Normalized interpolation coefficient for the blue anchor
+        for each PSF profile.
+    nw2 : np.array of float
+        Normalized interpolation coefficient for the red anchor
+        for each PSF profile.
+    p1 : np.array of float
+        Polynomial coefficients of the fit to the mean interpolation
+        coefficients for the blue anchor.
+    p2 : np.array of float
+        Polynomial coefficients of the fit to the mean interpolation
+        coefficients for the red anchor.
     '''
-
-    x2 = waves
 
     f, ax = plt.subplots(2, 2, figsize=(14, 6))
     for i in range(10):
-        ax[0, 0].plot(x2, nw1[i])
-        ax[1, 0].plot(x2, nw2[i])
+        ax[0, 0].plot(waves, nw1[i])
+        ax[1, 0].plot(waves, nw2[i])
 
-    ax[0, 1].plot(x2, np.mean(nw1, axis=0))
-    ax[0, 1].plot(x2, np.mean(nw2, axis=0))
+    ax[0, 1].plot(waves, np.mean(nw1, axis=0))
+    ax[0, 1].plot(waves, np.mean(nw2, axis=0))
 
     ax[-1, 0].set_xlabel('Wavelength [µm]', fontsize=14)
     ax[-1, 1].set_xlabel('Wavelength [µm]', fontsize=14)
 
-    y1 = np.polyval(p1, x2)
-    y2 = np.polyval(p2, x2)
+    y1 = np.polyval(p1, waves)
+    y2 = np.polyval(p2, waves)
 
-    ax[1, 1].plot(x2, y1, c='r', ls=':')
-    ax[1, 1].plot(x2, y2, c='b', ls=':')
-    ax[1, 1].plot(x2, np.mean(nw1, axis=0), c='b', label='Blue Anchor')
-    ax[1, 1].plot(x2, np.mean(nw2, axis=0), c='r', label='Red Anchor')
-    ax[1, 1].set_xlim(np.min(x2), np.max(x2))
+    ax[1, 1].plot(waves, y1, c='r', ls=':')
+    ax[1, 1].plot(waves, y2, c='b', ls=':')
+    ax[1, 1].plot(waves, np.mean(nw1, axis=0), c='b', label='Blue Anchor')
+    ax[1, 1].plot(waves, np.mean(nw2, axis=0), c='r', label='Red Anchor')
+    ax[1, 1].set_xlim(np.min(waves), np.max(waves))
     ax[1, 1].legend(loc=1, fontsize=12)
 
     f.tight_layout()
-
-    return None
 
 
 def rot_om2det(ang, cenx, ceny, xval, yval, order=1, bound=False):
