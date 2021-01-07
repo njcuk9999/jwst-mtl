@@ -9,19 +9,17 @@ File containing the necessary functions to create an empirical
 interpolated trace model in the overlap region for SOSS order 1.
 """
 
-import warnings
-warnings.filterwarnings('ignore')
-import webbpsf
 import numpy as np
 from astropy.io import fits
 import matplotlib.pyplot as plt
-import emcee
-import corner
+import warnings
+warnings.filterwarnings('ignore')
+import webbpsf
 import sys
 tppath = '/Users/michaelradica/Documents/GitHub/jwst-mtl/SOSS/trace'
 sys.path.insert(1, tppath)
 import tracepol as tp
-sspath = '/Users/michaelradica/Documents/GitHub/jwst-mtl/SOSS/extract/Simple_solver/'
+sspath = '/Users/michaelradica/Documents/GitHub/jwst-mtl/SOSS/extract/simple_solver/'
 sys.path.insert(0, sspath)
 import simple_solver as ss
 
@@ -380,61 +378,6 @@ def construct_order1(clear, F277, do_plots=False, filename=None):
         return O1frame
 
 
-def get_o2_data_centroids(clear, return_o1=True):
-    '''Get the order 2 trace centroids via fitting the optics model
-    to the first order, and using the known relationship between the
-    positions of the first and second orders.
-
-    Parameters
-    ----------
-    clear : np.ndarray
-        CLEAR SOSS exposure data frame.
-    return_o1 : bool
-        Whether to include the order 1 centroids in the returned value
-
-    Returns
-    -------
-    xM2 : list
-        X-centroids for the order 2 trace.
-    yM2 : list
-        y-centroids for the order 2 trace.
-    xM1 : list (optional)
-        x-centroids for the order 1 trace.
-    yM1 : list (optional)
-        y-centroids for the order 1 trace.
-    '''
-
-    # Determine optics model centroids for both orders
-    # as well as order 1 data centroids
-    atthesex = np.arange(2048)
-    xOM1, yOM1, tp1 = get_om_centroids(atthesex)
-    xOM2, yOM2, tp2 = get_om_centroids(atthesex, order=2)
-    xCV, yCV = get_o1_data_centroids(clear, atthesex)
-    p_o1 = np.polyfit(xCV, yCV, 5)
-    ycen_o1 = np.polyval(p_o1, atthesex)
-
-    # Fit the OM to the data for order 1
-    AA = do_emcee(xOM1, yOM1, xCV, yCV)
-
-    # Get fitted rotation parameters
-    flat_samples = AA.get_chain(discard=500, thin=15, flat=True)
-    ang = np.percentile(flat_samples[:, 0], 50)
-    xanch = np.percentile(flat_samples[:, 1], 50)
-    yanch = np.percentile(flat_samples[:, 2], 50)
-
-    # Get rotated OM centroids for order 2
-    xcen_o2, ycen_o2 = rot_om2det(ang, xanch, yanch, xOM2, yOM2, order=2, bound=True)
-    # Ensure that the second order centroids cover the whole detector
-    p_o2 = np.polyfit(xcen_o2, ycen_o2, 10)
-    ycen_o2 = np.polyval(p_o2, atthesex)
-    inds = np.where((ycen_o2 >= 0) & (ycen_o2 < 256))[0]
-    # Also return order 1 centroids if necessary
-    if return_o1 is True:
-        return atthesex[inds], ycen_o2[inds], atthesex, ycen_o1
-    else:
-        return atthesex[inds], yM2[inds]
-
-
 def loicpsf(wavelist=None, wfe_real=None, filepath=''):
     '''Calls the WebbPSF package to create monochromatic PSFs for NIRISS
     SOSS observations and save them to disk.
@@ -579,70 +522,3 @@ def _plot_interpmodel(waves, nw1, nw2, p1, p2):
     ax[1, 1].legend(loc=1, fontsize=12)
 
     f.tight_layout()
-
-
-def rot_om2det(ang, cenx, ceny, xval, yval, order=1, bound=False):
-    '''Utility function to map coordinates in the optics model
-    reference frame, onto the detector reference frame, given
-    the correct transofmration parameters.
-
-    Parameters
-    ----------
-    ang : float
-        The rotation angle in degrees CCW.
-    cenx, ceny : float
-        The X and Y pixel values to use as the center of rotation
-        in the optics model coordinate system.
-    xval, yval : float
-        Pixel X and Y values in the optics model coordinate system
-        to transform into the detector frame.
-    order : int
-        Diffraction order.
-    bound : bool
-        Whether to trim rotated solutions to fit within the subarray256.
-
-    Returns
-    -------
-    rot_pix[0], rot_pix[1] : float
-        xval and yval respectively transformed into the
-        detector coordinate system.
-    '''
-
-    # Map OM onto detector - the parameters for this transformation
-    # are already well known.
-    if order == 1:
-        t = 1.489*np.pi / 180  #old 1.5
-        R = np.array([[np.cos(t), -np.sin(t)], [np.sin(t), np.cos(t)]])
-        points1 = np.array([xval - 1514, yval - 456])  # old 1535 & 205
-        b = R @ points1
-
-        b[0] += 1514
-        b[1] += 456
-
-    if order == 2:
-        t = 1.84*np.pi / 180  # old 1.8
-        R = np.array([[np.cos(t), -np.sin(t)], [np.sin(t), np.cos(t)]])
-        points1 = np.array([xval - 1366, yval - 453])  # old 1347 & 141
-        b = R @ points1
-
-        b[0] += 1366
-        b[1] += 453
-
-    # Required rotation in the detector frame to match the data.
-    t = (ang)*np.pi / 180 # old+0.95
-    R = np.array([[np.cos(t), -np.sin(t)], [np.sin(t), np.cos(t)]])
-
-    points1 = np.array([b[0] - cenx, b[1] - ceny])
-    rot_pix = R @ points1
-
-    rot_pix[0] += cenx
-    rot_pix[1] += ceny
-
-    # Check to ensure all points are on the subarray.
-    if bound is True:
-        inds = [(rot_pix[1] >= 0) & (rot_pix[1] < 256) & (rot_pix[0] >= 0) &
-                (rot_pix[0] < 2048)]
-
-        return rot_pix[0][inds], rot_pix[1][inds]
-    else:
-        return rot_pix[0], rot_pix[1]
