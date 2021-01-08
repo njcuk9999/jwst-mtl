@@ -16,7 +16,7 @@ import warnings
 warnings.filterwarnings('ignore')
 import webbpsf
 from SOSS.trace import tracepol as tp
-from SOSS.extract.simple_solver import simple_solver as ss
+from SOSS.extract.empirical_trace import _centroid as ctd
 
 
 def calc_interp_coefs(make_psfs=False, doplot=True, F277W=True, filepath=''):
@@ -224,8 +224,8 @@ def construct_order1(clear, F277, do_plots=False, filename=None):
 
     # Get the centroid positions from the optics model and the data.
     pixels = np.linspace(0, 2047, 2048)+0.5
-    xOM, yOM, tp2 = ss.get_om_centroids()  # OM
-    xdat, ydat = ss.get_uncontam_centroids(clear, atthesex=pixels)  # data
+    xOM, yOM, tp2 = ctd.get_om_centroids()  # OM
+    xdat, ydat = ctd.get_uncontam_centroids(clear, atthesex=pixels)  # data
     # Overplot the data centroids on the CLEAR exposure if necessary
     # to verify accuracy.
     if do_plots is True:
@@ -233,10 +233,10 @@ def construct_order1(clear, F277, do_plots=False, filename=None):
 
     # Use MCMC to brute force find the best fitting angle, rotation center,
     # and offset parameters necessary to fit the OM to the data centroids.
-    ang_samp = ss._do_emcee(xOM, yOM, xdat, ydat)
+    ang_samp = ctd._do_emcee(xOM, yOM, xdat, ydat)
     # Show the MCMC results in a corner plot if necessary.
     if do_plots is True:
-        ss._plot_corner(ang_samp)
+        ctd._plot_corner(ang_samp)
     # The MCMC results have been well behaved in all test cases.
     flat_samples = ang_samp.get_chain(discard=500, thin=15, flat=True)
     ang = np.percentile(flat_samples[:, 0], 50)
@@ -252,7 +252,7 @@ def construct_order1(clear, F277, do_plots=False, filename=None):
     xom22 = tp.wavelength_to_pix(2.2, tp2, 1)[0]
     yom22 = 256 - tp.wavelength_to_pix(2.2, tp2, 1)[1]
     # Use rot params to find location of the 2.2µm centroids in the data frame.
-    xd22, yd22 = ss.rot_centroids(ang, xanch, yanch, xshift, yshift, xom22,
+    xd22, yd22 = ctd.rot_centroids(ang, xanch, yanch, xshift, yshift, xom22,
                                   yom22, fill_det=False)
     xd22, yd22 = int(round(xd22, 0)), int(round(yd22, 0))
     # Extract the 2.2µm anchor profile from the data.
@@ -282,7 +282,7 @@ def construct_order1(clear, F277, do_plots=False, filename=None):
         xom25 = tp.wavelength_to_pix(2.5, tp2, 1)[0]
         yom25 = 256 - tp.wavelength_to_pix(2.5, tp2, 1)[1]
         # Transform into the data frame.
-        xd25, yd25 = ss.rot_centroids(ang, xanch, yanch, xshift, yshift, xom25,
+        xd25, yd25 = ctd.rot_centroids(ang, xanch, yanch, xshift, yshift, xom25,
                                       yom25, fill_det=False)
         xd25, yd25 = int(round(xd25, 0)), int(round(yd25, 0))
         # Extract and rescale the 2.5µm profile.
@@ -318,7 +318,7 @@ def construct_order1(clear, F277, do_plots=False, filename=None):
     # Y centroid at each wavelength
     ceny_om = 256 - tp.wavelength_to_pix(lmbda, tp2, 1)[1]
     # Transform the OM centroids onto the detector.
-    cenx_d, ceny_d = ss.rot_centroids(ang, xanch, yanch, xshift, yshift,
+    cenx_d, ceny_d = ctd.rot_centroids(ang, xanch, yanch, xshift, yshift,
                                       cenx_om, ceny_om, fill_det=False)
 
     # Create an interpolated 1D PSF at each required position.
