@@ -15,13 +15,8 @@ import matplotlib.pyplot as plt
 import warnings
 warnings.filterwarnings('ignore')
 import webbpsf
-import sys
-tppath = '/Users/michaelradica/Documents/GitHub/jwst-mtl/SOSS/trace'
-sys.path.insert(1, tppath)
-import tracepol as tp
-sspath = '/Users/michaelradica/Documents/GitHub/jwst-mtl/SOSS/extract/simple_solver/'
-sys.path.insert(0, sspath)
-import simple_solver as ss
+from SOSS.trace import tracepol as tp
+from SOSS.extract.simple_solver import simple_solver as ss
 
 
 def calc_interp_coefs(make_psfs=False, doplot=True, F277W=True, filepath=''):

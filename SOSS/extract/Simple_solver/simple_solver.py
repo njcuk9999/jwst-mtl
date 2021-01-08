@@ -17,10 +17,8 @@ from astropy.io import fits
 import matplotlib.pyplot as plt
 import emcee
 import corner
-import sys
 from scipy.ndimage.interpolation import rotate
-sys.path.insert(0, '../../trace')
-import tracepol as tp
+from SOSS.trace import tracepol as tp
 
 # hack to get around the fact that relative paths are constantly messing up atm
 path = '/Users/michaelradica/Documents/GitHub/jwst-mtl/SOSS/'
