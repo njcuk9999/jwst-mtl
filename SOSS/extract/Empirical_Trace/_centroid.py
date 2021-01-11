@@ -111,9 +111,7 @@ def get_contam_centroids(clear, ref_centroids=None, return_rot_params=False,
         xOM1, yOM1, tp1 = get_om_centroids(atthesex)
         xOM2, yOM2, tp2 = get_om_centroids(atthesex, order=2)
 
-    xcen_o1, ycen_o1 = get_uncontam_centroids(clear, atthesex)
-    p_o1 = np.polyfit(xcen_o1, ycen_o1, 5)
-    ycen_o1 = np.polyval(p_o1, atthesex)
+    xcen_o1, ycen_o1 = get_uncontam_centroids(clear, atthesex, fit=True)
 
     # Fit the OM to the data for order 1
     AA = _do_emcee(xOM1, yOM1, atthesex, ycen_o1)
@@ -183,7 +181,7 @@ def get_om_centroids(atthesex=None, order=1):
     return xOM, yOM[::-1], tp2
 
 
-def get_uncontam_centroids(stack, atthesex=np.arange(2048)):
+def get_uncontam_centroids(stack, atthesex=np.arange(2048), fit=True):
     '''Determine the x, y positions of the trace centroids from an
     exposure using a center-of-mass analysis. Works for either order if there
     is no contamination, or for order 1 on a detector where the two orders
@@ -197,6 +195,10 @@ def get_uncontam_centroids(stack, atthesex=np.arange(2048)):
         Data frame.
     atthesex : list of floats
         Pixel x values at which to extract the trace centroids.
+    fit : bool
+        If True, fits a 5th order polynomial to the extracted y-centroids,
+        and returns the evaluation of this polynomial at atthesex. If False,
+        a y-centroid may not be located for each x-pixel in atthesex.
 
     Returns
     -------
@@ -287,6 +289,12 @@ def get_uncontam_centroids(stack, atthesex=np.arange(2048)):
     tracex_best = np.array(tracex)
     tracey_best = np.array(tracey)
 
+    if fit is True:
+        # Fit a polynomial to centroids to ensure there is a centroid at each x
+        p_o1 = np.polyfit(tracex_best, tracey_best, 5)
+        tracey_best = np.polyval(p_o1, atthesex)
+        tracex_best = atthesex
+
     return tracex_best, tracey_best
 
 
@@ -335,7 +343,7 @@ def _plot_corner(sampler):
     return None
 
 
-def rot_centroids(ang, cenx, ceny, xshift, yshift, xval, yval,
+def rot_centroids(ang, cenx, ceny, xshift, yshift, xpix, ypix,
                   bound=True, fill_det=True):
     '''Apply a rotation and shift to the trace centroids positions. This
     assumes that the trace centroids are already in the CV3 coordinate system.
@@ -352,9 +360,9 @@ def rot_centroids(ang, cenx, ceny, xshift, yshift, xval, yval,
         Offset in the X direction to be rigidly applied after rotation.
     yshift : float
         Offset in the Y direction to be rigidly applied after rotation.
-    xval : float
+    xpix : float or np.array of float
         Centroid pixel X values.
-    yval : float
+    ypix : float or np.array of float]
         Centroid pixel Y values.
     bound : bool
         Whether to trim rotated solutions to fit within the subarray256.
@@ -364,19 +372,27 @@ def rot_centroids(ang, cenx, ceny, xshift, yshift, xval, yval,
 
     Returns
     -------
-    rot_xpix : float
+    rot_xpix : np.array of float
         xval after the application of the rotation and translation
         transformations.
-    rot_ypix : float
+    rot_ypix : np.array of float
         yval after the application of the rotation and translation
         transformations.
+
+    Raises
+    ------
+    TypeError
+        If fill_det is True, and only one point is passed.
     '''
 
+    # Convert to numpy arrays
+    xpix = np.atleast_1d(xpix)
+    ypix = np.atleast_1d(ypix)
     # Required rotation in the detector frame to match the data.
     t = np.deg2rad(ang)
     R = np.array([[np.cos(t), -np.sin(t)], [np.sin(t), np.cos(t)]])
 
-    points1 = np.array([xval - cenx, yval - ceny])
+    points1 = np.array([xpix - cenx, ypix - ceny])
     rot_pix = R @ points1
 
     rot_pix[0] += cenx
@@ -389,6 +405,8 @@ def rot_centroids(ang, cenx, ceny, xshift, yshift, xval, yval,
     if fill_det is True:
         # Polynomial fit to rotated centroids to ensure there is a centroid at
         # each pixel on the detector
+        if xpix.size < 2:
+            raise TypeError('fill_det must be False to rotate single points.')
         pp = np.polyfit(rot_pix[0], rot_pix[1], 5)
         rot_xpix = np.arange(2048)
         rot_ypix = np.polyval(pp, rot_xpix)
@@ -398,15 +416,9 @@ def rot_centroids(ang, cenx, ceny, xshift, yshift, xval, yval,
 
     # Check to ensure all points are on the subarray.
     if bound is True:
-        if rot_xpix.size == 1:
-            if rot_xpix > 0 and rot_xpix < 2048 and rot_ypix > 0 and rot_ypix < 256:
-                return rot_xpix, rot_ypix
-            else:
-                raise ValueError('Rotated pixel is off of frame.')
-        else:
-            inds = [(rot_ypix >= 0) & (rot_ypix < 256) & (rot_xpix >= 0) &
-                    (rot_xpix < 2048)]
+        inds = [(rot_ypix >= 0) & (rot_ypix < 256) & (rot_xpix >= 0) &
+                (rot_xpix < 2048)]
 
-            return rot_xpix[inds], rot_ypix[inds]
+        return rot_xpix[inds], rot_ypix[inds]
     else:
         return rot_xpix, rot_ypix
