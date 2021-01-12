@@ -1,16 +1,17 @@
-def make_trace_mask(stack, tracex, tracey, halfwidth=15, masktop=None,
-                    maskbottom=None, header=None):
+def make_trace_mask(stack, tracex, tracey, halfwidth=30, extend_redward=None,
+                    extend_blueward=None, header=None, verbose=False):
     ''' Builds a mask of the same size as the input stack image. That mask masks a band
     of pixels around the trace position (tracex, tracey) of width = 2*halfwidth*yos pixels.
-    Option masktop additionally masks all pixels above the trace. Option maskbottom addtionally
-    masks all pixels below the trace.
+    Option masktop additionally masks all pixels above the trace. Option extend_redward
+    additionally masks all pixels below the trace.
     Parameters
     ----------
     stack
     '''
 
     # Value assigned to a pixel that should be masked out
-    mask_value = np.nan
+    masked_value = 0.0
+    notmasked_value = 1.0
 
     # Call the script that determines the dimensions of the stack. It handles
     # regular science images of various subaaray sizes, with or without the
@@ -19,29 +20,32 @@ def make_trace_mask(stack, tracex, tracey, halfwidth=15, masktop=None,
     dimx, dimy, xos, yos, xnative, ynative, padding, working_pixel_bool = \
         determine_stack_dimensions(stack, header=header)
 
-    # Intitialize the mask array. All 1 except potential NaNs.
-    mask = np.copy(stack)*0+1
-    print(np.shape(mask))
+    # Intitialize the mask array to unmasked value.
+    mask = np.ones((dimy, dimx)) * notmasked_value
+    if verbose == True: print(np.shape(mask))
 
     # Column by column, mask out pixels beyond the halfwidth of the trace center
     y = np.arange(dimy)
     for i in range(dimx):
-        print(i,tracex[i],tracey[i])
+        if verbose == True: print(i,tracex[i],tracey[i])
+        # Mask the pixels in the trace
         d = np.abs(y - tracey[i])
-        ind = d > halfwidth * yos
-        mask[ind, i] = mask_value
-        # If masktop is set then mask pixels above the y position
-        if masktop:
-            ind = (y - tracey[i]) > 0
-            mask[ind, i] = mask_value
-        # If masktop is set then mask pixels below the y position
-        if maskbottom:
+        ind = d < halfwidth * yos
+        mask[ind, i] = masked_value
+        # If extend_redward is set then mask pixels redward (in the spatial axis)
+        # of the trace (so not only mask the trace but all pixels redward of that
+        # along the spatial axis).
+        if extend_redward:
             ind = (y - tracey[i]) < 0
-            mask[ind, i] = mask_value
+            mask[ind, i] = masked_value
+        # If extend_blueward is set then mask pixels blueward along the spatial axis
+        if extend_blueward:
+            ind = (y - tracey[i]) > 0
+            mask[ind, i] = masked_value
 
     return mask
 
-def determine_stack_dimensions(stack, header=None):
+def determine_stack_dimensions(stack, header=None, verbose=False):
     ''' Determine the size of the stack array. Will be called by get_uncontam_centroids
     and make_trace_mask.
     Parameters
@@ -147,13 +151,14 @@ def determine_stack_dimensions(stack, header=None):
         working_pixel_bool = np.full((dimy, dimx), True)
 
     # For debugging purposes...
-    if True:
+    if verbose == True:
         print('dimx={:}, dimy={:}, xos={:}, yos={:}, xnative={:}, ynative={:}'.format(dimx, dimy, xos, yos, xnative, ynative))
 
     return(dimx, dimy, xos, yos, xnative, ynative, padding, working_pixel_bool)
 
 
-def get_uncontam_centroids(stack, header=None, badpix=None, tracemask=None):
+def get_uncontam_centroids(stack, header=None, badpix=None, tracemask=None, verbose=False,
+                           specpix_bounds=None):
     '''Determine the x, y positions of the trace centroids from an
     exposure using a center-of-mass analysis. Works for either order if there
     is no contamination, or for order 1 on a detector where the two orders
@@ -179,6 +184,8 @@ def get_uncontam_centroids(stack, header=None, badpix=None, tracemask=None):
     tracemask : array of floats (2D) with anything different than zero meaning a
         masked out pixel. The spirit is to have zeros along one spectral order with
         a certain width.
+    specpix_bounds : native spectral pixel bounds to consider in fitting the trace. Most
+        likely used for the 2nd and 3rd orders, not for the 1st order.
     Returns
     -------
     tracexbest : np.array
@@ -200,7 +207,7 @@ def get_uncontam_centroids(stack, header=None, badpix=None, tracemask=None):
     working_pixel_mask = np.ma.filled(working_pixel_mask, np.nan)
 
     # Check for the optional input badpix and create a bad pixel numpy mask
-    if badpix != None:
+    if badpix is not None:
         # 1) Check the dimension is the same as stack
         # TODO:
         # 2) Create the numpy.ma array with it
@@ -213,12 +220,12 @@ def get_uncontam_centroids(stack, header=None, badpix=None, tracemask=None):
     badpix_mask = np.ma.filled(badpix_mask, np.nan)
 
     # Check for the optional input tracemask and create a trace numpy mask
-    if tracemask != None:
+    if tracemask is not None:
         # 1) Check the dimension is the same as stack
         # TODO:
         # 2) Create the numpy.ma array with it
         # The trace mask has values of 'one' for valid pixels.
-        trace_mask = np.ma.array(np.ones((dimy, dimx)), mask = (tracemask != 0) )
+        trace_mask = np.ma.array(np.ones((dimy, dimx)), mask = (tracemask == 0) )
     else:
         # Create a mask with all pixels in the trace (all ones)
         trace_mask = np.ma.array(np.ones((dimy, dimx)))
@@ -299,7 +306,7 @@ def get_uncontam_centroids(stack, header=None, badpix=None, tracemask=None):
     tracex_best = np.copy(tracex)
     tracey_best = np.copy(tracey)
 
-    if True:
+    if verbose == True:
         plt.figure()
         plt.plot(tracex_best, tracey_best)
 
@@ -313,12 +320,21 @@ def get_uncontam_centroids(stack, header=None, badpix=None, tracemask=None):
         # same as for regular science images.
         induse = np.isfinite(tracex_best) & np.isfinite(tracey_best) & \
                  (tracex_best >= xos*padding) & (tracex_best < (dimx-xos*padding))
+    # Find indices of pixels to include in the polynomial fit if specpix_bounds
+    if specpix_bounds != None:
+        indfit = (tracex_best >= np.min(specpix_bounds)) & (tracex_best <= np.max(specpix_bounds))
+    else:
+        indfit = np.copy(induse)
     # Use a *** fixed *** polynomial order of 11 to keep results consistent
     # from data set to data set. Any systematics would remain fixed.
-    param = np.polyfit(tracex_best[induse], tracey_best[induse], 11)
+    if specpix_bounds != None:
+        polyorder = 5
+    else:
+        polyorder = 11
+    param = np.polyfit(tracex_best[induse & indfit], tracey_best[induse & indfit], polyorder)
     tracey_best = np.polyval(param, tracex_best)
 
-    if True:
+    if verbose == True:
         plt.plot(tracex_best, tracey_best, color='r')
         plt.show()
 
@@ -333,11 +349,37 @@ import sys
 from astropy.io import fits
 import matplotlib.pylab as plt
 
-im = np.zeros((256*2,2040*2))
+# Get an image of the traces
+# im = np.zeros((256*2,2040*2))
 a = fits.open('/genesis/jwst/userland-soss/loic_review/stack_256_ng3_DMS.fits')
 im = a[0].data
 
-x, y = get_uncontam_centroids(im)
-mask_o1 = make_trace_mask(im, x, y, halfwidth=40, masktop=True)
+# Measure the x,y position of the order 1 trace and the associated mask
+x_o1, y_o1 = get_uncontam_centroids(im, verbose=False)
+mask_o1 = make_trace_mask(im, x_o1, y_o1, halfwidth=34, extend_redward=True, verbose=False)
+#plt.imshow(mask_o1*im, origin='bottom')
 
-plt.imshow(mask_o1, origin='bottom')
+# Measure the x,y position of the order 2 trace and associated mask
+x_o2, y_o2 = get_uncontam_centroids(im, specpix_bounds=[600,1600], tracemask=mask_o1, verbose=False)
+mask_o2 = make_trace_mask(im, x_o2, y_o2, halfwidth=15, extend_redward=True, verbose=False)
+
+#a = plt.figure(figsize=(8,4))
+print('vas-y!')
+#plt.imshow(mask_o2*im, origin='bottom')
+plt.imshow(im*mask_o1, origin='bottom')
+plt.plot(x_o1, y_o1)
+plt.plot(x_o2, y_o2)
+plt.show()
+
+
+
+# Save the mask on disk
+hdu = fits.PrimaryHDU()
+hdu.data = mask_o1
+hdu.writeto('/genesis/jwst/userland-soss/loic_review/mask.fits', overwrite=True)
+
+# Save the masked CV3 stack on disk
+hdu = fits.PrimaryHDU()
+hdu.data = mask_o1 * im
+hdu.writeto('/genesis/jwst/userland-soss/loic_review/maskedcv3.fits', overwrite=True)
+
