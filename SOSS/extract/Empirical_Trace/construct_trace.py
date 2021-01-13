@@ -234,6 +234,8 @@ def construct_order1(clear, F277, rot_params):
     Banch = clear[(yd22-24):(yd22+25), xd22]
     # Remove the lambda/D scaling.
     Banch = _chromescale(2.1, Banch)
+    # Normalize
+    Banch /= np.nansum(Banch)
 
     # Determine the anchor profiles - red anchor.
     if F277 is None:
@@ -244,6 +246,8 @@ def construct_order1(clear, F277, rot_params):
         # Extract and rescale the spatial profile.
         Ranch = np.sum(stand[60:70, (64-24):(64+25)], axis=0)
         Ranch = _chromescale(2.85, Ranch)
+        # Normalize
+        Ranch /= np.nansum(Ranch)
 
     else:
         # If an F277W exposure is provided, only interpolate out to 2.42µm.
@@ -259,6 +263,8 @@ def construct_order1(clear, F277, rot_params):
         # Extract and rescale the 2.5µm profile.
         Ranch = F277[(yd25-24):(yd25+25), xd25]
         Ranch = _chromescale(2.42, Ranch)
+        # Normalize
+        Ranch /= np.nansum(Ranch)
 
     # Set up the parameters for the interpolation
     if F277 is not None:
@@ -309,9 +315,7 @@ def construct_order1(clear, F277, rot_params):
         axis = np.linspace(-24, 24, 49) + ceny
         inds = np.where((axis < 256) & (axis >= 0))[0]
         profile = np.interp(np.arange(256), axis[inds], prof_int_cs[inds])
-
-        # Subtract the noisy wing edges.
-        map2D[:, int(round(cenx, 0))] = profile - np.nanpercentile(profile, 1.)
+        map2D[:, int(round(cenx, 0))] = profile
 
         # Note detector coordinates of the edges of the interpolated region.
         if i == rlen - 1:
@@ -635,4 +639,4 @@ def wrapper(clear, F277W, filename='spatial_profile.fits', doplot=False):
     #hdu.data = np.dstack((o1frame, o2frame))
     #hdu.writeto(filename, overwrite=True)
 
-    return o1frame
+    return o1frame, rot_pars
