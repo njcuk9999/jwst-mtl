@@ -227,7 +227,7 @@ def construct_order1(clear, F277, rot_params):
     xom22 = tp.wavelength_to_pix(2.1, tp2, 1)[0]
     yom22 = 256 - tp.wavelength_to_pix(2.1, tp2, 1)[1]
     # Use rot params to find location of the 2.1µm centroids in the data frame.
-    xd22, yd22 = ctd.rot_centroids(*rot_params, xom22, yom22, fill_det=False)
+    xd22, yd22 = ctd.rot_centroids(*rot_params, xom22, yom22)
     xd22 = np.round(xd22, 0).astype(int)[0]
     yd22 = np.round(yd22, 0).astype(int)[0]
     # Extract the 2.1µm anchor profile from the data.
@@ -256,8 +256,7 @@ def construct_order1(clear, F277, rot_params):
         xom25 = tp.wavelength_to_pix(2.42, tp2, 1)[0]
         yom25 = 256 - tp.wavelength_to_pix(2.42, tp2, 1)[1]
         # Transform into the data frame.
-        xd25, yd25 = ctd.rot_centroids(*rot_params, xom25, yom25,
-                                       fill_det=False)
+        xd25, yd25 = ctd.rot_centroids(*rot_params, xom25, yom25)
         xd25 = np.round(xd25, 0).astype(int)[0]
         yd25 = np.round(yd25, 0).astype(int)[0]
         # Extract and rescale the 2.5µm profile.
@@ -295,10 +294,7 @@ def construct_order1(clear, F277, rot_params):
     ceny_om = 256 - tp.wavelength_to_pix(lmbda, tp2, 1)[1]
     # Transform the OM centroids onto the detector.
     cenx_d, ceny_d = ctd.rot_centroids(*rot_params, cenx_om, ceny_om,
-                                       fill_det=False, bound=False)
-
-    #TODO3 - Add check to make sure that cenx_d is at most 1 pixel away from
-    #previous cenx_d such that we don't skip a column
+                                       bound=False)
 
     # Create an interpolated 1D PSF at each required position.
     for i, vals in enumerate(zip(cenx_d, ceny_d, lmbda)):
