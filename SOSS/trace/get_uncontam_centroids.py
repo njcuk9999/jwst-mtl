@@ -157,6 +157,199 @@ def determine_stack_dimensions(stack, header=None, verbose=False):
     return(dimx, dimy, xos, yos, xnative, ynative, padding, working_pixel_bool)
 
 
+
+def trace_centroids(stack, header=None, badpix=None, verbose=False):
+    ''' Sequential scheme to get the trace centroids, depending on the image dimensions
+
+    '''
+
+    # Call the script that determines the dimensions of the stack. It handles
+    # regular science images of various subarray sizes, with or without the
+    # reference pixels, oversampled or not. It also handles the 2D Trace
+    # Reference File.
+    dimx, dimy, xos, yos, xnative, ynative, padding, working_pixel_bool = \
+        determine_stack_dimensions(stack, header=header)
+
+    # First, call the get_uncontam_centroids for the first order.
+    # All sub-array sizes should have a first order. SUBSTRIP256 and SUBSTRIP96 will
+    # have it very close to the bottom edge, i.e. We assume that the brightest
+    # trace is the one of interest. For FULLFRAME, things may be a bit different
+    # as a field contaminant may be present. So for FF, we apply a mask to mask
+    # out pixels outside the 256x2048 region.
+    if (ynative == 96) or (ynative == 256) or (ynative == 252):
+        # Call the centroiding algorithm
+        x_o1, y_o1 = get_uncontam_centroids(stack, header=header, badpix=badpix,
+                                            verbose=verbose)
+    if (ynative == 2048):
+        # Build a mask to mask out what is below the 1st order trace
+        fieldmask = np.ones(dimy,dimx)
+        # Adjust the row where we cut according to whether the reference pixels are included or not
+        rowcut = 1792 # works for 2048
+        if (ynative == 2040): rowcut = 1788
+        # Set to 0 that outside region
+        fieldmask[(0+padding)*yos:(1792+padding)*yos,:] = 0
+        # Call the centroiding algorithm on that masked image (use tracemask optional keyword)
+        x_o1, y_o1 = get_uncontam_centroids(stack, header=header, badpix=badpix,
+                        tracemask=fieldmask, verbose=verbose)
+
+    # Now, we are ready to get the second order trace positions. This applies only to SUBSTRIP256
+    # and to FF images.
+    if (ynative != 96):
+        # First, the order 1 trace needs to be masked out. Construct a mask that not
+        # only covers the order 1 trace but everything redward along the spatial axis.
+        mask_o1 = make_trace_mask(stack, x_o1, y_o1, halfwidth=34, extend_redward=True,
+                                  verbose=verbose, header=header)
+        # Make a mask to measure the 3rd order trace
+        mask_allbut3 = make_mask_butorder3(stack, header=header)
+        # Combine both masks
+        fullmask = mask_o1 * mask_allbut3
+
+        x_o3, y_o3 = get_edge_centroids(stack, header=header, badpix=badpix, mask=fullmask,
+                                    verbose=verbose)
+
+    return(x_o3, y_o3)
+
+
+
+
+
+def make_mask_butorder3(stack, header=None):
+    ''' Builds the mask that will be handy to get 3rd order centroids
+    '''
+
+    # Value assigned to a pixel that should be masked out
+    masked_value = 0.0
+    notmasked_value = 1.0
+
+    # Call the script that determines the dimensions of the stack. It handles
+    # regular science images of various subarray sizes, with or without the
+    # reference pixels, oversampled or not. It also handles the 2D Trace
+    # Reference File.
+    dimx, dimy, xos, yos, xnative, ynative, padding, working_pixel_bool = \
+        determine_stack_dimensions(stack, header=header)
+
+    # Line to mask redward of order 3: (x,y)_1=(0,132) to (x,y)_2=(1000,163)
+    slope = (163 - 132) / 1000.
+    yintercept = 132.0
+    # vertical line redward of which no order 3 is detected
+    maxcolumn = 900
+
+    mask = np.ones((dimy,dimx)) * notmasked_value
+    if ynative == 96:
+        # Nothing to be done because order 3 can not be present.
+        return(mask)
+    if (ynative == 252) or (ynative == 256):
+        m = slope * yos / xos
+        if (xnative == 2040):
+            b = (yintercept + 4*m + padding) * yos
+            xmax = (maxcolumn - 4 + padding) * xos
+        if (xnative == 2048):
+            b = (yintercept + padding) * yos
+            xmax = (maxcolumn + padding) * xos
+    if (ynative == 2040):
+        m = slope * yos/xos
+        if (xnative == 2040):
+            b = (1788 + yintercept + 4*m + padding) * yos
+            xmax = (maxcolumn - 4 + padding) * xos
+        if (xnative == 2048):
+            b = (1788 + yintercept + padding) * yos
+            xmax = (maxcolumn + padding) * xos
+    if (ynative == 2048):
+        m = slope * yos/xos
+        if (xnative == 2040):
+            b = (1792 + yintercept + 4*m + padding) * yos
+            xmax = (maxcolumn - 4 + padding) * xos
+        if (xnative == 2048):
+            b = (1792 + yintercept + padding) * yos
+            xmax = (maxcolumn + padding) * xos
+
+    # Mask redward (spatially) of the sloped line
+    for i in range(dimx):
+        y = np.int(np.round(b + m * i))
+        mask[0:y,i] = masked_value
+    # Mask redward (spectrally) of the vertical line
+    mask[:,xmax:] = masked_value
+
+    return(mask)
+
+
+
+
+
+
+def get_edge_centroids(stack, header=None, badpix=None, mask=None, verbose=False,
+                       specpix_bounds=None):
+    ''' Determine the x, y positions of the trace centroids from an exposure 
+    using the two edges and the width of the traces.
+    '''
+
+    # Call the script that determines the dimensions of the stack. It handles
+    # regular science images of various subarray sizes, with or without the
+    # reference pixels, oversampled or not. It also handles the 2D Trace
+    # Reference File.
+    dimx, dimy, xos, yos, xnative, ynative, padding, working_pixel_bool = \
+        determine_stack_dimensions(stack, header=header)
+
+    edge1, edge2 = [], []
+    for i in range(dimx):
+        y1, y2 = edge_trigger(stack[:,i]*mask[:,i], triggerscale=5, verbose=verbose)
+        #print(i, y1, y2)
+        edge1.append(y1)
+        edge2.append(y2)
+
+    # Plot the edge position as a function of x
+    if True:
+        plt.plot(edge1)
+        plt.plot(edge2)
+        plt.show()
+
+    return(edge1,edge2)
+
+
+
+
+
+def edge_trigger(column, triggerscale=5, verbose=False):
+    # triggerscale must be odd integer
+
+    # dimension of the column array
+    dim, = np.shape(column)
+    halftrig = int((triggerscale-1)/2)
+    # positions along that column where the full triggerscale is accessible
+    ic = halftrig + np.arange(dim-triggerscale)
+    # slope of the flux at position datax
+    slope = []
+    datax = np.arange(triggerscale)
+    # For each position, grab current n pixels, exclude NaN, fit a slope
+    for i in ic:
+        data = column[i-halftrig:i+halftrig+1]
+        ind = np.where(np.isfinite(data))
+        if np.size(ind) >=3:
+            param = np.polyfit(datax[ind],data[ind],1)
+            slope.append(param[0])
+        else:
+            slope.append(np.nan)
+    slope = np.array(slope)
+
+    # Determine which x sees the maximum slope
+    indmax = np.argwhere(slope == np.nanmax(slope))
+    edgemax = np.nan # default value because ref pixels produce no slope
+    if indmax.size > 0: edgemax = ic[indmax[0][0]]
+
+    # Determine which x sees the minimum slope
+    indmin = np.argwhere(slope == np.nanmin(slope))
+    edgemin = np.nan
+    if indmin.size > 0: edgemin = ic[indmin[0][0]]
+
+    # Make a plot if verbose is True
+    if verbose == True:
+        plt.plot(ic,slope)
+        plt.show()
+
+    return(edgemax,edgemin)
+
+
+
 def get_uncontam_centroids(stack, header=None, badpix=None, tracemask=None, verbose=False,
                            specpix_bounds=None):
     '''Determine the x, y positions of the trace centroids from an
@@ -328,7 +521,7 @@ def get_uncontam_centroids(stack, header=None, badpix=None, tracemask=None, verb
     # Use a *** fixed *** polynomial order of 11 to keep results consistent
     # from data set to data set. Any systematics would remain fixed.
     if specpix_bounds != None:
-        polyorder = 5
+        polyorder = 2
     else:
         polyorder = 11
     param = np.polyfit(tracex_best[induse & indfit], tracey_best[induse & indfit], polyorder)
@@ -350,9 +543,9 @@ from astropy.io import fits
 import matplotlib.pylab as plt
 
 # Get an image of the traces
-# im = np.zeros((256*2,2040*2))
 a = fits.open('/genesis/jwst/userland-soss/loic_review/stack_256_ng3_DMS.fits')
 im = a[0].data
+#im = np.zeros((256*2,2040*2))
 
 # Measure the x,y position of the order 1 trace and the associated mask
 x_o1, y_o1 = get_uncontam_centroids(im, verbose=False)
@@ -360,8 +553,35 @@ mask_o1 = make_trace_mask(im, x_o1, y_o1, halfwidth=34, extend_redward=True, ver
 #plt.imshow(mask_o1*im, origin='bottom')
 
 # Measure the x,y position of the order 2 trace and associated mask
-x_o2, y_o2 = get_uncontam_centroids(im, specpix_bounds=[600,1600], tracemask=mask_o1, verbose=False)
+x_o2, y_o2 = get_uncontam_centroids(im, specpix_bounds=[800,1600], tracemask=mask_o1, verbose=False)
 mask_o2 = make_trace_mask(im, x_o2, y_o2, halfwidth=15, extend_redward=True, verbose=False)
+
+x, y = trace_centroids(im, verbose=False)
+
+sys.exit()
+
+mask = make_mask_butorder3(im)
+
+# Save the mask on disk
+hdu = fits.PrimaryHDU()
+hdu.data = mask
+hdu.writeto('/genesis/jwst/userland-soss/loic_review/mask.fits', overwrite=True)
+
+sys.exit()
+
+if True:
+    edge1, edge2 = [], []
+    for i in range(2048):
+        y1, y2 = edge_trigger(im[:,i]*mask_o1[:,i], triggerscale=5, verbose=False)
+        print(i, y1, y2)
+        edge1.append(y1)
+        edge2.append(y2)
+    plt.plot(edge1)
+    plt.plot(edge2)
+    plt.show()
+
+sys.exit()
+
 
 #a = plt.figure(figsize=(8,4))
 print('vas-y!')
@@ -369,6 +589,7 @@ print('vas-y!')
 plt.imshow(im*mask_o1, origin='bottom')
 plt.plot(x_o1, y_o1)
 plt.plot(x_o2, y_o2)
+plt.ylim((0,2048))
 plt.show()
 
 
