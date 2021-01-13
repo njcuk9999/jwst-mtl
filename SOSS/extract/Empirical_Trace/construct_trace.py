@@ -21,6 +21,63 @@ from SOSS.extract.throughput import ThroughputSOSS
 from SOSS.extract.convolution import WebbKer
 
 
+def build_empirical_trace(clear, F277W, filename='spatial_profile.fits',
+                          doplot=False):
+    ''' Procedural function to wrap around construct orders 1 and 2.
+    Will do centroiding and call the functions to construct the models.
+
+    ***Will eventually want clear and F277W to be the full fits with headers
+    to get parameters from***
+
+    Parameters
+    ----------
+    clear : np.array of float (2D) - eventually path
+    F277W : np.array of float (2D) - eventually path
+    filename : str
+    doplot : bool
+    '''
+
+    # Print overwrite warning if output file already exists.
+    if os.path.exists(filename):
+        print('Output file {} already exists. It will be overwritten'.format(filename))
+    # Get the centroid positions for both orders from the data.
+    x1, y1, x2, y2, rot_pars = ctd.get_contam_centroids(clear, doplot=doplot)
+
+    # Overplot the data centroids on the CLEAR exposure if desired.
+    if doplot is True:
+        _plot_centroid(clear, x1, y1, x2, y2)
+
+    # Construct the first order profile.
+    o1frame_contam = construct_order1(clear, F277W, rot_pars)
+    # Create a mask to remove the second order from the CLEAR data.
+    o1frame = mask_order(o1frame_contam, x1, y1)
+    # Set any spurious negative values to zero.
+    o1frame[o1frame < 0] = 0
+    # Normalize the profile in each column.
+    o1frame /= np.nansum(o1frame, axis=0)
+    # Add back extended wing structure.
+    o1frame = reconstruct_wings(o1frame, y1)
+
+    # Get the extraction parameters
+    extract_params = get_extract_params()
+    ref_file_args = get_ref_file_args(o1frame)
+    # Construct the second order profile.
+    o2frame_contam = construct_order2(clear, ref_file_args, extract_params)
+    # Create a mask to remove residuals from the first order.
+    o2frame = mask_order(o2frame_contam, x2, y2)
+    # Set any spurious negative values to zero.
+    o2frame[o2frame < 0] = 0
+    # Normalize the profile in each column.
+    o2frame /= np.nansum(o2frame, axis=0)
+
+    # Write the trace model to disk.
+    #hdu = fits.PrimaryHDU()
+    #hdu.data = np.dstack((o1frame, o2frame))
+    #hdu.writeto(filename, overwrite=True)
+
+    return o1frame, o2frame
+
+
 def calc_interp_coefs(make_psfs=False, doplot=True, F277W=True, filepath=''):
     '''Function to calculate the interpolation coefficients necessary to
     construct a monochromatic PSF profile at any wavelength between
@@ -584,55 +641,76 @@ def _plot_interpmodel(waves, nw1, nw2, p1, p2):
     f.tight_layout()
 
 
-def wrapper(clear, F277W, filename='spatial_profile.fits', doplot=False):
-    ''' Procedural function to wrap around construct orders 1 and 2.
-    Will do centroiding and call the functions to construct the models.
-
-    ***Will eventually want clear and F277W to be the full fits with headers
-    to get parameters from***
+def reconstruct_wings(frame, ycen):
+    '''Takes a reconstructed trace profile which has been truncated about the
+    centroid and reconstructs the extended wing structure using an exponential
+    profile.
 
     Parameters
     ----------
-    clear : np.array of float (2D) - eventually path
-    F277W : np.array of float (2D) - eventually path
-    filename : str
-    doplot : bool
+    frame : np.ndarray of float (2D)
+        Empirical trace model.
+    ycen : np.array of float
+        Y-pixel centroid positions.
+
+    Returns
+    -------
+    newframe : np.ndarray of float (2D)
+        Trace model with reconstructed extended wing structure.
     '''
 
-    # Print overwrite warning if output file already exists.
-    if os.path.exists(filename):
-        print('Output file {} already exists. It will be overwritten'.format(filename))
-    # Get the centroid positions for both orders from the data.
-    x1, y1, x2, y2, rot_pars = ctd.get_contam_centroids(clear, doplot=doplot)
+    newframe = np.zeros([256, 2048])
+    fullax = np.arange(256)
+    # Loop over each column on the detector.
+    for col in range(2048):
+        # Get the centroid Y-position.
+        cen = int(round(ycen[col], 0))
 
-    # Overplot the data centroids on the CLEAR exposure if desired.
-    if doplot is True:
-        _plot_centroid(clear, x1, y1, x2, y2)
+        # Extract the left wing
+        start = np.max([0, cen-75])
+        ax_l = np.arange(start, cen-9)
+        lwing = np.log(frame[start:(cen-9), col])
+        # Find where the log is finite
+        lwing_noi = lwing[np.isfinite(lwing)]
+        ax_l_noi = ax_l[np.isfinite(lwing)]
+        # Fit a first order polynomial to the finite value of the log wing.
+        # Equivalent to fitting an exponential to the wing.
+        pp_l = np.polyfit(ax_l_noi, lwing_noi, 1)
 
-    # Construct the first order profile.
-    o1frame_contam = construct_order1(clear, F277W, rot_pars)
-    # Create a mask to remove the second order from the CLEAR data.
-    o1frame = mask_order(o1frame_contam, x1, y1)
-    # Set any spurious negative values to zero.
-    o1frame[o1frame < 0] = 0
-    # Normalize the profile in each column.
-    o1frame /= np.nansum(o1frame, axis=0)
+        # Locate pixels for stitching - where the left wing goes to zero.
+        ii_l = np.where(np.isinf(lwing))[0][-1]
+        # Location in full axis.
+        jj_l = np.where(fullax == ax_l[ii_l])[0][0]
 
-    # Get the extraction parameters
-    #extract_params = get_extract_params()
-    #ref_file_args = get_ref_file_args(o1frame)
-    # Construct the second order profile.
-    #o2frame_contam = construct_order2(clear, ref_file_args, extract_params)
-    # Create a mask to remove residuals from the first order.
-    #o2frame = mask_order(o2frame_contam, x2, y2)
-    # Set any spurious negative values to zero.
-    #o2frame[o2frame < 0] = 0
-    # Normalize the profile in each column.
-    #o2frame /= np.nansum(o2frame, axis=0)
+        # Extract the right wing
+        end = np.min([cen+50, 255])
+        ax_r = np.arange(cen+9, end)
+        rwing = np.log(frame[(cen+9):end, col])
+        # Find where the log is finite
+        rwing_noi = rwing[np.isfinite(rwing)]
+        ax_r_noi = ax_r[np.isfinite(rwing)]
+        # Fit a first order polynomial to the finite value of the log wing.
+        # Equivalent to fitting an exponential to the wing.
+        pp_r = np.polyfit(ax_r_noi, rwing_noi, 1)
 
-    # Write the trace model to disk.
-    #hdu = fits.PrimaryHDU()
-    #hdu.data = np.dstack((o1frame, o2frame))
-    #hdu.writeto(filename, overwrite=True)
+        # Locate pixels for stitching - where the right wing goes to zero.
+        ii_r = np.where(np.isinf(rwing))[0][0]
+        jj_r = np.where(fullax == ax_r[ii_r])[0][0]
 
-    return o1frame, rot_pars
+        # Stitch the wings to the original profile.
+        newcol = np.concatenate([np.exp(np.polyval(pp_l, fullax[:jj_l])),
+                                 frame[jj_l:jj_r, col],
+                                 np.exp(np.polyval(pp_r, fullax[jj_r:]))])
+
+        # Find any remaining pixels where the profile is zero.
+        inds = np.where(newcol == 0)[0][0]
+        try:
+            # If there are remainining zeros, replace with mean of neighbours.
+            newcol[inds] = np.mean([newcol[inds-1], newcol[inds+1]])
+        except IndexError:
+            pass
+
+        # Renormalize the column.
+        newframe[:, col] = newcol / np.nansum(newcol)
+
+    return newframe
