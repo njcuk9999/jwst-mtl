@@ -135,12 +135,11 @@ def simple_solver(clear):
     # Get orders 1 and 2 reference trace centroids
     # May need to be updated when reference traces are oversampled and padded
     ref_trace = fits.open(path+'/extract/Ref_files/trace_profile_om1.fits')[0].data[::-1, :]
-    xref1, yref1, xref2, yref2 = ctd.get_contam_centroids(ref_trace)
+    xref1, yref1, xref2, yref2, rps = ctd.get_contam_centroids(ref_trace)
     ref_centroids = np.array([xref1, yref1, xref2, yref2])
 
     # Get data centroids and rotation params relative to the reference trace
     xcen_o1, ycen_o1, xcen_o2, ycen_o2, rot_params = ctd.get_contam_centroids(clear,
-                                                                              return_rot_params=True,
                                                                               ref_centroids=ref_centroids)
     rot_ang = rot_params[0]
     x_anch = np.int(rot_params[1])

@@ -13,7 +13,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 import emcee
 import corner
+import warnings
 from SOSS.trace import tracepol as tp
+
+warnings.simplefilter(action='ignore', category=FutureWarning)
 
 # hack to get around the fact that relative paths are constantly messing up atm
 path = '/Users/michaelradica/Documents/GitHub/jwst-mtl/SOSS/'
@@ -53,8 +56,7 @@ def _do_emcee(xOM, yOM, xCV, yCV):
     return sampler
 
 
-def get_contam_centroids(clear, ref_centroids=None, return_rot_params=False,
-                         doplot=False):
+def get_contam_centroids(clear, ref_centroids=None, doplot=False):
     '''Get the trace centroids for both orders when there is
     contaminationof the first order by the second on the detector.
     Fits the first order centroids using the uncontaminated method, and
@@ -69,9 +71,6 @@ def get_contam_centroids(clear, ref_centroids=None, return_rot_params=False,
         Centroids relative to which to determine offset and rotation
         parameters. Array must contain four lists in the following order: x,
         and y centroids for order 1 followed by those of order 2.
-    return_rot_params : bool
-        Whether to return the rotation angle and anchor point required to
-        transform the optics model to match the data.
     doplot : bool
         Whether to plot the corner plot of the optics model fit to the
         first order centroids.
@@ -136,11 +135,7 @@ def get_contam_centroids(clear, ref_centroids=None, return_rot_params=False,
     ycen_o2 = np.polyval(p_o2, atthesex)
     inds = np.where((ycen_o2 >= 0) & (ycen_o2 < 256))[0]
 
-    # Also return rotation parameters if requested
-    if return_rot_params is True:
-        return atthesex, ycen_o1, atthesex[inds], ycen_o2[inds], (ang, xanch, yanch, xshift, yshift)
-    else:
-        return atthesex, ycen_o1, atthesex[inds], ycen_o2[inds]
+    return atthesex, ycen_o1, atthesex[inds], ycen_o2[inds], (ang, xanch, yanch, xshift, yshift)
 
 
 # Needs to be updated whenever we decide on how we will interact with
