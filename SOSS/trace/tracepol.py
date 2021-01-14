@@ -13,6 +13,35 @@ from astropy.io import ascii
 # SUBSTRIP96 keeps columns 150:245 (0 based) in the nat frame.
 
 
+def apply_rotation(coords, origin=np.array([1514., 456.]), angle=1.489):
+    """
+    Rotate a point counterclockwise by a given angle around a given origin.
+    The angle should be given in radians.
+
+    :param coords: x, y coordinates to rotate.
+    :param origin: point around which to rotate the coordinates.
+    :param angle: angle in degrees.
+
+    :type coords: Tuple(array[float], array[float])
+    :type origin: array[float]
+    :type angle: float
+
+    :returns: x_rot, y_rot - rotated coordinates.
+    :rtype: Tuple(array[float], array[float])
+
+    """
+
+    x, y = coords
+    origin_x, origin_y = origin
+    angle = np.deg2rad(angle)
+
+    dx, dy = x - origin_x, y - origin_y
+    x_rot = np.cos(angle)*dx - np.sin(angle)*dy + origin_x
+    y_rot = np.sin(angle)*dx + np.cos(angle)*dy + origin_y
+
+    return x_rot, y_rot
+
+
 def trace_polynomial(trace, m=1, maxorder=15):
     """Fit a polynomial to the trace of order m and return a
     dictionary containing the parameters and validity intervals.
@@ -40,9 +69,6 @@ def trace_polynomial(trace, m=1, maxorder=15):
     # Find the edges of the domain.
     wavemin = np.amin(wave)
     wavemax = np.amax(wave)
-    
-    specmin = np.amin(specpix_ref)
-    specmax = np.amax(specpix_ref)
 
     # Compute the polynomial parameters for x and y.
     order = 0
@@ -76,13 +102,17 @@ def trace_polynomial(trace, m=1, maxorder=15):
     return pars
 
 
-def get_tracepars(filename=None):
+def get_tracepars(filename=None, origin=np.array([1514, 456]), angle=1.489):
     """Read a file containing the trace profile and generate
     polynomial parameters for each order.
 
     :param filename: file containing modelled trace points.
+    :param origin: point around which to rotate the coordinates.
+    :param angle: angle in degrees.
 
     :type filename: str
+    :type origin: array[float]
+    :type angle: float
 
     :returns: tracepars - a dictionary containg the parameters for the polynomial fits.
     :rtype: dict
@@ -93,10 +123,15 @@ def get_tracepars(filename=None):
     
     # Read the trace.
     trace = ascii.read(filename)  # Read the Code V trace model from file. DS9 coordinates are used.
+
+    # Convert to pixel coordinates.
     trace['xpos'] /= 0.018  # Convert from micron to pixels.
     trace['ypos'] /= 0.018  # Convert from micron to pixels.
     trace['xpos'] -= 0.5  # Set the origin at the center of the lower-left pixel.
     trace['ypos'] -= 0.5  # Set the origin at the center of the lower-left pixel.
+
+    # Apply rotation around point.
+    trace['xpos'], trace['ypos'] = apply_rotation((trace['xpos'], trace['ypos']), origin=origin, angle=angle)
 
     # Compute polynomial parameters for different orders.
     tracepars = dict()
