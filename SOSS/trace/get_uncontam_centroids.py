@@ -112,7 +112,7 @@ def determine_stack_dimensions(stack, header=None, verbose=False):
 
 
 def make_trace_mask(stack, tracex, tracey, halfwidth=30, extend_redward=None,
-                    extend_blueward=None, header=None, verbose=False):
+                    extend_blueward=None, header=None, inverted=False, verbose=False):
     ''' Builds a mask of the same size as the input stack image. That mask masks a band
     of pixels around the trace position (tracex, tracey) of width = 2*halfwidth*yos pixels.
     Option masktop additionally masks all pixels above the trace. Option extend_redward
@@ -123,8 +123,12 @@ def make_trace_mask(stack, tracex, tracey, halfwidth=30, extend_redward=None,
     '''
 
     # Value assigned to a pixel that should be masked out
-    masked_value = np.nan
-    notmasked_value = 1.0
+    if inverted == False:
+        masked_value = np.nan
+        notmasked_value = 1.0
+    else:
+        masked_value = 1.0
+        notmasked_value = np.nan
 
     # Call the script that determines the dimensions of the stack. It handles
     # regular science images of various subaaray sizes, with or without the
@@ -160,7 +164,8 @@ def make_trace_mask(stack, tracex, tracey, halfwidth=30, extend_redward=None,
 
 
 
-def make_mask_vertical(stack, header=None, masked_side = 'blue', native_x = 1700):
+def make_mask_vertical(stack, header=None, masked_side = 'blue', native_x = 1700,
+                       inverted=False):
     ''' Builds a mask where there are two sides: left and right, one being masked, the
     other not. In other words, this masks a region along the spectral dispersion axis.
     native_x : the boundary position in native x pixels (0 to 2047)
@@ -168,8 +173,12 @@ def make_mask_vertical(stack, header=None, masked_side = 'blue', native_x = 1700
     '''
 
     # Value assigned to a pixel that should be masked out
-    masked_value = np.nan
-    notmasked_value = 1.0
+    if inverted == False:
+        masked_value = np.nan
+        notmasked_value = 1.0
+    else:
+        masked_value = 1.0
+        notmasked_value = np.nan
 
     # Call the script that determines the dimensions of the stack. It handles
     # regular science images of various subarray sizes, with or without the
@@ -192,15 +201,20 @@ def make_mask_vertical(stack, header=None, masked_side = 'blue', native_x = 1700
 
 
 
-def make_mask_sloped(stack, header=None, masked_side='blue', pt1 = [0,0], pt2 = [2048,0]):
+def make_mask_sloped(stack, header=None, masked_side='blue', pt1 = [0,0], pt2 = [2048,0],
+                     inverted=False):
     ''' Draw a sloped line and mask on one side of it (the side is defined with respect to
     the spectral dispersion axis. Requires the x,y position of two points that define the
     line. The x,y must be given in native size pixels. along the x axis: 0-2047, along the
     y-axis, it depends on the array size. For SUBSTRIP256, y=0-255, for FF, y=0-2047'''
 
     # Value assigned to a pixel that should be masked out
-    masked_value = np.nan
-    notmasked_value = 1.0
+    if inverted == False:
+        masked_value = np.nan
+        notmasked_value = 1.0
+    else:
+        masked_value = 1.0
+        notmasked_value = np.nan
 
     # Call the script that determines the dimensions of the stack. It handles
     # regular science images of various subarray sizes, with or without the
@@ -242,13 +256,17 @@ def make_mask_sloped(stack, header=None, masked_side='blue', pt1 = [0,0], pt2 = 
 
 
 
-def make_mask_butorder3(stack, header=None):
+def make_mask_butorder3(stack, header=None, inverted=False):
     ''' Builds the mask that will be handy to get 3rd order centroids
     '''
 
     # Value assigned to a pixel that should be masked out
-    masked_value = np.nan
-    notmasked_value = 1.0
+    if inverted == False:
+        masked_value = np.nan
+        notmasked_value = 1.0
+    else:
+        masked_value = 1.0
+        notmasked_value = np.nan
 
     # Call the script that determines the dimensions of the stack. It handles
     # regular science images of various subarray sizes, with or without the
@@ -307,7 +325,8 @@ def make_mask_butorder3(stack, header=None):
 
 
 def get_edge_centroids(stack, header=None, badpix=None, mask=None, verbose=False,
-                       return_what='edgemean_param', polynomial_order=2):
+                       return_what='edgemean_param', polynomial_order=2,
+                       triggerscale=5):
     ''' Determine the x, y positions of the trace centroids from an exposure 
     using the two edges and the width of the traces. This should be performed on a very high SNR
     stack.
@@ -333,7 +352,7 @@ def get_edge_centroids(stack, header=None, badpix=None, mask=None, verbose=False
     edge1, edge2 = [], []
     for i in range(dimx):
         #if i >= 1000: verbose = True
-        y1, y2 = edge_trigger(stack[:,i]*mask[:,i], triggerscale=5, verbose=verbose)
+        y1, y2 = edge_trigger(stack[:,i]*mask[:,i], triggerscale=triggerscale, verbose=verbose)
         #print(i, y1, y2)
         edge1.append(y1)
         edge2.append(y2)
@@ -367,13 +386,17 @@ def get_edge_centroids(stack, header=None, badpix=None, mask=None, verbose=False
         plt.plot(x_both, y_both)
         plt.show()
 
+    # Trace width
+    tracewidth = np.nanmedian(np.abs(edge1 - edge2))
+
+
     if return_what == 'edgemean_param' : return param_both
     if return_what == 'rededge_param' : return param_red
     if return_what == 'blueedge_param' : return param_blue
     if return_what == 'edgemean_xy' : return x_both, y_both
     if return_what == 'rededge_xy' : return x_red, y_red
     if return_what == 'blueedge_xy' : return x_blue, y_blue
-    if return_what == 'tracewidth' : return np.nanmedian(np.abs(y_blue - y_red))
+    if return_what == 'tracewidth' : return tracewidth
 
 
 def polyfit_sigmaclip(x, y, order, sigma=4):
@@ -381,7 +404,7 @@ def polyfit_sigmaclip(x, y, order, sigma=4):
     polyorder = np.copy(order)
     ind = np.where(y == y)
     for n in range(5):
-        if n == 4: polyorder = order + 1
+        #if n == 4: polyorder = order + 1
         param = np.polyfit(x[ind], y[ind], polyorder)
         yfit = np.polyval(param, x)
         dev = np.abs(yfit - y)
@@ -645,6 +668,15 @@ def trace_centroids(stack, header=None, badpix=None, verbose=False):
         # Call the centroiding algorithm
         x_o1, y_o1 = get_uncontam_centroids(stack, header=header, badpix=badpix,
                                             verbose=verbose)
+        # Construct a mask that not only covers the order 1 trace but everything blueward
+        # along the spatial axis. In prevision of making an inversion.
+        mask_o1_inverted = make_trace_mask(stack, x_o1, y_o1, halfwidth=34, extend_blueward=True,
+                                  verbose=verbose, header=header, inverted = True)
+
+        # Make a second pass at order 1 with a different method
+        x_o1, y_o1 = get_edge_centroids(stack, header=header, badpix=badpix, mask=mask_o1_inverted,
+                                        return_what='edgemean_xy', polynomial_order=10, verbose=verbose)
+
     if (ynative == 2048):
         # Build a mask to mask out what is below the 1st order trace
         fieldmask = np.ones(dimy, dimx)
@@ -656,6 +688,14 @@ def trace_centroids(stack, header=None, badpix=None, verbose=False):
         # Call the centroiding algorithm on that masked image (use tracemask optional keyword)
         x_o1, y_o1 = get_uncontam_centroids(stack, header=header, badpix=badpix,
                                             tracemask=fieldmask, verbose=verbose)
+        # Construct a mask that not only covers the order 1 trace but everything blueward
+        # along the spatial axis. In prevision of making an inversion.
+        mask_o1_inverted = make_trace_mask(stack, x_o1, y_o1, halfwidth=34, extend_blueward=True,
+                                  verbose=verbose, header=header, inverted = True)
+        # Make a second pass at order 1 with a different method
+        maskall = fieldmask * mask_o1_inverted
+        x_o1, y_o1 = get_edge_centroids(stack, header=header, badpix=badpix, mask=maskall,
+                                        return_what='edgemean_xy', polynomial_order=10, verbose=verbose)
 
     if (ynative == 96):
         return x_o1, y_o1
@@ -670,7 +710,7 @@ def trace_centroids(stack, header=None, badpix=None, verbose=False):
         mask_allbut3 = make_mask_butorder3(stack, header=header)
         # Get the centroid position by locking on the traces edges and returning their mean
         x_o3, y_o3 = get_edge_centroids(stack, header=header, badpix=badpix, mask=mask_allbut3,
-                                        return_what='edgemean_xy', polynomial_order=2, verbose=verbose)
+                                        return_what='edgemean_xy', polynomial_order=3, verbose=verbose)
 
         ######################################################################
         ########################### SECOND ORDER #############################
@@ -683,7 +723,7 @@ def trace_centroids(stack, header=None, badpix=None, verbose=False):
         ######################################################################
         # First, the order 1 trace needs to be masked out. Construct a mask that not
         # only covers the order 1 trace but everything redward along the spatial axis.
-        mask_o1 = make_trace_mask(stack, x_o1, y_o1, halfwidth=34, extend_redward=True,
+        mask_o1 = make_trace_mask(stack, x_o1, y_o1, halfwidth=25, extend_redward=True,
                                   verbose=verbose, header=header)
         # Do the same to mask out order 3 - this one is fainter so make a narrower mask.
         # Also mask all pixels blueward (spatially)
@@ -697,26 +737,26 @@ def trace_centroids(stack, header=None, badpix=None, verbose=False):
         fullmask = mask_o1 * mask_o3 * mask_red * mask_blue
         # Get the trace width by locking on both trace edges in a region without contamination
         tracewidth = get_edge_centroids(stack, header=header, badpix=badpix, mask=fullmask,
-                                        return_what='tracewdith', polynomial_order=3, verbose=verbose)
+                                        return_what='tracewidth', polynomial_order=4,
+                                        verbose=verbose)
 
-        print('tracewidth =', tracewidth)
-        print(np.shape(tracewidth))
         ######################################################################
         # Find the inner trace edge positions
         ######################################################################
         # Mask what is on the left side where orders 1 and 2 are well blended
-        mask_red = make_mask_vertical(stack, header=header, masked_side='red', native_x=500)
+        #mask_red = make_mask_vertical(stack, header=header, masked_side='red', native_x=500)
+        #mask_red = make_mask_vertical(stack, header=header, masked_side='red', native_x=1)
         # Mask along a sloped line closely following the bottom of order 2 (rejecting toward 1st order)
         mask_slope = make_mask_sloped(stack, header=header, masked_side='blue',
                                       pt1 = [1450, ynative-161], pt2 = [1775, ynative-0])
         # Mask everything to the right of where the 2nd order goes out of the image
         mask_blue = make_mask_vertical(stack, header=header, masked_side='blue', native_x=1775)
         # Combine all masks
-        fullmask = mask_o1 * mask_o3 * mask_red * mask_slope * mask_blue
+        fullmask = mask_o1 * mask_o3 * mask_slope * mask_blue # * mask_red
         # Get the centroid position by locking on the trace blue edge only (provides best tracing
         # capabilities)
         x_o2_edge, y_o2_edge = get_edge_centroids(stack, header=header, badpix=badpix, mask=fullmask,
-                                        return_what='blueedge_xy', polynomial_order=3, verbose=verbose)
+                                        return_what='blueedge_xy', polynomial_order=5, verbose=verbose)
 
         ######################################################################
         # Combine the inner edge position with the trace width to get solution
@@ -744,11 +784,11 @@ im = a[0].data
 
 x_o1, y_o1, x_o2, y_o2, x_o3, y_o3 = trace_centroids(im, verbose=False)
 
-plt.imshow(im, origin='bottom')
+plt.imshow(np.log10(im), origin='bottom')
 plt.plot(x_o1, y_o1)
 plt.plot(x_o2, y_o2)
 plt.plot(x_o3, y_o3)
-plt.ylim((0,2048))
+plt.ylim((0,256))
 plt.show()
 
 sys.exit()
