@@ -274,15 +274,11 @@ def get_centerofmass_centroids(stack, header=None, badpix=None, tracemask=None, 
         # same as for regular science images.
         induse = np.isfinite(tracex_best) & np.isfinite(tracey_best) & \
                  (tracex_best >= xos*padding) & (tracex_best < (dimx-xos*padding))
-    # Find indices of pixels to include in the polynomial fit if specpix_bounds
-    if specpix_bounds != None:
-        indfit = (tracex_best >= np.min(specpix_bounds)) & (tracex_best <= np.max(specpix_bounds))
-    else:
-        indfit = np.copy(induse)
+
     # Use a *** fixed *** polynomial order of 11 to keep results consistent
     # from data set to data set. Any systematics would remain fixed.
     polyorder = 11
-    param = np.polyfit(tracex_best[induse & indfit], tracey_best[induse & indfit], polyorder)
+    param = np.polyfit(tracex_best[induse], tracey_best[induse], polyorder)
     tracey_best = np.polyval(param, tracex_best)
 
     if verbose == True:
@@ -314,4 +310,5 @@ import matplotlib.pylab as plt
 a = fits.open('/genesis/jwst/userland-soss/loic_review/stack_256_ng3_DMS.fits')
 im = a[0].data
 
-x_o1, y_o1 = get_centerofmass_centroids(im, header=hdr, badpix=False, verbose=verbose)
+#x_o1, y_o1 = get_centerofmass_centroids(im, header=hdr, badpix=False, verbose=verbose)
+x_o1, y_o1 = get_centerofmass_centroids(im, badpix=False, verbose=False)

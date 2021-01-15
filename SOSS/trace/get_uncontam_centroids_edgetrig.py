@@ -137,6 +137,8 @@ def get_edge_centroids(stack, header=None, badpix=None, mask=None, verbose=False
     dimx, dimy, xos, yos, xnative, ynative, padding, working_pixel_bool = \
         determine_stack_dimensions(stack, header=header)
 
+    if mask == None: mask = np.ones((dimy,dimx))
+
     edge1, edge2 = [], []
     for i in range(dimx):
         #if i >= 1000: verbose = True
@@ -266,5 +268,7 @@ im = a[0].data
 # Triggers on the rising and declining edges of the trace. Make a polynomial
 # fit to those and return the x,y fit. Alternatively, the parameters of that
 # fit coudl be returned by using return_what='edgemean_param'.
-x_o1, y_o1 = get_edge_centroids(im, header=hdr, return_what='edgemean_xy',
+#x_o1, y_o1 = get_edge_centroids(im, header=hdr, return_what='edgemean_xy',
+#                                polynomial_order=10, verbose=False)
+x_o1, y_o1 = get_edge_centroids(im, return_what='edgemean_xy',
                                 polynomial_order=10, verbose=False)
