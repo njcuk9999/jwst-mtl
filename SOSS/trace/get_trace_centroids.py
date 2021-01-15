@@ -1,5 +1,5 @@
 def determine_stack_dimensions(stack, header=None, verbose=False):
-    ''' Determine the size of the stack array. Will be called by get_uncontam_centroids
+    ''' Determine the size of the stack array. Will be called by get_centerofmass_centroids
     and make_trace_mask.
     Parameters
     ----------
@@ -327,7 +327,7 @@ def make_mask_butorder3(stack, header=None, inverted=False):
 def get_edge_centroids(stack, header=None, badpix=None, mask=None, verbose=False,
                        return_what='edgemean_param', polynomial_order=2,
                        triggerscale=5):
-    ''' Determine the x, y positions of the trace centroids from an exposure 
+    ''' Determine the x, y positions of the trace centroids from an exposure
     using the two edges and the width of the traces. This should be performed on a very high SNR
     stack.
 
@@ -458,7 +458,7 @@ def edge_trigger(column, triggerscale=5, verbose=False):
 
 
 
-def get_uncontam_centroids(stack, header=None, badpix=None, tracemask=None, verbose=False,
+def get_centerofmass_centroids(stack, header=None, badpix=None, tracemask=None, verbose=False,
                            specpix_bounds=None):
     '''Determine the x, y positions of the trace centroids from an
     exposure using a center-of-mass analysis. Works for either order if there
@@ -660,7 +660,7 @@ def trace_centroids(stack, header=None, badpix=None, verbose=False):
     ######################################################################
     ############################ FIRST ORDER #############################
     ######################################################################
-    # First, call the get_uncontam_centroids for the first order.
+    # First, call the get_centerofmass_centroids for the first order.
     # All sub-array sizes should have a first order. SUBSTRIP256 and SUBSTRIP96 will
     # have it very close to the bottom edge, i.e. We assume that the brightest
     # trace is the one of interest. For FULLFRAME, things may be a bit different
@@ -668,7 +668,7 @@ def trace_centroids(stack, header=None, badpix=None, verbose=False):
     # out pixels outside the 256x2048 region.
     if (ynative == 96) or (ynative == 256) or (ynative == 252):
         # Call the centroiding algorithm
-        x_o1, y_o1 = get_uncontam_centroids(stack, header=header, badpix=badpix,
+        x_o1, y_o1 = get_centerofmass_centroids(stack, header=header, badpix=badpix,
                                             verbose=verbose)
         # Construct a mask that not only covers the order 1 trace but everything blueward
         # along the spatial axis. In prevision of making an inversion.
@@ -688,7 +688,7 @@ def trace_centroids(stack, header=None, badpix=None, verbose=False):
         # Set to 0 that outside region
         fieldmask[(0 + padding) * yos:(1792 + padding) * yos, :] = 0
         # Call the centroiding algorithm on that masked image (use tracemask optional keyword)
-        x_o1, y_o1 = get_uncontam_centroids(stack, header=header, badpix=badpix,
+        x_o1, y_o1 = get_centerofmass_centroids(stack, header=header, badpix=badpix,
                                             tracemask=fieldmask, verbose=verbose)
         # Construct a mask that not only covers the order 1 trace but everything blueward
         # along the spatial axis. In prevision of making an inversion.
