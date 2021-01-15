@@ -458,8 +458,7 @@ def edge_trigger(column, triggerscale=5, verbose=False):
 
 
 
-def get_centerofmass_centroids(stack, header=None, badpix=None, tracemask=None, verbose=False,
-                           specpix_bounds=None):
+def get_centerofmass_centroids(stack, header=None, badpix=None, tracemask=None, verbose=False):
     '''Determine the x, y positions of the trace centroids from an
     exposure using a center-of-mass analysis. Works for either order if there
     is no contamination, or for order 1 on a detector where the two orders
