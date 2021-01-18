@@ -90,8 +90,8 @@ def main():
     padding = 10
     oversample = 2
     orders = [1, 2, 3]
-    soss_trace_table_ref = 'SOSS_ref_trace_table.fits'  # Input SOSS reference file.
-    soss_2d_wave_ref = 'SOSS_ref_2D_wave.fits'  # Output SOSS reference file.
+    soss_ref_trace_table = 'SOSS_ref_trace_table.fits'  # Input SOSS reference file.
+    soss_ref_2d_wave = 'SOSS_ref_2D_wave.fits'  # Output SOSS reference file.
 
     # Start building the output fits file.
     hdul = list()
@@ -102,7 +102,7 @@ def main():
     for m in orders:
 
         # Read the 1D trace reference file.
-        data = fits.getdata(soss_trace_table_ref, ext=m)
+        data = fits.getdata(soss_ref_trace_table, ext=m)
 
         # Unpack the 1D trace info.
         wave_grid = data['WAVELENGTH']
@@ -136,7 +136,7 @@ def main():
         hdul.append(hdu)
 
     hdul = fits.HDUList(hdul)
-    hdul.writeto(soss_2d_wave_ref, overwrite=True)
+    hdul.writeto(soss_ref_2d_wave, overwrite=True)
 
     return
 

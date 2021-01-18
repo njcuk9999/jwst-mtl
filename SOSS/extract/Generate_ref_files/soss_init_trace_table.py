@@ -26,7 +26,7 @@ def main():
     throughput_file = '../Ref_files/NIRISS_Throughput_STScI.fits'
     tilt_file = '../../trace/SOSS_wavelength_dependent_tilt.ecsv'
     trace_pos_file = '../../trace/NIRISS_GR700_trace_extended.csv'
-    soss_trace_table_ref = 'SOSS_ref_trace_table.fits'  # Output SOSS reference file.
+    soss_ref_trace_table = 'SOSS_ref_trace_table.fits'  # Output SOSS reference file.
 
     # Reference wavelength grid in micron.
     wave_grid = np.linspace(0.5, 5.5, 5001)
@@ -124,7 +124,7 @@ def main():
     hdu3.header['DYSUB256'] = (-1792, 'Y offset for SUBSTRIP256 images.')
 
     hdul = fits.HDUList([hdu0, hdu1, hdu2, hdu3])
-    hdul.writeto(soss_trace_table_ref, overwrite=True)
+    hdul.writeto(soss_ref_trace_table, overwrite=True)
 
     return
 
