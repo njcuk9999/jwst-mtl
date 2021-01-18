@@ -325,21 +325,36 @@ def make_mask_butorder3(stack, header=None, inverted=False):
 
 
 def get_edge_centroids(stack, header=None, badpix=None, mask=None, verbose=False,
-                       return_what='edgemean_param', polynomial_order=2,
+                       return_what='edgecomb_param', polynomial_order=2,
                        triggerscale=5):
     ''' Determine the x, y positions of the trace centroids from an exposure
     using the two edges and the width of the traces. This should be performed on a very high SNR
     stack.
-
+    INPUTS
+    stack : a fits image, preferably a high SNR stack with 2 dimensions. Not for raw images
+        with 4 dimensions. The best stack here is from the 2D Trace reference file. You call
+        this for each order.
+    OPTIONAL INPUTS
+    header :
+        In the case that the input stack comes from the 2D Trace reference file, pass its
+        header which contains important info regrading the padding, for example.
+    badpix : Can provide a bad pixel mask, it is assumed to be of same dimensions as the stack
+    mask : Can provide a mask that will be applied on top of the stack, assumed same dimensions as stack
+    polynomial_order : For the fit to the trace positions.
+    triggerscale : The number of pixels to median spatially when calculating the column slopes to identify edges.
+        Default 5. Has to be an odd number. Should not play too much with that.
+    verbose : Will output stuff and make plots if set to True, default False.
     return_what : What to return. Either x,y positions or polynomial parameters,
-    either for one of the edges or for the mean of both edges (i.e. trace center)
-    'edgemean_param' : polynomial fit parameters to the mean of both edges, i.e. trace center
-    'edgeman_xy' : x, y values for the mean of both edges
-    'rededge_param' : polynomial fit parameters to the red edge (spatially)
-    'rededge_xy' : x, y values for the red edge
-    'blueedge_param' : polynomial fit parameters to the blue edge (spatially)
-    'blueedge_xy' : x, y values for the blue edge
-    'tracewidth' : scalar representing the median of (red edge - blue edge) y values
+        either for one of the edges or for the mean of both edges (i.e. trace center)
+        'edgemean_param' : polynomial fit parameters to the mean of both edges, i.e. trace center
+        'edgeman_xy' : x, y values for the mean of both edges
+        'rededge_param' : polynomial fit parameters to the red edge (spatially)
+        'rededge_xy' : x, y values for the red edge
+        'blueedge_param' : polynomial fit parameters to the blue edge (spatially)
+        'blueedge_xy' : x, y values for the blue edge
+        'edgecomb_param' : when both edges are detected simultaneously (one inverted with a trace width offset)
+        'edgecomb_xy' : x, y values
+        'tracewidth' : scalar representing the median of (red edge - blue edge) y values
     '''
 
     # Call the script that determines the dimensions of the stack. It handles
@@ -349,15 +364,21 @@ def get_edge_centroids(stack, header=None, badpix=None, mask=None, verbose=False
     dimx, dimy, xos, yos, xnative, ynative, padding, working_pixel_bool = \
         determine_stack_dimensions(stack, header=header)
 
-    edge1, edge2 = [], []
+    if mask == None: mask = np.ones((dimy,dimx))
+
+    edge1, edge2, edgecomb = [], [], []
     for i in range(dimx):
-        #if i >= 1000: verbose = True
-        y1, y2 = edge_trigger(stack[:,i]*mask[:,i], triggerscale=triggerscale, verbose=verbose)
-        #print(i, y1, y2)
+        if (i % 100 == 0) & (verbose == True):
+            y1, y2, ycomb = edge_trigger(stack[:, i] * mask[:, i], triggerscale=triggerscale, verbose=True, yos=yos)
+        else:
+            y1, y2, ycomb = edge_trigger(stack[:, i] * mask[:, i], triggerscale=triggerscale, verbose=False, yos=yos)
+        # print(i, y1, y2)
         edge1.append(y1)
         edge2.append(y2)
+        edgecomb.append(ycomb)
     edge1 = np.array(edge1)
     edge2 = np.array(edge2)
+    edgecomb = np.array(edgecomb)
 
     # Fit the red edge
     x_red = np.arange(dimx)
@@ -369,6 +390,11 @@ def get_edge_centroids(stack, header=None, badpix=None, mask=None, verbose=False
     ind = np.where(np.isfinite(edge2))
     param_blue = polyfit_sigmaclip(x_blue[ind], edge2[ind], polynomial_order)
     y_blue = np.polyval(param_blue, x_blue)
+    # Fit the combined edges simultaneously
+    x_comb = np.arange(dimx)
+    ind = np.where(np.isfinite(edgecomb))
+    param_comb = polyfit_sigmaclip(x_comb[ind], edgecomb[ind], polynomial_order)
+    y_comb = np.polyval(param_comb, x_comb)
     # Fit the mean of both edges
     x_both = np.arange(dimx)
     both = (edge1+edge2)/2.
@@ -378,27 +404,32 @@ def get_edge_centroids(stack, header=None, badpix=None, mask=None, verbose=False
 
     # Plot the edge position as a function of x
     if True:
-        plt.plot(edge1)
-        plt.plot(edge2)
-        plt.plot(both)
-        plt.plot(x_red, y_red)
-        plt.plot(x_blue, y_blue)
-        plt.plot(x_both, y_both)
-        plt.plot(np.abs(edge1-edge2))
+        plt.plot(edge1, label='RAW Rising edge')
+        plt.plot(edge2, label='RAW Falling edge')
+        plt.plot(edgecomb, label='RAW Combined+inverted+offset rising edges')
+        plt.plot(both, label='RAW Rising + falling edges average')
+        plt.plot(x_red, y_red, label='FIT Rising edge')
+        plt.plot(x_blue, y_blue, label='FIT Falling edge')
+        plt.plot(x_comb, y_comb, label='FIT Combined+inverted+offset rising edges')
+        plt.plot(x_both, y_both, label='FIT Rising + falling edges average')
+        plt.plot(np.abs(edge1-edge2), label='RAW Trace width')
         plt.legend()
         plt.show()
 
     # Trace width
     tracewidth = np.nanmedian(np.abs(edge1 - edge2))
 
-
     if return_what == 'edgemean_param' : return param_both
     if return_what == 'rededge_param' : return param_red
     if return_what == 'blueedge_param' : return param_blue
+    if return_what == 'edgecomb_param' : return param_comb
     if return_what == 'edgemean_xy' : return x_both, y_both
     if return_what == 'rededge_xy' : return x_red, y_red
     if return_what == 'blueedge_xy' : return x_blue, y_blue
+    if return_what == 'edgecomb_xy' : return x_comb, y_comb
     if return_what == 'tracewidth' : return tracewidth
+
+
 
 
 def polyfit_sigmaclip(x, y, order, sigma=4):
@@ -417,7 +448,7 @@ def polyfit_sigmaclip(x, y, order, sigma=4):
 
 
 
-def edge_trigger(column, triggerscale=5, verbose=False):
+def edge_trigger(column, triggerscale=5, verbose=False, yos=1):
     # triggerscale must be odd integer
 
     # dimension of the column array
@@ -449,12 +480,36 @@ def edge_trigger(column, triggerscale=5, verbose=False):
     edgemin = np.nan
     if indmin.size > 0: edgemin = ic[indmin[0][0]]
 
+    # Determine which (x,x+width) pair sees the maximum and minimum slopes simultaneously.
+    # This methods is the most robust. It scans the combined slope peak for 12 different
+    # trace widths 15 to 27 native pixels and triggers on the maximum combined slope.
+    # Initialize the combined slope maximum value (valmax), x index (indcomb) and trace width
+    valmax, indcomb, widthcomb = 0, -1, 0
+    # Scan for 12 trace widths 12 to 27 native pixels
+    for width in range(12):
+        # add the slope and its offsetted negative
+        comb = slope - np.roll(slope, -yos*(15+width))
+        # Find the maximum resulting slope
+        indcurr = np.argwhere(comb == np.nanmax(comb))
+        valcurr = -1
+        if indcurr.size > 0: valcurr = comb[indcurr[0][0]]
+        # Keep that as the optimal if it is among all trace widths
+        if valcurr > valmax:
+            valmax = np.copy(valcurr)
+            indcomb = np.copy(indcurr[0][0])
+            widthcomb = yos*(15+width)
+    edgecomb = np.nan
+    if np.size(indcomb) > 0: edgecomb = ic[indcomb] + widthcomb/2.
+
+
     # Make a plot if verbose is True
     if verbose == True:
         plt.plot(ic,slope)
+        plt.plot(ic,comb)
         plt.show()
 
-    return edgemax, edgemin
+    return edgemax, edgemin, edgecomb
+
 
 
 
@@ -620,18 +675,9 @@ def get_centerofmass_centroids(stack, header=None, badpix=None, tracemask=None, 
         # same as for regular science images.
         induse = np.isfinite(tracex_best) & np.isfinite(tracey_best) & \
                  (tracex_best >= xos*padding) & (tracex_best < (dimx-xos*padding))
-    # Find indices of pixels to include in the polynomial fit if specpix_bounds
-    if specpix_bounds != None:
-        indfit = (tracex_best >= np.min(specpix_bounds)) & (tracex_best <= np.max(specpix_bounds))
-    else:
-        indfit = np.copy(induse)
-    # Use a *** fixed *** polynomial order of 11 to keep results consistent
-    # from data set to data set. Any systematics would remain fixed.
-    if specpix_bounds != None:
-        polyorder = 2
-    else:
-        polyorder = 11
-    param = np.polyfit(tracex_best[induse & indfit], tracey_best[induse & indfit], polyorder)
+
+    polyorder = 11
+    param = np.polyfit(tracex_best[induse], tracey_best[induse], polyorder)
     tracey_best = np.polyval(param, tracex_best)
 
     if verbose == True:
@@ -781,7 +827,24 @@ import matplotlib.pylab as plt
 # Get an image of the traces
 a = fits.open('/genesis/jwst/userland-soss/loic_review/stack_256_ng3_DMS.fits')
 im = a[0].data
+
+x_o1_cv3, y_o1_cv3 = get_edge_centroids(im, return_what='edgecomb_xy',
+                                    polynomial_order=10, verbose=False)
+
 #im = np.zeros((256*2,2040*2))
+a = fits.open('/genesis/jwst/userland-soss/loic_review/simu_o1only.fits')
+im = a[1].data
+im = im[0,0,:,:]
+x_o1_sim, y_o1_sim = get_edge_centroids(im, return_what='edgecomb_xy',
+                                    polynomial_order=10, verbose=False)
+
+plt.plot(x_o1_cv3, y_o1_cv3, label='CV3 - edges')
+plt.plot(x_o1_sim, y_o1_sim, label='simu - edges')
+plt.legend()
+plt.show()
+sys.exit()
+
+
 
 x_o1, y_o1, x_o2, y_o2, x_o3, y_o3 = trace_centroids(im, verbose=False)
 

@@ -1,3 +1,27 @@
+import numpy as np
+import sys
+from astropy.io import fits
+import matplotlib.pylab as plt
+
+def get_uncontam_centroids():
+
+    # Read in the 2D trace reference file (each extension has an isolated
+    # trace). When it exists, make sure to pass the deader as well in the call
+    # to the get_edge_centroids function. For now, we are missing that file so
+    # use the CV3 stack instead.
+    #
+    # im = read.the.2Dtrace.ref.file
+    # hdr = is.its.header
+    a = fits.open('/genesis/jwst/userland-soss/loic_review/stack_256_ng3_DMS.fits')
+    im = a[0].data
+
+    # x_o1, y_o1 = get_centerofmass_centroids(im, header=hdr, badpix=False, verbose=verbose)
+    x_o1, y_o1 = get_centerofmass_centroids(im, badpix=False, verbose=False)
+
+    return x_o1, y_o1
+
+
+
 def determine_stack_dimensions(stack, header=None, verbose=False):
     ''' Determine the size of the stack array. Will be called by get_uncontam_centroids
     and make_trace_mask.
@@ -291,24 +315,3 @@ def get_centerofmass_centroids(stack, header=None, badpix=None, tracemask=None, 
 
 
 
-
-
-# test the script
-
-import numpy as np
-import sys
-from astropy.io import fits
-import matplotlib.pylab as plt
-
-# Read in the 2D trace reference file (each extension has an isolated
-# trace). When it exists, make sure to pass the deader as well in the call
-# to the get_edge_centroids function. For now, we are missing that file so
-# use the CV3 stack instead.
-#
-# im = read.the.2Dtrace.ref.file
-# hdr = is.its.header
-a = fits.open('/genesis/jwst/userland-soss/loic_review/stack_256_ng3_DMS.fits')
-im = a[0].data
-
-#x_o1, y_o1 = get_centerofmass_centroids(im, header=hdr, badpix=False, verbose=verbose)
-x_o1, y_o1 = get_centerofmass_centroids(im, badpix=False, verbose=False)
