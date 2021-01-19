@@ -364,7 +364,7 @@ def get_edge_centroids(stack, header=None, badpix=None, mask=None, verbose=False
     dimx, dimy, xos, yos, xnative, ynative, padding, working_pixel_bool = \
         determine_stack_dimensions(stack, header=header)
 
-    if mask == None: mask = np.ones((dimy,dimx))
+    if mask is None: mask = np.ones((dimy,dimx))
 
     edge1, edge2, edgecomb = [], [], []
     for i in range(dimx):
@@ -404,15 +404,15 @@ def get_edge_centroids(stack, header=None, badpix=None, mask=None, verbose=False
 
     # Plot the edge position as a function of x
     if True:
-        plt.plot(edge1, label='RAW Rising edge')
-        plt.plot(edge2, label='RAW Falling edge')
-        plt.plot(edgecomb, label='RAW Combined+inverted+offset rising edges')
-        plt.plot(both, label='RAW Rising + falling edges average')
+        plt.scatter(x_red, edge1, marker=",", s=0.8, label='RAW Rising edge')
+        plt.scatter(x_blue, edge2, marker=",", s=0.8, label='RAW Falling edge')
+        plt.scatter(x_comb, edgecomb, marker=",", s=0.8, label='RAW Combined+inverted+offset rising edges')
+        plt.scatter(x_both, both, marker=",", s=0.8, label='RAW Rising + falling edges average')
         plt.plot(x_red, y_red, label='FIT Rising edge')
         plt.plot(x_blue, y_blue, label='FIT Falling edge')
         plt.plot(x_comb, y_comb, label='FIT Combined+inverted+offset rising edges')
         plt.plot(x_both, y_both, label='FIT Rising + falling edges average')
-        plt.plot(np.abs(edge1-edge2), label='RAW Trace width')
+        plt.scatter(x_red, np.abs(edge1-edge2), marker=",", s=0.8, label='RAW Trace width')
         plt.legend()
         plt.show()
 
@@ -485,10 +485,12 @@ def edge_trigger(column, triggerscale=5, verbose=False, yos=1):
     # trace widths 15 to 27 native pixels and triggers on the maximum combined slope.
     # Initialize the combined slope maximum value (valmax), x index (indcomb) and trace width
     valmax, indcomb, widthcomb = 0, -1, 0
-    # Scan for 12 trace widths 12 to 27 native pixels
-    for width in range(12):
+    widthrange = [18,19,20,21,22,23,24,25,26,27]
+    # Scan for 9 trace widths 18 to 27 native pixels
+    for width in widthrange:
         # add the slope and its offsetted negative
-        comb = slope - np.roll(slope, -yos*(15+width))
+        #comb = slope - np.roll(slope, -yos*width)
+        comb = slope - shift(slope, -yos*width)
         # Find the maximum resulting slope
         indcurr = np.argwhere(comb == np.nanmax(comb))
         valcurr = -1
@@ -497,9 +499,10 @@ def edge_trigger(column, triggerscale=5, verbose=False, yos=1):
         if valcurr > valmax:
             valmax = np.copy(valcurr)
             indcomb = np.copy(indcurr[0][0])
-            widthcomb = yos*(15+width)
+            widthcomb = yos*width
     edgecomb = np.nan
-    if np.size(indcomb) > 0: edgecomb = ic[indcomb] + widthcomb/2.
+    if np.size(indcomb) > 0:
+        if indcomb != -1: edgecomb = ic[indcomb] + widthcomb/2.
 
 
     # Make a plot if verbose is True
@@ -511,7 +514,16 @@ def edge_trigger(column, triggerscale=5, verbose=False, yos=1):
     return edgemax, edgemin, edgecomb
 
 
-
+def shift(xs, n):
+    # Like np.roll but the wrapped around part is set to zero
+    e = np.empty_like(xs)
+    if n >= 0:
+        e[:n] = 0.0
+        e[n:] = xs[:-n]
+    else:
+        e[n:] = 0.0
+        e[:n] = xs[-n:]
+    return e
 
 def get_centerofmass_centroids(stack, header=None, badpix=None, tracemask=None, verbose=False):
     '''Determine the x, y positions of the trace centroids from an
@@ -722,7 +734,7 @@ def trace_centroids(stack, header=None, badpix=None, verbose=False):
 
         # Make a second pass at order 1 with a different method
         x_o1, y_o1 = get_edge_centroids(stack, header=header, badpix=badpix, mask=mask_o1_inverted,
-                                        return_what='edgemean_xy', polynomial_order=10, verbose=verbose)
+                                        return_what='edgecomb_xy', polynomial_order=10, verbose=verbose)
 
     if (ynative == 2048):
         # Build a mask to mask out what is below the 1st order trace
@@ -742,7 +754,7 @@ def trace_centroids(stack, header=None, badpix=None, verbose=False):
         # Make a second pass at order 1 with a different method
         maskall = fieldmask * mask_o1_inverted
         x_o1, y_o1 = get_edge_centroids(stack, header=header, badpix=badpix, mask=maskall,
-                                        return_what='edgemean_xy', polynomial_order=10, verbose=verbose)
+                                        return_what='edgecomb_xy', polynomial_order=10, verbose=verbose)
 
     if (ynative == 96):
         return x_o1, y_o1
@@ -757,7 +769,7 @@ def trace_centroids(stack, header=None, badpix=None, verbose=False):
         mask_allbut3 = make_mask_butorder3(stack, header=header)
         # Get the centroid position by locking on the traces edges and returning their mean
         x_o3, y_o3 = get_edge_centroids(stack, header=header, badpix=badpix, mask=mask_allbut3,
-                                        return_what='edgemean_xy', polynomial_order=3, verbose=verbose)
+                                        return_what='edgecomb_xy', polynomial_order=3, verbose=verbose)
 
         ######################################################################
         ########################### SECOND ORDER #############################
@@ -824,80 +836,51 @@ import sys
 from astropy.io import fits
 import matplotlib.pylab as plt
 
-# Get an image of the traces
-a = fits.open('/genesis/jwst/userland-soss/loic_review/stack_256_ng3_DMS.fits')
-im = a[0].data
 
-x_o1_cv3, y_o1_cv3 = get_edge_centroids(im, return_what='edgecomb_xy',
-                                    polynomial_order=10, verbose=False)
-
-#im = np.zeros((256*2,2040*2))
-a = fits.open('/genesis/jwst/userland-soss/loic_review/simu_o1only.fits')
-im = a[1].data
-im = im[0,0,:,:]
-x_o1_sim, y_o1_sim = get_edge_centroids(im, return_what='edgecomb_xy',
-                                    polynomial_order=10, verbose=False)
-
-plt.plot(x_o1_cv3, y_o1_cv3, label='CV3 - edges')
-plt.plot(x_o1_sim, y_o1_sim, label='simu - edges')
-plt.legend()
-plt.show()
-sys.exit()
-
-
-
-x_o1, y_o1, x_o2, y_o2, x_o3, y_o3 = trace_centroids(im, verbose=False)
-
-plt.imshow(np.log10(im), origin='bottom')
-plt.plot(x_o1, y_o1)
-plt.plot(x_o2, y_o2)
-plt.plot(x_o3, y_o3)
-plt.ylim((0,256))
-plt.show()
-
-sys.exit()
-
-mask = make_mask_butorder3(im)
-
-# Save the mask on disk
-hdu = fits.PrimaryHDU()
-hdu.data = mask
-hdu.writeto('/genesis/jwst/userland-soss/loic_review/mask.fits', overwrite=True)
-
-sys.exit()
+if False:
+    # Test whether the simulation and CV3 are aligned
+    # Get an image of the traces
+    a = fits.open('/genesis/jwst/userland-soss/loic_review/stack_256_ng3_DMS.fits')
+    im = a[0].data
+    x_o1_cv3, y_o1_cv3 = get_edge_centroids(im, return_what='edgecomb_xy',
+                                        polynomial_order=10, verbose=False)
+    #im = np.zeros((256*2,2040*2))
+    a = fits.open('/genesis/jwst/userland-soss/loic_review/simu_o1only.fits')
+    im = a[1].data
+    im = im[0,0,:,:]
+    x_o1_sim, y_o1_sim = get_edge_centroids(im, return_what='edgecomb_xy',
+                                        polynomial_order=10, verbose=False)
+    # Plot the comparison
+    plt.plot(x_o1_cv3, y_o1_cv3, label='CV3 - edges')
+    plt.plot(x_o1_sim, y_o1_sim, label='simu - edges')
+    plt.legend()
+    plt.show()
+    sys.exit()
 
 if True:
-    edge1, edge2 = [], []
-    for i in range(2048):
-        y1, y2 = edge_trigger(im[:,i]*mask_o1[:,i], triggerscale=5, verbose=False)
-        print(i, y1, y2)
-        edge1.append(y1)
-        edge2.append(y2)
-    plt.plot(edge1)
-    plt.plot(edge2)
+    # Test the whole chain on CV3 data
+    # Get an image of the traces
+    a = fits.open('/genesis/jwst/userland-soss/loic_review/stack_256_ng3_DMS.fits')
+    im = a[0].data
+
+    x_o1, y_o1, x_o2, y_o2, x_o3, y_o3 = trace_centroids(im, verbose=False)
+
+    plt.imshow(np.log10(im), origin='bottom')
+    plt.plot(x_o1, y_o1)
+    plt.plot(x_o2, y_o2)
+    plt.plot(x_o3, y_o3)
+    plt.ylim((0,256))
     plt.show()
 
-sys.exit()
+if False:
+    # Example of making a mask
+    mask = make_mask_butorder3(im)
 
-
-#a = plt.figure(figsize=(8,4))
-print('vas-y!')
-#plt.imshow(mask_o2*im, origin='bottom')
-plt.imshow(im*mask_o1, origin='bottom')
-plt.plot(x_o1, y_o1)
-plt.plot(x_o2, y_o2)
-plt.ylim((0,2048))
-plt.show()
+    # Save the mask on disk
+    hdu = fits.PrimaryHDU()
+    hdu.data = mask
+    hdu.writeto('/genesis/jwst/userland-soss/loic_review/mask.fits', overwrite=True)
 
 
 
-# Save the mask on disk
-hdu = fits.PrimaryHDU()
-hdu.data = mask_o1
-hdu.writeto('/genesis/jwst/userland-soss/loic_review/mask.fits', overwrite=True)
-
-# Save the masked CV3 stack on disk
-hdu = fits.PrimaryHDU()
-hdu.data = mask_o1 * im
-hdu.writeto('/genesis/jwst/userland-soss/loic_review/maskedcv3.fits', overwrite=True)
 

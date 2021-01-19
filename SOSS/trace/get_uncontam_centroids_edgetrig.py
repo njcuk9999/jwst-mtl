@@ -226,15 +226,15 @@ def get_edge_centroids(stack, header=None, badpix=None, mask=None, verbose=False
 
     # Plot the edge position as a function of x
     if True:
-        plt.plot(edge1, label='RAW Rising edge')
-        plt.plot(edge2, label='RAW Falling edge')
-        plt.plot(edgecomb, label='RAW Combined+inverted+offset rising edges')
-        plt.plot(both, label='RAW Rising + falling edges average')
+        plt.scatter(x_red, edge1, marker=",", s=0.8, label='RAW Rising edge')
+        plt.scatter(x_blue, edge2, marker=",", s=0.8, label='RAW Falling edge')
+        plt.scatter(x_comb, edgecomb, marker=",", s=0.8, label='RAW Combined+inverted+offset rising edges')
+        plt.scatter(x_both, both, marker=",", s=0.8, label='RAW Rising + falling edges average')
         plt.plot(x_red, y_red, label='FIT Rising edge')
         plt.plot(x_blue, y_blue, label='FIT Falling edge')
         plt.plot(x_comb, y_comb, label='FIT Combined+inverted+offset rising edges')
         plt.plot(x_both, y_both, label='FIT Rising + falling edges average')
-        plt.plot(np.abs(edge1-edge2), label='RAW Trace width')
+        plt.scatter(x_red, np.abs(edge1-edge2), marker=",", s=0.8, label='RAW Trace width')
         plt.legend()
         plt.show()
 
@@ -306,10 +306,12 @@ def edge_trigger(column, triggerscale=5, verbose=False, yos=1):
     # trace widths 15 to 27 native pixels and triggers on the maximum combined slope.
     # Initialize the combined slope maximum value (valmax), x index (indcomb) and trace width
     valmax, indcomb, widthcomb = 0, -1, 0
-    # Scan for 12 trace widths 12 to 27 native pixels
-    for width in range(12):
+    widthrange = [18,19,20,21,22,23,24,25,26,27]
+    # Scan for 9 trace widths 18 to 27 native pixels
+    for width in widthrange:
         # add the slope and its offsetted negative
-        comb = slope - np.roll(slope, -yos*(15+width))
+        #comb = slope - np.roll(slope, -yos*width)
+        comb = slope - shift(slope, -yos*width)
         # Find the maximum resulting slope
         indcurr = np.argwhere(comb == np.nanmax(comb))
         valcurr = -1
@@ -318,9 +320,10 @@ def edge_trigger(column, triggerscale=5, verbose=False, yos=1):
         if valcurr > valmax:
             valmax = np.copy(valcurr)
             indcomb = np.copy(indcurr[0][0])
-            widthcomb = yos*(15+width)
+            widthcomb = yos*width
     edgecomb = np.nan
-    if np.size(indcomb) > 0: edgecomb = ic[indcomb] + widthcomb/2.
+    if np.size(indcomb) > 0:
+        if indcomb != -1: edgecomb = ic[indcomb] + widthcomb/2.
 
 
     # Make a plot if verbose is True
@@ -330,4 +333,16 @@ def edge_trigger(column, triggerscale=5, verbose=False, yos=1):
         plt.show()
 
     return edgemax, edgemin, edgecomb
+
+
+def shift(xs, n):
+    # Like np.roll but the wrapped around part is set to zero
+    e = np.empty_like(xs)
+    if n >= 0:
+        e[:n] = 0.0
+        e[n:] = xs[:-n]
+    else:
+        e[n:] = 0.0
+        e[:n] = xs[-n:]
+    return e
 
