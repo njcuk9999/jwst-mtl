@@ -59,6 +59,7 @@ def main():
 
     hdul = fits.HDUList(hdul)
     hdul.writeto(soss_ref_2d_profile, overwrite=True)
+    hdul.writeto(soss_ref_2d_profile + '.gz', overwrite=True)
 
     return
 

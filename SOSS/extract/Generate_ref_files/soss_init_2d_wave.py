@@ -137,6 +137,7 @@ def main():
 
     hdul = fits.HDUList(hdul)
     hdul.writeto(soss_ref_2d_wave, overwrite=True)
+    hdul.writeto(soss_ref_2d_wave + '.gz', overwrite=True)
 
     return
 

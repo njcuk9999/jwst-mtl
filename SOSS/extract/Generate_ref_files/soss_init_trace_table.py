@@ -125,6 +125,7 @@ def main():
 
     hdul = fits.HDUList([hdu0, hdu1, hdu2, hdu3])
     hdul.writeto(soss_ref_trace_table, overwrite=True)
+    hdul.writeto(soss_ref_trace_table + '.gz', overwrite=True)
 
     return
 
