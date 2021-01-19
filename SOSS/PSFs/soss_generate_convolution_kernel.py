@@ -16,7 +16,7 @@ from astropy.io import fits
 from scipy.stats import binned_statistic
 from scipy import ndimage
 import os.path
-import soss_get_tilt as titi
+import soss_get_tilt as sosstilt
 
 def webbpsf_return_listof(verbose=None, psf_path=None):
     
@@ -75,12 +75,57 @@ def webbpsf_read_and_rotate(filename, angle, verbose=None):
         plt.figure(figsize=(10,10))
         plt.imshow(np.log10(imagewarped[500:-500]),origin='bottom')
         
-    ## Save the rotated PSF on disk
-    hdu = fits.PrimaryHDU()
-    hdu.data = imagewarped
-    hdu.writeto('/genesis/jwst/userland-soss/loic_review/test.fits',overwrite=True)
+        ## Save the rotated PSF on disk
+        hdu = fits.PrimaryHDU()
+        hdu.data = imagewarped
+        hdu.writeto('/genesis/jwst/userland-soss/loic_review/test.fits',overwrite=True)
 
     return(imagewarped, oversampling, dim)
+
+
+def cut_ker_box(kernels, width=10, n_os=10, fwhm=5):
+    """
+    Cut kernel with a gaussian smoothed box.
+    width and fhwm in pixels
+    """
+    kernels = kernels.copy()
+    ker_width, n_ker = kernels.shape
+    # Define box around kernel center
+    width = width * n_os
+    ker_hwidth = ker_width // 2
+    pixel_os = np.arange(-ker_hwidth, ker_hwidth + 1)
+    box = np.abs(pixel_os) <= (width / 2)
+    # Define gaussian kernel to smooth the box
+    x0 = 0.0
+    sigma = fwhm2sigma(fwhm * n_os)
+    g_ker = gaussians(pixel_os, x0, sigma)
+    g_ker = g_ker / np.sum(g_ker)
+    # Convolve
+    box = np.convolve(box, g_ker, mode='same')
+    box = box / box.max()
+    # Apply to kernels
+    kernels *= box[:, None]
+    # Re-norm
+    kernels /= kernels.sum(axis=0)
+    return kernels
+
+
+def gaussians(x, x0, sig, amp=None):
+    """
+    Gaussian function
+    """
+    # Amplitude term
+    if amp is None:
+        amp = 1/np.sqrt(2 * np.pi * sig**2)
+    return amp * np.exp(-0.5*((x - x0) / sig)**2)
+
+
+def fwhm2sigma(fwhm):
+    """
+    Convert a full width half max to a standard deviation, assuming a gaussian
+    """
+    return fwhm / np.sqrt(8 * np.log(2))
+
 
 
 def generate_kernel(output_path, verbose=None, psf_path=None, kernel_semi_width=None):
@@ -128,6 +173,9 @@ def generate_kernel(output_path, verbose=None, psf_path=None, kernel_semi_width=
         ksw = kernel_semi_width
     # The core_semi_width is a pixel distance along the spatial axis that 
     # defines what region of the trace to keep in the analysis.
+    # core_semi_width is different than ksw. core_smi_width pertains to the
+    # inital PSF image. If interested by the output size ofthe kernel matrix, then
+    # ksw is the variable of interest.
     core_semi_width = 15
 
 
@@ -144,7 +192,7 @@ def generate_kernel(output_path, verbose=None, psf_path=None, kernel_semi_width=
             # Read and apply a rotation to the original oversampled webbpsf image.
             # angle = -3.0 # That is the tilt angle empirically seen in webbpsf's PSFs
             # Actually measure teh tilt on each PSF fits file
-            angle = titi.soss_get_tilt(filename[n])
+            angle = sosstilt.soss_get_tilt(filename[n])
             imagewarped, arg2, dim = webbpsf_read_and_rotate(filename[n], 
                                                            angle,
                                                            verbose=verbose)
@@ -226,15 +274,43 @@ def generate_kernel(output_path, verbose=None, psf_path=None, kernel_semi_width=
             # print the kernel at each wavelength
             print(n, k_bin)
 
+        # Antoine's contribution to taper down the kernel flux near the array edges
+        # cut_ker_box will construct a box profile of width 'width' with tapered edges
+        # over fwhm/2 on each side (with a gaussian shape) and multiply the kernel_matrix
+        # with that box. So arrange such that fwhm + width = kernel_matrix size, i.e. ksw*2+1
+        w = np.round(0.6666 * (2*ksw+1))
+        fwhm = (2*ksw+1) - w
+        print(w,fwhm)
+        kernel_matrix = cut_ker_box(kernel_matrix, width=w, n_os=osamp, fwhm=fwhm)
+
         # Save the rotated PSF on disk
-        hdu = fits.PrimaryHDU()
-        # Write the index of reddest end the monochromatic kernel 
-        # That determines which direction the kernel goes with 
-        # respect to your pixels.
-        #hdu.header['REDINDEX'], hdu.header['BLUINDEX'] = 0, np.size(k_bin)-1
-        hdu.header['REDINDEX'], hdu.header['BLUINDEX'] = np.size(k_bin)-1, 0
-        hdu.data = [kernel_matrix,wavelength_matrix]
-        hdu.writeto(matrix_name,overwrite=True)
+        if False:
+            # Initial saving method that I provided Antoien with.
+            #
+            # Write the index of reddest end the monochromatic kernel
+            # That determines which direction the kernel goes with
+            # respect to your pixels.
+            hdu = fits.PrimaryHDU()
+            #hdu.header['REDINDEX'], hdu.header['BLUINDEX'] = 0, np.size(k_bin)-1
+            hdu.header['REDINDEX'], hdu.header['BLUINDEX'] = np.size(k_bin)-1, 0
+            hdu.data = [kernel_matrix,wavelength_matrix]
+            hdu.writeto(matrix_name,overwrite=True)
+        if True:
+            # New saving method to adopt the new reference file definition
+            #
+            hdu = fits.PrimaryHDU(kernel_matrix)
+            hdu.header['SPECOS'] = osamp
+            hdu.header['HALFWIDT'] = ksw
+            hdu.header['INDCENTR'] = osamp*ksw+1
+            hdu.header['NWAVE'] = 95
+            hdu.header['WAVE0'] = 0.5
+            hdu.header['INDWAVE0'] = 1
+            hdu.header['WAVEN'] = 5.2
+            hdu.header['INDWAVEN'] = 95
+            hdu.writeto(matrix_name, overwrite=True)
+
+    return
+
 
 # Call the scripts
 generate_kernel('/genesis/jwst/userland-soss/loic_review/', verbose=False,
