@@ -18,14 +18,19 @@ def get_uncontam_centroids_edgetrig():
     a = fits.open('/genesis/jwst/userland-soss/loic_review/simu_o1only.fits')
     im = a[1].data
     im = im[0, 0, :, :]
+    # Try on the first ever 2D Trace reference file
+    a = fits.open('/genesis/jwst/userland-soss/loic_review/SOSS_ref_2D_profile.fits.gz')
+    im = a[2].data
+    hdr = a[2].header
+    #im = im[0, :, :]
 
     # Triggers on the rising and declining edges of the trace. Make a polynomial
     # fit to those and return the x,y fit. Alternatively, the parameters of that
     # fit coudl be returned by using return_what='edgemean_param'.
-    # x_o1, y_o1 = get_edge_centroids(im, header=hdr, return_what='edgemean_xy',
-    #                                polynomial_order=10, verbose=False)
-    x_o1, y_o1 = get_edge_centroids(im, return_what='edgecomb_xy',
+    x_o1, y_o1 = get_edge_centroids(im, header=hdr, return_what='edgecomb_xy',
                                     polynomial_order=10, verbose=False)
+    #x_o1, y_o1 = get_edge_centroids(im, return_what='edgecomb_xy',
+    #                                polynomial_order=10, verbose=False)
 
     return x_o1, y_o1
 
@@ -269,20 +274,22 @@ def polyfit_sigmaclip(x, y, order, sigma=4):
 
 
 
-def edge_trigger(column, triggerscale=5, verbose=False, yos=1):
-    # triggerscale must be odd integer
+def edge_trigger(column, triggerscale=2, verbose=False, yos=1):
+    # triggerscale must be an integer, expressed in native pixel size
 
     # dimension of the column array
     dim, = np.shape(column)
-    halftrig = int((triggerscale-1)/2)
+    #halftrig = int((triggerscale-1)/2)
+    half = triggerscale*yos
     # positions along that column where the full triggerscale is accessible
-    ic = halftrig + np.arange(dim-triggerscale)
+    #ic = halftrig + np.arange(dim-triggerscale*yos)
+    ic = half + np.arange(dim - 2*half)
     # slope of the flux at position datax
     slope = []
-    datax = np.arange(triggerscale)
+    datax = np.arange(2*half+1)
     # For each position, grab current n pixels, exclude NaN, fit a slope
     for i in ic:
-        data = column[i-halftrig:i+halftrig+1]
+        data = column[i-half:i+half+1]
         ind = np.where(np.isfinite(data))
         if np.size(ind) >=3:
             param = np.polyfit(datax[ind],data[ind],1)
@@ -292,12 +299,12 @@ def edge_trigger(column, triggerscale=5, verbose=False, yos=1):
     slope = np.array(slope)
 
     # Determine which x sees the maximum slope
-    indmax = np.argwhere(slope == np.nanmax(slope))
+    indmax = np.argwhere((slope == np.nanmax(slope)) & (slope !=0))
     edgemax = np.nan # default value because ref pixels produce no slope
     if indmax.size > 0: edgemax = ic[indmax[0][0]]
 
     # Determine which x sees the minimum slope
-    indmin = np.argwhere(slope == np.nanmin(slope))
+    indmin = np.argwhere((slope == np.nanmin(slope)) & (slope !=0))
     edgemin = np.nan
     if indmin.size > 0: edgemin = ic[indmin[0][0]]
 
@@ -313,7 +320,7 @@ def edge_trigger(column, triggerscale=5, verbose=False, yos=1):
         #comb = slope - np.roll(slope, -yos*width)
         comb = slope - shift(slope, -yos*width)
         # Find the maximum resulting slope
-        indcurr = np.argwhere(comb == np.nanmax(comb))
+        indcurr = np.argwhere((comb == np.nanmax(comb)) & (comb != 0))
         valcurr = -1
         if indcurr.size > 0: valcurr = comb[indcurr[0][0]]
         # Keep that as the optimal if it is among all trace widths
