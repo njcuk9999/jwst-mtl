@@ -13,8 +13,10 @@ from astropy import units as uu
 from astropy.coordinates import SkyCoord, Distance
 from astroquery.utils.tap.core import TapPlus
 import numpy as np
+import os
 from typing import Union
 import warnings
+
 
 # =============================================================================
 # Define variables
@@ -124,6 +126,16 @@ def make_catalog(ra: float, dec: float, radius: float, year: float,
 
     :return: None - makes file "outfile"
     """
+    print('='*50)
+    print('Field Catalog Generator')
+    print('='*50)
+
+    # log input parameters
+    print('\nMaking catalog for field centered on:')
+    print('\t RA: {0}'.format(ra))
+    print('\t DEC: {0}'.format(ra))
+    print('\n\tradius = {0} arcsec'.format(radius))
+    print('\tObservation date: {0}'.format(year))
 
     # get observation time
     with warnings.catch_warnings(record=True) as _:
@@ -138,7 +150,7 @@ def make_catalog(ra: float, dec: float, radius: float, year: float,
     # define gaia time
     gaia_time = Time('2015.5', format='decimalyear')
     # run Gaia query
-    print('Querying Gaia')
+    print('\nQuerying Gaia field\n')
     gaia_table = tap_query(GAIA_URL, gaia_query)
     # -------------------------------------------------------------------------
     # Query 2MASS - need to get J, H and Ks mag
@@ -146,7 +158,9 @@ def make_catalog(ra: float, dec: float, radius: float, year: float,
     jmag, hmag, kmag, tmass_id = [], [], [], []
     # now get 2mass magnitudes for each entry
     for row in range(len(gaia_table)):
-        print('Querying 2MASS {0} / {1}'.format(row + 1, len(gaia_table)))
+        # log progress
+        pargs = [row + 1, len(gaia_table)]
+        print('Querying 2MASS source {0} / {1}'.format(*pargs))
         # query 2MASS for magnitudes
         tmass_query = TWOMASS_QUERY.format(ID=gaia_table[GAIA_TWOMASS_ID][row],
                                            TWOMASS_ID=TWOMASS_ID)
@@ -209,10 +223,11 @@ def make_catalog(ra: float, dec: float, radius: float, year: float,
     final_table['niriss_f380m_magnitude'] = cat_table['KMAG']
     final_table['niriss_f430m_magnitude'] = cat_table['KMAG']
     final_table['niriss_f480m_magnitude'] = cat_table['KMAG']
-
     # construct out file name
     if outfile is None:
         outfile = OUTPUT_TABLE
+    # log progress
+    print('\nWriting catalog to {0}'.format(os.path.realpath(outfile)))
     # write table
     final_table.write(outfile, format='ascii.commented_header',
                       comment=header, overwrite=True)
