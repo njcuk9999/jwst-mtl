@@ -1,7 +1,19 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-CODE DESCRIPTION HERE
+    use function:
+
+    make_catalog(ra, dec, radius, year, outfile)
+
+    to generate the catalog
+
+    Make a catalogue of Gaia/2MASS point sources based on a circle of center
+    "ra" and "dec" of "radius" [arcsec]
+
+    Output table has following columns
+    index, ra, dec, kmag, kmag, kmag
+
+    and is saved in "outfile"
 
 Created on 2021-01-2021-01-20 16:10
 
