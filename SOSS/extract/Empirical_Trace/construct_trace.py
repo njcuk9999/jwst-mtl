@@ -22,7 +22,7 @@ from SOSS.extract.convolution import WebbKer
 
 
 def build_empirical_trace(clear, F277W, filename='spatial_profile.fits',
-                          doplot=False):
+                          doplot=False, pad_factor=1):
     ''' Procedural function to wrap around construct orders 1 and 2.
     Will do centroiding and call the functions to construct the models.
 
@@ -41,41 +41,43 @@ def build_empirical_trace(clear, F277W, filename='spatial_profile.fits',
     if os.path.exists(filename):
         print('Output file {} already exists. It will be overwritten'.format(filename))
     # Get the centroid positions for both orders from the data.
-    x1, y1, x2, y2, rot_pars = ctd.get_contam_centroids(clear, doplot=doplot)
+    centroids, rot_pars = ctd.get_contam_centroids(clear, doplot=doplot)
 
     # Overplot the data centroids on the CLEAR exposure if desired.
     if doplot is True:
-        _plot_centroid(clear, x1, y1, x2, y2)
+        _plot_centroid(clear, centroids)
 
     # Construct the first order profile.
     o1frame_contam = construct_order1(clear, F277W, rot_pars)
     # Create a mask to remove the second order from the CLEAR data.
-    o1frame = mask_order(o1frame_contam, x1, y1)
+    o1frame = mask_order(o1frame_contam, centroids['order 1'][0],
+                         centroids['order 1'][1])
     # Set any spurious negative values to zero.
     o1frame[o1frame < 0] = 0
     # Normalize the profile in each column.
     o1frame /= np.nansum(o1frame, axis=0)
-    # Add back extended wing structure.
-    o1frame = reconstruct_wings(o1frame, y1)
+    # Reconstruct extended wing structure, and add spatial axis padding.
+    o1frame = reconstruct_wings(o1frame, centroids['order 1'][1],
+                                pad_factor=pad_factor)
 
     # Get the extraction parameters
-    extract_params = get_extract_params()
-    ref_file_args = get_ref_file_args(o1frame)
+    #extract_params = get_extract_params()
+    #ref_file_args = get_ref_file_args(o1frame)
     # Construct the second order profile.
-    o2frame_contam = construct_order2(clear, ref_file_args, extract_params)
+    #o2frame_contam = construct_order2(clear, ref_file_args, extract_params)
     # Create a mask to remove residuals from the first order.
-    o2frame = mask_order(o2frame_contam, x2, y2)
+    #o2frame = mask_order(o2frame_contam, x2, y2)
     # Set any spurious negative values to zero.
-    o2frame[o2frame < 0] = 0
+    #o2frame[o2frame < 0] = 0
     # Normalize the profile in each column.
-    o2frame /= np.nansum(o2frame, axis=0)
+    #o2frame /= np.nansum(o2frame, axis=0)
 
     # Write the trace model to disk.
     #hdu = fits.PrimaryHDU()
     #hdu.data = np.dstack((o1frame, o2frame))
     #hdu.writeto(filename, overwrite=True)
 
-    return o1frame, o2frame
+    return o1frame#, o2frame
 
 
 def calc_interp_coefs(make_psfs=False, doplot=True, F277W=True, filepath=''):
@@ -179,7 +181,6 @@ def calc_interp_coefs(make_psfs=False, doplot=True, F277W=True, filepath=''):
                                np.sum(PSFs[E][f][600:700, :], axis=0))
 
             # Brute force the coefficient determination.
-            # It should only take a minute or so.
             for i in range(1, 100):
                 for j in range(1, 100):
                     i /= 10
@@ -265,8 +266,8 @@ def construct_order1(clear, F277, rot_params):
     F277 : np.array of float (2D)
         NIRISS SOSS F277W filter exposure dataframe. If no F277W exposure
         is available, pass None.
-    rot_params : tuple of float
-        Tuple containing the rotation angle, X and Y anchor points, and X
+    rot_params : list of float
+        List containing the rotation angle, X and Y anchor points, and X
         and Y offset required to transform OM coordinates to the detector
         frame.
 
@@ -306,6 +307,15 @@ def construct_order1(clear, F277, rot_params):
         # Normalize
         Ranch /= np.nansum(Ranch)
 
+        # Interpolation polynomial coeffs, calculated via calc_interp_coefs
+        coef_b = [0.86772837, -5.6445105, 9.03072711]
+        coef_r = [-0.86772837, 5.6445105, -8.03072711]
+        # Pixel coords at which to start and end interpolation in OM frame.
+        end = int(round(tp.wavelength_to_pix(2.1, tp2, 1)[0], 0))
+        # Determine the OM coords of first pixel on detector
+        start = int(round(tp.wavelength_to_pix(2.85, tp2, 1)[0], 0))
+        rlen = end - start
+
     else:
         # If an F277W exposure is provided, only interpolate out to 2.42µm.
         # Redwards of 2.42µm we have perfect knowledge of the order 1 trace.
@@ -322,23 +332,12 @@ def construct_order1(clear, F277, rot_params):
         # Normalize
         Ranch /= np.nansum(Ranch)
 
-    # Set up the parameters for the interpolation
-    if F277 is not None:
         # Interpolation polynomial coeffs, calculated via calc_interp_coefs
         coef_b = [1.79989423, -11.25359201, 16.68929109]
         coef_r = [-1.79989423, 11.25359201, -15.68929109]
         # Pixel coords at which to start and end interpolation in OM frame.
         end = int(round(tp.wavelength_to_pix(2.1, tp2, 1)[0], 0))
         start = int(round(tp.wavelength_to_pix(2.42, tp2, 1)[0], 0))
-        rlen = end - start
-    else:
-        # Interpolation polynomial coeffs, calculated via calc_interp_coefs
-        coef_b = [0.86772837, -5.6445105, 9.03072711]
-        coef_r = [-0.86772837, 5.6445105, -8.03072711]
-        # Pixel coords at which to start and end interpolation in OM frame.
-        end = int(round(tp.wavelength_to_pix(2.1, tp2, 1)[0], 0))
-        # Determine the OM coords of first pixel on detector
-        start = int(round(tp.wavelength_to_pix(2.85, tp2, 1)[0], 0))
         rlen = end - start
 
     # Create the interpolated order 1 PSF.
@@ -371,9 +370,8 @@ def construct_order1(clear, F277, rot_params):
         map2D[:, int(round(cenx, 0))] = profile
 
         # Note detector coordinates of the edges of the interpolated region.
-        if i == rlen - 1:
-            bend = int(round(cenx, 0))
-        elif i == 0:
+        bend = int(round(cenx, 0))
+        if i == 0:
             # 2.85µm (i=0) limit may be off the end of the detector.
             rend = np.max([int(round(cenx, 0)), 0])
 
@@ -543,8 +541,8 @@ def loicpsf(wavelist=None, wfe_real=None, filepath='', save_to_disk=True,
 
 
 def mask_order(frame, xpix, ypix):
-    '''Create a pixel mask to isolate only the detector pixels
-    belonging to a specific diffraction order.
+    '''Create a pixel mask to isolate only the detector pixels belonging to
+     a specific diffraction order.
 
     Parameters
     ----------
@@ -558,8 +556,8 @@ def mask_order(frame, xpix, ypix):
     Returns
     -------
     O1frame : np.array of float (2D)
-        The input data frame, with all pixels other than those
-        within +/- 20 pixels of ypix masked.
+        The input data frame, with all pixels other than those within
+        +/- 20 pixels of ypix masked.
     '''
 
     mask = np.zeros([256, 2048])
@@ -580,13 +578,42 @@ def mask_order(frame, xpix, ypix):
     return O1frame
 
 
-def _plot_centroid(clear, xpix1, ypix1, xpix2, ypix2):
+def pad_spectral_axis(frame, xcen, ycen, pad_factor=1):
+
+    newframe = np.zeros((frame.shape[0], frame.shape[1]*pad_factor))
+    pp = np.polyfit(xcen, ycen, 5)
+    ext_len = frame.shape[1]*pad_factor
+    xcen_ext = np.arange(ext_len) - (ext_len - frame.shape[1])/2
+    ycen_ext = np.polyval(pp, xcen_ext)
+
+    start = int((frame.shape[1]/2)*(pad_factor-1))
+    end = int(start+frame.shape[1])
+    newframe[:, start:end] = frame
+
+    for col in reversed(range(start)):
+        ref = newframe[:, start]
+        ax = np.arange(frame.shape[0])
+        newax = ax + (ycen_ext[col] - ycen_ext[start])
+        newcol = np.interp(ax, newax, ref)
+        newframe[:, col] = newcol
+
+    for col in range(end, frame.shape[1]*pad_factor):
+        ref = newframe[:, end-1]
+        ax = np.arange(frame.shape[0])
+        newax = ax + (ycen_ext[col] - ycen_ext[end-1])
+        newcol = np.interp(ax, newax, ref)
+        newframe[:, col] = newcol
+
+    return newframe
+
+
+def _plot_centroid(clear, centroid_dict):
     '''Utility function to overplot the trace centroids extracted from
-    the data over the data isetfl to verify accuracy. Called by makemod.
+    the data over the data itself to verify accuracy.
     '''
     plt.figure(figsize=(15, 3))
-    plt.plot(xpix1, ypix1, c='black')
-    plt.plot(xpix2, ypix2, c='black')
+    for order in centroid_dict.keys():
+        plt.plot(centroid_dict[order][0], centroid_dict[order][1], c='black')
     plt.imshow(clear/np.nansum(clear, axis=0), origin='lower', cmap='jet')
 
     return None
@@ -641,10 +668,11 @@ def _plot_interpmodel(waves, nw1, nw2, p1, p2):
     f.tight_layout()
 
 
-def reconstruct_wings(frame, ycen):
+def reconstruct_wings(frame, ycen, pad_factor=1):
     '''Takes a reconstructed trace profile which has been truncated about the
     centroid and reconstructs the extended wing structure using an exponential
-    profile.
+    profile. Also adds padding in the spatial direction by extending the
+    exponetial fit.
 
     Parameters
     ----------
@@ -652,24 +680,36 @@ def reconstruct_wings(frame, ycen):
         Empirical trace model.
     ycen : np.array of float
         Y-pixel centroid positions.
+    pad_factor : int
+        Multiplicative padding factor on the spatial axis. Defaults to 1 (no
+        padding).
 
     Returns
     -------
     newframe : np.ndarray of float (2D)
-        Trace model with reconstructed extended wing structure.
+        Trace model with reconstructed extended wing structure, and required
+        padding.
     '''
 
-    newframe = np.zeros([256, 2048])
-    fullax = np.arange(256)
+    # Create new detector array and spatial axis taking into account padding.
+    newframe = np.zeros(((pad_factor)*frame.shape[0], frame.shape[1]))
+    fullax = np.arange(frame.shape[0])
+    fullax_pad = np.arange((pad_factor)*frame.shape[0]) - (frame.shape[0]/2)*(pad_factor-1)
+
     # Loop over each column on the detector.
-    for col in range(2048):
+    for col in range(frame.shape[1]):
+
+        # Temporary hack for NaN columns
+        if np.any(np.isnan(frame[:, col])):
+            continue
+
         # Get the centroid Y-position.
         cen = int(round(ycen[col], 0))
 
         # Extract the left wing
         start = np.max([0, cen-75])
         ax_l = np.arange(start, cen-9)
-        lwing = np.log(frame[start:(cen-9), col])
+        lwing = np.log10(frame[start:(cen-9), col])
         # Find where the log is finite
         lwing_noi = lwing[np.isfinite(lwing)]
         ax_l_noi = ax_l[np.isfinite(lwing)]
@@ -681,11 +721,13 @@ def reconstruct_wings(frame, ycen):
         ii_l = np.where(np.isinf(lwing))[0][-1]
         # Location in full axis.
         jj_l = np.where(fullax == ax_l[ii_l])[0][0]
+        # Location in padded axis.
+        kk_l = np.where(fullax_pad == ax_l[ii_l])[0][0]
 
         # Extract the right wing
         end = np.min([cen+50, 255])
         ax_r = np.arange(cen+9, end)
-        rwing = np.log(frame[(cen+9):end, col])
+        rwing = np.log10(frame[(cen+9):end, col])
         # Find where the log is finite
         rwing_noi = rwing[np.isfinite(rwing)]
         ax_r_noi = ax_r[np.isfinite(rwing)]
@@ -696,15 +738,16 @@ def reconstruct_wings(frame, ycen):
         # Locate pixels for stitching - where the right wing goes to zero.
         ii_r = np.where(np.isinf(rwing))[0][0]
         jj_r = np.where(fullax == ax_r[ii_r])[0][0]
+        kk_r = np.where(fullax_pad == ax_r[ii_r])[0][0]
 
-        # Stitch the wings to the original profile.
-        newcol = np.concatenate([np.exp(np.polyval(pp_l, fullax[:jj_l])),
+        # Stitch the wings to the original profile, add padding if necessary.
+        newcol = np.concatenate([10**(np.polyval(pp_l, fullax_pad[:kk_l])),
                                  frame[jj_l:jj_r, col],
-                                 np.exp(np.polyval(pp_r, fullax[jj_r:]))])
+                                 10**(np.polyval(pp_r, fullax_pad[kk_r:]))])
 
-        # Find any remaining pixels where the profile is zero.
-        inds = np.where(newcol == 0)[0][0]
         try:
+            # Find any remaining pixels where the profile is zero.
+            inds = np.where(newcol == 0)[0][0]
             # If there are remainining zeros, replace with mean of neighbours.
             newcol[inds] = np.mean([newcol[inds-1], newcol[inds+1]])
         except IndexError:

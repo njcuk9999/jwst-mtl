@@ -22,19 +22,19 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 path = '/Users/michaelradica/Documents/GitHub/jwst-mtl/SOSS/'
 
 
-def _do_emcee(xOM, yOM, xCV, yCV):
-    '''Utility function which calls the emcee package to preform
-    an MCMC determination of the best fitting rotation angle/center to
-    map the OM onto the data.
+def _do_emcee(xref, yref, xdat, ydat):
+    '''Calls the emcee package to preform an MCMC determination of the best
+    fitting rotation angle and offsets to map the reference centroids onto the
+    data for the first order.
 
     Parameters
     ----------
-    xOM, yOM : array of floats
-        X and Y trace centroids respectively in the optics model system,
-        for example: returned by get_om_centroids.
-    xCV, yCV : array of floats
-        X and Y trace centroids determined from the data, for example:
-        returned by get_o1_data_centroids.
+    xref, yref : array of float
+        X and Y trace centroids respectively to be used as a reference point,
+        for example: as returned by get_om_centroids.
+    xdat, ydat : array of float
+        X and Y trace centroids determined from the data, for example: as
+        returned by get_uncontam_centroids.
 
     Returns
     -------
@@ -43,12 +43,12 @@ def _do_emcee(xOM, yOM, xCV, yCV):
     '''
 
     # Set up the MCMC run.
-    initial = np.array([1, 1577, 215, 0, 0])  # Initial guess parameters
-    pos = initial + 0.5*np.random.randn(32, 5)
+    initial = np.array([0, 0, 0])  # Initial guess parameters
+    pos = initial + 0.5*np.random.randn(32, 3)
     nwalkers, ndim = pos.shape
 
     sampler = emcee.EnsembleSampler(nwalkers, ndim, _log_probability,
-                                    args=[xOM, yOM, xCV, yCV])
+                                    args=[xref, yref, xdat, ydat])
     # Run the MCMC for 5000 steps - it has generally converged
     # within ~3000 steps in trial runs.
     sampler.run_mcmc(pos, 5000, progress=False)
@@ -56,93 +56,98 @@ def _do_emcee(xOM, yOM, xCV, yCV):
     return sampler
 
 
-def get_contam_centroids(clear, ref_centroids=None, doplot=False):
-    '''Get the trace centroids for both orders when there is
-    contaminationof the first order by the second on the detector.
-    Fits the first order centroids using the uncontaminated method, and
-    determines the second order centroids via the well-calibrated relationship
-    between the first and second order profiles.
+def get_contam_centroids(clear, ref_centroids=None, doplot=False,
+                         return_orders=[1, 2, 3]):
+    '''Get the trace centroids for all orders when there is contamination on
+    the detector. Fits the first order centroids using the uncontaminated
+    method, and determines the second/third order centroids via the
+    well-calibrated relationship between all orders.
 
     Parameters
     ----------
     clear : np.ndarray (2D)
         CLEAR SOSS exposure data frame.
     ref_centroids : np.ndarray (2D)
-        Centroids relative to which to determine offset and rotation
-        parameters. Array must contain four lists in the following order: x,
-        and y centroids for order 1 followed by those of order 2.
+        Centroids relative to which to determine rotations parameters.
+        Must contain lists of x and y centroids for each order to be returned.
+        If None, uses the trace table centroids as a reference.
     doplot : bool
-        Whether to plot the corner plot of the optics model fit to the
-        first order centroids.
+        Whether to plot the results of the reference centroids fit to the
+        first order.
+    return_orders : list
+        Orders for which centroid x and y positions will be returned.
 
     Returns
     -------
-    atthesex : np.array
-        X-centroids for the order 1 trace.
-    ycen_o1 : np.array
-        y-centroids for the order 1 trace.
-    atthesex[inds] : np.array
-        x-centroids for the order 2 trace.
-    ycen_o2 : np.array
-        y-centroids for the order 2 trace.
-    ang : float (optional)
-        rotation angle for optics model to data transformation.
-    xanch : float (optional)
-        x coordinate of rotation center for optics model to data transform.
-    yanch : float (optional)
-        y coordinate of rotation center for optics model to data transform.
+    trans_cen : dict
+        Dictionary containing x and y trace centroids for each order in
+        return_orders.
+    rot_pars : tuple
+        Tuple containing the required parameters to transform the reference
+        centroids to match the dataL: rotation angle, x offset and y offset.
 
     Raises
     ------
     ValueError
-        If ref_centroids does not contain four centroids lists.
+        If ref_centroids does not match return_orders.
     '''
 
-    # Determine optics model centroids for both orders
-    # as well as order 1 data centroids
-    atthesex = np.arange(2048)
+    # Determine reference centroids for all orders.
+    ref_cen = {}
+    trans_cen = {}
+    # If provided as input.
     if ref_centroids is not None:
-        if len(ref_centroids) != 4:
-            raise ValueError('The first dimension of ref_centroids must be 4.')
-        xOM1, yOM1 = ref_centroids[0], ref_centroids[1]
-        xOM2, yOM2 = ref_centroids[2], ref_centroids[3]
+        # Ensure length is correct.
+        if len(ref_centroids) != 2*len(return_orders):
+            raise ValueError('Insufficient reference centroids provided.')
+        # Repackage into a dictionary
+        for i, order in enumerate(return_orders):
+            ref_cen['order '+str(order)] = [ref_centroids[2*i], ref_centroids[2*i+1]]
+    # Or from the trace table (currently the optics model).
     else:
-        xOM1, yOM1, tp1 = get_om_centroids(atthesex)
-        xOM2, yOM2, tp2 = get_om_centroids(atthesex, order=2)
+        for order in return_orders:
+            # Extend centroids off of the detector to compensate for shifts.
+            xom, yom, tp = get_om_centroids(np.arange(2148)-50, order=order)
+            ref_cen['order '+str(order)] = [xom, yom]
 
-    xcen_o1, ycen_o1 = get_uncontam_centroids(clear, atthesex, fit=True)
+    # Get the order 1 centroids from the data.
+    xdat_o1, ydat_o1 = get_uncontam_centroids(clear, np.arange(2048), fit=True)
+    trans_cen['order 1'] = [xdat_o1, ydat_o1]
 
-    # Fit the OM to the data for order 1
-    AA = _do_emcee(xOM1, yOM1, atthesex, ycen_o1)
-
-    # Plot MCMC results if required
+    # Fit the reference centroids to the data for order 1.
+    fit = _do_emcee(ref_cen['order 1'][0], ref_cen['order 1'][1], xdat_o1,
+                    ydat_o1)
+    # Plot MCMC results if requested.
     if doplot is True:
-        _plot_corner(AA)
-
-    # Get fitted rotation parameters
-    flat_samples = AA.get_chain(discard=500, thin=15, flat=True)
+        _plot_corner(fit)
+    # Get fitted rotation parameters.
+    flat_samples = fit.get_chain(discard=500, thin=15, flat=True)
     ang = np.percentile(flat_samples[:, 0], 50)
-    xanch = np.percentile(flat_samples[:, 1], 50)
-    yanch = np.percentile(flat_samples[:, 2], 50)
-    xshift = np.percentile(flat_samples[:, 3], 50)
-    yshift = np.percentile(flat_samples[:, 4], 50)
+    xshift = np.percentile(flat_samples[:, 1], 50)
+    yshift = np.percentile(flat_samples[:, 2], 50)
+    rot_params = (ang, xshift, yshift)
 
-    # Get rotated OM centroids for order 2
-    xcen_o2, ycen_o2 = rot_centroids(ang, xanch, yanch, xshift, yshift,
-                                     xOM2, yOM2)
-    # Ensure that the second order centroids cover the whole detector
-    p_o2 = np.polyfit(xcen_o2, ycen_o2, 5)
-    ycen_o2 = np.polyval(p_o2, atthesex)
-    inds = np.where((ycen_o2 >= 0) & (ycen_o2 < 256))[0]
+    # Get rotated centroids for all other orders.
+    for order in return_orders:
+        if order == 1:
+            continue
+        xtrans, ytrans = rot_centroids(ang, xshift, yshift,
+                                       ref_cen['order '+str(order)][0],
+                                       ref_cen['order '+str(order)][1])
+        # Ensure that the centroids cover the whole detector.
+        pp = np.polyfit(xtrans, ytrans, 5)
+        ytrans = np.polyval(pp, np.arange(2048))
+        inds = np.where((ytrans >= 0) & (ytrans < 256))[0]
+        trans_cen['order '+str(order)] = [np.arange(2048)[inds], ytrans[inds]]
 
-    return atthesex, ycen_o1, atthesex[inds], ycen_o2[inds], (ang, xanch, yanch, xshift, yshift)
+    return trans_cen, rot_params
 
 
 # Needs to be updated whenever we decide on how we will interact with
 # new reference files
 def get_om_centroids(atthesex=None, order=1):
     '''Get trace profile centroids from the NIRISS SOSS optics model.
-    These centroids include the standard rotation of 1.489 rad about
+    These centroids include the standard rotation of 1.489 deg about
     (1514, 486) to transform from the optics model into the CV3 coordinate
     system.
 
@@ -293,53 +298,55 @@ def get_uncontam_centroids(stack, atthesex=np.arange(2048), fit=True):
     return tracex_best, tracey_best
 
 
-def _log_likelihood(theta, xvals, yvals, xCV, yCV):
-    '''Definition of the log likelihood. Called by do_emcee.
+def _log_likelihood(theta, xmod, ymod, xdat, ydat):
+    '''Definition of the log likelihood. Called by _do_emcee.
+    xmod/ymod should extend past the edges of the SUBSTRIP256 detector.
     '''
-    ang, orx, ory, xshift, yshift = theta
+    ang, xshift, yshift = theta
     # Calculate rotated model
-    modelx, modely = rot_centroids(ang, orx, ory, xshift, yshift,
-                                   xvals, yvals, bound=True)
+    modelx, modely = rot_centroids(ang, xshift, yshift,
+                                   xmod, ymod, bound=True)
     # Interpolate rotated model onto same x scale as data
-    modely = np.interp(xCV, modelx, modely)
+    modely = np.interp(xdat, modelx, modely)
 
-    return -0.5 * np.sum((yCV - modely)**2 - 0.5 * np.log(2 * np.pi * 1))
+    return -0.5 * np.sum((ydat - modely)**2 - 0.5 * np.log(2 * np.pi * 1))
 
 
 def _log_prior(theta):
-    '''Definition of the priors. Called by do_emcee.
+    '''Definition of the priors. Called by _do_emcee.
+    Angle within +/- 5 deg (one motor step is 0.15deg).
+    X-shift within +/- 100 pixels, TA shoukd be accurate to within 1 pixel.
+    Y-shift to within +/- 50 pixels.
     '''
-    ang, orx, ory, xshift, yshift = theta
+    ang, xshift, yshift = theta
 
-    if -15 <= ang < 15 and 0 <= orx < 2048 and 0 <= ory < 256 and -2048 <= xshift < 2048 and -256 <= yshift < 256:
+    if -5 <= ang < 5 and -100 <= xshift < 100 and -50 <= yshift < 50:
         return -1
     else:
         return -np.inf
 
 
-def _log_probability(theta, xvals, yvals, xCV, yCV):
-    '''Definition of the final probability. Called by do_emcee.
+def _log_probability(theta, xmod, ymod, xdat, ydat):
+    '''Definition of the final probability. Called by _do_emcee.
     '''
     lp = _log_prior(theta)
     if not np.isfinite(lp):
         return -np.inf
 
-    return lp + _log_likelihood(theta, xvals, yvals, xCV, yCV)
+    return lp + _log_likelihood(theta, xmod, ymod, xdat, ydat)
 
 
 def _plot_corner(sampler):
-    '''Utility function to produce the corner plot
-    for the results of do_emcee.
+    '''Utility function to produce the corner plot for results of _do_emcee.
     '''
-    labels = [r"ang", "cenx", "ceny", "xshift", "yshift"]
+    labels = [r"ang", "xshift", "yshift"]
     flat_samples = sampler.get_chain(discard=500, thin=15, flat=True)
     fig = corner.corner(flat_samples, labels=labels)
 
     return None
 
 
-def rot_centroids(ang, cenx, ceny, xshift, yshift, xpix, ypix,
-                  bound=True, atthesex=None):
+def rot_centroids(ang, xshift, yshift, xpix, ypix, bound=True, atthesex=None):
     '''Apply a rotation and shift to the trace centroids positions. This
     assumes that the trace centroids are already in the CV3 coordinate system.
 
@@ -347,10 +354,6 @@ def rot_centroids(ang, cenx, ceny, xshift, yshift, xpix, ypix,
     ----------
     ang : float
         The rotation angle in degrees CCW.
-    cenx : float
-        The X pixel values to use as the center of rotation.
-    ceny : float
-        The Y pixel values to use as the center of rotation.
     xshift : float
         Offset in the X direction to be rigidly applied after rotation.
     yshift : float
@@ -381,6 +384,9 @@ def rot_centroids(ang, cenx, ceny, xshift, yshift, xpix, ypix,
     t = np.deg2rad(ang)
     R = np.array([[np.cos(t), -np.sin(t)], [np.sin(t), np.cos(t)]])
 
+    # Rotation center set to o1 trace centroid halfway along spectral axis.
+    ceny = 206
+    cenx = 1024
     points1 = np.array([xpix - cenx, ypix - ceny])
     rot_pix = R @ points1
 
@@ -401,7 +407,7 @@ def rot_centroids(ang, cenx, ceny, xshift, yshift, xpix, ypix,
         # Polynomial fit to ensure a centroid at each pixel in atthesex
         pp = np.polyfit(rot_pix[0], rot_pix[1], 5)
         # Warn user if atthesex extends beyond polynomial domain.
-        if np.max(atthesex) > np.max(rot_pix[0])+15 or np.min(atthesex) < np.min(rot_pix[0])-15:
+        if np.max(atthesex) > np.max(rot_pix[0])+25 or np.min(atthesex) < np.min(rot_pix[0])-25:
             warnings.warn('atthesex extends beyond rot_xpix. Use results with caution.')
         rot_xpix = atthesex
         rot_ypix = np.polyval(pp, rot_xpix)
@@ -416,7 +422,7 @@ def rot_centroids(ang, cenx, ceny, xshift, yshift, xpix, ypix,
     if bound is True:
         inds = [(rot_ypix >= 0) & (rot_ypix < 256) & (rot_xpix >= 0) &
                 (rot_xpix < 2048)]
+        rot_xpix = rot_xpix[inds]
+        rot_ypix = rot_ypix[inds]
 
-        return rot_xpix[inds], rot_ypix[inds]
-    else:
-        return rot_xpix, rot_ypix
+    return rot_xpix, rot_ypix

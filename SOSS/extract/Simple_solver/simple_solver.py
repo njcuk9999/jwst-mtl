@@ -21,8 +21,8 @@ from SOSS.extract.empirical_trace import _centroid as ctd
 path = '/Users/michaelradica/Documents/GitHub/jwst-mtl/SOSS/'
 
 
-def _do_transform(data, rot_ang, x_anch, y_anch, x_shift, y_shift,
-                  padding_factor=2, oversampling=1):
+def _do_transform(data, rot_ang, x_shift, y_shift, padding_factor=2,
+                  oversampling=1):
     '''Do the rotation (via a rotation matrix) and offset of the reference
     files to match the data. Rotation angle and center, as well as the
     required vertical and horizontal displacements must be calculated
@@ -38,10 +38,6 @@ def _do_transform(data, rot_ang, x_anch, y_anch, x_shift, y_shift,
         Reference file data.
     rot_ang : float
         Rotation angle in degrees.
-    x_anch : float
-        x pixel around which to rotate.
-    y_anch : float
-        y pixel around which to rotate.
     x_shift : float
         Offset in the spectral direction to be applied after rotation.
     y_shift : float
@@ -67,6 +63,10 @@ def _do_transform(data, rot_ang, x_anch, y_anch, x_shift, y_shift,
     # Find bottom left hand corner of substrip256 in the padded frame
     bleft_x = np.int(oversampling * (1024 * padding_factor - 1024))
     bleft_y = np.int(oversampling * (128 * padding_factor - 128))
+
+    # Rotation anchor is o1 trace centroid halfway along the spectral axis.
+    x_anch = 1024
+    y_anch = 206
 
     # Shift dataframe such that rotation anchor is in the center of the frame
     data_shift = np.roll(data, (pad_ycen-bleft_y-y_anch, pad_xcen-bleft_x-x_anch), (0, 1))
@@ -132,20 +132,23 @@ def simple_solver(clear):
         to match the science data.
     '''
 
-    # Get orders 1 and 2 reference trace centroids
+    # Get reference trace centroids for the first order.
     # May need to be updated when reference traces are oversampled and padded
     ref_trace = fits.open(path+'/extract/Ref_files/trace_profile_om1.fits')[0].data[::-1, :]
-    xref1, yref1, xref2, yref2, rps = ctd.get_contam_centroids(ref_trace)
-    ref_centroids = np.array([xref1, yref1, xref2, yref2])
+    ref_x, ref_y = ctd.get_uncontam_centroids(ref_trace)
+    # To ensure accurate fitting, extend centroids beyond detector edges.
+    pp = np.polyfit(ref_x, ref_y, 5)
+    ref_x_ext = np.arange(2148)-50
+    ref_y_ext = np.polyval(pp, ref_x_ext)
+    ref_centroids = np.array([ref_x_ext, ref_y_ext])
 
-    # Get data centroids and rotation params relative to the reference trace
-    xcen_o1, ycen_o1, xcen_o2, ycen_o2, rot_params = ctd.get_contam_centroids(clear,
-                                                                              ref_centroids=ref_centroids)
-    rot_ang = rot_params[0]
-    x_anch = np.int(rot_params[1])
-    y_anch = np.int(rot_params[2])
-    x_shift = np.int(rot_params[3])
-    y_shift = np.int(rot_params[4])
+    # Get data centroids and rotation params relative to the reference trace.
+    trans_centroids, rot_pars = ctd.get_contam_centroids(clear,
+                                                         ref_centroids=ref_centroids,
+                                                         return_orders=[1])
+    rot_ang = rot_pars[0]
+    x_shift = np.int(rot_pars[1])
+    y_shift = np.int(rot_pars[2])
 
     ref_trace_trans = np.empty((2, 256, 2048))
     wave_map_trans = np.empty((2, 256, 2048))
@@ -167,13 +170,11 @@ def simple_solver(clear):
 
         # Pass negative rot_ang to convert from CCW to CW rotation
         ref_trace_trans[order-1, :, :] = _do_transform(ref_trace, -rot_ang,
-                                                       x_anch, y_anch, x_shift,
-                                                       y_shift,
+                                                       x_shift, y_shift,
                                                        padding_factor=pad_t,
                                                        oversampling=os_t)
         wave_map_trans[order-1, :, :] = _do_transform(wave_map, -rot_ang,
-                                                      x_anch, y_anch, x_shift,
-                                                      y_shift,
+                                                      x_shift, y_shift,
                                                       padding_factor=pad_w,
                                                       oversampling=os_w)
 
