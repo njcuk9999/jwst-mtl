@@ -109,7 +109,7 @@ def calc_interp_coefs(make_psfs=False, doplot=True, F277W=True, filepath=''):
         Whether to show the diagnostic plots for the model derivation.
     F277W : bool
         Set to False if no F277W exposure is available for the observation.
-        Finds coefficients for the entire 2.2 - 2.8µm region in this case.
+        Finds coefficients for the entire 2.1 - 2.9µm region in this case.
     filepath : str
         Path to directory containing the WebbPSF monochromatic PSF fits
         files, or the directory to which they will be stored when made.
@@ -127,7 +127,7 @@ def calc_interp_coefs(make_psfs=False, doplot=True, F277W=True, filepath=''):
 
     # Red anchor is 2.8µm without an F277W exposure.
     if F277W is False:
-        wave_range = np.linspace(2.1, 2.85, 7)
+        wave_range = np.linspace(2.1, 2.9, 7)
     # Red anchor is 2.5µm with F277W exposure.
     else:
         wave_range = np.linspace(2.1, 2.45, 7)
@@ -169,7 +169,7 @@ def calc_interp_coefs(make_psfs=False, doplot=True, F277W=True, filepath=''):
         # Generate the red wavelength anchor.
         if F277W is False:
             # Use 2.85µm for CLEAR.
-            rnger = np.linspace(0, round(1280*(2.5/2.85), 0) - 1, 1280)
+            rnger = np.linspace(0, round(1280*(2.5/2.9), 0) - 1, 1280)
         else:
             # Or 2.42µm for F277W.
             rnger = np.linspace(0, round(1280*(2.5/2.45), 0) - 1, 1280)
@@ -332,23 +332,35 @@ def construct_order1(clear, F277, rot_params, ycens, pad=0, doplot=False):
 
     # Determine the anchor profiles - red anchor.
     if F277 is None:
-        # If no F277W exposure is provided, interpolate out to 2.85µm.
-        # Generate a simulated 2.85µm PSF.
-        stand = loicpsf([2.85*1e-6], save_to_disk=False, oversampling=1,
-                        verbose=False)[0][0].data
-        # Extract and rescale the spatial profile.
-        Ranch = np.sum(stand[60:70, (64-24):(64+25)], axis=0)
-        Ranch = _chromescale(2.85, Ranch)
+        # If no F277W exposure is provided, interpolate out to 2.9µm.
+        # Generate a simulated 2.9µm PSF.
+        stand = loicpsf([2.9*1e-6], save_to_disk=False, oversampling=1,
+                        pixel=256, verbose=False)[0][0].data
+        # Extract the spatial profile.
+        Ranch = np.sum(stand[124:132, :], axis=0)
+        # Detemine OM coords of 2.9µm centroid.
+        xom25 = tp.wavelength_to_pix(2.9, tp2, 1)[0]
+        yom25 = 256 - tp.wavelength_to_pix(2.9, tp2, 1)[1]
+        # Transform into the data frame.
+        yd25 = ctd.rot_centroids(*rot_params, xom25, yom25, bound=False)[1]
+        yd25 = int(round(yd25[0], 0))
+        # Interpolate the WebbPSF generated profile to the correct location.
+        Ranch = np.interp(np.arange(256), np.arange(256)-128+yd25, Ranch)
+        # Reconstruct wing structure and pad.
+        Ranch = reconstruct_wings(Ranch, ycens=[yd25], contamination=False,
+                                  pad=pad)
+        # Rescale to remove chromatic effects.
+        Ranch = _chromescale(2.9, Ranch, yd25)
         # Normalize
         Ranch /= np.nansum(Ranch)
 
         # Interpolation polynomial coeffs, calculated via calc_interp_coefs
-        coef_b = [0.86772837, -5.6445105, 9.03072711]
-        coef_r = [-0.86772837, 5.6445105, -8.03072711]
+        coef_b = [0.80175603, -5.27434345, 8.54474316]
+        coef_r = [-0.80175603, 5.27434345, -7.54474316]
         # Pixel coords at which to start and end interpolation in OM frame.
         end = int(round(tp.wavelength_to_pix(2.1, tp2, 1)[0], 0))
         # Determine the OM coords of first pixel on detector
-        start = int(round(tp.wavelength_to_pix(2.85, tp2, 1)[0], 0))
+        start = int(round(xom25, 0))
         rlen = end - start
 
     else:
@@ -526,7 +538,7 @@ def get_ref_file_args(o1frame):
 
 
 def loicpsf(wavelist=None, wfe_real=None, filepath='', save_to_disk=True,
-            oversampling=10, verbose=True):
+            oversampling=10, pixel=128, verbose=True):
     '''Calls the WebbPSF package to create monochromatic PSFs for NIRISS
     SOSS observations and save them to disk.
 
@@ -544,6 +556,8 @@ def loicpsf(wavelist=None, wfe_real=None, filepath='', save_to_disk=True,
         Whether to save PSFs to disk, or return them from the function.
     oversampling : int
         Oversampling pixels scale for the PSF.
+    pixel : int
+        Width of the PSF in native pixels.
     verbose : bool
         Whether to print explanatory comments.
 
@@ -559,7 +573,7 @@ def loicpsf(wavelist=None, wfe_real=None, filepath='', save_to_disk=True,
         # List of wavelengths to generate PSFs for
         wavelist = np.linspace(0.5, 5.2, 95) * 1e-6
     # Dimension of the PSF in native pixels
-    pixel = 128
+    pixel = pixel
 
     # Select the NIRISS instrument
     niriss = webbpsf.NIRISS()
