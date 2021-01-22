@@ -11,7 +11,7 @@ import numpy as np
 from astropy.io import fits
 
 
-def loicpsf(wavelist=None, wfe_real=None, save_to_disk=True):
+def loicpsf(wavelist=None, wfe_real=0, save_to_disk=True, savepath=None):
     '''Utility function which calls the WebbPSF package to create monochromatic
     PSFs for NIRISS SOSS mode obserations.
 
@@ -33,6 +33,11 @@ def loicpsf(wavelist=None, wfe_real=None, save_to_disk=True):
         List of np.ndarrays with the PSF data.
     '''
 
+    if savepath != None:
+        PSF_DIR = savepath
+    else:
+        PSF_DIR = '/genesis/jwst/jwst-ref-soss/monochromatic_PSFs/'
+
     if wavelist is None:
         # List of wavelengths to generate PSFs for
         wavelist = np.linspace(0.5, 5.2, 95) * 1e-6
@@ -50,10 +55,8 @@ def loicpsf(wavelist=None, wfe_real=None, save_to_disk=True):
     niriss.filter = 'CLEAR'
     niriss.pupil_mask = 'GR700XD'
 
-    # Change the WFE realization if desired
-    if wfe_real is not None:
-        niriss.pupilopd = ('OPD_RevW_ote_for_NIRISS_predicted.fits.gz',
-                           wfe_real)
+    # Change the WFE realization if desired (accepted values 0 to 9)
+    niriss.pupilopd = ('OPD_RevW_ote_for_NIRISS_predicted.fits.gz', wfe_real)
 
     # Loop through all wavelengths to generate PSFs
     if save_to_disk is False:
@@ -65,9 +68,13 @@ def loicpsf(wavelist=None, wfe_real=None, save_to_disk=True):
 
         # Save psf realization to disk if desired
         if save_to_disk is True:
-            text = '{0:5f}'.format(wave*1e+6)
-            psf.writeto('SOSS_os'+str(oversampling)+'_'+str(pixel)
-                        + 'x'+str(pixel)+'_'+text+'.fits', overwrite=True)
+            filename = '{:}SOSS_os{:d}_{:d}x{:d}_{:5f}_wfe{:d}.fits'.format(
+                PSF_DIR, oversampling, pixel, pixel, wave*1e+6, wfe_real)
+            #print(filename)
+            #text = '{0:5f}'.format(wave*1e+6)
+            #psf.writeto(PSF_DIR + 'SOSS_os'+str(oversampling)+'_'+str(pixel)
+            #            + 'x'+str(pixel)+'_'+text+'_test.fits', overwrite=True)
+            psf.writeto(filename, overwrite=True)
         else:
             psf_list.append(psf[0].data)
 
@@ -75,3 +82,6 @@ def loicpsf(wavelist=None, wfe_real=None, save_to_disk=True):
         return psf_list
     else:
         return None
+
+loicpsf(wavelist=None, wfe_real=1, save_to_disk=True,
+        savepath='/genesis/jwst/userland-soss/loic_review/')

@@ -277,7 +277,7 @@ def generate_traces(pathPars, simuPars, tracePars, response,
             print('Actual counts measured on the simulation = {:} e-/sec'.format(actual_counts))
             print()
 
-        tmpfilename = write_intermediate_fits(convolved_image,'/genesis/jwst/userland-soss/tmp.fits',t)
+        tmpfilename = write_intermediate_fits(convolved_image, pathPars.path_userland+'tmp.fits',t)
         filelist.append(tmpfilename)
 
     return(filelist)
@@ -301,6 +301,17 @@ def flux_calibrate_simulation(parameters):
 
 
     print()
+
+
+
+def write_simu_fits(image, filename):
+
+    # Writes the simulated data set as simulated, independently of the DMS constraints
+    hdu = fits.PrimaryHDU(image)
+    # Save on disk
+    hdu.writeto(filename, overwrite=True)
+
+    return
 
 def write_intermediate_fits(image, filename, timestep_index):
     # Write image for a single time step. Differents spectral orders stored in third dimension

@@ -51,7 +51,7 @@ class ModelPars:
     enumos = 1 #exposure number for oversampling
     detectorname = 'NISRAPID' #confirm this 
     prodtype='cal'
-    orderlist = np.array([1,2],dtype=np.int) # the spectral orders to simulate
+    orderlist = np.array([1,2,3],dtype=np.int) # the spectral orders to simulate
     frametime = np.nan # not selectable in the config file. Will be filled in the code.
     nint = np.nan # not selectable in the config file. Will be filled in the code.
     magnitude = 10.0
