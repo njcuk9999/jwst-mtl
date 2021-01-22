@@ -26,7 +26,7 @@ from astropy.coordinates import SkyCoord, Distance
 from astroquery.utils.tap.core import TapPlus
 import numpy as np
 import os
-from typing import Union
+from typing import Tuple, Union
 import warnings
 
 
@@ -120,7 +120,8 @@ def tap_query(url: str, query: str) -> Union[Table, None]:
 
 
 def make_catalog(ra: float, dec: float, radius: float, year: float,
-                 outfile = None):
+                 outfile=None, return_data=False
+                 ) -> Union[int, Tuple[int, Table]]:
     """
     Make a catalogue of Gaia/2MASS point sources based on a circle of center
     "ra" and "dec" of "radius" [arcsec]
@@ -152,6 +153,8 @@ def make_catalog(ra: float, dec: float, radius: float, year: float,
     # get observation time
     with warnings.catch_warnings(record=True) as _:
         obs_time = Time(year, format='decimalyear')
+    # get center as SkyCoord
+    coord_cent = SkyCoord(ra * uu.deg, dec * uu.deg)
 
     # -------------------------------------------------------------------------
     # Query Gaia - need proper motion etc
@@ -220,6 +223,14 @@ def make_catalog(ra: float, dec: float, radius: float, year: float,
     # apply space motion
     with warnings.catch_warnings(record=True) as _:
         coords1 = coords0.apply_space_motion(obs_time)
+
+    # find our target source (closest to input)
+    separation = coord_cent.separation(coords0)
+
+    # assume our source is closest to the center
+    source_pos = int(np.argmin(separation))
+    # sort rest by brightness
+    order = np.argsort(cat_table['KMAG'])
     # -------------------------------------------------------------------------
     # make final table
     # -------------------------------------------------------------------------
@@ -228,13 +239,18 @@ def make_catalog(ra: float, dec: float, radius: float, year: float,
     # index column
     final_table['index'] = np.arange(1, len(cat_table) + 1)
     # ra column
-    final_table['x_or_RA'] = coords1.ra.value
+    final_table['x_or_RA'] = coords1.ra.value[order]
     # dec column
-    final_table['y_or_Dec'] = coords1.dec.value
+    final_table['y_or_Dec'] = coords1.dec.value[order]
     # mag columns
-    final_table['niriss_f380m_magnitude'] = cat_table['KMAG']
-    final_table['niriss_f430m_magnitude'] = cat_table['KMAG']
-    final_table['niriss_f480m_magnitude'] = cat_table['KMAG']
+    final_table['niriss_f380m_magnitude'] = cat_table['KMAG'][order]
+    final_table['niriss_f430m_magnitude'] = cat_table['KMAG'][order]
+    final_table['niriss_f480m_magnitude'] = cat_table['KMAG'][order]
+    # -------------------------------------------------------------------------
+    # deal with return data
+    if return_data:
+        return source_pos, final_table
+    # -------------------------------------------------------------------------
     # construct out file name
     if outfile is None:
         outfile = OUTPUT_TABLE
@@ -243,6 +259,50 @@ def make_catalog(ra: float, dec: float, radius: float, year: float,
     # write table
     final_table.write(outfile, format='ascii.commented_header',
                       comment=header, overwrite=True)
+    # return the position closest to the input coordinates
+    return source_pos
+
+
+def add_companion_to_cat_entry(target_list, catalog_tables,
+                               target_pos, primary_name, companion_separation,
+                               companion_pa, companion_dm):
+
+    # find primary in target list
+    tpos = np.where(np.array(target_list) == primary_name)[0]
+    # deal with round target name
+    if len(tpos) == 0:
+        emsg = 'Primary name: {0} not in "target_list"'
+        raise ValueError(emsg.format(primary_name))
+
+    # get table for this position
+    table = catalog_tables[tpos]
+
+    # get the source position in given table
+    source_position = target_pos[tpos]
+
+    # get ra and dec and magnitudes for primary
+    primary_ra = table['x_or_RA'][source_position] * uu.deg
+    primary_dec = table['y_or_Dec'][source_position] * uu.deg
+    primary_f380m = table['niriss_f380m_magnitude'][source_position]
+    primary_f430m = table['niriss_f430m_magnitude'][source_position]
+    primary_f480m = table['niriss_f480m_magnitude'][source_position]
+
+    primary_coord = SkyCoord(primary_ra, primary_dec)
+
+    companion_coord = primary_coord.directional_offset_by(companion_pa,
+                                                          companion_separation)
+
+    # TODO: got to here
+
+    # TODO: Add companion to catalog table (at end?)
+
+    # TODO: Add dm to magnitudes
+
+    # push back into catalog table list
+    catalog_tables[tpos] = table
+
+
+    pass
 
 
 # =============================================================================

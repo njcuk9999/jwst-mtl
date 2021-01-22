@@ -3,25 +3,18 @@ import io
 import os
 import yaml
 import sys
+from astropy.time import Time
 
 # you must be in the conda environment 'mirage'
 
-sys.path.insert(0, '/genesis/jwst/bin/mirage/')
+# sys.path.insert(0, '/genesis/jwst/bin/mirage/')
 
 from mirage import imaging_simulator
 from mirage.yaml import yaml_generator
-
-
 from jwst.pipeline import Detector1Pipeline
-
 import subprocess as subprocess
-
 import numpy as np
-
-import os.path
-
 from datetime import datetime
-
 import aptxml_to_catalogs as loic
 
 
@@ -38,10 +31,31 @@ pointing_name = os.path.join(pathdir, 'betapic_2476_short.pointing')
 simdata_output_directory = '/genesis/jwst/userland-ami/loic_mirage_betapic/'
 
 pav3 = 000
-dates = '2022-05-30'
+obs_date = '2022-05-30 00:00:00'
 reffile_defaults = 'crds'
 #datatype = 'linear, raw'
 datatype = 'raw'
+# ---------------------------------
+# Primary properties
+# ---------------------------------
+target_name = ['betapic', 'tauboo']
+target_ra = [10.24323, None]
+target_dec = [-3.213232, None]
+target_f380m = [None, 10.0]
+target_f430m = [None, 12.0]
+target_f480m = [None, 13.0]
+
+# ---------------------------------
+# Companion properties
+# ---------------------------------
+# define the primary names (as appears in xml file)
+primary_names = ['betapic', 'betapic']
+# define companion separations in arcsec
+companion_seps = [0.1, 0.5]
+# define companion position angles in degrees?
+companion_pas = [90, 40]
+# define companion delta magnitudes [magnitudes fainter than primary]
+companion_dms = [5, 10]
 
 #####################################
 
@@ -49,7 +63,6 @@ datatype = 'raw'
 # rm -f ?bservation* jw*
 # In particular the yaml files.
 xxx = subprocess.getoutput('rm -rf '+pathdir+'?bserva* '+pathdir+'jw*')
-
 
 if False:
     # Here, two things are very important:
@@ -67,26 +80,42 @@ if False:
                 #'DISK': {'extended':}} #  I did not find how to call this with extended option
 
 if True:
-    # Convert the string observing date to float
-    date_object = datetime.strptime(dates, "%Y-%m-%d")
-    year, week, day = date_object.isocalendar()
-    obs_date_float = year + (week*7 + day)/365.
-    print('Catalogues for date: ', obs_date_float)
-
+    # Convert the date to a Time object
+    date_object = Time(obs_date, format='iso')
+    print('Catalogues for date: ', date_object.iso)
 
     # Run apt2cat in aptxml_to_catalog.py to generate the list files
-    catalog_list, target_list = loic.apt2cat(xml_name, obs_date_float)
+    cout = loic.apt2cat(xml_name, date_object.decimalyear)
+    catalog_list, target_list, catalog_tables, target_pos = cout
 
     print('The APT xml file was read and these catalogues and target lists were generated:')
     print(catalog_list)
     print(target_list)
+
+    # TODO: modify primary based on constants (ra/dec/mags)
 
     # Add your planet. If we want to do so, we need to know here which index is our target
     # so that we can read back the catalog file and add a faint companion at the proper
     # relative position. Neil, you should probably add the capability to return an entry
     # index in  the target the make_catalog function.
 
+    # -------------------------------------------------------------------------
+    # loop around sources to add
+    for it in range(len(primary_names)):
+        # get this iterations values
+        primary_name = primary_names[it]
+        companion_sep = companion_seps[it]
+        companion_pa = companion_pas[it]
+        companion_dm = companion_dms[it]
+        # get arguments for add_companion_to_cat_entry function
+        cargs = [target_list, catalog_tables, target_pos, primary_name,
+                 companion_sep, companion_pa, companion_dm]
+        # add companions to table
+        catalog_tables = neil.add_companion_to_cat_entry(*cargs)
+    # -------------------------------------------------------------------------
     # neil.add_source() (separation, position angle, dm) you need the V3PA from pysiaf?
+
+    # TODO: write catalog tables
 
     # Here, we need to remake a catalogues structure as above containing all catalogs returned
     # by apt2cat(). Neil, please do so. I do not know how to create that structure.
@@ -95,15 +124,17 @@ if True:
     catalogues = {'BETA-PIC': {'point_source': os.path.join(pathdir, 'betapic_2476_short_BETA-PIC_catalog.list')},
               'PSF-REF': {'point_source': os.path.join(pathdir, 'betapic_2476_short_PSF-REF_catalog.list')}}
 
-
 if True:
 
-    yam = yaml_generator.SimInput(input_xml=xml_name, pointing_file=pointing_name,
-                              catalogs=catalogues, roll_angle=pav3,
-                              dates=dates, reffile_defaults=reffile_defaults,
-                              verbose=True, output_dir=simdata_output_directory,
-                              simdata_output_dir=simdata_output_directory,
-                              datatype=datatype)
+    yam = yaml_generator.SimInput(input_xml=xml_name,
+                                  pointing_file=pointing_name,
+                                  catalogs=catalogues, roll_angle=pav3,
+                                  dates=dates,
+                                  reffile_defaults=reffile_defaults,
+                                  verbose=True,
+                                  output_dir=simdata_output_directory,
+                                  simdata_output_dir=simdata_output_directory,
+                                  datatype=datatype)
 
     yam.create_inputs()
 
@@ -126,7 +157,6 @@ if True:
         t1.paramfile = str(modified_file)
         t1.create()
 
-
 # Call the first stage DMS
 if True:
 
@@ -142,7 +172,5 @@ if True:
     # Launch DMS stage 1 and write results in the same path as uncal images
     # with the name default.
     for i, uncal_filename in enumerate(uncal_list):
-        result = Detector1Pipeline.call(uncal_list[i] \
-                , output_dir = pathdir \
-                , save_results=True)
-
+        result = Detector1Pipeline.call(uncal_list[i], output_dir=pathdir,
+                                        save_results=True)
