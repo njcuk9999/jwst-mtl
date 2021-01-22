@@ -10,11 +10,10 @@ order 1 and 2 SOSS spectra trace.
 """
 
 import numpy as np
-import matplotlib.pyplot as plt
 import emcee
-import corner
 import warnings
 from SOSS.trace import tracepol as tp
+from SOSS.extract.empirical_trace import plotting as plotting
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
@@ -22,7 +21,7 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 path = '/Users/michaelradica/Documents/GitHub/jwst-mtl/SOSS/'
 
 
-def _do_emcee(xref, yref, xdat, ydat):
+def _do_emcee(xref, yref, xdat, ydat, showprogress=False):
     '''Calls the emcee package to preform an MCMC determination of the best
     fitting rotation angle and offsets to map the reference centroids onto the
     data for the first order.
@@ -35,6 +34,8 @@ def _do_emcee(xref, yref, xdat, ydat):
     xdat, ydat : array of float
         X and Y trace centroids determined from the data, for example: as
         returned by get_uncontam_centroids.
+    showprogress: bool
+        If True, show the emcee progress bar.
 
     Returns
     -------
@@ -51,13 +52,14 @@ def _do_emcee(xref, yref, xdat, ydat):
                                     args=[xref, yref, xdat, ydat])
     # Run the MCMC for 5000 steps - it has generally converged
     # within ~3000 steps in trial runs.
-    sampler.run_mcmc(pos, 5000, progress=False)
+    sampler.run_mcmc(pos, 5000, progress=showprogress)
 
     return sampler
 
 
 def get_contam_centroids(clear, ref_centroids=None, doplot=False,
-                         return_orders=[1, 2, 3]):
+                         return_orders=[1, 2, 3], bound=True,
+                         showprogress=False):
     '''Get the trace centroids for all orders when there is contamination on
     the detector. Fits the first order centroids using the uncontaminated
     method, and determines the second/third order centroids via the
@@ -76,6 +78,11 @@ def get_contam_centroids(clear, ref_centroids=None, doplot=False,
         first order.
     return_orders : list
         Orders for which centroid x and y positions will be returned.
+    bound : bool
+        If True, only returns centroids that fall on the detector after
+        polynomial fitting.
+    showprogress : bool
+        If True, show the emcee progress bar.
 
     Returns
     -------
@@ -116,10 +123,10 @@ def get_contam_centroids(clear, ref_centroids=None, doplot=False,
 
     # Fit the reference centroids to the data for order 1.
     fit = _do_emcee(ref_cen['order 1'][0], ref_cen['order 1'][1], xdat_o1,
-                    ydat_o1)
+                    ydat_o1, showprogress=showprogress)
     # Plot MCMC results if requested.
     if doplot is True:
-        _plot_corner(fit)
+        plotting._plot_corner(fit)
     # Get fitted rotation parameters.
     flat_samples = fit.get_chain(discard=500, thin=15, flat=True)
     ang = np.percentile(flat_samples[:, 0], 50)
@@ -137,8 +144,11 @@ def get_contam_centroids(clear, ref_centroids=None, doplot=False,
         # Ensure that the centroids cover the whole detector.
         pp = np.polyfit(xtrans, ytrans, 5)
         ytrans = np.polyval(pp, np.arange(2048))
-        inds = np.where((ytrans >= 0) & (ytrans < 256))[0]
-        trans_cen['order '+str(order)] = [np.arange(2048)[inds], ytrans[inds]]
+        if bound is True:
+            inds = np.where((ytrans >= 0) & (ytrans < 256))[0]
+            trans_cen['order '+str(order)] = [np.arange(2048)[inds], ytrans[inds]]
+        else:
+            trans_cen['order '+str(order)] = [np.arange(2048), ytrans]
 
     return trans_cen, rot_params
 
@@ -334,16 +344,6 @@ def _log_probability(theta, xmod, ymod, xdat, ydat):
         return -np.inf
 
     return lp + _log_likelihood(theta, xmod, ymod, xdat, ydat)
-
-
-def _plot_corner(sampler):
-    '''Utility function to produce the corner plot for results of _do_emcee.
-    '''
-    labels = [r"ang", "xshift", "yshift"]
-    flat_samples = sampler.get_chain(discard=500, thin=15, flat=True)
-    fig = corner.corner(flat_samples, labels=labels)
-
-    return None
 
 
 def rot_centroids(ang, xshift, yshift, xpix, ypix, bound=True, atthesex=None):

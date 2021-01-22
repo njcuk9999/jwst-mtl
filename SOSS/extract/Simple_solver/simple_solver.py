@@ -15,7 +15,7 @@ interpolation method.
 import numpy as np
 from astropy.io import fits
 from scipy.ndimage.interpolation import rotate
-from SOSS.extract.empirical_trace import _centroid as ctd
+from SOSS.extract.empirical_trace import centroid as ctd
 
 # hack to get around the fact that relative paths are constantly messing up atm
 path = '/Users/michaelradica/Documents/GitHub/jwst-mtl/SOSS/'
