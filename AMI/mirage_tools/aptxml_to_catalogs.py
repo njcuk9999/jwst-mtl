@@ -74,32 +74,30 @@ def apt_field_coordinates(APTxml_filename):
     return alltargets[ind], alpha, delta
 
 
-def apt2cat(xml_filename):
+def apt2cat(xml_filename, obs_date_float):
     # Run the script
 
     # Read in the xml file and return the fields and positions for each field
-    aptfieldname, alpha, delta = apt_field_coordinates(xml_filename)
+    targetname, alpha, delta = apt_field_coordinates(xml_filename)
 
     # Sculpt the catalogue names
     catname = []
     for i in range(len(alpha)):
         path, base = os.path.split(xml_filename)
         a,b,c = base.partition('.xml')
-        print(a)
-        print(b)
-        print(c)
-        catname.append(path+'/'+a+'_'+aptfieldname[i]+'_catalog.list')
+        catname.append(path+'/'+a+'_'+targetname[i]+'_catalog.list')
 
     # Make alpha delta input an array
     for i in range(len(alpha)):
-        neil.make_catalog(alpha[i], delta[i], 120.0, 2025.0, catname[i])
+        neil.make_catalog(alpha[i], delta[i], 120.0, obs_date_float, catname[i])
 
-    return catname
+    # Output the catalogue name list as well as the field name list
+    return catname, targetname
 
 
 # Run example
 
-catlist = apt2cat('/genesis/jwst/userland-ami/loic_mirage_betapic/betapic_2476_short.xml')
+# catlist, targetlist = apt2cat('/genesis/jwst/userland-ami/loic_mirage_betapic/betapic_2476_short.xml')
 # Add you planet
 # neil.add_source() (separation, position angle, dm) you need the V3PA from pysiaf?
 # Also return the index of the target
