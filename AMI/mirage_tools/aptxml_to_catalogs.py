@@ -96,7 +96,7 @@ def apt2cat(xml_filename, obs_date_float):
         pos, table = neil.make_catalog(alpha[it], delta[it], 120.0,
                                        obs_date_float, return_data=True)
         # append the source position to storage
-        source_positions[it].append(pos)
+        source_positions.append(pos)
         # append the table to storage
         tables.append(table)
 
