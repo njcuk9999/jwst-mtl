@@ -14,15 +14,19 @@ interpolation method.
 
 import numpy as np
 from astropy.io import fits
+import re
+import warnings
 from scipy.ndimage.interpolation import rotate
 from SOSS.extract.empirical_trace import centroid as ctd
+from SOSS.extract.empirical_trace import plotting as plotting
 
-# hack to get around the fact that relative paths are constantly messing up atm
-path = '/Users/michaelradica/Documents/GitHub/jwst-mtl/SOSS/'
+warnings.simplefilter(action='ignore', category=RuntimeWarning)
+
+# local path to reference files.
+path = '/Users/michaelradica/Documents/School/Ph.D./Research/SOSS/Extraction/Input_Files/'
 
 
-def _do_transform(data, rot_ang, x_shift, y_shift, padding_factor=2,
-                  oversampling=1):
+def _do_transform(data, rot_ang, x_shift, y_shift, pad=0, oversample=1):
     '''Do the rotation (via a rotation matrix) and offset of the reference
     files to match the data. Rotation angle and center, as well as the
     required vertical and horizontal displacements must be calculated
@@ -57,52 +61,59 @@ def _do_transform(data, rot_ang, x_shift, y_shift, padding_factor=2,
         to the native detector resolution.
     '''
 
+    x_shift, y_shift = int(round(x_shift, 0)), int(round(y_shift, 0))
     # Determine x and y center of the padded dataframe
-    pad_xcen = np.int(2048 * padding_factor * oversampling / 2)
-    pad_ycen = np.int(256 * padding_factor * oversampling / 2)
-    # Find bottom left hand corner of substrip256 in the padded frame
-    bleft_x = np.int(oversampling * (1024 * padding_factor - 1024))
-    bleft_y = np.int(oversampling * (128 * padding_factor - 128))
+    pad_ydim, pad_xdim = np.shape(data)
+    nat_xdim = int(round(pad_xdim / oversample - 2*pad, 0))
+    nat_ydim = int(round(pad_ydim / oversample - 2*pad, 0))
+    pad_xcen = pad_xdim // 2
+    pad_ycen = pad_ydim // 2
 
     # Rotation anchor is o1 trace centroid halfway along the spectral axis.
-    x_anch = 1024
-    y_anch = 206
+    x_anch = int((1024+pad)*oversample)
+    y_anch = int((50+pad)*oversample)
 
-    # Shift dataframe such that rotation anchor is in the center of the frame
-    data_shift = np.roll(data, (pad_ycen-bleft_y-y_anch, pad_xcen-bleft_x-x_anch), (0, 1))
-
-    # Rotate the shifted dataframe by the required amount
+    # Shift dataframe such that rotation anchor is in the center of the frame.
+    data_shift = np.roll(data, (pad_ycen-y_anch, pad_xcen-x_anch), (0, 1))
+    # Rotate the shifted dataframe by the required amount.
     data_rot = rotate(data_shift, rot_ang, reshape=False)
+    # Shift the rotated data back to its original position.
+    data_shiftback = np.roll(data_rot, (-pad_ycen+y_anch, -pad_xcen+x_anch),
+                             (0, 1))
+    # Apply vertical and horizontal offsets.
+    data_offset = np.roll(data_shiftback, (y_shift*oversample,
+                          x_shift*oversample), (0, 1))
+    # Remove the padding.
+    data_sub = data_offset[(pad*oversample):(-pad*oversample),
+                           (pad*oversample):(-pad*oversample)]
 
-    # Shift the rotated data back to its original position
-    data_shiftback = np.roll(data_rot, (-pad_ycen+bleft_y+y_anch, -pad_xcen+bleft_x+x_anch), (0, 1))
-
-    # Apply vertical and horizontal offsets
-    # Add some error if offset value is greater than padding
-    data_offset = np.roll(data_shiftback, (y_shift, x_shift), (0, 1))
-
-    # Extract the substrip256 detector - discluding the padding
-    data_sub256 = data_offset[bleft_y:bleft_y+256*oversampling,
-                              bleft_x:bleft_x+2048*oversampling]
-
-    # Interpolate to native resolution if the reference frame is oversampled
-    if oversampling != 1:
-        data_sub256_nat = np.empty((256, 2048))
+    # Interpolate to native resolution if the reference frame is oversampled.
+    if oversample != 1:
+        data_nat1 = np.empty((nat_ydim, nat_xdim*oversample))
+        data_nat = np.empty((nat_ydim, nat_xdim))
         # Loop over the spectral direction and interpolate the oversampled
-        # spatial profile to native resolution
-        for i in range(2048*oversampling):
-            new_ax = np.arange(256)
-            oversamp_ax = np.linspace(0, 256, 256*oversampling, endpoint=False)
-            oversamp_prof = data_sub256[:, bleft_x+i]
-            data_sub256_nat[:, i] = np.interp(new_ax, oversamp_ax,
-                                              oversamp_prof)
+        # spatial profile to native resolution.
+        for i in range(nat_xdim*oversample):
+            new_ax = np.arange(nat_ydim)
+            oversamp_ax = np.linspace(0, nat_ydim, nat_ydim*oversample,
+                                      endpoint=False)
+            oversamp_prof = data_sub[:, i]
+            data_nat1[:, i] = np.interp(new_ax, oversamp_ax, oversamp_prof)
+        # Same for the spectral direction.
+        for i in range(nat_ydim):
+            new_ax = np.arange(nat_xdim)
+            oversamp_ax = np.linspace(0, nat_xdim, nat_xdim*oversample,
+                                      endpoint=False)
+            oversamp_prof = data_nat1[i, :]
+            data_nat[i, :] = np.interp(new_ax, oversamp_ax, oversamp_prof)
+
     else:
-        data_sub256_nat = data_sub256
+        data_nat = data_sub
 
-    return data_sub256_nat
+    return data_nat
 
 
-def simple_solver(clear):
+def simple_solver(clear, verbose=False):
     '''First implementation of the simple_solver algorithm to calculate
     and preform the necessary rotation and offsets to transform the
     reference traces and wavelength maps to match the science data.
@@ -132,50 +143,86 @@ def simple_solver(clear):
         to match the science data.
     '''
 
-    # Get reference trace centroids for the first order.
-    # May need to be updated when reference traces are oversampled and padded
-    ref_trace = fits.open(path+'/extract/Ref_files/trace_profile_om1.fits')[0].data[::-1, :]
-    ref_x, ref_y = ctd.get_uncontam_centroids(ref_trace)
-    # To ensure accurate fitting, extend centroids beyond detector edges.
-    pp = np.polyfit(ref_x, ref_y, 5)
-    ref_x_ext = np.arange(2148)-50
-    ref_y_ext = np.polyval(pp, ref_x_ext)
-    ref_centroids = np.array([ref_x_ext, ref_y_ext])
+    # Open 2D trace profile reference file.
+    ref_trace_file = fits.open(path+'SOSS_ref_2D_profile.fits')
+    # Get the first order profile (in DMS coords).
+    ref_trace_o1 = ref_trace_file[1].data
+    # Open trace table reference file.
+    ttab_file = fits.open(path+'SOSS_ref_trace_table.fits')
+    # Get first order centroids (in DMS coords).
+    centroids_o1 = ttab_file[1].data
+    wavemap_file = fits.open(path+'SOSS_ref_2D_wave.fits')
 
-    # Get data centroids and rotation params relative to the reference trace.
-    trans_centroids, rot_pars = ctd.get_contam_centroids(clear,
-                                                         ref_centroids=ref_centroids,
-                                                         return_orders=[1])
-    rot_ang = rot_pars[0]
-    x_shift = np.int(rot_pars[1])
-    y_shift = np.int(rot_pars[2])
+    # Determine correct subarray dimensions and offsets.
+    dimy, dimx = np.shape(clear)
+    if dimy == 96:
+        inds = re.split('\[|:|,|\]', ref_trace_file[1].header['INDEX96'])
+        ystart = int(inds[1])
+        yend = int(inds[2])
+        xstart = int(inds[3])
+        xend = int(inds[4])
+        dy = ttab_file[1].header['DYSUB96']
+    elif dimy == 256:
+        inds = re.split('\[|:|,|\]', ref_trace_file[1].header['INDEX256'])
+        ystart = int(inds[1])
+        yend = int(inds[2])
+        xstart = int(inds[3])
+        xend = int(inds[4])
+        dy = ttab_file[1].header['DYSUB256']
+    else:
+        ystart = 0
+        yend = -1
+        xstart = 0
+        xend = -1
+        dy = 0
 
-    ref_trace_trans = np.empty((2, 256, 2048))
-    wave_map_trans = np.empty((2, 256, 2048))
+    # Get first order centroids on subarray.
+    xcen_ref = centroids_o1['X']
+    # Extend centroids beyond edges of the subarray for more accurate fitting.
+    inds = np.where((xcen_ref >= -50) & (xcen_ref < 2098))
+    xcen_ref = xcen_ref[inds]
+    ycen_ref = centroids_o1['Y'][inds]+dy
 
+    # Get centroids from data.
+    xcen_dat, ycen_dat = ctd.get_centerofmass_centroids(clear)
+
+    # Fit the reference file centroids to the data.
+    fit = ctd._do_emcee(xcen_ref, ycen_ref, xcen_dat, ycen_dat,
+                        showprogress=verbose)
+    flat_samples = fit.get_chain(discard=500, thin=15, flat=True)
+    # Get best fitting rotation angle and pixel offsets.
+    rot_ang = np.percentile(flat_samples[:, 0], 50)
+    x_shift = np.percentile(flat_samples[:, 1], 50)
+    y_shift = np.percentile(flat_samples[:, 2], 50)
+    # Plot posteriors if necessary.
+    if verbose is True:
+        plotting._plot_corner(fit)
+
+    # Transform reference files to match data.
+    ref_trace_trans = np.empty((2, dimy, dimx))
+    wave_map_trans = np.empty((2, dimy, dimx))
     for order in [1, 2]:
-        # Load the reference trace and wavelength map for the current order
-        ref_trace = fits.open(path+'/extract/Ref_files/trace_profile_om%s.fits' % order)[0].data[::-1, :]
-        # Clean up the reference trace - no zero pixels and add padding
-        ref_trace[np.where(ref_trace == 0)] = 1
-        ref_trace = np.pad(ref_trace, ((128, 128), (1024, 1024)),
-                           constant_values=((1, 1), (1, 1)))
-        pad_t = 2
-        os_t = 1
-        wave_map = fits.open(path+'/extract/Ref_files/wavelengths_m%s.fits' % order)[0].data[::-1, :]
-        wave_map = np.pad(wave_map, ((128, 128), (1024, 1024)),
-                          constant_values=((1, 1), (1, 1)))
-        pad_w = 2
-        os_w = 1
+        # Load the reference trace and wavelength map for the current order.
+        ref_trace = ref_trace_file[order].data
+        ref_wavemap = wavemap_file[order].data
+        # Get padding and oversampling information.
+        os_t = ref_trace_file[order].header['OVERSAMP']
+        pad_t = ref_trace_file[order].header['PADDING']
+        os_w = wavemap_file[order].header['OVERSAMP']
+        pad_w = wavemap_file[order].header['PADDING']
+        # Slice the correct subarray.
+        ref_trace = ref_trace[ystart:yend, xstart:xend]
+        ref_wavemap = ref_wavemap[ystart:yend, xstart:xend]
 
+        # Do the transformation.
         # Pass negative rot_ang to convert from CCW to CW rotation
         ref_trace_trans[order-1, :, :] = _do_transform(ref_trace, -rot_ang,
                                                        x_shift, y_shift,
-                                                       padding_factor=pad_t,
-                                                       oversampling=os_t)
-        wave_map_trans[order-1, :, :] = _do_transform(wave_map, -rot_ang,
+                                                       pad=pad_t,
+                                                       oversample=os_t)
+        wave_map_trans[order-1, :, :] = _do_transform(ref_wavemap, -rot_ang,
                                                       x_shift, y_shift,
-                                                      padding_factor=pad_w,
-                                                      oversampling=os_w)
+                                                      pad=pad_w,
+                                                      oversample=os_w)
 
     return ref_trace_trans, wave_map_trans
