@@ -5,11 +5,10 @@ Created on Wed Dec 09 10:41 2020
 
 @author: MCR
 
-Third iteration of functions for the 'simple solver' - calculating rotation
-and offset of reference order 1 and 2 trace profiles. This iteration
-incorporates offset and rotation to the transformation, and uses a rotation
-matrix to preform the rotation transformation instead of the previous
-interpolation method.
+Functions for the 'simple solver' - calculating rotation and offset of
+reference order 1 and 2 trace profiles, as well as wavelength maps. This
+iteration incorporates offset and rotation to the transformation, and uses a
+rotation matrix to preform the rotation transformation.
 """
 
 import numpy as np
@@ -17,8 +16,8 @@ from astropy.io import fits
 import re
 import warnings
 from scipy.ndimage.interpolation import rotate
-from SOSS.extract.empirical_trace import centroid as ctd
-from SOSS.extract.empirical_trace import plotting as plotting
+from SOSS.extract.simple_solver import centroid as ctd
+from SOSS.extract.simple_solver import plotting as plotting
 
 warnings.simplefilter(action='ignore', category=RuntimeWarning)
 
@@ -26,7 +25,8 @@ warnings.simplefilter(action='ignore', category=RuntimeWarning)
 path = '/Users/michaelradica/Documents/School/Ph.D./Research/SOSS/Extraction/Input_Files/'
 
 
-def _do_transform(data, rot_ang, x_shift, y_shift, pad=0, oversample=1):
+def _do_transform(data, rot_ang, x_shift, y_shift, pad=0, oversample=1,
+                  verbose=False):
     '''Do the rotation (via a rotation matrix) and offset of the reference
     files to match the data. Rotation angle and center, as well as the
     required vertical and horizontal displacements must be calculated
@@ -46,13 +46,14 @@ def _do_transform(data, rot_ang, x_shift, y_shift, pad=0, oversample=1):
         Offset in the spectral direction to be applied after rotation.
     y_shift : float
         Offset in the spatial direction to be applied after rotation.
-    padding_factor : float
-        Factor by which the reference file is padded over the size of
-        the SUBSTRIP256 detector.
-    oversampling : int
+    pad : int
+        Number of native pixels of padding on each side of the frame.
+    oversample : int
         Factor by which the reference data is oversampled. The
         oversampling is assumed to be equal in both the spectral and
         spatial directions.
+    verbose : bool
+        Whether to do diagnostic plots and prints.
 
     Returns
     -------
@@ -83,14 +84,17 @@ def _do_transform(data, rot_ang, x_shift, y_shift, pad=0, oversample=1):
     # Apply vertical and horizontal offsets.
     data_offset = np.roll(data_shiftback, (y_shift*oversample,
                           x_shift*oversample), (0, 1))
+    if verbose is True:
+        plotting.plot_transformation_steps(data_shift, data_rot,
+                                             data_shiftback, data_offset)
     # Remove the padding.
     data_sub = data_offset[(pad*oversample):(-pad*oversample),
                            (pad*oversample):(-pad*oversample)]
 
     # Interpolate to native resolution if the reference frame is oversampled.
     if oversample != 1:
-        data_nat1 = np.empty((nat_ydim, nat_xdim*oversample))
-        data_nat = np.empty((nat_ydim, nat_xdim))
+        data_nat1 = np.ones((nat_ydim, nat_xdim*oversample))
+        data_nat = np.ones((nat_ydim, nat_xdim))
         # Loop over the spectral direction and interpolate the oversampled
         # spatial profile to native resolution.
         for i in range(nat_xdim*oversample):
@@ -113,25 +117,29 @@ def _do_transform(data, rot_ang, x_shift, y_shift, pad=0, oversample=1):
     return data_nat
 
 
-def simple_solver(clear, verbose=False):
-    '''First implementation of the simple_solver algorithm to calculate
-    and preform the necessary rotation and offsets to transform the
-    reference traces and wavelength maps to match the science data.
+def simple_solver(clear, verbose=False, save_to_file=True):
+    '''Algorithm to calculate and preform the necessary rotation and offsets to
+    transform the reference traces and wavelength maps to match the science
+    data.
     The steps are as follows:
-        1. Locate the reference trace centroids.
-        2. Open the data files and locate the centroids.
-        3. Call get_contam_centroids to determine the correct rotation and
-           offset parameters relative to the reference trace files.
-        4. Open the reference files and determine the appropriate padding
-           and oversampling factors.
-        5. Call _do_transform to transform the reference files to match the
-           data.
-        6. Return the transformed reference traces and wavelength maps.
+        1. Determine the correct subarray for the data.
+        2. Get the first order centroids for the refrence trace.
+        3. Determine the first order centroids for the data.
+        4. Fit the reference centroids to the data to determine the correct
+           rotation angle and offset.
+        5. Apply this transformation to the reference traces and wavelength
+           maps for the first and second order.
+        6. Save transformed reference files to disk.
 
     Parameters
     ----------
     clear : np.ndarray
         CLEAR science exposure.
+    verbose : bool
+        Whether to do diagnostic prints and plots.
+    save_to_file : bool
+        If True, write the transformed wavelength map and 2D trace profiles to
+        disk in two multi-extension fits files.
 
     Returns
     -------
@@ -162,6 +170,7 @@ def simple_solver(clear, verbose=False):
         xstart = int(inds[3])
         xend = int(inds[4])
         dy = ttab_file[1].header['DYSUB96']
+        subarray = 'substrip96'
     elif dimy == 256:
         inds = re.split('\[|:|,|\]', ref_trace_file[1].header['INDEX256'])
         ystart = int(inds[1])
@@ -169,12 +178,14 @@ def simple_solver(clear, verbose=False):
         xstart = int(inds[3])
         xend = int(inds[4])
         dy = ttab_file[1].header['DYSUB256']
+        subarray = 'substrip256'
     else:
         ystart = 0
-        yend = -1
+        yend = None
         xstart = 0
-        xend = -1
+        xend = None
         dy = 0
+        subarray = 'full'
 
     # Get first order centroids on subarray.
     xcen_ref = centroids_o1['X']
@@ -184,11 +195,11 @@ def simple_solver(clear, verbose=False):
     ycen_ref = centroids_o1['Y'][inds]+dy
 
     # Get centroids from data.
-    xcen_dat, ycen_dat = ctd.get_centerofmass_centroids(clear)
+    xcen_dat, ycen_dat = ctd.get_uncontam_centroids(clear)
 
     # Fit the reference file centroids to the data.
     fit = ctd._do_emcee(xcen_ref, ycen_ref, xcen_dat, ycen_dat,
-                        showprogress=verbose)
+                        subarray=subarray, showprogress=verbose)
     flat_samples = fit.get_chain(discard=500, thin=15, flat=True)
     # Get best fitting rotation angle and pixel offsets.
     rot_ang = np.percentile(flat_samples[:, 0], 50)
@@ -199,8 +210,8 @@ def simple_solver(clear, verbose=False):
         plotting._plot_corner(fit)
 
     # Transform reference files to match data.
-    ref_trace_trans = np.empty((2, dimy, dimx))
-    wave_map_trans = np.empty((2, dimy, dimx))
+    ref_trace_trans = np.ones((2, dimy, dimx))
+    wave_map_trans = np.ones((2, dimy, dimx))
     for order in [1, 2]:
         # Load the reference trace and wavelength map for the current order.
         ref_trace = ref_trace_file[order].data
@@ -213,16 +224,51 @@ def simple_solver(clear, verbose=False):
         # Slice the correct subarray.
         ref_trace = ref_trace[ystart:yend, xstart:xend]
         ref_wavemap = ref_wavemap[ystart:yend, xstart:xend]
+        # Set any NaN pixels to zero.
+        ref_trace[np.isnan(ref_trace)] = 0
+        ref_wavemap[np.isnan(ref_wavemap)] = 0
 
         # Do the transformation.
         # Pass negative rot_ang to convert from CCW to CW rotation
         ref_trace_trans[order-1, :, :] = _do_transform(ref_trace, -rot_ang,
                                                        x_shift, y_shift,
                                                        pad=pad_t,
-                                                       oversample=os_t)
+                                                       oversample=os_t,
+                                                       verbose=verbose)
         wave_map_trans[order-1, :, :] = _do_transform(ref_wavemap, -rot_ang,
                                                       x_shift, y_shift,
                                                       pad=pad_w,
-                                                      oversample=os_w)
+                                                      oversample=os_w,
+                                                      verbose=verbose)
+    # Write files to disk if necessary.
+    if save_to_file is True:
+        write_to_file(ref_trace_trans, filename='SOSS_ref_2D_profile_simplysolved')
+        write_to_file(wave_map_trans, filename='SOSS_ref_2D_wave_simplysolved')
 
     return ref_trace_trans, wave_map_trans
+
+
+def write_to_file(stack, filename):
+    '''Utility function to write transformed 2D trace profile or wavelength map
+    files to disk. Data will be saved as a multi-extension fits file.
+
+    Parameters
+    ----------
+    stack : np.ndarray (2xYx2048)
+        Array containing transformed 2D trace profile or wavelength map data.
+        The first dimension must be the spectral order, the second dimension
+        the spatial dimension, and the third the spectral dimension.
+    filename : str
+        Name of the file to which to write the data.
+    '''
+
+    hdu_p = fits.PrimaryHDU()
+    hdulist = [hdu_p]
+    for order in [1, 2]:
+        hdu_o = fits.ImageHDU(data=stack[order-1])
+        hdu_o.header['ORDER'] = order
+        hdu_o.header.comments['ORDER'] = 'Spectral order.'
+        hdulist.append(hdu_o)
+
+    hdu = fits.HDUList(hdulist)
+    hdu.writeto('{}.fits'.format(filename), overwrite=True)
