@@ -392,13 +392,14 @@ def simple_solver(clear, verbose=False, save_to_file=True):
         ref_trace[np.isnan(ref_trace)] = 0
         ref_wavemap[np.isnan(ref_wavemap)] = 0
 
-        # Do the transformation.
+        # Do the transformation for the reference 2D trace.
         # Pass negative rot_ang to convert from CCW to CW rotation
-        ref_trace_trans[order-1, :, :] = _do_transform(ref_trace, -rot_ang,
-                                                       x_shift, y_shift,
-                                                       pad=pad_t,
-                                                       oversample=os_t,
-                                                       verbose=verbose)
+        trace_trans = _do_transform(ref_trace, -rot_ang, x_shift, y_shift,
+                                    pad=pad_t, oversample=os_t,
+                                    verbose=verbose)
+        # Renormalize the spatial profile so columns sum to one.
+        ref_trace_trans[order-1] = trace_trans / np.nansum(trace_trans, axis=0)
+        # Transform the wavelength map.
         wave_map_trans[order-1, :, :] = _do_transform(ref_wavemap, -rot_ang,
                                                       x_shift, y_shift,
                                                       pad=pad_w,
