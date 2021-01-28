@@ -44,7 +44,8 @@ class Ref2dProfile:
 
         return
 
-    def __call__(self, order=1, subarray='SUBSTRIP256', offset=None, native=True):
+    def __call__(self, order=1, subarray='SUBSTRIP256', offset=None,
+                 native=True, only_prof=True):
 
         if offset is None:
             offset = [0, 0]  # x, y
@@ -88,7 +89,11 @@ class Ref2dProfile:
             ref_2d_profile = ref_2d_profile.reshape(shape[0], os, shape[1], os)
             ref_2d_profile = ref_2d_profile.mean(-1).mean(1)
 
-        return ref_2d_profile
+        # Return amount of oversampling and padding if requested.
+        if only_prof is True:
+            return ref_2d_profile
+        else:
+            return ref_2d_profile, os, pad
 
 
 class Ref2dWave(Ref2dProfile):
