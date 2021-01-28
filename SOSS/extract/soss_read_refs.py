@@ -44,6 +44,16 @@ class Ref2dProfile:
 
         return
 
+    @staticmethod
+    def _binning(array, shape, os):
+
+        # The 2D profile is normalized so that columns sum to 1.
+        # To preserve this columns must be averaged and rows summed.
+        binned_array = array.reshape(shape[0], os, shape[1], os)
+        binned_array = binned_array.mean(-1).sum(1)
+
+        return binned_array
+
     def __call__(self, order=1, subarray='SUBSTRIP256', offset=None, native=True):
 
         if offset is None:
@@ -85,8 +95,7 @@ class Ref2dProfile:
 
         # Bin down to native resolution.
         if native:
-            ref_2d_profile = ref_2d_profile.reshape(shape[0], os, shape[1], os)
-            ref_2d_profile = ref_2d_profile.mean(-1).mean(1)
+            ref_2d_profile = self._binning(ref_2d_profile, shape, os)
 
         return ref_2d_profile
 
@@ -98,6 +107,14 @@ class Ref2dWave(Ref2dProfile):
         Ref2dProfile.__init__(self, filename)
 
         return
+
+    @staticmethod
+    def _binning(array, shape, os):
+
+        binned_array = array.reshape(shape[0], os, shape[1], os)
+        binned_array = binned_array.mean(-1).mean(1)
+
+        return binned_array
 
 
 class RefKernels:
