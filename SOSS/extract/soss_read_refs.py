@@ -44,7 +44,7 @@ class Ref2dProfile:
 
         return
 
-    def __call__(self, order=1, subarray='SUBSTRIP256', offset=None):
+    def __call__(self, order=1, subarray='SUBSTRIP256', offset=None, native=True):
 
         if offset is None:
             offset = [0, 0]  # x, y
@@ -70,16 +70,23 @@ class Ref2dProfile:
         pad = header['PADDING']
 
         # Select the relevant area.
-        minrow = os*(pad + origin[0]) + int(os*offset[1])
-        maxrow = minrow + os*shape[0]
-        mincol = os*(pad + origin[1]) + int(os*offset[0])
-        maxcol = mincol + os*shape[1]
+        if native:
+            minrow = os*(pad + origin[0]) + int(os*offset[1])
+            maxrow = minrow + os*shape[0]
+            mincol = os*(pad + origin[1]) + int(os*offset[0])
+            maxcol = mincol + os*shape[1]
+        else:
+            minrow = os*origin[0] + int(os*offset[1])
+            maxrow = minrow + os*(shape[0] + 2*pad)
+            mincol = os*origin[1] + int(os*offset[0])
+            maxcol = mincol + os*(shape[1] + 2*pad)
 
         ref_2d_profile = ref_2d_profile[minrow:maxrow, mincol:maxcol]
 
         # Bin down to native resolution.
-        ref_2d_profile = ref_2d_profile.reshape(shape[0], os, shape[1], os)
-        ref_2d_profile = ref_2d_profile.mean(-1).mean(1)
+        if native:
+            ref_2d_profile = ref_2d_profile.reshape(shape[0], os, shape[1], os)
+            ref_2d_profile = ref_2d_profile.mean(-1).mean(1)
 
         return ref_2d_profile
 
