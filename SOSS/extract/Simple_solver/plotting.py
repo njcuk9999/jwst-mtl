@@ -21,11 +21,9 @@ def _plot_corner(sampler):
     fig = corner.corner(flat_samples, labels=labels)
     plt.show()
 
-    return None
 
-
-def plot_transformation_steps(data_shift, data_rot, data_shiftback,
-                              data_offset):
+def _plot_transformation_steps(data_shift, data_rot, data_shiftback,
+                               data_offset):
     '''Plot the outcomes of the various steps involved in the simple_solver
     transformation:
         1. Initial shift of rotation center to the center of the frame.

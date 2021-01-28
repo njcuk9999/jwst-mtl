@@ -15,14 +15,56 @@ import numpy as np
 from astropy.io import fits
 import re
 import warnings
+import emcee
 from scipy.ndimage.interpolation import rotate
-from SOSS.extract.simple_solver import centroid as ctd
+from SOSS.trace import get_uncontam_centroids as ctd
 from SOSS.extract.simple_solver import plotting as plotting
+from SOSS.extract import soss_read_refs
 
 warnings.simplefilter(action='ignore', category=RuntimeWarning)
 
 # local path to reference files.
 path = '/Users/michaelradica/Documents/School/Ph.D./Research/SOSS/Extraction/Input_Files/'
+
+
+def _do_emcee(xref, yref, xdat, ydat, subarray='SUBSTRIP256',
+              showprogress=False):
+    '''Calls the emcee package to preform an MCMC determination of the best
+    fitting rotation angle and offsets to map the reference centroids onto the
+    data for the first order.
+
+    Parameters
+    ----------
+    xref, yref : array of float
+        X and Y trace centroids respectively to be used as a reference point,
+        for example: as returned by get_om_centroids.
+    xdat, ydat : array of float
+        X and Y trace centroids determined from the data, for example: as
+        returned by get_uncontam_centroids.
+    subarray : str
+        Identifier for the correct subarray. Allowed values are "SUBSTRIP96",
+        "SUBSTRIP256", or "FULL".
+    showprogress: bool
+        If True, show the emcee progress bar.
+
+    Returns
+    -------
+    sampler : emcee EnsembleSampler object
+        MCMC fitting results.
+    '''
+
+    # Set up the MCMC run.
+    initial = np.array([0, 0, 0])  # Initial guess parameters
+    pos = initial + 0.5*np.random.randn(32, 3)
+    nwalkers, ndim = pos.shape
+
+    sampler = emcee.EnsembleSampler(nwalkers, ndim, _log_probability,
+                                    args=[xref, yref, xdat, ydat, subarray])
+    # Run the MCMC for 5000 steps - it has generally converged
+    # within ~3000 steps in trial runs.
+    sampler.run_mcmc(pos, 5000, progress=showprogress)
+
+    return sampler
 
 
 def _do_transform(data, rot_ang, x_shift, y_shift, pad=0, oversample=1,
@@ -85,8 +127,8 @@ def _do_transform(data, rot_ang, x_shift, y_shift, pad=0, oversample=1,
     data_offset = np.roll(data_shiftback, (y_shift*oversample,
                           x_shift*oversample), (0, 1))
     if verbose is True:
-        plotting.plot_transformation_steps(data_shift, data_rot,
-                                             data_shiftback, data_offset)
+        plotting._plot_transformation_steps(data_shift, data_rot,
+                                            data_shiftback, data_offset)
     # Remove the padding.
     data_sub = data_offset[(pad*oversample):(-pad*oversample),
                            (pad*oversample):(-pad*oversample)]
@@ -115,6 +157,146 @@ def _do_transform(data, rot_ang, x_shift, y_shift, pad=0, oversample=1,
         data_nat = data_sub
 
     return data_nat
+
+
+def _log_likelihood(theta, xmod, ymod, xdat, ydat, subarray):
+    '''Definition of the log likelihood. Called by _do_emcee.
+    xmod/ymod should extend past the edges of the detector.
+    '''
+    ang, xshift, yshift = theta
+    # Calculate rotated model
+    modelx, modely = rot_centroids(ang, xshift, yshift, xmod, ymod, bound=True,
+                                   subarray=subarray)
+    # Interpolate rotated model onto same x scale as data
+    modely = np.interp(xdat, modelx, modely)
+
+    return -0.5 * np.sum((ydat - modely)**2 - 0.5 * np.log(2 * np.pi * 1))
+
+
+def _log_prior(theta):
+    '''Definition of the priors. Called by _do_emcee.
+    Angle within +/- 5 deg (one motor step is 0.15deg).
+    X-shift within +/- 100 pixels, TA shoukd be accurate to within 1 pixel.
+    Y-shift to within +/- 50 pixels.
+    '''
+    ang, xshift, yshift = theta
+
+    if -5 <= ang < 5 and -100 <= xshift < 100 and -50 <= yshift < 50:
+        return -1
+    else:
+        return -np.inf
+
+
+def _log_probability(theta, xmod, ymod, xdat, ydat, subarray):
+    '''Definition of the final probability. Called by _do_emcee.
+    '''
+    lp = _log_prior(theta)
+    if not np.isfinite(lp):
+        return -np.inf
+
+    return lp + _log_likelihood(theta, xmod, ymod, xdat, ydat, subarray)
+
+
+def rot_centroids(ang, xshift, yshift, xpix, ypix, bound=True, atthesex=None,
+                  cenx=1024, ceny=50, subarray='SUBSTRIP256'):
+    '''Apply a rotation and shift to the trace centroids positions. This
+    assumes that the trace centroids are already in the CV3 coordinate system.
+
+    Parameters
+    ----------
+    ang : float
+        The rotation angle in degrees CCW.
+    xshift : float
+        Offset in the X direction to be rigidly applied after rotation.
+    yshift : float
+        Offset in the Y direction to be rigidly applied after rotation.
+    xpix : float or np.array of float
+        Centroid pixel X values.
+    ypix : float or np.array of float]
+        Centroid pixel Y values.
+    bound : bool
+        Whether to trim rotated solutions to fit within the subarray256.
+    atthesex : list of float
+        Pixel values at which to calculate rotated centroids.
+    cenx : int
+        X-coordinate in pixels of the rotation center.
+    ceny : int
+        Y-coordinate in pixels of the rotation center.
+    subarray : str
+        Subarray identifier. One of SUBSTRIP96, SUBSTRIP256 or FULL.
+
+    Returns
+    -------
+    rot_xpix : np.array of float
+        xval after the application of the rotation and translation
+        transformations.
+    rot_ypix : np.array of float
+        yval after the application of the rotation and translation
+        transformations.
+
+    Raises
+    ------
+    ValueError
+        If bad subarray identifier is passed.
+    '''
+
+    # Convert to numpy arrays
+    xpix = np.atleast_1d(xpix)
+    ypix = np.atleast_1d(ypix)
+    # Required rotation in the detector frame to match the data.
+    t = np.deg2rad(ang)
+    R = np.array([[np.cos(t), -np.sin(t)], [np.sin(t), np.cos(t)]])
+
+    # Rotation center set to o1 trace centroid halfway along spectral axis.
+    points1 = np.array([xpix - cenx, ypix - ceny])
+    rot_pix = R @ points1
+
+    rot_pix[0] += cenx
+    rot_pix[1] += ceny
+
+    # Apply the offsets
+    rot_pix[0] += xshift
+    rot_pix[1] += yshift
+
+    if xpix.size >= 10:
+        if atthesex is None:
+            # Ensure that there are no jumps of >1 pixel.
+            min = int(round(np.min(rot_pix[0]), 0))
+            max = int(round(np.max(rot_pix[0]), 0))
+            # Same range as rotated pixels but with step of 1 pixel.
+            atthesex = np.linspace(min, max, max-min+1)
+        # Polynomial fit to ensure a centroid at each pixel in atthesex
+        pp = np.polyfit(rot_pix[0], rot_pix[1], 5)
+        # Warn user if atthesex extends beyond polynomial domain.
+        if np.max(atthesex) > np.max(rot_pix[0])+25 or np.min(atthesex) < np.min(rot_pix[0])-25:
+            warnings.warn('atthesex extends beyond rot_xpix. Use results with caution.')
+        rot_xpix = atthesex
+        rot_ypix = np.polyval(pp, rot_xpix)
+    else:
+        # If too few pixels for fitting, keep rot_pix.
+        if atthesex is not None:
+            print('Too few pixels for polynomial fitting. Ignoring atthesex.')
+        rot_xpix = rot_pix[0]
+        rot_ypix = rot_pix[1]
+
+    # Check to ensure all points are on the subarray.
+    if bound is True:
+        # Get dimensions of the subarray
+        if subarray == 'SUBSTRIP96':
+            yend = 96
+        elif subarray == 'SUBSTRIP256':
+            yend = 256
+        elif subarray == 'FULL':
+            yend = 2048
+        else:
+            raise ValueError('Bad subarray identifier. Allowed identifiers are "SUBSTRIP96", "SUBSTRIP256", or "FULL".')
+        # Reject pixels which are not on the subarray.
+        inds = [(rot_ypix >= 0) & (rot_ypix < yend) & (rot_xpix >= 0) &
+                (rot_xpix < 2048)]
+        rot_xpix = rot_xpix[inds]
+        rot_ypix = rot_ypix[inds]
+
+    return rot_xpix, rot_ypix
 
 
 def simple_solver(clear, verbose=False, save_to_file=True):
@@ -156,9 +338,8 @@ def simple_solver(clear, verbose=False, save_to_file=True):
     # Get the first order profile (in DMS coords).
     ref_trace_o1 = ref_trace_file[1].data
     # Open trace table reference file.
-    ttab_file = fits.open(path+'SOSS_ref_trace_table.fits')
+    ttab = soss_read_refs.RefTraceTable(path+'SOSS_ref_trace_table.fits')
     # Get first order centroids (in DMS coords).
-    centroids_o1 = ttab_file[1].data
     wavemap_file = fits.open(path+'SOSS_ref_2D_wave.fits')
 
     # Determine correct subarray dimensions and offsets.
@@ -169,37 +350,34 @@ def simple_solver(clear, verbose=False, save_to_file=True):
         yend = int(inds[2])
         xstart = int(inds[3])
         xend = int(inds[4])
-        dy = ttab_file[1].header['DYSUB96']
-        subarray = 'substrip96'
+        subarray = 'SUBSTRIP96'
     elif dimy == 256:
         inds = re.split('\[|:|,|\]', ref_trace_file[1].header['INDEX256'])
         ystart = int(inds[1])
         yend = int(inds[2])
         xstart = int(inds[3])
         xend = int(inds[4])
-        dy = ttab_file[1].header['DYSUB256']
-        subarray = 'substrip256'
+        subarray = 'SUBSTRIP256'
     else:
         ystart = 0
         yend = None
         xstart = 0
         xend = None
-        dy = 0
-        subarray = 'full'
+        subarray = 'FULL'
 
     # Get first order centroids on subarray.
-    xcen_ref = centroids_o1['X']
+    xcen_ref = ttab('X', subarray=subarray)[1]
     # Extend centroids beyond edges of the subarray for more accurate fitting.
     inds = np.where((xcen_ref >= -50) & (xcen_ref < 2098))
     xcen_ref = xcen_ref[inds]
-    ycen_ref = centroids_o1['Y'][inds]+dy
+    ycen_ref = ttab('Y', subarray=subarray)[1][inds]
 
     # Get centroids from data.
-    xcen_dat, ycen_dat = ctd.get_uncontam_centroids(clear)
+    xcen_dat, ycen_dat = ctd.get_uncontam_centroids(clear, verbose=verbose)
 
     # Fit the reference file centroids to the data.
-    fit = ctd._do_emcee(xcen_ref, ycen_ref, xcen_dat, ycen_dat,
-                        subarray=subarray, showprogress=verbose)
+    fit = _do_emcee(xcen_ref, ycen_ref, xcen_dat, ycen_dat,
+                    subarray=subarray, showprogress=verbose)
     flat_samples = fit.get_chain(discard=500, thin=15, flat=True)
     # Get best fitting rotation angle and pixel offsets.
     rot_ang = np.percentile(flat_samples[:, 0], 50)
