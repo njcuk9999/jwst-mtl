@@ -18,8 +18,8 @@ import warnings
 import emcee
 from scipy.ndimage.interpolation import rotate
 from SOSS.trace import get_uncontam_centroids as ctd
-from SOSS.extract.simple_solver import plotting as plotting
 from SOSS.extract import soss_read_refs
+from SOSS.extract.simple_solver import plotting as plotting
 
 warnings.simplefilter(action='ignore', category=RuntimeWarning)
 
@@ -60,8 +60,7 @@ def _do_emcee(xref, yref, xdat, ydat, subarray='SUBSTRIP256',
 
     sampler = emcee.EnsembleSampler(nwalkers, ndim, _log_probability,
                                     args=[xref, yref, xdat, ydat, subarray])
-    # Run the MCMC for 5000 steps - it has generally converged
-    # within ~3000 steps in trial runs.
+    # Run the MCMC for 5000 steps - it has generally converged well before.
     sampler.run_mcmc(pos, 5000, progress=showprogress)
 
     return sampler
@@ -152,7 +151,6 @@ def _do_transform(data, rot_ang, x_shift, y_shift, pad=0, oversample=1,
                                       endpoint=False)
             oversamp_prof = data_nat1[i, :]
             data_nat[i, :] = np.interp(new_ax, oversamp_ax, oversamp_prof)
-
     else:
         data_nat = data_sub
 
@@ -178,6 +176,8 @@ def _log_prior(theta):
     Angle within +/- 5 deg (one motor step is 0.15deg).
     X-shift within +/- 100 pixels, TA shoukd be accurate to within 1 pixel.
     Y-shift to within +/- 50 pixels.
+    Currently, very broad bounds. Can likely be refined once informed by actual
+    observations.
     '''
     ang, xshift, yshift = theta
 
@@ -212,10 +212,10 @@ def rot_centroids(ang, xshift, yshift, xpix, ypix, bound=True, atthesex=None,
         Offset in the Y direction to be rigidly applied after rotation.
     xpix : float or np.array of float
         Centroid pixel X values.
-    ypix : float or np.array of float]
+    ypix : float or np.array of float
         Centroid pixel Y values.
     bound : bool
-        Whether to trim rotated solutions to fit within the subarray256.
+        Whether to trim rotated solutions to fit within the specified subarray.
     atthesex : list of float
         Pixel values at which to calculate rotated centroids.
     cenx : int
@@ -289,7 +289,7 @@ def rot_centroids(ang, xshift, yshift, xpix, ypix, bound=True, atthesex=None,
         elif subarray == 'FULL':
             yend = 2048
         else:
-            raise ValueError('Bad subarray identifier. Allowed identifiers are "SUBSTRIP96", "SUBSTRIP256", or "FULL".')
+            raise ValueError('Unknown subarray. Allowed identifiers are "SUBSTRIP96", "SUBSTRIP256", or "FULL".')
         # Reject pixels which are not on the subarray.
         inds = [(rot_ypix >= 0) & (rot_ypix < yend) & (rot_xpix >= 0) &
                 (rot_xpix < 2048)]
@@ -326,51 +326,42 @@ def simple_solver(clear, verbose=False, save_to_file=True):
     Returns
     -------
     ref_trace_trans : np.ndarray
-        2x256x2048 array containing the reference trace profiles transformed
+        2xYx2048 array containing the reference trace profiles transformed
         to match the science data.
     wave_map_trans : np.ndarray
-        2x256x2048 array containing the reference trace profiles transformed
+        2xYx2048 array containing the reference trace profiles transformed
         to match the science data.
+
+    Raises
+    ------
+    ValueError
+        If shape of clear input does not match known subarrays.
     '''
 
     # Open 2D trace profile reference file.
-    ref_trace_file = fits.open(path+'SOSS_ref_2D_profile.fits')
-    # Get the first order profile (in DMS coords).
-    ref_trace_o1 = ref_trace_file[1].data
+    ref_trace_file = soss_read_refs.Ref2dProfile(path+'SOSS_ref_2D_profile.fits')
     # Open trace table reference file.
-    ttab = soss_read_refs.RefTraceTable(path+'SOSS_ref_trace_table.fits')
+    ttab_file = soss_read_refs.RefTraceTable(path+'SOSS_ref_trace_table.fits')
     # Get first order centroids (in DMS coords).
-    wavemap_file = fits.open(path+'SOSS_ref_2D_wave.fits')
+    wavemap_file = soss_read_refs.Ref2dWave(path+'SOSS_ref_2D_wave.fits')
 
     # Determine correct subarray dimensions and offsets.
     dimy, dimx = np.shape(clear)
     if dimy == 96:
-        inds = re.split('\[|:|,|\]', ref_trace_file[1].header['INDEX96'])
-        ystart = int(inds[1])
-        yend = int(inds[2])
-        xstart = int(inds[3])
-        xend = int(inds[4])
         subarray = 'SUBSTRIP96'
     elif dimy == 256:
-        inds = re.split('\[|:|,|\]', ref_trace_file[1].header['INDEX256'])
-        ystart = int(inds[1])
-        yend = int(inds[2])
-        xstart = int(inds[3])
-        xend = int(inds[4])
         subarray = 'SUBSTRIP256'
-    else:
-        ystart = 0
-        yend = None
-        xstart = 0
-        xend = None
+    elif dimy == 2048:
         subarray = 'FULL'
+    else:
+        raise ValueError('Unrecognized subarray shape: {}x{}.'.format(dimy, dimx))
 
     # Get first order centroids on subarray.
-    xcen_ref = ttab('X', subarray=subarray)[1]
+    xcen_ref = ttab_file('X', subarray=subarray)[1]
     # Extend centroids beyond edges of the subarray for more accurate fitting.
     inds = np.where((xcen_ref >= -50) & (xcen_ref < 2098))
     xcen_ref = xcen_ref[inds]
-    ycen_ref = ttab('Y', subarray=subarray)[1][inds]
+    ycen_ref = ttab_file('Y', subarray=subarray)[1][inds]
 
     # Get centroids from data.
     xcen_dat, ycen_dat = ctd.get_uncontam_centroids(clear, verbose=verbose)
@@ -391,18 +382,13 @@ def simple_solver(clear, verbose=False, save_to_file=True):
     ref_trace_trans = np.ones((2, dimy, dimx))
     wave_map_trans = np.ones((2, dimy, dimx))
     for order in [1, 2]:
-        # Load the reference trace and wavelength map for the current order.
-        ref_trace = ref_trace_file[order].data
-        ref_wavemap = wavemap_file[order].data
-        # Get padding and oversampling information.
-        os_t = ref_trace_file[order].header['OVERSAMP']
-        pad_t = ref_trace_file[order].header['PADDING']
-        os_w = wavemap_file[order].header['OVERSAMP']
-        pad_w = wavemap_file[order].header['PADDING']
-        # Slice the correct subarray.
-        ref_trace = ref_trace[ystart:yend, xstart:xend]
-        ref_wavemap = ref_wavemap[ystart:yend, xstart:xend]
-        # Set any NaN pixels to zero.
+        # Load the reference trace and wavelength map for the current order and
+        # correct subarray, as well as padding and oversampling information.
+        ref_trace, os_t, pad_t = ref_trace_file(order=order, subarray=subarray,
+                                                native=False, only_prof=False)
+        ref_wavemap, os_w, pad_w = wavemap_file(order=order, subarray=subarray,
+                                                native=False, only_prof=False)
+        # Set NaN pixels to zero - the rotation doesn't handle NaNs well.
         ref_trace[np.isnan(ref_trace)] = 0
         ref_wavemap[np.isnan(ref_wavemap)] = 0
 
@@ -418,7 +404,7 @@ def simple_solver(clear, verbose=False, save_to_file=True):
                                                       pad=pad_w,
                                                       oversample=os_w,
                                                       verbose=verbose)
-    # Write files to disk if necessary.
+    # Write files to disk if requested.
     if save_to_file is True:
         write_to_file(ref_trace_trans, filename='SOSS_ref_2D_profile_simplysolved')
         write_to_file(wave_map_trans, filename='SOSS_ref_2D_wave_simplysolved')
