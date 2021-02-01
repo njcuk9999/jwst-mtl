@@ -88,8 +88,8 @@ def _plot_interpmodel(waves, nw1, nw2, p1, p2):
     plt.show()
 
 
-def _plot_wing_reconstruction(profile, ycens, axis_l, axis_l_pad, axis_r_pad,
-                              pp_l, pp_r, prof_l2, newprof):
+def _plot_wing_reconstruction(profile, ycens, axis_r, prof_r2, axis_l_pad,
+                              axis_r_pad, pp_l, pp_r, newprof):
     '''Do diagnositic plotting for wing reconstruction.
     '''
 
@@ -97,13 +97,13 @@ def _plot_wing_reconstruction(profile, ycens, axis_l, axis_l_pad, axis_r_pad,
     plt.plot(np.log10(profile), ls=':', c='black', label='original profile')
     for ycen in ycens:
         plt.axvline(ycen, ls=':', c='grey')
-    plt.scatter(axis_l, prof_l2, c='orange', s=15, label='unmasked points')
+    plt.scatter(axis_r, prof_r2, c='orange', s=15, label='unmasked points')
     ax_tot = np.linspace(axis_l_pad[0], axis_r_pad[-1], int((axis_r_pad[-1]-axis_l_pad[0])+1))
     plt.plot(ax_tot, np.log10(newprof), c='blue', alpha=1,
              label='reconstructed profile',)
-    plt.plot(axis_l_pad, np.polyval(pp_l, axis_l_pad), c='red', lw=2, ls='--',
+    plt.plot(axis_l_pad, np.polyval(pp_l, axis_l_pad), c='green', lw=2, ls='--',
              label='left wing fit')
-    plt.plot(axis_r_pad, np.polyval(pp_r, axis_r_pad), c='green', lw=2,
+    plt.plot(axis_r_pad, np.polyval(pp_r, axis_r_pad), c='red', lw=2,
              ls='--', label='right wing fit')
 
     plt.xlabel('Spatial Pixel', fontsize=14)

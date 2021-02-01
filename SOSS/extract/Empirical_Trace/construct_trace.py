@@ -17,6 +17,7 @@ import webbpsf
 from SOSS.trace import tracepol as tp
 from SOSS.extract.empirical_trace import centroid as ctd
 from SOSS.extract.empirical_trace import plotting as plotting
+from SOSS.trace import get_uncontam_centroids as uctd
 from SOSS.extract.overlap import TrpzOverlap, TrpzBox
 from SOSS.extract.throughput import ThroughputSOSS
 from SOSS.extract.convolution import WebbKer
@@ -313,10 +314,10 @@ def construct_order1(clear, F277, rot_params, ycens, pad=0, doplot=False):
     xOM, yOM, tp2 = ctd.get_om_centroids()
     # Get OM centroid pixel coords at 2.1µm.
     xom22 = tp.wavelength_to_pix(2.1, tp2, 1)[0]
-    yom22 = 256 - tp.wavelength_to_pix(2.1, tp2, 1)[1]
+    yom22 = tp.wavelength_to_pix(2.1, tp2, 1)[1]
     # Use rot params to find location of the 2.1µm centroids in the data frame.
     xd22, yd22 = ctd.rot_centroids(*rot_params, xom22, yom22)
-    xd22 = np.round(xd22, 0).astype(int)[0]
+    xd22 = np.round(xd22, 0).astype(int)[0] - 1
     yd22 = np.round(yd22, 0).astype(int)[0]
     # Extract the 2.1µm anchor profile from the data.
     Banch = clear[:, xd22]
@@ -340,7 +341,7 @@ def construct_order1(clear, F277, rot_params, ycens, pad=0, doplot=False):
         Ranch = np.sum(stand[124:132, :], axis=0)
         # Detemine OM coords of 2.9µm centroid.
         xom25 = tp.wavelength_to_pix(2.9, tp2, 1)[0]
-        yom25 = 256 - tp.wavelength_to_pix(2.9, tp2, 1)[1]
+        yom25 = tp.wavelength_to_pix(2.9, tp2, 1)[1]
         # Transform into the data frame.
         yd25 = ctd.rot_centroids(*rot_params, xom25, yom25, bound=False)[1]
         yd25 = int(round(yd25[0], 0))
@@ -369,7 +370,7 @@ def construct_order1(clear, F277, rot_params, ycens, pad=0, doplot=False):
         # Get OM centroid pixel coords at 2.45µm
         ###### TODO Switch this to use wavecal ######
         xom25 = tp.wavelength_to_pix(2.45, tp2, 1)[0]
-        yom25 = 256 - tp.wavelength_to_pix(2.45, tp2, 1)[1]
+        yom25 = tp.wavelength_to_pix(2.45, tp2, 1)[1]
         # Transform into the data frame.
         xd25, yd25 = ctd.rot_centroids(*rot_params, xom25, yom25)
         xd25 = np.round(xd25, 0).astype(int)[0]
@@ -399,7 +400,7 @@ def construct_order1(clear, F277, rot_params, ycens, pad=0, doplot=False):
     # Find the wavelength at each X centroid
     lmbda = tp.specpix_to_wavelength(cenx_om, tp2, 1)[0]
     # Y centroid at each wavelength
-    ceny_om = 256 - tp.wavelength_to_pix(lmbda, tp2, 1)[1]
+    ceny_om = tp.wavelength_to_pix(lmbda, tp2, 1)[1]
     # Transform the OM centroids onto the detector.
     cenx_d, ceny_d = ctd.rot_centroids(*rot_params, cenx_om, ceny_om,
                                        bound=False)
@@ -733,39 +734,42 @@ def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
     if contamination is True and ycens.size != 3:
         raise ValueError('Centroids must be provided for first three orders if there is contamination.')
 
-    # ====== Reconstruct left wing ======
-    # Get the left wing of the trace profile in log space.
-    prof_l = np.log10(profile[0:(ycens[0]-12)])
+    # ====== Reconstruct right wing ======
+    # Get the right wing of the trace profile in log space.
+    prof_r = np.log10(profile)
     # and corresponding axis.
-    axis_l = np.arange(256)[0:(ycens[0]-12)]
+    axis_r = np.arange(256)
 
     # === Outlier masking ===
     # Mask the cores of each order.
     for order, ycen in enumerate(ycens):
         if order == 0:
-            start = ycen-25
-            end = len(profile)
+            start = 0
+            end = ycen+25
         elif order == 1:
-            start = np.max([ycen-15, 0])
-            end = np.max([ycen+15, 1])
+            start = np.min([ycen-15, 254])
+            end = np.min([ycen+15, 255])
         else:
-            start = np.max([ycen-10, 0])
-            end = np.max([ycen+10, 1])
+            start = np.min([ycen-10, 254])
+            end = np.min([ycen+10, 255])
         # Set core of each order to NaN.
-        prof_l[start:end] = np.nan
+        prof_r[start:end] = np.nan
 
     # Fit the unmasked part of the wing to determine the mean trend.
-    inds = np.where(np.isfinite(prof_l))[0]
-    pp = _robust_linefit(axis_l[inds], prof_l[inds], (0, 0))
-    wing_mean = pp[0]+pp[1]*axis_l[inds]
+    inds = np.where(np.isfinite(prof_r))[0]
+    pp = _robust_linefit(axis_r[inds], prof_r[inds], (0, 0))
+    wing_mean = pp[0]+pp[1]*axis_r[inds]
+
     # Calculate the standard dev of unmasked points from the mean trend.
-    stddev = np.sqrt(np.median((prof_l[inds] - wing_mean)**2))
+    stddev = np.sqrt(np.median((prof_r[inds] - wing_mean)**2))
     # Find all outliers that are >3-sigma deviant from the mean.
-    inds2 = np.where(prof_l[inds] - wing_mean > 3*stddev)
+    inds2 = np.where(np.abs(prof_r[inds] - wing_mean) > 3*stddev)
 
     # === Wing fit ===
-    # Get fresh left wing profile.
-    prof_l2 = np.log10(profile[0:(ycens[0]-12)])
+    # Get fresh right wing profile.
+    prof_r2 = np.log10(profile)
+    # Mask first order core.
+    prof_r2[:(ycens[0]+15)] = np.nan
     # Mask second and third orders.
     if contamination is True:
         for order, ycen in enumerate(ycens):
@@ -776,29 +780,29 @@ def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
                 start = np.max([ycen-10, 0])
                 end = np.max([ycen+10, 1])
             # Set core of each order to NaN.
-            prof_l2[start:end] = np.nan
+            prof_r2[start:end] = np.nan
     # Mask outliers
-    prof_l2[inds[inds2]] = np.nan
+    prof_r2[inds[inds2]] = np.nan
 
     # Indices of all unmasked points in the left wing.
-    inds3 = np.isfinite(prof_l2)
+    inds3 = np.isfinite(prof_r2)
     # Fit with a 7th order polynomial.
-    pp_l = np.polyfit(axis_l[inds3], prof_l2[inds3], 7)
+    pp_r = np.polyfit(axis_r[inds3], prof_r2[inds3], 7)
 
-    # ====== Reconstruct right wing ======
-    # Get the profile for the right wing in log space.
-    prof_r = np.log10(profile[(ycens[0]+12):])
+    # ====== Reconstruct left wing ======
+    # Get the profile for the left wing in log space.
+    prof_l = np.log10(profile[:(ycens[0]-12)])
     # and corresponding axis.
-    axis_r = np.arange(256)[(ycens[0]+12):]
+    axis_l = np.arange(256)[:(ycens[0]-12)]
     # Fit with third order polynomial.
-    pp_r = np.polyfit(axis_r, prof_r, 3)
+    pp_l = np.polyfit(axis_l, prof_l, 3)
 
     # ===== Stitching =====
     # Find pixel to stitch right wing fit.
     jjr = ycens[0]+15
-    iir = np.where(axis_r == jjr)[0][0]
     # Pad the right axis.
-    axis_r_pad = np.linspace(axis_r[0], axis_r[-1]+pad, len(axis_r)+pad)
+    axis_r_pad = np.linspace(axis_r[ycens[0]+15], axis_r[-1]+pad, len(axis_r[ycens[0]+15:])+pad)
+    iir = np.where(axis_r_pad == jjr)[0][0]
     # Join right wing to old trace profile.
     newprof = np.concatenate([profile[:jjr], 10**np.polyval(pp_r, axis_r_pad)[iir:]])
 
@@ -811,9 +815,9 @@ def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
     newprof = np.concatenate([10**np.polyval(pp_l, axis_l_pad)[:iil], newprof[jjl:]])
 
     if doplot is True:
-        plotting._plot_wing_reconstruction(profile, ycens, axis_l, axis_l_pad,
-                                           axis_r_pad, pp_l, pp_r, prof_l2,
-                                           newprof)
+        plotting._plot_wing_reconstruction(profile, ycens, axis_r[inds3],
+                                           prof_r2[inds3], axis_l_pad,
+                                           axis_r_pad, pp_l, pp_r, newprof)
 
     return newprof
 
