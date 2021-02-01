@@ -21,12 +21,14 @@ import random
 import string
 import sys
 import time
-from typing import Union, List, Type
+from typing import Any, List, Type, Union
 
-from ami_sim_mtl.core.core import general
-from ami_sim_mtl.core.core import exceptions
-from ami_sim_mtl.core.instrument import constants
-from ami_sim_mtl.core.core import log_functions
+from ami_mtl.core.base import base
+from ami_mtl.core.core import general
+from ami_mtl.core.core import exceptions
+from ami_mtl.core.instrument import constants
+from ami_mtl.core.core import log_functions
+
 
 # =============================================================================
 # Define variables
@@ -64,9 +66,7 @@ CONFIG_GROUP_HEADER = """
 # -----------------------------------------------------------------------------
 """
 # get the environmental variable for ami sim dir
-AMIDIR = str(consts.constants['ENV_DIR'])
-# get the default directory otherwise (put in the home dir)
-AMIPATH = str(consts.constants['PACKAGE_DIRECTORY'])
+AMIDIR = base.ENV_DIR
 
 
 # =============================================================================
@@ -1293,6 +1293,33 @@ def setup(lconsts: constants.Consts, kwargs: dict, desc: str,
     return params
 
 
+def get_param(params: ParamDict, key: str, check_null: bool = True) -> Any:
+    """
+    Get parameter key from ParamDict
+
+    :param params: ParamDict, parameter dictionary of constants
+    :param key: str, the key to get from params
+    :param check_null: bool, if True will check for None
+
+    :return: value of the key (if it exists)
+    """
+    # check for key in params
+    if key not in params:
+        emsg = 'ParamError: {0} not in ParamDict'
+        eargs = [key]
+        params.log.error(emsg.format(*eargs))
+        return None
+    # check for valid keey
+    if check_null:
+        if params[key] is None:
+            emsg = 'ParamError: {0} not set'
+            eargs = [key]
+            params.log.error(emsg.format(*eargs))
+            return None
+    # return params key
+    return params[key]
+
+
 # =============================================================================
 # Other private functions
 # =============================================================================
@@ -1489,16 +1516,19 @@ def _read_from_config_file(params: ParamDict, args: argparse.Namespace,
         workingdir = Path(cmd_outdir)
         params['DIRECTORY'] = cmd_outdir
         params.set_source('DIRECTORY', 'sys.argv')
-        params.append_source('DIRECTORY', func_name)
+        params.append_source('DIRECTORY', func_name + ' [CMDLINE]')
     # else if it is already in params
     elif params['DIRECTORY'] is not None:
         workingdir = Path(str(params['DIRECTORY']))
+        params.append_source('DIRECTORY', func_name + ' [SET]')
     elif AMIDIR in os.environ:
         workingdir = Path(os.environ[AMIDIR])
+        params['DIRECTORY'] = str(workingdir)
+        params.set_source('DIRECTORY', func_name + ' [ENV_DIR]')
     else:
         workingdir = Path.home().joinpath(package_dir)
         params['DIRECTORY'] = str(workingdir)
-        params.set_source('DIRECTORY', func_name)
+        params.set_source('DIRECTORY', func_name + ' [DEFAULT]')
     # ----------------------------------------------------------------------
     # at this stage we need to test directory and config directory exist
     if not workingdir.exists():
@@ -1546,7 +1576,7 @@ def _read_from_config_file(params: ParamDict, args: argparse.Namespace,
         constant = params.instances[cname]
         # only update parameters with constants instance
         if isinstance(constant, constants.constant_functions.Constant):
-            # only add constatns that have user=True
+            # only add constants that have user=True
             if constant.user:
                 # check if we have it in config dictionary
                 if cname in configdict.keys():

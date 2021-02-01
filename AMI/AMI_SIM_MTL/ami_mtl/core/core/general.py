@@ -13,9 +13,10 @@ Created on 2020-05-21
 import os
 from pathlib import Path
 import pkg_resources
+import string
 from typing import Union
 
-from ami_sim_mtl.core.core import exceptions
+from ami_mtl.core.core import exceptions
 
 
 # =============================================================================
@@ -28,6 +29,8 @@ ImportException = exceptions.ImportException
 PathException = exceptions.PathException
 # relative folder cache
 REL_CACHE = dict()
+# bad characters
+BAD_CHARS = [' '] + list(string.punctuation.replace('_', ''))
 
 # =============================================================================
 # Define functions
@@ -117,6 +120,26 @@ def get_package_directory(package: str, directory: Union[str, Path]):
     # ----------------------------------------------------------------------
     # return the absolute data_folder path
     return data_folder
+
+
+def clean_name(name: str) -> str:
+    """
+    Clean a name for text file saving etc
+
+    :param name: str, the name to clean
+
+    :return: str, the cleaned name
+    """
+    # remove bad characters
+    for bad_char in BAD_CHARS:
+        name = name.replace(bad_char, '_')
+    # remove double underscores
+    while '__' in name:
+        name = name.replace('__', '_')
+    # put name in upper case
+    name = name.upper()
+    # return clean name
+    return name
 
 
 # =============================================================================

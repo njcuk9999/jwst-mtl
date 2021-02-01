@@ -9,9 +9,9 @@ Created on 2020-05-21
 
 @author: cook
 """
-from ami_sim_mtl.core.instrument import constants
-from ami_sim_mtl.core.core import param_functions
-from ami_sim_mtl.core.core import log_functions
+from ami_mtl.core.instrument import constants
+from ami_mtl.core.core import param_functions
+from ami_mtl.core.core import log_functions
 
 # =============================================================================
 # Define variables

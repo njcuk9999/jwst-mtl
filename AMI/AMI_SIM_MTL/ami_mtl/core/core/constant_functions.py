@@ -19,8 +19,8 @@ from typing import Union, List
 from pathlib import Path
 import copy
 
-from ami_sim_mtl.core.core import general
-from ami_sim_mtl.core.core import exceptions
+from ami_mtl.core.core import general
+from ami_mtl.core.core import exceptions
 
 # =============================================================================
 # Define variables
@@ -52,7 +52,8 @@ class Constant:
                  maximum: Union[None, int, float] = None,
                  options: Union[None, list] = None,
                  check: bool = True,
-                 command: Union[None, List[str], str] = None):
+                 command: Union[None, List[str], str] = None,
+                 units: Union[None, Any] = None):
         """
         Construct a constant file
 
@@ -97,6 +98,7 @@ class Constant:
         self.maximum = maximum
         self.options = options
         self.check = check
+        self.units = units
         # deal with commands (for command line arguments)
         self.command = command
         self.__list_commands()
@@ -119,6 +121,7 @@ class Constant:
         kwargs['options'] = kwargs.get('options', copy.deepcopy(self.options))
         kwargs['check'] = kwargs.get('check', bool(self.check))
         kwargs['command'] = kwargs.get('command', copy.deepcopy(self.command))
+        kwargs['units'] = kwargs.get('units', copy.deepcopy(self.units))
         # return new instances of Constant
         return Constant(**kwargs)
 
