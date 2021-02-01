@@ -24,7 +24,7 @@ from SOSS.extract.convolution import WebbKer
 
 
 def build_empirical_trace(clear, F277W, filename='spatial_profile.fits',
-                          pad=(0, 0), doplot=False, verbose=False):
+                          pad=(0, 0), verbose=False):
     ''' Procedural function to wrap around construct orders 1 and 2.
     Will do centroiding and call the functions to construct the models.
 
@@ -47,19 +47,19 @@ def build_empirical_trace(clear, F277W, filename='spatial_profile.fits',
     # Get the centroid positions for both orders from the data.
     if verbose is True:
         print('Getting trace centroids...')
-    centroids, rot_pars = ctd.get_contam_centroids(clear, doplot=doplot,
+    centroids, rot_pars = ctd.get_contam_centroids(clear, doplot=verbose,
                                                    bound=False,
                                                    showprogress=verbose)
 
     # Overplot the data centroids on the CLEAR exposure if desired.
-    if doplot is True:
+    if verbose is True:
         plotting._plot_centroid(clear, centroids)
 
     # Construct the first order profile.
     if verbose is True:
         print('Interpolating the first order trace...')
     o1frame = construct_order1(clear, F277W, rot_pars, centroids, pad=pad[0],
-                               doplot=doplot)
+                               doplot=verbose)
     # Pad the spectral axis.
     if pad[1] != 0:
         if verbose is True:
@@ -313,21 +313,23 @@ def construct_order1(clear, F277, rot_params, ycens, pad=0, doplot=False):
     ###### TODO Switch this to use wavecal ######
     xOM, yOM, tp2 = ctd.get_om_centroids()
     # Get OM centroid pixel coords at 2.1µm.
-    xom22 = tp.wavelength_to_pix(2.1, tp2, 1)[0]
-    yom22 = tp.wavelength_to_pix(2.1, tp2, 1)[1]
+    xomb = tp.wavelength_to_pix(2.1, tp2, 1)[0]
+    yomb = tp.wavelength_to_pix(2.1, tp2, 1)[1]
     # Use rot params to find location of the 2.1µm centroids in the data frame.
-    xd22, yd22 = ctd.rot_centroids(*rot_params, xom22, yom22)
-    xd22 = np.round(xd22, 0).astype(int)[0] - 1
-    yd22 = np.round(yd22, 0).astype(int)[0]
-    # Extract the 2.1µm anchor profile from the data.
-    Banch = clear[:, xd22]
+    xdb, ydb = ctd.rot_centroids(*rot_params, xomb, yomb)
+    xdb = np.round(xdb, 0).astype(int)[0]
+    ydb = np.round(ydb, 0).astype(int)[0]
+    # Extract the 2.1µm anchor profile from the data - take median profile of
+    # neighbouring 5 columns to mitigate effects of outliers.
+    Banch = np.median([clear[:, xdb-2], clear[:, xdb-1], clear[:, xdb],
+                       clear[:, xdb+1], clear[:, xdb+2]], axis=0)
     # Mask second and third order, reconstruct wing structure and pad.
-    cens = [ycens['order 1'][1][xd22], ycens['order 2'][1][xd22],
-            ycens['order 3'][1][xd22]]
+    cens = [ycens['order 1'][1][xdb], ycens['order 2'][1][xdb],
+            ycens['order 3'][1][xdb]]
     Banch = reconstruct_wings(Banch, ycens=cens, contamination=True, pad=pad,
                               doplot=doplot)
     # Remove the lambda/D scaling.
-    Banch = _chromescale(2.1, Banch, yd22)
+    Banch = _chromescale(2.1, Banch, ydb)
     # Normalize
     Banch /= np.nansum(Banch)
 
@@ -340,18 +342,18 @@ def construct_order1(clear, F277, rot_params, ycens, pad=0, doplot=False):
         # Extract the spatial profile.
         Ranch = np.sum(stand[124:132, :], axis=0)
         # Detemine OM coords of 2.9µm centroid.
-        xom25 = tp.wavelength_to_pix(2.9, tp2, 1)[0]
-        yom25 = tp.wavelength_to_pix(2.9, tp2, 1)[1]
+        xomr = tp.wavelength_to_pix(2.9, tp2, 1)[0]
+        yomr = tp.wavelength_to_pix(2.9, tp2, 1)[1]
         # Transform into the data frame.
-        yd25 = ctd.rot_centroids(*rot_params, xom25, yom25, bound=False)[1]
-        yd25 = int(round(yd25[0], 0))
+        ydr = ctd.rot_centroids(*rot_params, xomr, yomr, bound=False)[1]
+        ydr = int(round(ydr[0], 0))
         # Interpolate the WebbPSF generated profile to the correct location.
-        Ranch = np.interp(np.arange(256), np.arange(256)-128+yd25, Ranch)
+        Ranch = np.interp(np.arange(256), np.arange(256)-128+ydr, Ranch)
         # Reconstruct wing structure and pad.
-        Ranch = reconstruct_wings(Ranch, ycens=[yd25], contamination=False,
-                                  pad=pad)
+        Ranch = reconstruct_wings(Ranch, ycens=[ydr], contamination=False,
+                                  pad=pad, doplot=doplot)
         # Rescale to remove chromatic effects.
-        Ranch = _chromescale(2.9, Ranch, yd25)
+        Ranch = _chromescale(2.9, Ranch, ydr)
         # Normalize
         Ranch /= np.nansum(Ranch)
 
@@ -361,7 +363,7 @@ def construct_order1(clear, F277, rot_params, ycens, pad=0, doplot=False):
         # Pixel coords at which to start and end interpolation in OM frame.
         end = int(round(tp.wavelength_to_pix(2.1, tp2, 1)[0], 0))
         # Determine the OM coords of first pixel on detector
-        start = int(round(xom25, 0))
+        start = int(round(xomr, 0))
         rlen = end - start
 
     else:
@@ -369,19 +371,21 @@ def construct_order1(clear, F277, rot_params, ycens, pad=0, doplot=False):
         # Redwards of 2.45µm we have perfect knowledge of the order 1 trace.
         # Get OM centroid pixel coords at 2.45µm
         ###### TODO Switch this to use wavecal ######
-        xom25 = tp.wavelength_to_pix(2.45, tp2, 1)[0]
-        yom25 = tp.wavelength_to_pix(2.45, tp2, 1)[1]
+        xomr = tp.wavelength_to_pix(2.45, tp2, 1)[0]
+        yomr = tp.wavelength_to_pix(2.45, tp2, 1)[1]
         # Transform into the data frame.
-        xd25, yd25 = ctd.rot_centroids(*rot_params, xom25, yom25)
-        xd25 = np.round(xd25, 0).astype(int)[0]
-        yd25 = np.round(yd25, 0).astype(int)[0]
-        # Extract and rescale the 2.5µm profile.
-        Ranch = F277[:, xd25-1]
+        xdr, ydr = ctd.rot_centroids(*rot_params, xomr, yomr)
+        xdr = np.round(xdr, 0).astype(int)[0]
+        ydr = np.round(ydr, 0).astype(int)[0]
+        # Extract and rescale the 2.45µm profile - take median of neighbouring
+        # five columns to mitigate effects of outliers.
+        Ranch = np.median([F277[:, xdr-2], F277[:, xdr-1], F277[:, xdr],
+                           F277[:, xdr+1], F277[:, xdr+2]], axis=0)
         # Reconstruct wing structure and pad.
-        cens = [ycens['order 1'][1][xd25-1]]
+        cens = [ycens['order 1'][1][xdr-1]]
         Ranch = reconstruct_wings(Ranch, ycens=cens, contamination=False,
-                                  pad=pad)
-        Ranch = _chromescale(2.45, Ranch, yd25)
+                                  pad=pad, doplot=doplot)
+        Ranch = _chromescale(2.45, Ranch, ydr)
         # Normalize
         Ranch /= np.nansum(Ranch)
 
@@ -412,9 +416,9 @@ def construct_order1(clear, F277, rot_params, ycens, pad=0, doplot=False):
         wb_i = np.polyval(coef_b, lbd)
         wr_i = np.polyval(coef_r, lbd)
         # Recenter the profile of both anchors on the correct Y-centroid.
-        bax = np.arange(256+2*pad)-yd22+ceny
+        bax = np.arange(256+2*pad)-ydb+ceny
         Banch_i = np.interp(np.arange(256+2*pad), bax, Banch)
-        rax = np.arange(256+2*pad)-yd25+ceny
+        rax = np.arange(256+2*pad)-ydr+ceny
         Ranch_i = np.interp(np.arange(256+2*pad), rax, Ranch)
         # Construct the interpolated profile.
         prof_int = (wb_i * Banch_i + wr_i * Ranch_i)
@@ -426,24 +430,25 @@ def construct_order1(clear, F277, rot_params, ycens, pad=0, doplot=False):
         # Note detector coordinates of the edges of the interpolated region.
         bend = int(round(cenx, 0))
         if i == 0:
-            # 2.85µm (i=0) limit may be off the end of the detector.
+            # 2.9µm (i=0) limit may be off the end of the detector.
             rend = np.max([int(round(cenx, 0)), 0])
 
     # Stitch together the interpolation and data.
     newmap = np.zeros((256+2*pad, 2048))
-    # Insert interpolated data
+    # Insert interpolated data.
     newmap[:, rend:bend] = map2D[:, rend:bend]
     # Bluer region is known from the CLEAR exposure.
-    # Mask contamination from second and third orders and reconstruct wings.
     for col in range(bend, 2048):
         cens = [ycens['order 1'][1][col], ycens['order 2'][1][col],
                 ycens['order 3'][1][col]]
+        # Mask contamination from second and third orders, reconstruct wings
+        # and add padding.
         newmap[:, col] = reconstruct_wings(clear[:, col], ycens=cens, pad=pad)
     if F277 is not None:
         # Add on the F277W frame to the red of the model.
-        # Reconstruct wing structure and pad.
         for col in range(rend):
             cens = [ycens['order 1'][1][col]]
+            # Reconstruct wing structure and pad.
             newmap[:, col] = reconstruct_wings(F277[:, col], ycens=cens,
                                                contamination=False, pad=pad)
     # Insert interpolated data to the red of the data.
@@ -455,6 +460,8 @@ def construct_order1(clear, F277, rot_params, ycens, pad=0, doplot=False):
     # Add noise floor to prevent arbitrarily low values in padded wings.
     floor = np.nanpercentile(newmap[pad:(-1-pad), :], 2)
     newmap += floor
+    # Column renormalize.
+    newmap /= np.nansum(newmap, axis=0)
 
     return newmap
 
@@ -735,6 +742,10 @@ def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
         raise ValueError('Centroids must be provided for first three orders if there is contamination.')
 
     # ====== Reconstruct right wing ======
+    # Mask the cores of the first three diffraction orders and fit a straight
+    # line to the remaining pixels. Additionally mask any outlier pixels that
+    # are >3-sigma deviant from the mean. Fit a 7th order polynomial to
+    # remaining pixels.
     # Get the right wing of the trace profile in log space.
     prof_r = np.log10(profile)
     # and corresponding axis.
@@ -750,15 +761,15 @@ def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
             start = np.min([ycen-15, 254])
             end = np.min([ycen+15, 255])
         else:
-            start = np.min([ycen-10, 254])
-            end = np.min([ycen+10, 255])
+            start = np.min([ycen-15, 254])
+            end = np.min([ycen+15, 255])
         # Set core of each order to NaN.
         prof_r[start:end] = np.nan
 
     # Fit the unmasked part of the wing to determine the mean trend.
     inds = np.where(np.isfinite(prof_r))[0]
-    pp = _robust_linefit(axis_r[inds], prof_r[inds], (0, 0))
-    wing_mean = pp[0]+pp[1]*axis_r[inds]
+    pp = _robust_polyfit(axis_r[inds], prof_r[inds], (0, 0))
+    wing_mean = pp[1]+pp[0]*axis_r[inds]
 
     # Calculate the standard dev of unmasked points from the mean trend.
     stddev = np.sqrt(np.median((prof_r[inds] - wing_mean)**2))
@@ -770,6 +781,8 @@ def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
     prof_r2 = np.log10(profile)
     # Mask first order core.
     prof_r2[:(ycens[0]+15)] = np.nan
+    # Mask edge of the detector.
+    prof_r2[-4:] = np.nan
     # Mask second and third orders.
     if contamination is True:
         for order, ycen in enumerate(ycens):
@@ -777,8 +790,8 @@ def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
                 start = np.max([ycen-15, 0])
                 end = np.max([ycen+15, 1])
             elif order == 2:
-                start = np.max([ycen-10, 0])
-                end = np.max([ycen+10, 1])
+                start = np.max([ycen-15, 0])
+                end = np.max([ycen+15, 1])
             # Set core of each order to NaN.
             prof_r2[start:end] = np.nan
     # Mask outliers
@@ -787,15 +800,23 @@ def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
     # Indices of all unmasked points in the left wing.
     inds3 = np.isfinite(prof_r2)
     # Fit with a 7th order polynomial.
-    pp_r = np.polyfit(axis_r[inds3], prof_r2[inds3], 7)
+    # Use np.polyfit for a first estimate of the coefficients.
+    pp_r0 = np.polyfit(axis_r[inds3], prof_r2[inds3], 7)
+    # Robust fit using the polyfit results as a starting point.
+    pp_r = _robust_polyfit(axis_r[inds3], prof_r2[inds3], pp_r0)
 
     # ====== Reconstruct left wing ======
+    # Mask the core of the first order, and fit a third order polynomial to all
+    # remaining pixels.
     # Get the profile for the left wing in log space.
     prof_l = np.log10(profile[:(ycens[0]-12)])
     # and corresponding axis.
     axis_l = np.arange(256)[:(ycens[0]-12)]
-    # Fit with third order polynomial.
-    pp_l = np.polyfit(axis_l, prof_l, 3)
+    # Fit with third order polynomial - exclude detector edge.
+    # Use np.polyfit for a first estimate of the coefficients.
+    pp_l0 = np.polyfit(axis_l[3:], prof_l[3:], 3)
+    # Robust fit using the polyfit results as a starting point.
+    pp_l = _robust_polyfit(axis_l[3:], prof_l[3:], pp_l0)
 
     # ===== Stitching =====
     # Find pixel to stitch right wing fit.
@@ -915,9 +936,9 @@ def reconstruct_wings2(frame, ycen, pad_factor=1):
     return newframe
 
 
-def _robust_linefit(x, y, p0):
-    '''Wrapper around scipy's least_squares line fitting routine implementing
-    the Huber loss function - to be more resistant to outliers.
+def _robust_polyfit(x, y, p0):
+    '''Wrapper around scipy's least_squares fitting routine implementing the
+     Huber loss function - to be more resistant to outliers.
 
     Parameters
     ----------
@@ -926,19 +947,20 @@ def _robust_linefit(x, y, p0):
     y : list
         Data describing independant variable.
     p0 : tuple
-        Initial guess straight line parameters.
+        Initial guess straight line parameters. The length of p0 determines the
+        polynomial order to be fit - i.e. a length 2 tuple will fit a 1st order
+        polynomial, etc.
 
     Returns
     -------
     res.x : list
-        Best fitting parameters of a straight line.
+        Best fitting parameters of the desired polynomial order.
     '''
 
-    def line_res(p, x, y):
-        '''Residuals from a straight line'''
-        return p[0]+p[1]*x-y
+    def poly_res(p, x, y):
+        '''Residuals from a polynomial'''
+        return np.polyval(p, x) - y
 
     # Preform outlier resistant fitting.
-    res = least_squares(line_res, p0, loss='huber', f_scale=0.1, args=(x, y))
-
+    res = least_squares(poly_res, p0, loss='huber', f_scale=0.1, args=(x, y))
     return res.x
