@@ -6,7 +6,7 @@
 
 # Read Model parameters config file
 
-# Read Planet model, star model, response file, trace parameters
+# Read Planet model, star model, throughput file, trace parameters
 
 # Resample planet and star on same grid
 
@@ -47,7 +47,7 @@ class paths():
     # Reference files
     simulationparamfile = path_userland+'simpars_wide.txt'
     tracefile = path_tracemodel+'/NIRISS_GR700_trace_extended.csv'
-    responsefile = path_tracemodel+'/NIRISS_Throughput_STScI.fits'
+    throughputfile = path_tracemodel+'/NIRISS_Throughput_STScI.fits'
 
 
 def readpaths(config_paths_filename, pars):
@@ -84,7 +84,7 @@ def readpaths(config_paths_filename, pars):
     # Reference files
     pars.simulationparamfile = str(value[param =='SIMULATION_PARAM'][0])
     pars.tracefile = str(value[param =='TRACE_FILE'][0])
-    pars.responsefile = str(value[param =='RESPONSE_FILE'][0])
+    pars.throughputfile = str(value[param =='THROUGHPUT_FILE'][0])
 
 def second2day(time_seconds):
     return(time_seconds / (3600.0*24.0))
@@ -166,7 +166,7 @@ def generate_timesteps(simuPars):
 
     return(tintopen, frametime, nint, timesteps)
 
-def generate_traces(pathPars, simuPars, tracePars, response,
+def generate_traces(pathPars, simuPars, tracePars, throughput,
                     star_angstrom, star_flux, ld_coeff,
                     planet_angstrom, planet_rprs,
                     timesteps, granularitytime):
@@ -234,7 +234,7 @@ def generate_traces(pathPars, simuPars, tracePars, response,
             spectral_order = int(np.copy(simuPars.orderlist[m]))  # very important to pass an int here or tracepol fails
             currenttime = np.copy(timesteps[t])
             print('Time step {:} minutes - Order {:}'.format(currenttime*24*60, spectral_order))
-            pixels=spgen.gen_unconv_image(simuPars, response, star_angstrom_bin, star_flux_bin,
+            pixels=spgen.gen_unconv_image(simuPars, throughput, star_angstrom_bin, star_flux_bin,
                                       ld_coeff_bin, planet_rprs_bin,
                                       currenttime, granularitytime, solin, spectral_order, tracePars)
 
