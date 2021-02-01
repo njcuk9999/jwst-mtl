@@ -237,8 +237,3 @@ Consts.add('AMISIM-MODULES', value='ami_sim/pyami', dtype=str,
            source=__NAME__, user=False, argument=False, group=group,
            description='Define any other ami-sim packages that need importing')
 
-# =============================================================================
-#   Observation constants
-# =============================================================================
-group = 'Observation'
-

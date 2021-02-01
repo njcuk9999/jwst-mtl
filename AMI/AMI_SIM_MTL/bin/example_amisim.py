@@ -34,6 +34,9 @@ log = log_functions.Log()
 # define group name
 group = 'example_amisim'
 
+# =============================================================================
+#   Observation constants
+# =============================================================================
 # Define the target name
 lconsts.add_argument('OBJ_TARGET_NAME', value=None, dtype=str,
                      source=__NAME__, user=True, argument=True,
