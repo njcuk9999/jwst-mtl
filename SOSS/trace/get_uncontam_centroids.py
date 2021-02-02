@@ -1,51 +1,61 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Thurs Jan 28 11:28 2021
+
+@author: MCR, Loïc Albert
+
+All functions associated with the determining the centroid positions of the
+order 1 SOSS spectral trace via a center-of-mass analysis. This is the
+methodology employed for the simple solver.
+"""
+
 import numpy as np
-import sys
 from astropy.io import fits
-import matplotlib.pylab as plt
+import matplotlib.pyplot as plt
+import warnings
 
-def get_uncontam_centroids():
-
-    # Read in the 2D trace reference file (each extension has an isolated
-    # trace). When it exists, make sure to pass the deader as well in the call
-    # to the get_edge_centroids function. For now, we are missing that file so
-    # use the CV3 stack instead.
-    #
-    # im = read.the.2Dtrace.ref.file
-    # hdr = is.its.header
-    a = fits.open('/genesis/jwst/userland-soss/loic_review/stack_256_ng3_DMS.fits')
-    im = a[0].data
-
-    # x_o1, y_o1 = get_centerofmass_centroids(im, header=hdr, badpix=False, verbose=verbose)
-    x_o1, y_o1 = get_centerofmass_centroids(im, badpix=False, verbose=False)
-
-    return x_o1, y_o1
-
+warnings.simplefilter(action='ignore', category=FutureWarning)
 
 
 def determine_stack_dimensions(stack, header=None, verbose=False):
-    ''' Determine the size of the stack array. Will be called by get_uncontam_centroids
-    and make_trace_mask.
+    '''Determine the size of a stack array. Will be called by
+    get_uncontam_centroids and make_trace_mask.
+
     Parameters
     ----------
     stack : array of floats (2D)
         Data frame. Assumes DMS orientation.
-        This array could be a native pixel size SOSS subarray or FF.
-        It could also be a 2D trace reference file in which case padding exists
-        around the edges, and the pixels may be oversampled by some integer factor.
+        This array could be a native pixel sized SOSS subarray or FF.
+        Could also be a 2D trace reference file in which case padding exists
+        around the edges, and the pixels may be oversampled by an integer
+        factor.
     header : fits header
         Header associated to the stack array.
-        If the header is None then some assumptions will be made regarding the stack array.
-        If the header is passed, then specific keywords will be read in it to assess what
-        the stack array is. This ensures that a 2D Trace Reference file will be digested
-        properly.
+        If the header is None then some assumptions will be made regarding the
+        stack array. If the header is passed, then specific keywords will be
+        read in it to assess what the stack array is. This ensures that a 2D
+        Trace Reference file will be digested properly.
+
     Returns
     -------
-    dimx, dimy : The dimensions of the stack array.
-    xos, yos : The oversampling factor (integer) of the stack array.
-    xnative, ynative : The dimensions of the stack image, expressed in native pixels units.
-    padding : the size of padding all around the image, in units of native pixels.
-    working_pixel_bool : a 2D array of the same size as stack with boolean values of
-        False where pixels are not light sensitive (the reference pixels). True elsewhere.
+    dimx, dimy : int
+        The dimensions of the stack array.
+    xos, yos : int
+        The oversampling factor of the stack array.
+    xnative, ynative : int
+        The dimensions of the stack image, in native pixels.
+    padding : int
+        Amount of padding all around the image, in native pixels.
+    working_pixel_bool : array of bool (2D)
+        2D array of the same size as stack with boolean values of False where
+        pixels are not light sensitive (the reference pixels). True elsewhere.
+
+    Raises
+    ------
+    ValueError
+        If the data dimensions are non-standard, or the header information
+        does not match up with the data shape.
     '''
 
     # Dimensions of the subarray.
@@ -55,7 +65,7 @@ def determine_stack_dimensions(stack, header=None, verbose=False):
     # the header if passed. Construct a mask of working pixels in case the
     # stack contains reference pixels.
     if header is None:
-        # No header passed - Assume that the stack is a valid SOSS subarray or FF, i.e.
+        # No header passed - Assume stack is valid SOSS subarray or FF, i.e.
         # 2048x256 or 2040x252 (working pixels) or multiple of if oversampled
         # 2048x96 or 2040x96 (working pixels) or multiple of
         # 2048x2048 or 2040x2040 (working pixels) or multiple of
@@ -71,10 +81,9 @@ def determine_stack_dimensions(stack, header=None, verbose=False):
             xos = int(dimx / 2040)
         else:
             # stack x dimension has unrecognized size.
-            print('Stack X dimension has unrecognized size of {:}. Accepts 2048, 2040 or multiple of.'.format(dimx))
-            sys.exit()
+            raise ValueError('Stack X dimension has unrecognized size of {:}. Accepts 2048, 2040 or multiple of.'.format(dimx))
         # Check if the Y axis is consistent with the X axis.
-        acceptable_ydim = [96,256,252,2040,2048]
+        acceptable_ydim = [96, 256, 252, 2040, 2048]
         yaxis_consistent = False
         for accdim in acceptable_ydim:
             if dimy / (accdim*xos) == 1:
@@ -82,15 +91,14 @@ def determine_stack_dimensions(stack, header=None, verbose=False):
                 yos = np.copy(xos)
                 ynative = np.copy(accdim)
                 yaxis_consistent = True
-        if yaxis_consistent == False:
+        if yaxis_consistent is False:
             # stack y dimension is inconsistent with the x dimension.
-            print('Stack Y dimension ({:}) is inconsistent with X dimension ({:}) for acceptable SOSS arrays'.format(dimy,dimx))
-            sys.exit()
+            raise ValueError('Stack Y dimension ({:}) is inconsistent with X dimension ({:}) for acceptable SOSS arrays'.format(dimy,dimx))
         # Construct a boolean mask (true or false) of working pixels
         working_pixel_bool = np.full((dimy, dimx), True)
 
-        # For dimensions where reference pixels would have been included in the stack,
-        # mask those reference pixels out.
+        # For dimensions where reference pixels would have been included in
+        # stack, mask those reference pixels out.
         # Sizes 96, 252 and 2040 should not contain any reference pixel.
         if xnative == 2048:
             # Mask out the left and right columns of reference pixels
@@ -102,9 +110,10 @@ def determine_stack_dimensions(stack, header=None, verbose=False):
             working_pixel_bool[-yos * 4:, :] = False
         if ynative == 256:
             # Mask the top rows of reference pixels
-            working_pixel_bool[-yos * 4:,:] = False
+            working_pixel_bool[-yos * 4:, :] = False
 
-        # Initialize padding to zero in this case because it is not a 2D Trace ref file
+        # Initialize padding to zero in this case because it is not a 2D Trace
+        # ref file.
         padding = int(0)
 
     else:
@@ -117,57 +126,58 @@ def determine_stack_dimensions(stack, header=None, verbose=False):
         # Check that the stack respects its intended format
         if dimx != ((xnative+2*padding)*xos):
             # Problem
-            print('The header passed is inconsistent with the X dimension of the stack.')
-            sys.exit()
+            raise ValueError('The header passed is inconsistent with the X dimension of the stack.')
         if dimy != ((ynative+2*padding)*yos):
             # Problem
-            print('The header passed is inconsistent with the Y dimension of the stack.')
-            sys.exit()
+            raise ValueError('The header passed is inconsistent with the Y dimension of the stack.')
         # Construct a mask of working pixels. The 2D Trace REFERENCE file does
         # not contain any reference pixel. So all are True.
         working_pixel_bool = np.full((dimy, dimx), True)
 
     # For debugging purposes...
-    if verbose == True:
+    if verbose is True:
+        print('Data dimensions:\n')
         print('dimx={:}, dimy={:}, xos={:}, yos={:}, xnative={:}, ynative={:}'.format(dimx, dimy, xos, yos, xnative, ynative))
 
     return(dimx, dimy, xos, yos, xnative, ynative, padding, working_pixel_bool)
 
 
-
-
-def get_centerofmass_centroids(stack, header=None, badpix=None, tracemask=None, verbose=False):
+def get_uncontam_centroids(stack, header=None, badpix=None, tracemask=None,
+                           verbose=False):
     '''Determine the x, y positions of the trace centroids from an
     exposure using a center-of-mass analysis. Works for either order if there
     is no contamination, or for order 1 on a detector where the two orders
     are overlapping.
-    This is an adaptation of Loïc's get_order1_centroids which can better
-    deal with a bright second order.
+    This is Loïc's update to my adaptation of Loïc's get_order1_centroids.
+
     Parameters
     ----------
     stack : array of floats (2D)
         Data frame. Assumes DMS orientation.
         This array could be a native pixel size SOSS subarray or FF.
         It could also be a 2D trace reference file in which case padding exists
-        around the edges, and the pixels may be oversampled by some integer factor.
+        around the edges, and the pixels may be oversampled by some integer
+        factor.
     header : fits header
         Header associated to the stack array.
-        If the header is None then some assumptions will be made regarding the stack array.
-        If the header is passed, then specific keywords will be read in it to assess what
-        the stack array is. This ensures that a 2D Trace Reference file will be digested
-        properly.
-    badpix : array of floats (2D) with anything different than zero meaning a bad pixel
-        Optional input bad pixel mask to apply to the stack. Should be of
-        the same dimensions as the stack.
-    tracemask : array of floats (2D) with anything different than zero meaning a
-        masked out pixel. The spirit is to have zeros along one spectral order with
-        a certain width.
-    specpix_bounds : native spectral pixel bounds to consider in fitting the trace. Most
-        likely used for the 2nd and 3rd orders, not for the 1st order.
+        If the header is None then some assumptions will be made regarding the
+        stack array. If the header is passed, then specific keywords will be
+        read in it to assess what the stack array is. This ensures that a 2D
+        Trace Reference file will be digested properly.
+    badpix : array of floats (2D)
+        Anything different than zero indicates a bad pixel. Optional input bad
+        pixel mask to apply to the stack. Should be of the same dimensions as
+        the stack.
+    tracemask : array of floats (2D)
+        Anything different than zero indicates a masked out pixel. The spirit
+        is to have zeros along one spectral order with a certain width.
+    specpix_bounds : native spectral pixel bounds to consider in fitting the
+        trace. Most likely used for the 2nd and 3rd orders, not for the 1st.
+
     Returns
     -------
     tracexbest : np.array
-        Best estimate data x centroid.
+        Best estimate data x centroids.
     traceybest : np.array
         Best estimate data y centroids.
     '''
@@ -177,10 +187,10 @@ def get_centerofmass_centroids(stack, header=None, badpix=None, tracemask=None, 
     # reference pixels, oversampled or not. It also handles the 2D Trace
     # Reference File.
     dimx, dimy, xos, yos, xnative, ynative, padding, working_pixel_bool = \
-        determine_stack_dimensions(stack, header=header)
+        determine_stack_dimensions(stack, header=header, verbose=verbose)
 
     # Make a numpy mask array of the working pixels
-    working_pixel_mask = np.ma.array(np.ones((dimy, dimx)), mask = np.invert(working_pixel_bool))
+    working_pixel_mask = np.ma.array(np.ones((dimy, dimx)), mask=np.invert(working_pixel_bool))
     # Fill the working pixel mask with NaN
     working_pixel_mask = np.ma.filled(working_pixel_mask, np.nan)
 
@@ -190,7 +200,7 @@ def get_centerofmass_centroids(stack, header=None, badpix=None, tracemask=None, 
         # TODO:
         # 2) Create the numpy.ma array with it
         # The bad pixel mask has values of 'one' for valid pixels.
-        badpix_mask = np.ma.array(np.ones((dimy, dimx)), mask = (badpix != 0) )
+        badpix_mask = np.ma.array(np.ones((dimy, dimx)), mask=(badpix != 0))
     else:
         # Create a mask with all valid pixels (all ones)
         badpix_mask = np.ma.array(np.ones((dimy, dimx)))
@@ -203,7 +213,7 @@ def get_centerofmass_centroids(stack, header=None, badpix=None, tracemask=None, 
         # TODO:
         # 2) Create the numpy.ma array with it
         # The trace mask has values of 'one' for valid pixels.
-        trace_mask = np.ma.array(np.ones((dimy, dimx)), mask = (tracemask == 0) )
+        trace_mask = np.ma.array(np.ones((dimy, dimx)), mask=(tracemask == 0))
     else:
         # Create a mask with all pixels in the trace (all ones)
         trace_mask = np.ma.array(np.ones((dimy, dimx)))
@@ -213,8 +223,6 @@ def get_centerofmass_centroids(stack, header=None, badpix=None, tracemask=None, 
     # Multiply working pixel mask, bad pixel mask and trace mask
     # The stack image with embedded numpy mask is stackm
     stackm = stack * badpix_mask * working_pixel_mask * trace_mask
-
-
 
     # Identify the floor level of all 2040 working cols to subtract it first.
     floorlevel = np.nanpercentile(stackm, 10, axis=0)
@@ -237,7 +245,7 @@ def get_centerofmass_centroids(stack, header=None, badpix=None, tracemask=None, 
     w = 30 * yos
     for i in range(dimx):
         miny = np.int(np.nanmax([np.around(tracey_best[i] - w), 0]))
-        maxy = np.int(np.nanmax([np.around(tracey_best[i] + w), dimy - 1]))
+        maxy = np.int(np.nanmin([np.around(tracey_best[i] + w), dimy - 1]))
         val = backsub[miny:maxy, i] / np.nanmax(backsub[:, i])
         ind = np.where(np.isfinite(val))
         thisrow = (row[miny:maxy])[ind]
@@ -253,8 +261,8 @@ def get_centerofmass_centroids(stack, header=None, badpix=None, tracemask=None, 
         # compared to the column average), restrict the range of pixels
         # considered to be above the current centroid.
         if backsub[int(com)][i] < np.nanmean(backsub[(int(com) - w):(int(com) + w), i]):
-            miny = np.int(np.nanmax([np.around(com), 0]))
-            maxy = np.int(np.nanmin([np.around(com + 2*w), dimy - 1]))
+            miny = np.int(np.nanmax([np.around(com) - 2*w, 0]))
+            maxy = np.int(np.nanmin([np.around(com), dimy - 1]))
             val = backsub[miny:maxy, i] / np.nanmax(backsub[:, i])
             ind = np.where(np.isfinite(val))
             thisrow = (row[miny:maxy])[ind]
@@ -272,7 +280,7 @@ def get_centerofmass_centroids(stack, header=None, badpix=None, tracemask=None, 
     w = 16 * yos
     for i in range(len(tracex_best)):
         miny = np.int(np.nanmax([np.around(tracey_best[i] - w), 0]))
-        maxy = np.int(np.nanmax([np.around(tracey_best[i] + w), dimy - 1]))
+        maxy = np.int(np.nanmin([np.around(tracey_best[i] + w), dimy - 1]))
         val = backsub[miny:maxy, i] / np.nanmax(backsub[:, i])
         ind = np.where(np.isfinite(val))
         thisrow = (row[miny:maxy])[ind]
@@ -283,10 +291,6 @@ def get_centerofmass_centroids(stack, header=None, badpix=None, tracemask=None, 
     # Update with the best estimates
     tracex_best = np.copy(tracex)
     tracey_best = np.copy(tracey)
-
-    if verbose == True:
-        plt.figure()
-        plt.plot(tracex_best, tracey_best)
 
     # Final pass : Fitting a polynomial to the measured (noisy) positions
     if padding == 0:
@@ -305,13 +309,35 @@ def get_centerofmass_centroids(stack, header=None, badpix=None, tracemask=None, 
     param = np.polyfit(tracex_best[induse], tracey_best[induse], polyorder)
     tracey_best = np.polyval(param, tracex_best)
 
-    if verbose == True:
-        plt.plot(tracex_best, tracey_best, color='r')
-        plt.show()
+    if verbose is True:
+        _plot_centroid(stack, tracex_best, tracey_best)
 
     return tracex_best, tracey_best
 
 
+def _plot_centroid(clear, cen_x, cen_y):
+    '''Utility function to overplot the trace centroids extracted from
+    the data over the data itself to verify accuracy.
+    '''
+    plt.figure(figsize=(15, 3))
+    plt.imshow(np.log10(clear), origin='lower', cmap='jet')
+    plt.plot(cen_x, cen_y, c='black')
+    plt.show()
 
 
+def test_uncontam_centroids():
 
+    # Read in the 2D trace reference file (each extension has an isolated
+    # trace). When it exists, make sure to pass the deader as well in the call
+    # to the get_edge_centroids function. For now, we are missing that file so
+    # use the CV3 stack instead.
+    #
+    # im = read.the.2Dtrace.ref.file
+    # hdr = is.its.header
+    a = fits.open('/genesis/jwst/userland-soss/loic_review/stack_256_ng3_DMS.fits')
+    im = a[0].data
+
+    # x_o1, y_o1 = get_centerofmass_centroids(im, header=hdr, badpix=False, verbose=verbose)
+    x_o1, y_o1 = get_uncontam_centroids(im, badpix=False, verbose=False)
+
+    return x_o1, y_o1

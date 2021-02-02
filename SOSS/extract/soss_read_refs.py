@@ -44,7 +44,18 @@ class Ref2dProfile:
 
         return
 
-    def __call__(self, order=1, subarray='SUBSTRIP256', offset=None):
+    @staticmethod
+    def _binning(array, shape, os):
+
+        # The 2D profile is normalized so that columns sum to 1.
+        # To preserve this columns must be averaged and rows summed.
+        binned_array = array.reshape(shape[0], os, shape[1], os)
+        binned_array = binned_array.mean(-1).sum(1)
+
+        return binned_array
+
+    def __call__(self, order=1, subarray='SUBSTRIP256', offset=None,
+                 native=True, only_prof=True):
 
         if offset is None:
             offset = [0, 0]  # x, y
@@ -70,18 +81,28 @@ class Ref2dProfile:
         pad = header['PADDING']
 
         # Select the relevant area.
-        minrow = os*(pad + origin[0]) + int(os*offset[1])
-        maxrow = minrow + os*shape[0]
-        mincol = os*(pad + origin[1]) + int(os*offset[0])
-        maxcol = mincol + os*shape[1]
+        if native:
+            minrow = os*(pad + origin[0]) + int(os*offset[1])
+            maxrow = minrow + os*shape[0]
+            mincol = os*(pad + origin[1]) + int(os*offset[0])
+            maxcol = mincol + os*shape[1]
+        else:
+            minrow = os*origin[0] + int(os*offset[1])
+            maxrow = minrow + os*(shape[0] + 2*pad)
+            mincol = os*origin[1] + int(os*offset[0])
+            maxcol = mincol + os*(shape[1] + 2*pad)
 
         ref_2d_profile = ref_2d_profile[minrow:maxrow, mincol:maxcol]
 
         # Bin down to native resolution.
-        ref_2d_profile = ref_2d_profile.reshape(shape[0], os, shape[1], os)
-        ref_2d_profile = ref_2d_profile.mean(-1).mean(1)
+        if native:
+            ref_2d_profile = self._binning(ref_2d_profile, shape, os)
 
-        return ref_2d_profile
+        # Return amount of oversampling and padding if requested.
+        if only_prof is True:
+            return ref_2d_profile
+        else:
+            return ref_2d_profile, os, pad
 
 
 class Ref2dWave(Ref2dProfile):
@@ -91,6 +112,14 @@ class Ref2dWave(Ref2dProfile):
         Ref2dProfile.__init__(self, filename)
 
         return
+
+    @staticmethod
+    def _binning(array, shape, os):
+
+        binned_array = array.reshape(shape[0], os, shape[1], os)
+        binned_array = binned_array.mean(-1).mean(1)
+
+        return binned_array
 
 
 class RefKernels:
