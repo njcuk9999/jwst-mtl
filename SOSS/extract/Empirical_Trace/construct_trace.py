@@ -15,17 +15,18 @@ from astropy.io import fits
 from scipy.optimize import least_squares
 from scipy.interpolate import interp1d
 import webbpsf
-from SOSS.trace import tracepol as tp
 from SOSS.extract.empirical_trace import centroid as ctd
 from SOSS.extract.empirical_trace import plotting as plotting
-from SOSS.trace import get_uncontam_centroids as uctd
 from SOSS.extract.overlap import TrpzOverlap, TrpzBox
 from SOSS.extract.throughput import ThroughputSOSS
 from SOSS.extract.convolution import WebbKer
 
+# Local path to reference files.
+path = '/Users/michaelradica/Documents/School/Ph.D./Research/SOSS/Extraction/Input_Files/'
+
 
 def build_empirical_trace(clear, F277W, filename='spatial_profile.fits',
-                          pad=(0, 0), verbose=False):
+                          pad=(0, 0), oversample=1, verbose=False):
     ''' Procedural function to wrap around construct orders 1 and 2.
     Will do centroiding and call the functions to construct the models.
 
@@ -38,7 +39,7 @@ def build_empirical_trace(clear, F277W, filename='spatial_profile.fits',
     F277W : np.array of float (2D) - eventually path
     filename : str
     pad : tuple
-    doplot : bool
+    oversample : int
     verbose : bool
     '''
 
@@ -67,6 +68,12 @@ def build_empirical_trace(clear, F277W, filename='spatial_profile.fits',
             print('Adding padding to first order spectral axis...')
         o1frame = pad_spectral_axis(o1frame, centroids['order 1'][0],
                                     centroids['order 1'][1], pad=pad[1])
+
+    # Add oversampling
+    if oversample != 1:
+        if verbose is True:
+            print('Oversampling...')
+        o1frame = oversample_frame(o1frame, oversample=oversample)
 
     # Get the extraction parameters
     #extract_params = get_extract_params()
@@ -308,18 +315,19 @@ def construct_order1(clear, F277, rot_params, ycens, pad=0, doplot=False):
         Interpolated order 1 trace model with padding.
     '''
 
+    # Open wavelength calibration file.
+    wavecal = fits.getdata(path+'jwst_niriss_soss-256-ord1_trace.fits', 1)
+    # Get wavelength and detector pixel calibration info.
+    pp_w = np.polyfit(wavecal['Detector_Pixels'], wavecal['WAVELENGTH'][::-1], 1)
+    wavecal_x = np.arange(2048)
+    wavecal_w = np.polyval(pp_w, wavecal_x)
+
     # Determine the anchor profiles - blue anchor.
-    # Note: Y-values returned from OM are inverted relative to the UdeM
-    # coordinate system.
-    ###### TODO Switch this to use wavecal ######
-    xOM, yOM, tp2 = ctd.get_om_centroids()
-    # Get OM centroid pixel coords at 2.1µm.
-    xomb = tp.wavelength_to_pix(2.1, tp2, 1)[0]
-    yomb = tp.wavelength_to_pix(2.1, tp2, 1)[1]
-    # Use rot params to find location of the 2.1µm centroids in the data frame.
-    xdb, ydb = ctd.rot_centroids(*rot_params, xomb, yomb)
-    xdb = np.round(xdb, 0).astype(int)[0]
-    ydb = np.round(ydb, 0).astype(int)[0]
+    # Find the pixel position of 2.1µm.
+    i_b = np.where(wavecal_w >= 2.1)[0][-1]
+    xdb = int(wavecal_x[i_b])
+    ydb = int(round(ycens['order 1'][1][xdb], 0))
+
     # Extract the 2.1µm anchor profile from the data - take median profile of
     # neighbouring 5 columns to mitigate effects of outliers.
     Banch = np.median([clear[:, xdb-2], clear[:, xdb-1], clear[:, xdb],
@@ -342,12 +350,19 @@ def construct_order1(clear, F277, rot_params, ycens, pad=0, doplot=False):
                         pixel=256, verbose=False)[0][0].data
         # Extract the spatial profile.
         Ranch = np.sum(stand[124:132, :], axis=0)
-        # Detemine OM coords of 2.9µm centroid.
-        xomr = tp.wavelength_to_pix(2.9, tp2, 1)[0]
-        yomr = tp.wavelength_to_pix(2.9, tp2, 1)[1]
-        # Transform into the data frame.
-        ydr = ctd.rot_centroids(*rot_params, xomr, yomr, bound=False)[1]
-        ydr = int(round(ydr[0], 0))
+
+        # Extend y centroids and wavelengths off of the detector.
+        pp_w = np.polyfit(wavecal_x, wavecal_w, 1)
+        pp_y = np.polyfit(ycens['order 1'][0], ycens['order 1'][1], 9)
+        xpix = np.arange(2048) - 250
+        wave_ext = np.polyval(pp_w, xpix)
+        ycen_ext = np.polyval(pp_y, xpix)
+
+        # Find position of 2.9µm on extended detector.
+        i_r = np.where(wave_ext >= 2.9)[0][-1]
+        xdr = int(round(xpix[i_r], 0))
+        ydr = int(round(ycen_ext[i_r], 0))
+
         # Interpolate the WebbPSF generated profile to the correct location.
         Ranch = np.interp(np.arange(256), np.arange(256)-128+ydr, Ranch)
         # Reconstruct wing structure and pad.
@@ -361,29 +376,23 @@ def construct_order1(clear, F277, rot_params, ycens, pad=0, doplot=False):
         # Interpolation polynomial coeffs, calculated via calc_interp_coefs
         coef_b = [0.80175603, -5.27434345, 8.54474316]
         coef_r = [-0.80175603, 5.27434345, -7.54474316]
-        # Pixel coords at which to start and end interpolation in OM frame.
-        end = int(round(tp.wavelength_to_pix(2.1, tp2, 1)[0], 0))
-        # Determine the OM coords of first pixel on detector
-        start = int(round(xomr, 0))
-        rlen = end - start
+        # Pixel coords at which to start the interpolation.
+        xdr = 0
 
     else:
         # If an F277W exposure is provided, only interpolate out to 2.45µm.
         # Redwards of 2.45µm we have perfect knowledge of the order 1 trace.
-        # Get OM centroid pixel coords at 2.45µm
-        ###### TODO Switch this to use wavecal ######
-        xomr = tp.wavelength_to_pix(2.45, tp2, 1)[0]
-        yomr = tp.wavelength_to_pix(2.45, tp2, 1)[1]
-        # Transform into the data frame.
-        xdr, ydr = ctd.rot_centroids(*rot_params, xomr, yomr)
-        xdr = np.round(xdr, 0).astype(int)[0]
-        ydr = np.round(ydr, 0).astype(int)[0]
+        # Find the pixel position of 2.45µm.
+        i_r = np.where(wavecal_w >= 2.45)[0][-1]
+        xdr = int(wavecal_x[i_r])
+        ydr = int(round(ycens['order 1'][1][xdr], 0))
+
         # Extract and rescale the 2.45µm profile - take median of neighbouring
         # five columns to mitigate effects of outliers.
         Ranch = np.median([F277[:, xdr-2], F277[:, xdr-1], F277[:, xdr],
                            F277[:, xdr+1], F277[:, xdr+2]], axis=0)
         # Reconstruct wing structure and pad.
-        cens = [ycens['order 1'][1][xdr-1]]
+        cens = [ycens['order 1'][1][xdr]]
         Ranch = reconstruct_wings(Ranch, ycens=cens, contamination=False,
                                   pad=pad, doplot=doplot)
         Ranch = _chromescale(2.45, Ranch, ydr)
@@ -393,22 +402,13 @@ def construct_order1(clear, F277, rot_params, ycens, pad=0, doplot=False):
         # Interpolation polynomial coeffs, calculated via calc_interp_coefs
         coef_b = [1.51850915, -9.76581613, 14.80720191]
         coef_r = [-1.51850915,  9.76581613, -13.80720191]
-        # Pixel coords at which to start and end interpolation in OM frame.
-        end = int(round(tp.wavelength_to_pix(2.1, tp2, 1)[0], 0))
-        start = int(round(tp.wavelength_to_pix(2.45, tp2, 1)[0], 0))
-        rlen = end - start
 
     # Create the interpolated order 1 PSF.
     map2D = np.zeros((256+2*pad, 2048))*np.nan
-    # Get OM X-pixel values for the region to be interpolated.
-    cenx_om = np.arange(rlen) + start
-    # Find the wavelength at each X centroid
-    lmbda = tp.specpix_to_wavelength(cenx_om, tp2, 1)[0]
-    # Y centroid at each wavelength
-    ceny_om = tp.wavelength_to_pix(lmbda, tp2, 1)[1]
-    # Transform the OM centroids onto the detector.
-    cenx_d, ceny_d = ctd.rot_centroids(*rot_params, cenx_om, ceny_om,
-                                       bound=False)
+    # Get centroid pixel coordinates and wavelengths for interpolation region.
+    cenx_d = np.arange(xdb - xdr).astype(int) + xdr
+    ceny_d = ycens['order 1'][1][cenx_d]
+    lmbda = wavecal_w[cenx_d]
 
     # Create an interpolated 1D PSF at each required position.
     for i, vals in enumerate(zip(cenx_d, ceny_d, lmbda)):
@@ -432,7 +432,7 @@ def construct_order1(clear, F277, rot_params, ycens, pad=0, doplot=False):
         bend = int(round(cenx, 0))
         if i == 0:
             # 2.9µm (i=0) limit may be off the end of the detector.
-            rend = np.max([int(round(cenx, 0)), 0])
+            rend = int(round(cenx, 0))
 
     # Stitch together the interpolation and data.
     newmap = np.zeros((256+2*pad, 2048))
@@ -452,9 +452,6 @@ def construct_order1(clear, F277, rot_params, ycens, pad=0, doplot=False):
             # Reconstruct wing structure and pad.
             newmap[:, col] = reconstruct_wings(F277[:, col], ycens=cens,
                                                contamination=False, pad=pad)
-    # Insert interpolated data to the red of the data.
-    else:
-        newmap[:, 0:rend] = map2D[:, 0:rend]
 
     # Column normalize.
     newmap /= np.nansum(newmap, axis=0)
@@ -618,11 +615,11 @@ def loicpsf(wavelist=None, wfe_real=None, filepath='', save_to_disk=True,
             return psf_list
 
 
+# depreciated
 def mask_order(frame, xpix, ypix):
     '''
-    Depreciated!
     Create a pixel mask to isolate only the detector pixels belonging to
-     a specific diffraction order.
+    a specific diffraction order.
 
     Parameters
     ----------
@@ -656,6 +653,45 @@ def mask_order(frame, xpix, ypix):
     O1frame = (mask * frame)
 
     return O1frame
+
+
+def oversample_frame(frame, oversample=1):
+    '''Oversample a dataframe by a specified amount. Oversampling is currently
+    implemented seperately in each dimension, that is, the spatial axis is
+    oversampled first, followed by the spectral direction.
+
+    Parameters
+    ----------
+    frame : np.array (2D)
+        Dataframe to be oversampled.
+    oversample : int
+        Oversampling factor to apply to each axis.
+
+    Returns
+    -------
+    osframe : np.array (2D)
+        Input dataframe with each axis oversampled by the desired amount.
+    '''
+
+    # Get dataframe dimensions.
+    dimy, dimx = frame.shape
+    newdimy, newdimx = dimy*oversample, dimx*oversample
+
+    # Oversample spatial direction.
+    osframe1 = np.zeros((newdimy, dimx))
+    for i in range(dimx):
+        yax_os = np.linspace(0, dimy, newdimy)
+        prof_os = np.interp(yax_os, np.arange(dimy), frame[:, i])
+        osframe1[:, i] = prof_os
+
+    # Oversample spectral direction.
+    osframe = np.zeros((newdimy, newdimx))
+    for j in range(newdimy):
+        xax_os = np.linspace(0, dimx, newdimx)
+        prof_os = np.interp(xax_os, np.arange(dimx), osframe1[j, :])
+        osframe[j, :] = prof_os
+
+    return osframe
 
 
 def pad_spectral_axis(frame, xcens, ycens, pad=0):
