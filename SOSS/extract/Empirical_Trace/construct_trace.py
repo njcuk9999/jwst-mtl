@@ -13,6 +13,7 @@ import os
 import numpy as np
 from astropy.io import fits
 from scipy.optimize import least_squares
+from scipy.interpolate import interp1d
 import webbpsf
 from SOSS.trace import tracepol as tp
 from SOSS.extract.empirical_trace import centroid as ctd
@@ -780,7 +781,7 @@ def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
     # Get fresh right wing profile.
     prof_r2 = np.log10(profile)
     # Mask first order core.
-    prof_r2[:(ycens[0]+15)] = np.nan
+    prof_r2[:(ycens[0]+12)] = np.nan
     # Mask edge of the detector.
     prof_r2[-4:] = np.nan
     # Mask second and third orders.
@@ -805,40 +806,60 @@ def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
     # Robust fit using the polyfit results as a starting point.
     pp_r = _robust_polyfit(axis_r[inds3], prof_r2[inds3], pp_r0)
 
+    # === Stitching ===
+    # Find pixel to stitch right wing fit.
+    jjr = ycens[0]+12
+    # Pad the right axis.
+    axis_r_pad = np.arange(len(axis_r[ycens[0]+12:])+pad) + axis_r[ycens[0]+12]
+    iir = np.where(axis_r_pad == jjr)[0][0]
+    # Join right wing to old trace profile.
+    newprof = np.concatenate([profile[:jjr], 10**np.polyval(pp_r, axis_r_pad)[iir:]])
+
     # ====== Reconstruct left wing ======
     # Mask the core of the first order, and fit a third order polynomial to all
-    # remaining pixels.
+    # remaining pixels to capture the wing behaviour near the core. Reuse the
+    # 7th order solution from the right wing for the extended behaviour.
     # Get the profile for the left wing in log space.
     prof_l = np.log10(profile[:(ycens[0]-12)])
     # and corresponding axis.
     axis_l = np.arange(256)[:(ycens[0]-12)]
     # Fit with third order polynomial - exclude detector edge.
     # Use np.polyfit for a first estimate of the coefficients.
-    pp_l0 = np.polyfit(axis_l[3:], prof_l[3:], 3)
+    pp_l0 = np.polyfit(axis_l[3:], prof_l[3:], 5)
     # Robust fit using the polyfit results as a starting point.
     pp_l = _robust_polyfit(axis_l[3:], prof_l[3:], pp_l0)
 
-    # ===== Stitching =====
-    # Find pixel to stitch right wing fit.
-    jjr = ycens[0]+15
-    # Pad the right axis.
-    axis_r_pad = np.linspace(axis_r[ycens[0]+15], axis_r[-1]+pad, len(axis_r[ycens[0]+15:])+pad)
-    iir = np.where(axis_r_pad == jjr)[0][0]
-    # Join right wing to old trace profile.
-    newprof = np.concatenate([profile[:jjr], 10**np.polyval(pp_r, axis_r_pad)[iir:]])
-
-    # Find pixel to stitch left wing fit.
-    jjl = ycens[0]-15
+    # === Stitching ===
+    # Find pixels to stitch left wing fit.
+    jjl = ycens[0]-13  # Join fit to profile.
+    jjl2 = ycens[0]-30  # Join core and extended fits.
     # Pad the left axis.
     axis_l_pad = np.linspace(axis_l[0]-pad, axis_l[-1], len(axis_l)+pad)
+    #  Mirror of axis_l_pad to the right.
+    axis_l_pad2 = np.arange(len(axis_l_pad)) + axis_r[ycens[0]+13]
     iil = np.where(axis_l_pad == jjl)[0][0]
+    iil2 = np.where(axis_l_pad == jjl2)[0][0]
     # Join left wing to old trace profile.
-    newprof = np.concatenate([10**np.polyval(pp_l, axis_l_pad)[:iil], newprof[jjl:]])
+    newprof = np.concatenate([10**np.polyval(pp_r, axis_l_pad2)[::-1][:iil2],
+                              10**np.polyval(pp_l, axis_l_pad)[iil2:iil],
+                              newprof[jjl:]])
 
+    # Spline interpolate between core and extended solutions for continuity.
+    # Get pixels and values around the joint.
+    xs = np.concatenate([np.arange(4)+np.max([0, iil2-9]),
+                         np.min([iil2+9, 256])-np.arange(4)])
+    ys = newprof[xs]
+    # Cubic spline interpolation over the above pixels.
+    interp3 = interp1d(xs, ys, kind='cubic')
+    xnew = np.arange(18)+(iil2-9)
+    # Insert spline interpolation.
+    newprof[np.max([0, iil2-9]):np.min([iil2+9, 256])] = interp3(xnew)
+
+    # Do diagnostic plot if requested.
     if doplot is True:
         plotting._plot_wing_reconstruction(profile, ycens, axis_r[inds3],
                                            prof_r2[inds3], axis_l_pad,
-                                           axis_r_pad, pp_l, pp_r, newprof)
+                                           axis_r_pad, pp_r, newprof)
 
     return newprof
 
