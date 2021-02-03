@@ -10,4 +10,4 @@ An outline of the major procedural steps are as follows:
 5. Apply this transformation to the reference 2D trace profiles and wavelength maps for both the first and second orders.
 6. Save the transformed reference files to disk.
 
-These steps are carried out by calling the `simple_solver()` function. Examples can be found in this [notebook](https://github.com/njcuk9999/jwst-mtl/tree/master/SOSS/extract/simple_solver/simple_solver.ipynb).
+These steps are carried out by calling the `simple_solver()` function. Examples can be found in this [notebook](https://github.com/njcuk9999/jwst-mtl/blob/master/SOSS/extract/Simple_solver/simple_solver.ipynb).
