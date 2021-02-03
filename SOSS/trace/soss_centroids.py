@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 
 
 def determine_stack_dimensions(stack, header=None, verbose=False):
-    '''Determine the size of a stack array. Will be called by
+    """Determine the size of a stack array. Will be called by
     get_uncontam_centroids and make_trace_mask.
 
     Parameters
@@ -28,6 +28,8 @@ def determine_stack_dimensions(stack, header=None, verbose=False):
         stack array. If the header is passed, then specific keywords will be
         read in it to assess what the stack array is. This ensures that a 2D
         Trace Reference file will be digested properly.
+    verbose : bool
+        Control verbosity.
 
     Returns
     -------
@@ -48,7 +50,7 @@ def determine_stack_dimensions(stack, header=None, verbose=False):
     ValueError
         If the data dimensions are non-standard, or the header information
         does not match up with the data shape.
-    '''
+    """
 
     # Dimensions of the subarray.
     dimy, dimx = np.shape(stack)
@@ -85,7 +87,7 @@ def determine_stack_dimensions(stack, header=None, verbose=False):
                 yaxis_consistent = True
         if yaxis_consistent is False:
             # stack y dimension is inconsistent with the x dimension.
-            raise ValueError('Stack Y dimension ({:}) is inconsistent with X dimension ({:}) for acceptable SOSS arrays'.format(dimy,dimx))
+            raise ValueError('Stack Y dimension ({:}) is inconsistent with X dimension ({:}) for acceptable SOSS arrays'.format(dimy, dimx))
         # Construct a boolean mask (true or false) of working pixels
         working_pixel_bool = np.full((dimy, dimx), True)
 
@@ -131,22 +133,25 @@ def determine_stack_dimensions(stack, header=None, verbose=False):
         print('Data dimensions:\n')
         print('dimx={:}, dimy={:}, xos={:}, yos={:}, xnative={:}, ynative={:}'.format(dimx, dimy, xos, yos, xnative, ynative))
 
-    return(dimx, dimy, xos, yos, xnative, ynative, padding, working_pixel_bool)
+    return dimx, dimy, xos, yos, xnative, ynative, padding, working_pixel_bool
 
 
 def _plot_centroid(clear, cen_x, cen_y):
-    '''Utility function to overplot the trace centroids extracted from
+    """Utility function to overplot the trace centroids extracted from
     the data over the data itself to verify accuracy.
-    '''
+    """
+
     plt.figure(figsize=(15, 3))
     plt.imshow(np.log10(clear), origin='lower', cmap='jet')
     plt.plot(cen_x, cen_y, c='black')
     plt.show()
 
+    return
+
 
 def get_uncontam_centroids(stack, header=None, badpix=None, tracemask=None,
                            verbose=False):
-    '''Determine the x, y positions of the trace centroids from an
+    """Determine the x, y positions of the trace centroids from an
     exposure using a center-of-mass analysis. Works for either order if there
     is no contamination, or for order 1 on a detector where the two orders
     are overlapping.
@@ -173,8 +178,8 @@ def get_uncontam_centroids(stack, header=None, badpix=None, tracemask=None,
     tracemask : array of floats (2D)
         Anything different than zero indicates a masked out pixel. The spirit
         is to have zeros along one spectral order with a certain width.
-    specpix_bounds : native spectral pixel bounds to consider in fitting the
-        trace. Most likely used for the 2nd and 3rd orders, not for the 1st.
+    verbose : bool
+        Control verbosity.
 
     Returns
     -------
@@ -182,7 +187,7 @@ def get_uncontam_centroids(stack, header=None, badpix=None, tracemask=None,
         Best estimate data x centroids.
     traceybest : np.array
         Best estimate data y centroids.
-    '''
+    """
 
     # Call the script that determines the dimensions of the stack. It handles
     # regular science images of various subaaray sizes, with or without the
@@ -318,7 +323,7 @@ def get_uncontam_centroids(stack, header=None, badpix=None, tracemask=None,
 
 
 def test_uncontam_centroids():
-
+    """"""
     # Read in the 2D trace reference file (each extension has an isolated
     # trace). When it exists, make sure to pass the deader as well in the call
     # to the get_edge_centroids function. For now, we are missing that file so
@@ -336,11 +341,12 @@ def test_uncontam_centroids():
 
 
 def polyfit_sigmaclip(x, y, order, sigma=4):
+    """"""
 
     polyorder = np.copy(order)
     ind = np.where(y == y)
     for n in range(5):
-        #if n == 4: polyorder = order + 1
+        # if n == 4: polyorder = order + 1
         param = np.polyfit(x[ind], y[ind], polyorder)
         yfit = np.polyval(param, x)
         dev = np.abs(yfit - y)
@@ -350,7 +356,8 @@ def polyfit_sigmaclip(x, y, order, sigma=4):
 
 
 def shift(xs, n):
-    # Like np.roll but the wrapped around part is set to zero
+    """Like np.roll but the wrapped around part is set to zero"""
+
     e = np.empty_like(xs)
     if n >= 0:
         e[:n] = 0.0
@@ -358,18 +365,20 @@ def shift(xs, n):
     else:
         e[n:] = 0.0
         e[:n] = xs[-n:]
+
     return e
 
 
 def edge_trigger(column, triggerscale=2, verbose=False, yos=1):
+    """"""
     # triggerscale must be an integer, expressed in native pixel size
 
     # dimension of the column array
     dim, = np.shape(column)
-    #halftrig = int((triggerscale-1)/2)
+    # halftrig = int((triggerscale-1)/2)
     half = triggerscale*yos
     # positions along that column where the full triggerscale is accessible
-    #ic = halftrig + np.arange(dim-triggerscale*yos)
+    # ic = halftrig + np.arange(dim-triggerscale*yos)
     ic = half + np.arange(dim - 2*half)
     # slope of the flux at position datax
     slope = []
@@ -386,30 +395,33 @@ def edge_trigger(column, triggerscale=2, verbose=False, yos=1):
     slope = np.array(slope)
 
     # Determine which x sees the maximum slope
-    indmax = np.argwhere((slope == np.nanmax(slope)) & (slope !=0))
-    edgemax = np.nan # default value because ref pixels produce no slope
-    if indmax.size > 0: edgemax = ic[indmax[0][0]]
+    indmax = np.argwhere((slope == np.nanmax(slope)) & (slope != 0))
+    edgemax = np.nan  # default value because ref pixels produce no slope
+    if indmax.size > 0:
+        edgemax = ic[indmax[0][0]]
 
     # Determine which x sees the minimum slope
-    indmin = np.argwhere((slope == np.nanmin(slope)) & (slope !=0))
+    indmin = np.argwhere((slope == np.nanmin(slope)) & (slope != 0))
     edgemin = np.nan
-    if indmin.size > 0: edgemin = ic[indmin[0][0]]
+    if indmin.size > 0:
+        edgemin = ic[indmin[0][0]]
 
     # Determine which (x,x+width) pair sees the maximum and minimum slopes simultaneously.
     # This methods is the most robust. It scans the combined slope peak for 12 different
     # trace widths 15 to 27 native pixels and triggers on the maximum combined slope.
     # Initialize the combined slope maximum value (valmax), x index (indcomb) and trace width
     valmax, indcomb, widthcomb = 0, -1, 0
-    widthrange = [18,19,20,21,22,23,24,25,26,27]
+    widthrange = [18, 19, 20, 21, 22, 23, 24, 25, 26, 27]
     # Scan for 9 trace widths 18 to 27 native pixels
     for width in widthrange:
         # add the slope and its offsetted negative
-        #comb = slope - np.roll(slope, -yos*width)
+        # comb = slope - np.roll(slope, -yos*width)
         comb = slope - shift(slope, -yos*width)
         # Find the maximum resulting slope
         indcurr = np.argwhere((comb == np.nanmax(comb)) & (comb != 0))
         valcurr = -1
-        if indcurr.size > 0: valcurr = comb[indcurr[0][0]]
+        if indcurr.size > 0:
+            valcurr = comb[indcurr[0][0]]
         # Keep that as the optimal if it is among all trace widths
         if valcurr > valmax:
             valmax = np.copy(valcurr)
@@ -417,13 +429,13 @@ def edge_trigger(column, triggerscale=2, verbose=False, yos=1):
             widthcomb = yos*width
     edgecomb = np.nan
     if np.size(indcomb) > 0:
-        if indcomb != -1: edgecomb = ic[indcomb] + widthcomb/2.
-
+        if indcomb != -1:
+            edgecomb = ic[indcomb] + widthcomb/2.
 
     # Make a plot if verbose is True
-    if verbose == True:
-        plt.plot(ic,slope)
-        plt.plot(ic,comb)
+    if verbose:
+        plt.plot(ic, slope)
+        plt.plot(ic, comb)
         plt.show()
 
     return edgemax, edgemin, edgecomb
@@ -432,7 +444,7 @@ def edge_trigger(column, triggerscale=2, verbose=False, yos=1):
 def get_edge_centroids(stack, header=None, badpix=None, mask=None, verbose=False,
                        return_what='edgecomb_param', polynomial_order=2,
                        triggerscale=5):
-    ''' Determine the x, y positions of the trace centroids from an exposure
+    """ Determine the x, y positions of the trace centroids from an exposure
     using the two edges and the width of the traces. This should be performed on a very high SNR
     stack.
     INPUTS
@@ -460,7 +472,7 @@ def get_edge_centroids(stack, header=None, badpix=None, mask=None, verbose=False
         'edgecomb_param' : when both edges are detected simultaneously (one inverted with a trace width offset)
         'edgecomb_xy' : x, y values
         'tracewidth' : scalar representing the median of (red edge - blue edge) y values
-    '''
+    """
 
     # Call the script that determines the dimensions of the stack. It handles
     # regular science images of various subarray sizes, with or without the
@@ -469,11 +481,12 @@ def get_edge_centroids(stack, header=None, badpix=None, mask=None, verbose=False
     dimx, dimy, xos, yos, xnative, ynative, padding, working_pixel_bool = \
         determine_stack_dimensions(stack, header=header)
 
-    if mask == None: mask = np.ones((dimy,dimx))
+    if mask is None:
+        mask = np.ones((dimy,dimx))
 
     edge1, edge2, edgecomb = [], [], []
     for i in range(dimx):
-        if (i % 100 == 0) & (verbose == True):
+        if (i % 100 == 0) & verbose:
             y1, y2, ycomb = edge_trigger(stack[:, i] * mask[:, i], triggerscale=triggerscale, verbose=True, yos=yos)
         else:
             y1, y2, ycomb = edge_trigger(stack[:, i] * mask[:, i], triggerscale=triggerscale, verbose=False, yos=yos)
@@ -524,18 +537,28 @@ def get_edge_centroids(stack, header=None, badpix=None, mask=None, verbose=False
     # Trace width
     tracewidth = np.nanmedian(np.abs(edge1 - edge2))
 
-    if return_what == 'edgemean_param' : return param_both
-    if return_what == 'rededge_param' : return param_red
-    if return_what == 'blueedge_param' : return param_blue
-    if return_what == 'edgecomb_param' : return param_comb
-    if return_what == 'edgemean_xy' : return x_both, y_both
-    if return_what == 'rededge_xy' : return x_red, y_red
-    if return_what == 'blueedge_xy' : return x_blue, y_blue
-    if return_what == 'edgecomb_xy' : return x_comb, y_comb
-    if return_what == 'tracewidth' : return tracewidth
+    if return_what == 'edgemean_param':
+        return param_both
+    if return_what == 'rededge_param':
+        return param_red
+    if return_what == 'blueedge_param':
+        return param_blue
+    if return_what == 'edgecomb_param':
+        return param_comb
+    if return_what == 'edgemean_xy':
+        return x_both, y_both
+    if return_what == 'rededge_xy':
+        return x_red, y_red
+    if return_what == 'blueedge_xy':
+        return x_blue, y_blue
+    if return_what == 'edgecomb_xy':
+        return x_comb, y_comb
+    if return_what == 'tracewidth':
+        return tracewidth
 
 
 def get_uncontam_centroids_edgetrig():
+    """"""
     # Here is how to call the code
 
     # Read in the 2D trace reference file (each extension has an isolated
@@ -554,15 +577,15 @@ def get_uncontam_centroids_edgetrig():
     a = fits.open('/genesis/jwst/userland-soss/loic_review/SOSS_ref_2D_profile.fits.gz')
     im = a[2].data
     hdr = a[2].header
-    #im = im[0, :, :]
+    # im = im[0, :, :]
 
     # Triggers on the rising and declining edges of the trace. Make a polynomial
     # fit to those and return the x,y fit. Alternatively, the parameters of that
     # fit coudl be returned by using return_what='edgemean_param'.
     x_o1, y_o1 = get_edge_centroids(im, header=hdr, return_what='edgecomb_xy',
                                     polynomial_order=10, verbose=False)
-    #x_o1, y_o1 = get_edge_centroids(im, return_what='edgecomb_xy',
-    #                                polynomial_order=10, verbose=False)
+    # x_o1, y_o1 = get_edge_centroids(im, return_what='edgecomb_xy',
+    #                                 polynomial_order=10, verbose=False)
 
     return x_o1, y_o1
 
