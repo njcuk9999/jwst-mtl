@@ -234,16 +234,21 @@ def get_uncontam_centroids(stack, header=None, badpix=None, tracemask=None,
     # Identify the floor level of all 2040 working cols to subtract it first.
     floorlevel = np.nanpercentile(stackm, 10, axis=0)
     backsub = stackm - floorlevel
+
     # Find centroid - first pass, use all pixels in the column.
     # Normalize each column
     norm = backsub / np.nanmax(backsub, axis=0)
+
     # Create 2D Array of pixel positions
     rows = (np.ones((dimx, dimy)) * np.arange(dimy)).T
+
     # CoM analysis to find centroid
     com = (np.nansum(norm * rows, axis=0) / np.nansum(norm, axis=0)).data
+
     # Adopt these trace values as best
     tracex_best = np.arange(dimx)
     tracey_best = np.copy(com)
+
     # Second pass, find centroid on a subset of pixels
     # from an area around the centroid determined earlier.
     tracex = np.arange(dimx)
@@ -276,6 +281,7 @@ def get_uncontam_centroids(stack, header=None, badpix=None, tracemask=None,
             thisval = val[ind]
             com = np.sum(thisrow * thisval) / np.sum(thisval)
         tracey[i] = com
+
     # Adopt these trace values as best.
     tracex_best = np.copy(tracex)
     tracey_best = np.copy(tracey)
@@ -295,6 +301,7 @@ def get_uncontam_centroids(stack, header=None, badpix=None, tracemask=None,
         com = np.sum(thisrow * thisval) / np.sum(thisval)
         tracex[i] = np.copy(tracex_best[i])
         tracey[i] = np.copy(com)
+
     # Update with the best estimates
     tracex_best = np.copy(tracex)
     tracey_best = np.copy(tracey)
@@ -375,11 +382,13 @@ def edge_trigger(column, triggerscale=2, verbose=False, yos=1):
 
     # dimension of the column array
     dim, = np.shape(column)
+
     # halftrig = int((triggerscale-1)/2)
     half = triggerscale*yos
+
     # positions along that column where the full triggerscale is accessible
-    # ic = halftrig + np.arange(dim-triggerscale*yos)
     ic = half + np.arange(dim - 2*half)
+
     # slope of the flux at position datax
     slope = []
     datax = np.arange(2*half+1)
@@ -387,8 +396,8 @@ def edge_trigger(column, triggerscale=2, verbose=False, yos=1):
     for i in ic:
         data = column[i-half:i+half+1]
         ind = np.where(np.isfinite(data))
-        if np.size(ind) >=3:
-            param = np.polyfit(datax[ind],data[ind],1)
+        if np.size(ind) >= 3:
+            param = np.polyfit(datax[ind], data[ind], 1)
             slope.append(param[0])
         else:
             slope.append(np.nan)
@@ -441,9 +450,9 @@ def edge_trigger(column, triggerscale=2, verbose=False, yos=1):
     return edgemax, edgemin, edgecomb
 
 
-def get_edge_centroids(stack, header=None, badpix=None, mask=None, verbose=False,
-                       return_what='edgecomb_param', polynomial_order=2,
-                       triggerscale=5):
+def get_uncontam_centroids_edgetrig(stack, header=None, badpix=None, mask=None, verbose=False,
+                                    return_what='edgecomb_param', polynomial_order=2,
+                                    triggerscale=5):
     """ Determine the x, y positions of the trace centroids from an exposure
     using the two edges and the width of the traces. This should be performed on a very high SNR
     stack.
@@ -482,18 +491,20 @@ def get_edge_centroids(stack, header=None, badpix=None, mask=None, verbose=False
         determine_stack_dimensions(stack, header=header)
 
     if mask is None:
-        mask = np.ones((dimy,dimx))
+        mask = np.ones((dimy, dimx))
 
     edge1, edge2, edgecomb = [], [], []
     for i in range(dimx):
+
         if (i % 100 == 0) & verbose:
             y1, y2, ycomb = edge_trigger(stack[:, i] * mask[:, i], triggerscale=triggerscale, verbose=True, yos=yos)
         else:
             y1, y2, ycomb = edge_trigger(stack[:, i] * mask[:, i], triggerscale=triggerscale, verbose=False, yos=yos)
-        # print(i, y1, y2)
+
         edge1.append(y1)
         edge2.append(y2)
         edgecomb.append(ycomb)
+
     edge1 = np.array(edge1)
     edge2 = np.array(edge2)
     edgecomb = np.array(edgecomb)
@@ -503,19 +514,22 @@ def get_edge_centroids(stack, header=None, badpix=None, mask=None, verbose=False
     ind = np.where(np.isfinite(edge1))
     param_red = polyfit_sigmaclip(x_red[ind], edge1[ind], polynomial_order)
     y_red = np.polyval(param_red, x_red)
+
     # Fit the blue edge
     x_blue = np.arange(dimx)
     ind = np.where(np.isfinite(edge2))
     param_blue = polyfit_sigmaclip(x_blue[ind], edge2[ind], polynomial_order)
     y_blue = np.polyval(param_blue, x_blue)
+
     # Fit the combined edges simultaneously
     x_comb = np.arange(dimx)
     ind = np.where(np.isfinite(edgecomb))
     param_comb = polyfit_sigmaclip(x_comb[ind], edgecomb[ind], polynomial_order)
     y_comb = np.polyval(param_comb, x_comb)
+
     # Fit the mean of both edges
     x_both = np.arange(dimx)
-    both = (edge1+edge2)/2.
+    both = (edge1 + edge2)/2.
     ind = np.where(np.isfinite(both))
     param_both = polyfit_sigmaclip(x_both[ind], both[ind], polynomial_order)
     y_both = np.polyval(param_both, x_both)
@@ -557,7 +571,7 @@ def get_edge_centroids(stack, header=None, badpix=None, mask=None, verbose=False
         return tracewidth
 
 
-def get_uncontam_centroids_edgetrig():
+def test_uncontam_centroids_edgetrig():
     """"""
     # Here is how to call the code
 
@@ -582,8 +596,8 @@ def get_uncontam_centroids_edgetrig():
     # Triggers on the rising and declining edges of the trace. Make a polynomial
     # fit to those and return the x,y fit. Alternatively, the parameters of that
     # fit coudl be returned by using return_what='edgemean_param'.
-    x_o1, y_o1 = get_edge_centroids(im, header=hdr, return_what='edgecomb_xy',
-                                    polynomial_order=10, verbose=False)
+    x_o1, y_o1 = get_uncontam_centroids_edgetrig(im, header=hdr, return_what='edgecomb_xy',
+                                                 polynomial_order=10, verbose=False)
     # x_o1, y_o1 = get_edge_centroids(im, return_what='edgecomb_xy',
     #                                 polynomial_order=10, verbose=False)
 
