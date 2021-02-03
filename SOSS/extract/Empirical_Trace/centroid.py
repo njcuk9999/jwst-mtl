@@ -5,21 +5,22 @@ Created on Fri Jan 08 9:02 2021
 
 @author: MCR
 
-All functions associated with the determining the centroid positions of the
-order 1 and 2 SOSS spectra trace.
+Functions associated with the determining the centroid positions of the SOSS
+spectral traces for the first, second, and third orders.
 """
 
 import numpy as np
+from numpy.polynomial import Legendre
 import emcee
 import warnings
-from SOSS.trace import tracepol as tp
 from SOSS.trace import get_uncontam_centroids as uctd
+from SOSS.extract import soss_read_refs
 from SOSS.extract.empirical_trace import plotting as plotting
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 # hack to get around the fact that relative paths are constantly messing up atm
-path = '/Users/michaelradica/Documents/GitHub/jwst-mtl/SOSS/'
+path = '/Users/michaelradica/Documents/School/Ph.D./Research/SOSS/Extraction/Input_Files/'
 
 
 def _do_emcee(xref, yref, xdat, ydat, showprogress=False):
@@ -31,7 +32,7 @@ def _do_emcee(xref, yref, xdat, ydat, showprogress=False):
     ----------
     xref, yref : array of float
         X and Y trace centroids respectively to be used as a reference point,
-        for example: as returned by get_om_centroids.
+        for example: as returned by get_ref_centroids.
     xdat, ydat : array of float
         X and Y trace centroids determined from the data, for example: as
         returned by get_uncontam_centroids.
@@ -58,9 +59,8 @@ def _do_emcee(xref, yref, xdat, ydat, showprogress=False):
     return sampler
 
 
-def get_contam_centroids(clear, ref_centroids=None, doplot=False,
-                         return_orders=[1, 2, 3], bound=True,
-                         showprogress=False):
+def get_contam_centroids(clear, ref_centroids=None, return_orders=[1, 2, 3],
+                         bound=True, verbose=False):
     '''Get the trace centroids for all orders when there is contamination on
     the detector. Fits the first order centroids using the uncontaminated
     method, and determines the second/third order centroids via the
@@ -74,16 +74,13 @@ def get_contam_centroids(clear, ref_centroids=None, doplot=False,
         Centroids relative to which to determine rotations parameters.
         Must contain lists of x and y centroids for each order to be returned.
         If None, uses the trace table centroids as a reference.
-    doplot : bool
-        Whether to plot the results of the reference centroids fit to the
-        first order.
     return_orders : list
         Orders for which centroid x and y positions will be returned.
     bound : bool
         If True, only returns centroids that fall on the detector after
         polynomial fitting.
-    showprogress : bool
-        If True, show the emcee progress bar.
+    verbose : bool
+        If True, show diagnostic plots, and the emcee progress bar.
 
     Returns
     -------
@@ -115,8 +112,9 @@ def get_contam_centroids(clear, ref_centroids=None, doplot=False,
     else:
         for order in return_orders:
             # Extend centroids off of the detector to compensate for shifts.
-            xom, yom, tp = get_om_centroids(np.arange(2148)-50, order=order)
-            ref_cen['order '+str(order)] = [xom, yom]
+            xref, yref = get_ref_centroids(atthesex=np.arange(2148)-50,
+                                           order=order)
+            ref_cen['order '+str(order)] = [xref, yref]
 
     # Get the order 1 centroids from the data.
     xdat_o1, ydat_o1 = uctd.get_uncontam_centroids(clear)
@@ -124,9 +122,9 @@ def get_contam_centroids(clear, ref_centroids=None, doplot=False,
 
     # Fit the reference centroids to the data for order 1.
     fit = _do_emcee(ref_cen['order 1'][0], ref_cen['order 1'][1], xdat_o1,
-                    ydat_o1, showprogress=showprogress)
+                    ydat_o1, showprogress=verbose)
     # Plot MCMC results if requested.
-    if doplot is True:
+    if verbose is True:
         plotting._plot_corner(fit)
     # Get fitted rotation parameters.
     flat_samples = fit.get_chain(discard=500, thin=15, flat=True)
@@ -154,160 +152,52 @@ def get_contam_centroids(clear, ref_centroids=None, doplot=False,
     return trans_cen, rot_params
 
 
-# Needs to be updated whenever we decide on how we will interact with
-# new reference files
-def get_om_centroids(atthesex=None, order=1):
-    '''Get trace profile centroids from the NIRISS SOSS optics model.
-    These centroids include the standard rotation of 1.489 deg about
-    (1514, 486) to transform from the optics model into the CV3 coordinate
-    system.
+def get_ref_centroids(atthesex=None, subarray='SUBSTRIP256', order=1):
+    '''Get trace centroids from the Trace Table reference file. Uses Legendre
+    polynomial fitting to extend the domain of the centroids beyond the
+    detector edges if necessary.
 
     Parameters
     ----------
-    atthesex : list of floats
-        Pixel x values at which to evaluate the centroid position.
+    atthesex : array of float
+        Pixel X-positions at which to return centroids.
+    subarray : str
+        Subarray to consider. Allowed values are "SUBSTRIP96", "SUBSTRIP256",
+        or "FULL".
     order : int
-        Diffraction order for which to return the optics model solution.
+        Diffraction order for which to return centroids. First three
+        orders are currently supported.
 
     Returns
     -------
-    xOM : list of floats
-        Optics model x centroids.
-    yOM : list of floats
-        Optics model y centroids.
-    tp2 : list of floats
-        trace polynomial coefficients.
+    xcen_ref : array of float
+        Centroid pixel X-coordinates.
+    ycen_ref : array of float
+        Centroid pixel Y-coordinates.
+
+    Raises
+    ------
+    ValueError
+        If bad subarray identifier is passed.
     '''
 
-    if atthesex is None:
-        atthesex = np.linspace(0, 2047, 2048)
+    # Verify inputs.
+    if subarray not in ['SUBSTRIP96', 'SUBSTRIP256', 'FULL']:
+        raise ValueError('Unknown subarray identifier.')
 
-    # Derive the trace polynomials.
-    tp2 = tp.get_tracepars(filename=path+'/trace/NIRISS_GR700_trace.csv')
+    # Open trace table reference file.
+    ttab_file = soss_read_refs.RefTraceTable(path+'SOSS_ref_trace_table.fits')
+    # Get first order centroids on subarray.
+    xcen_ref = ttab_file('X', subarray=subarray, order=order)[1][::-1]
+    ycen_ref = ttab_file('Y', subarray=subarray, order=order)[1][::-1]
 
-    # Evaluate the trace polynomials at the desired coordinates.
-    w = tp.specpix_to_wavelength(atthesex, tp2, order, frame='dms', oversample=1)[0]
-    xOM, yOM, mas = tp.wavelength_to_pix(w, tp2, order, frame='dms', oversample=1)
+    # Use Legendre polynomial fit to extend centroids beyond detector edges.
+    inds = np.where((xcen_ref < 2098) & (xcen_ref >= -50))
+    pp = Legendre.fit(xcen_ref[inds], ycen_ref[inds], 6-order)
+    xcen_ref = atthesex
+    ycen_ref = pp(xcen_ref)
 
-    return xOM, yOM, tp2
-
-
-# depreciated
-def get_uncontam_centroids(stack, atthesex=np.arange(2048), fit=True):
-    '''Determine the x, y positions of the trace centroids from an
-    exposure using a center-of-mass analysis. Works for either order if there
-    is no contamination, or for order 1 on a detector where the two orders
-    are overlapping.
-    This is an adaptation of Loïc's get_order1_centroids which can better
-    deal with a bright second order.
-
-    Parameters
-    ----------
-    stack : array of floats (2D)
-        Data frame.
-    atthesex : list of floats
-        Pixel x values at which to extract the trace centroids.
-    fit : bool
-        If True, fits a 5th order polynomial to the extracted y-centroids,
-        and returns the evaluation of this polynomial at atthesex. If False,
-        a y-centroid may not be located for each x-pixel in atthesex.
-
-    Returns
-    -------
-    tracexbest : np.array
-        Best estimate data x centroid.
-    traceybest : np.array
-        Best estimate data y centroids.
-    '''
-
-    # Dimensions of the subarray.
-    dimx = len(atthesex)
-    dimy = np.shape(stack)[0]
-
-    # Identify the floor level of all 2040 working cols to subtract it first.
-    floorlevel = np.nanpercentile(stack, 10, axis=0)
-    backsub = stack - floorlevel
-
-    # Find centroid - first pass, use all pixels in the column.
-    # Normalize each column
-    norm = backsub[:, 4:2044] / np.nanmax(backsub[:, 4:2044], axis=0)
-    # Create 2D Array of pixel positions
-    rows = (np.ones((2040, 256)) * np.arange(256)).T
-    # Mask any nan values
-    norm_mask = np.ma.masked_invalid(norm)
-    # CoM analysis to find centroid
-    cx = (np.nansum(norm_mask * rows, axis=0) / np.nansum(norm, axis=0)).data
-
-    # Adopt these trace values as best
-    tracex_best = np.arange(2040)+4
-    tracey_best = cx
-
-    # Second pass, find centroid on a subset of pixels
-    # from an area around the centroid determined earlier.
-    tracex = []
-    tracey = []
-    row = np.arange(dimy)
-    w = 30
-    for i in range(dimx - 8):
-        miny = np.int(np.nanmax([np.around(tracey_best[i] - w), 0]))
-        maxy = np.int(np.nanmax([np.around(tracey_best[i] + w), dimy - 1]))
-        val = backsub[miny:maxy, i + 4] / np.nanmax(backsub[:, i + 4])
-        ind = np.where(np.isfinite(val))
-        thisrow = (row[miny:maxy])[ind]
-        thisval = val[ind]
-        cx = np.sum(thisrow * thisval) / np.sum(thisval)
-        # Ensure that the centroid position is not getting too close to an edge
-        # such that it is biased.
-        if not np.isfinite(cx) or cx <= 5 or cx >= 250:
-            continue
-        # For a bright second order, it is likely that the centroid at this
-        # point will be somewhere in between the first and second order.
-        # If this is the case (i.e. the pixel value of the centroid is very low
-        # compared to the column average), restrict the range of pixels
-        # considered to be above the current centroid.
-        if backsub[int(cx)][i+4] < np.nanmean(backsub[(int(cx) - w):(int(cx)+w), i+4]):
-            miny = np.int(np.nanmax([np.around(cx), 0]))
-            maxy = np.int(np.nanmin([np.around(cx + 2*w), dimy - 1]))
-            val = backsub[miny:maxy, i + 4] / np.nanmax(backsub[:, i + 4])
-            ind = np.where(np.isfinite(val))
-            thisrow = (row[miny:maxy])[ind]
-            thisval = val[ind]
-            cx = np.sum(thisrow * thisval) / np.sum(thisval)
-
-        tracex.append(i + 4)
-        tracey.append(cx)
-
-    # Adopt these trace values as best.
-    tracex_best = np.array(tracex) * 1
-    tracey_best = np.array(tracey) * 1
-
-    # Third pass - fine tuning.
-    tracex = []
-    tracey = []
-    row = np.arange(dimy)
-    w = 16
-    for i in range(len(tracex_best)):
-        miny = np.int(np.nanmax([np.around(tracey_best[i] - w), 0]))
-        maxy = np.int(np.nanmax([np.around(tracey_best[i] + w), dimy - 1]))
-        val = backsub[miny:maxy, i + 4] / np.nanmax(backsub[:, i + 4])
-        ind = np.where(np.isfinite(val))
-        thisrow = (row[miny:maxy])[ind]
-        thisval = val[ind]
-        cx = np.sum(thisrow * thisval) / np.sum(thisval)
-
-        tracex.append(tracex_best[i])
-        tracey.append(cx)
-
-    tracex_best = np.array(tracex)
-    tracey_best = np.array(tracey)
-
-    if fit is True:
-        # Fit a polynomial to centroids to ensure there is a centroid at each x
-        p_o1 = np.polyfit(tracex_best, tracey_best, 5)
-        tracey_best = np.polyval(p_o1, atthesex)
-        tracex_best = atthesex
-
-    return tracex_best, tracey_best
+    return xcen_ref, ycen_ref
 
 
 def _log_likelihood(theta, xmod, ymod, xdat, ydat):
@@ -374,7 +264,7 @@ def rot_centroids(ang, xshift, yshift, xpix, ypix, bound=True, atthesex=None,
     ceny : int
         Y-coordinate in pixels of the rotation center.
     subarray : str
-        Subarray identifier. One of SUBSTRIP96, SUBSTRIP256 or FULL.
+        Subarray identifier. One of "SUBSTRIP96", "SUBSTRIP256" or "FULL".
 
     Returns
     -------

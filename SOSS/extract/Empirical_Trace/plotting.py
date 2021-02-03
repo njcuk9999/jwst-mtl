@@ -24,8 +24,6 @@ def _plot_centroid(clear, centroid_dict):
     plt.imshow(np.log10(clear), origin='lower', cmap='jet')
     plt.show()
 
-    return None
-
 
 def _plot_corner(sampler):
     '''Utility function to produce the corner plot for results of _do_emcee.
@@ -34,8 +32,6 @@ def _plot_corner(sampler):
     flat_samples = sampler.get_chain(discard=500, thin=15, flat=True)
     fig = corner.corner(flat_samples, labels=labels)
     plt.show()
-
-    return None
 
 
 def _plot_interpmodel(waves, nw1, nw2, p1, p2):
