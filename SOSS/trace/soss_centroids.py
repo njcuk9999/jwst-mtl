@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+import os
 import sys
 
 import numpy as np
@@ -8,6 +9,8 @@ import numpy as np
 from astropy.io import fits
 
 import matplotlib.pyplot as plt
+
+PATH = '/home/talens-irex/Dropbox/SOSS_Ref_Files'
 
 
 def determine_stack_dimensions(stack, header=None, verbose=False):
@@ -331,18 +334,11 @@ def get_uncontam_centroids(stack, header=None, badpix=None, tracemask=None,
 
 def test_uncontam_centroids():
     """"""
-    # Read in the 2D trace reference file (each extension has an isolated
-    # trace). When it exists, make sure to pass the deader as well in the call
-    # to the get_edge_centroids function. For now, we are missing that file so
-    # use the CV3 stack instead.
-    #
-    # im = read.the.2Dtrace.ref.file
-    # hdr = is.its.header
-    a = fits.open('/genesis/jwst/userland-soss/loic_review/stack_256_ng3_DMS.fits')
-    im = a[0].data
 
-    # x_o1, y_o1 = get_centerofmass_centroids(im, header=hdr, badpix=False, verbose=verbose)
-    x_o1, y_o1 = get_uncontam_centroids(im, badpix=False, verbose=False)
+    filename = os.path.join(PATH, 'SOSS_ref_2D_profile.fits.gz')
+
+    image, header = fits.getdata(filename, ext=2, header=True)
+    x_o1, y_o1 = get_uncontam_centroids(image, header=header, verbose=True)
 
     return x_o1, y_o1
 
@@ -573,38 +569,21 @@ def get_uncontam_centroids_edgetrig(stack, header=None, badpix=None, mask=None, 
 
 def test_uncontam_centroids_edgetrig():
     """"""
-    # Here is how to call the code
 
-    # Read in the 2D trace reference file (each extension has an isolated
-    # trace). When it exists, make sure to pass the deader as well in the call
-    # to the get_edge_centroids function. For now, we are missing that file so
-    # use the CV3 stack instead.
-    #
-    # im = read.the.2Dtrace.ref.file
-    # hdr = is.its.header
-    a = fits.open('/genesis/jwst/userland-soss/loic_review/stack_256_ng3_DMS.fits')
-    im = a[0].data
-    a = fits.open('/genesis/jwst/userland-soss/loic_review/simu_o1only.fits')
-    im = a[1].data
-    im = im[0, 0, :, :]
-    # Try on the first ever 2D Trace reference file
-    a = fits.open('/genesis/jwst/userland-soss/loic_review/SOSS_ref_2D_profile.fits.gz')
-    im = a[2].data
-    hdr = a[2].header
-    # im = im[0, :, :]
+    filename = os.path.join(PATH, 'SOSS_ref_2D_profile.fits.gz')
 
-    # Triggers on the rising and declining edges of the trace. Make a polynomial
-    # fit to those and return the x,y fit. Alternatively, the parameters of that
-    # fit coudl be returned by using return_what='edgemean_param'.
-    x_o1, y_o1 = get_uncontam_centroids_edgetrig(im, header=hdr, return_what='edgecomb_xy',
-                                                 polynomial_order=10, verbose=False)
-    # x_o1, y_o1 = get_edge_centroids(im, return_what='edgecomb_xy',
-    #                                 polynomial_order=10, verbose=False)
+    image, header = fits.getdata(filename, ext=2, header=True)
+    x_o1, y_o1 = get_uncontam_centroids_edgetrig(image, header=header, return_what='edgecomb_xy',
+                                                 polynomial_order=10, verbose=True)
 
     return x_o1, y_o1
 
 
 def main():
+
+    test_uncontam_centroids()
+    test_uncontam_centroids_edgetrig()
+
     return
 
 
