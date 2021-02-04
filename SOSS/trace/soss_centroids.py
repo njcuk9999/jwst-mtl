@@ -343,17 +343,20 @@ def test_uncontam_centroids():
     return x_o1, y_o1
 
 
-def polyfit_sigmaclip(x, y, order, sigma=4):
+def robust_polyfit(x, y, order, maxiter=5, nstd=3.):
     """"""
 
-    polyorder = np.copy(order)
-    ind = np.where(y == y)
-    for n in range(5):
-        # if n == 4: polyorder = order + 1
-        param = np.polyfit(x[ind], y[ind], polyorder)
+    mask = np.ones_like(x, dtype='bool')
+    for niter in range(maxiter):
+
+        # Fit the data and evaluate the best-fit model.
+        param = np.polyfit(x[mask], y[mask], order)
         yfit = np.polyval(param, x)
-        dev = np.abs(yfit - y)
-        ind = np.where(dev <= sigma)
+
+        # Compute residuals and mask ouliers.
+        res = y - yfit
+        stddev = np.std(res)
+        mask = np.abs(res) <= nstd*stddev
 
     return param
 
@@ -506,26 +509,26 @@ def get_uncontam_centroids_edgetrig(stack, header=None, badpix=None, mask=None, 
     # Fit the red edge
     x_red = np.arange(dimx)
     ind = np.where(np.isfinite(edge1))
-    param_red = polyfit_sigmaclip(x_red[ind], edge1[ind], polynomial_order)
+    param_red = robust_polyfit(x_red[ind], edge1[ind], polynomial_order)
     y_red = np.polyval(param_red, x_red)
 
     # Fit the blue edge
     x_blue = np.arange(dimx)
     ind = np.where(np.isfinite(edge2))
-    param_blue = polyfit_sigmaclip(x_blue[ind], edge2[ind], polynomial_order)
+    param_blue = robust_polyfit(x_blue[ind], edge2[ind], polynomial_order)
     y_blue = np.polyval(param_blue, x_blue)
 
     # Fit the combined edges simultaneously
     x_comb = np.arange(dimx)
     ind = np.where(np.isfinite(edgecomb))
-    param_comb = polyfit_sigmaclip(x_comb[ind], edgecomb[ind], polynomial_order)
+    param_comb = robust_polyfit(x_comb[ind], edgecomb[ind], polynomial_order)
     y_comb = np.polyval(param_comb, x_comb)
 
     # Fit the mean of both edges
     x_both = np.arange(dimx)
     both = (edge1 + edge2)/2.
     ind = np.where(np.isfinite(both))
-    param_both = polyfit_sigmaclip(x_both[ind], both[ind], polynomial_order)
+    param_both = robust_polyfit(x_both[ind], both[ind], polynomial_order)
     y_both = np.polyval(param_both, x_both)
 
     # Plot the edge position as a function of x
