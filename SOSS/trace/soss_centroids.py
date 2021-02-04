@@ -139,15 +139,18 @@ def determine_stack_dimensions(stack, header=None, verbose=False):
     return dimx, dimy, xos, yos, xnative, ynative, padding, working_pixel_bool
 
 
-def _plot_centroid(clear, cen_x, cen_y):
-    """Utility function to overplot the trace centroids extracted from
-    the data over the data itself to verify accuracy.
-    """
+def _plot_centroid(image, x, y):
+    """Overplot the extracted trace positions on the image."""
 
-    plt.figure(figsize=(15, 3))
-    plt.imshow(np.log10(clear), origin='lower', cmap='jet')
-    plt.plot(cen_x, cen_y, c='black')
+    nrows, ncols = image.shape
+
+    plt.figure(figsize=(ncols/128, nrows/128))
+
+    plt.imshow(image, origin='lower', cmap='inferno')
+    plt.plot(x, y, lw=2, c='white')
+
     plt.show()
+    plt.close()
 
     return
 
