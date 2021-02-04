@@ -156,7 +156,7 @@ def _plot_centroid(image, x, y):
 
 
 def get_uncontam_centroids(stack, header=None, badpix=None, tracemask=None,
-                           verbose=False):
+                           poly_order=11, verbose=False):
     """Determine the x, y positions of the trace centroids from an
     exposure using a center-of-mass analysis. Works for either order if there
     is no contamination, or for order 1 on a detector where the two orders
@@ -325,8 +325,7 @@ def get_uncontam_centroids(stack, header=None, badpix=None, tracemask=None,
 
     # Use a *** fixed *** polynomial order of 11 to keep results consistent
     # from data set to data set. Any systematics would remain fixed.
-    polyorder = 11
-    param = np.polyfit(tracex_best[induse], tracey_best[induse], polyorder)
+    param = np.polyfit(tracex_best[induse], tracey_best[induse], poly_order)
     tracey_best = np.polyval(param, tracex_best)
 
     if verbose is True:
@@ -453,8 +452,7 @@ def edge_trigger(column, triggerscale=2, verbose=False, yos=1):
 
 
 def get_uncontam_centroids_edgetrig(stack, header=None, badpix=None, mask=None, verbose=False,
-                                    return_what='edgecomb_param', polynomial_order=2,
-                                    triggerscale=5):
+                                    return_what='edgecomb_param', poly_order=11, triggerscale=5):
     """ Determine the x, y positions of the trace centroids from an exposure
     using the two edges and the width of the traces. This should be performed on a very high SNR
     stack.
@@ -468,7 +466,7 @@ def get_uncontam_centroids_edgetrig(stack, header=None, badpix=None, mask=None, 
         header which contains important info regrading the padding, for example.
     badpix : Can provide a bad pixel mask, it is assumed to be of same dimensions as the stack
     mask : Can provide a mask that will be applied on top of the stack, assumed same dimensions as stack
-    polynomial_order : For the fit to the trace positions.
+    poly_order : For the fit to the trace positions.
     triggerscale : The number of pixels to median spatially when calculating the column slopes to identify edges.
         Default 5. Has to be an odd number. Should not play too much with that.
     verbose : Will output stuff and make plots if set to True, default False.
@@ -512,26 +510,26 @@ def get_uncontam_centroids_edgetrig(stack, header=None, badpix=None, mask=None, 
     # Fit the red edge
     x_red = np.arange(dimx)
     ind = np.where(np.isfinite(edge1))
-    param_red = robust_polyfit(x_red[ind], edge1[ind], polynomial_order)
+    param_red = robust_polyfit(x_red[ind], edge1[ind], poly_order)
     y_red = np.polyval(param_red, x_red)
 
     # Fit the blue edge
     x_blue = np.arange(dimx)
     ind = np.where(np.isfinite(edge2))
-    param_blue = robust_polyfit(x_blue[ind], edge2[ind], polynomial_order)
+    param_blue = robust_polyfit(x_blue[ind], edge2[ind], poly_order)
     y_blue = np.polyval(param_blue, x_blue)
 
     # Fit the combined edges simultaneously
     x_comb = np.arange(dimx)
     ind = np.where(np.isfinite(edgecomb))
-    param_comb = robust_polyfit(x_comb[ind], edgecomb[ind], polynomial_order)
+    param_comb = robust_polyfit(x_comb[ind], edgecomb[ind], poly_order)
     y_comb = np.polyval(param_comb, x_comb)
 
     # Fit the mean of both edges
     x_both = np.arange(dimx)
     both = (edge1 + edge2)/2.
     ind = np.where(np.isfinite(both))
-    param_both = robust_polyfit(x_both[ind], both[ind], polynomial_order)
+    param_both = robust_polyfit(x_both[ind], both[ind], poly_order)
     y_both = np.polyval(param_both, x_both)
 
     # Plot the edge position as a function of x
@@ -578,7 +576,7 @@ def test_uncontam_centroids_edgetrig():
 
     image, header = fits.getdata(filename, ext=2, header=True)
     x_o1, y_o1 = get_uncontam_centroids_edgetrig(image, header=header, return_what='edgecomb_xy',
-                                                 polynomial_order=10, verbose=True)
+                                                 verbose=False)
 
     return x_o1, y_o1
 
