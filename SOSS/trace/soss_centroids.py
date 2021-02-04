@@ -489,7 +489,9 @@ def get_uncontam_centroids_edgetrig(stack, header=None, badpix=None, mask=None, 
     if mask is None:
         mask = np.ones((dimy, dimx))
 
-    edge1, edge2, edgecomb = [], [], []
+    edge1 = np.zeros(dimx)
+    edge2 = np.zeros(dimx)
+    edgecomb = np.zeros(dimx)
     for i in range(dimx):
 
         if (i % 100 == 0) & verbose:
@@ -497,13 +499,9 @@ def get_uncontam_centroids_edgetrig(stack, header=None, badpix=None, mask=None, 
         else:
             y1, y2, ycomb = edge_trigger(stack[:, i] * mask[:, i], triggerscale=triggerscale, verbose=False, yos=yos)
 
-        edge1.append(y1)
-        edge2.append(y2)
-        edgecomb.append(ycomb)
-
-    edge1 = np.array(edge1)
-    edge2 = np.array(edge2)
-    edgecomb = np.array(edgecomb)
+        edge1[i] = y1
+        edge2[i] = y2
+        edgecomb[i] = ycomb
 
     # Fit the red edge
     x_red = np.arange(dimx)
