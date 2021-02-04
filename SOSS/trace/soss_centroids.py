@@ -154,9 +154,8 @@ def _plot_centroid(image, x, y):
 
     return
 
-
-def get_uncontam_centroids(stack, header=None, badpix=None, tracemask=None,
-                           poly_order=11, verbose=False):
+# TODO add widths as parameters.
+def get_uncontam_centroids(stack, header=None, mask=None, poly_order=11, verbose=False):
     """Determine the x, y positions of the trace centroids from an
     exposure using a center-of-mass analysis. Works for either order if there
     is no contamination, or for order 1 on a detector where the two orders
@@ -184,6 +183,8 @@ def get_uncontam_centroids(stack, header=None, badpix=None, tracemask=None,
     tracemask : array of floats (2D)
         Anything different than zero indicates a masked out pixel. The spirit
         is to have zeros along one spectral order with a certain width.
+    poly_order : int
+        Order of the polynomial fit to the extracted positions.
     verbose : bool
         Control verbosity.
 
@@ -202,40 +203,11 @@ def get_uncontam_centroids(stack, header=None, badpix=None, tracemask=None,
     dimx, dimy, xos, yos, xnative, ynative, padding, working_pixel_bool = \
         determine_stack_dimensions(stack, header=header, verbose=verbose)
 
-    # Make a numpy mask array of the working pixels
-    working_pixel_mask = np.ma.array(np.ones((dimy, dimx)), mask=np.invert(working_pixel_bool))
-    # Fill the working pixel mask with NaN
-    working_pixel_mask = np.ma.filled(working_pixel_mask, np.nan)
+    if mask is None:
+        mask = np.zeros_like(stack, dtype='bool')
 
-    # Check for the optional input badpix and create a bad pixel numpy mask
-    if badpix is not None:
-        # 1) Check the dimension is the same as stack
-        # TODO:
-        # 2) Create the numpy.ma array with it
-        # The bad pixel mask has values of 'one' for valid pixels.
-        badpix_mask = np.ma.array(np.ones((dimy, dimx)), mask=(badpix != 0))
-    else:
-        # Create a mask with all valid pixels (all ones)
-        badpix_mask = np.ma.array(np.ones((dimy, dimx)))
-    # Fill the bad pixels with NaN
-    badpix_mask = np.ma.filled(badpix_mask, np.nan)
-
-    # Check for the optional input tracemask and create a trace numpy mask
-    if tracemask is not None:
-        # 1) Check the dimension is the same as stack
-        # TODO:
-        # 2) Create the numpy.ma array with it
-        # The trace mask has values of 'one' for valid pixels.
-        trace_mask = np.ma.array(np.ones((dimy, dimx)), mask=(tracemask == 0))
-    else:
-        # Create a mask with all pixels in the trace (all ones)
-        trace_mask = np.ma.array(np.ones((dimy, dimx)))
-    # Fill the trace mask with NaN
-    trace_mask = np.ma.filled(trace_mask, np.nan)
-
-    # Multiply working pixel mask, bad pixel mask and trace mask
-    # The stack image with embedded numpy mask is stackm
-    stackm = stack * badpix_mask * working_pixel_mask * trace_mask
+    # Replace masked pixel values with NaNs.
+    stackm = np.where(mask | ~working_pixel_bool, np.nan, stack)
 
     # Identify the floor level of all 2040 working cols to subtract it first.
     floorlevel = np.nanpercentile(stackm, 10, axis=0)
@@ -249,7 +221,7 @@ def get_uncontam_centroids(stack, header=None, badpix=None, tracemask=None,
     rows = (np.ones((dimx, dimy)) * np.arange(dimy)).T
 
     # CoM analysis to find centroid
-    com = (np.nansum(norm * rows, axis=0) / np.nansum(norm, axis=0)).data
+    com = np.nansum(norm*rows, axis=0)/np.nansum(norm, axis=0)
 
     # Adopt these trace values as best
     tracex_best = np.arange(dimx)
@@ -450,9 +422,11 @@ def edge_trigger(column, triggerscale=2, verbose=False, yos=1):
 
     return edgemax, edgemin, edgecomb
 
-
-def get_uncontam_centroids_edgetrig(stack, header=None, badpix=None, mask=None, verbose=False,
-                                    return_what='edgecomb_param', poly_order=11, triggerscale=5):
+# TODO Fix this return_what bullcrap.
+# TODO general clean-up.
+# TODO split diagnostic plot to function.
+def get_uncontam_centroids_edgetrig(stack, header=None, mask=None, poly_order=11,
+                                    return_what='edgecomb_param', triggerscale=5, verbose=False):
     """ Determine the x, y positions of the trace centroids from an exposure
     using the two edges and the width of the traces. This should be performed on a very high SNR
     stack.
@@ -491,7 +465,10 @@ def get_uncontam_centroids_edgetrig(stack, header=None, badpix=None, mask=None, 
         determine_stack_dimensions(stack, header=header)
 
     if mask is None:
-        mask = np.ones((dimy, dimx))
+        mask = np.zeros_like(stack)
+
+    # Replace masked pixel values with NaNs.
+    stackm = np.where(mask | ~working_pixel_bool, np.nan, stack)
 
     edge1 = np.zeros(dimx)
     edge2 = np.zeros(dimx)
@@ -499,9 +476,9 @@ def get_uncontam_centroids_edgetrig(stack, header=None, badpix=None, mask=None, 
     for i in range(dimx):
 
         if (i % 100 == 0) & verbose:
-            y1, y2, ycomb = edge_trigger(stack[:, i] * mask[:, i], triggerscale=triggerscale, verbose=True, yos=yos)
+            y1, y2, ycomb = edge_trigger(stackm[:, i], triggerscale=triggerscale, verbose=True, yos=yos)
         else:
-            y1, y2, ycomb = edge_trigger(stack[:, i] * mask[:, i], triggerscale=triggerscale, verbose=False, yos=yos)
+            y1, y2, ycomb = edge_trigger(stackm[:, i], triggerscale=triggerscale, verbose=False, yos=yos)
 
         edge1[i] = y1
         edge2[i] = y2
