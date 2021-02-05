@@ -159,12 +159,12 @@ def center_of_mass(column, ypos, halfwidth):
     """"""
 
     dimy, = column.shape
-    rows = np.arange(dimy)
+    ypix = np.arange(dimy)
 
     miny = np.int(np.fmax(np.around(ypos - halfwidth), 0))
     maxy = np.int(np.fmin(np.around(ypos + halfwidth), dimy))
 
-    com = np.nansum(column[miny:maxy]*rows[miny:maxy])/np.nansum(column[miny:maxy])
+    com = np.nansum(column[miny:maxy]*ypix[miny:maxy])/np.nansum(column[miny:maxy])
 
     return com
 
@@ -232,24 +232,23 @@ def get_uncontam_centroids(stack, header=None, mask=None, poly_order=11, verbose
     # Normalize each column
     norm = backsub / np.nanmax(backsub, axis=0)
 
-    # Create 2D Array of pixel positions
-    rows = (np.ones((dimx, dimy)) * np.arange(dimy)).T
+    # Create 2D Array of pixel positions.
+    xpix = np.arange(dimx)
+    ypix = np.arange(dimy)
+    _, ypix = np.meshgrid(xpix, ypix)
 
-    # CoM analysis to find centroid
-    com = np.nansum(norm*rows, axis=0)/np.nansum(norm, axis=0)
+    # CoM analysis to find centroid using all rows.
+    com = np.nansum(norm*ypix, axis=0)/np.nansum(norm, axis=0)
 
     # Adopt these trace values as best
-    tracex_best = np.arange(dimx)
     tracey_best = np.copy(com)
 
-    # Second pass, find centroid on a subset of pixels
-    # from an area around the centroid determined earlier.
-    tracex = np.arange(dimx)
-    tracey = np.zeros(dimx)*np.nan
+    # Second pass, use a windowed CoM at the previous position.
+    tracey = np.full_like(tracey_best, fill_value=np.nan)
     halfwidth = 30 * yos
-    for i in range(dimx):  # TODO loop over icol for clarity.
+    for icol in range(dimx):
 
-        com = center_of_mass(backsub[:, i], tracey_best[i], halfwidth)
+        com = center_of_mass(backsub[:, icol], tracey_best[icol], halfwidth)
 
         # Ensure that the centroid position is not getting too close to an edge
         # such that it is biased.
@@ -261,32 +260,30 @@ def get_uncontam_centroids(stack, header=None, mask=None, poly_order=11, verbose
         # If this is the case (i.e. the pixel value of the centroid is very low
         # compared to the column average), restrict the range of pixels
         # considered to be above the current centroid.
-        if backsub[int(com)][i] < np.nanmean(backsub[(int(com) - halfwidth):(int(com) + halfwidth), i]):
+        if backsub[int(com), icol] < np.nanmean(backsub[int(com) - halfwidth:int(com) + halfwidth, icol]):
 
-            com = center_of_mass(backsub[:, i], com - halfwidth, halfwidth)
+            com = center_of_mass(backsub[:, icol], com - halfwidth, halfwidth)
 
-        tracey[i] = com
+        tracey[icol] = com
 
     # Adopt these trace values as best.
-    tracex_best = np.copy(tracex)
     tracey_best = np.copy(tracey)
 
     # Third pass - fine tuning.
-    tracex = np.arange(dimx)
-    tracey = np.zeros(dimx) * np.nan
+    tracey = np.full_like(tracey_best, fill_value=np.nan)
     halfwidth = 16 * yos
-    for i in range(len(tracex_best)):  # TODO loop over icol for clarity, Use dimx.
+    for icol in range(dimx):
 
-        com = center_of_mass(backsub[:, i], tracey_best[i], halfwidth)
+        com = center_of_mass(backsub[:, icol], tracey_best[icol], halfwidth)
 
-        tracex[i] = np.copy(tracex_best[i])
-        tracey[i] = np.copy(com)
+        tracey[icol] = np.copy(com)
 
-    # Update with the best estimates
-    tracex_best = np.copy(tracex)
+    # Adopt these trace values as best.
     tracey_best = np.copy(tracey)
 
     # Final pass : Fitting a polynomial to the measured (noisy) positions
+    tracex_best = np.arange(dimx)
+
     if padding == 0:
         # Only use the non NaN pixels.
         induse = np.isfinite(tracex_best) & np.isfinite(tracey_best)
@@ -295,10 +292,9 @@ def get_uncontam_centroids(stack, header=None, mask=None, poly_order=11, verbose
         # Mask out the padded pixels from the fit so it is rigorously the
         # same as for regular science images.
         induse = np.isfinite(tracex_best) & np.isfinite(tracey_best) & \
-                 (tracex_best >= xos*padding) & (tracex_best < (dimx-xos*padding))
+                 (tracex_best >= xos*padding) & (tracex_best < (dimx - xos*padding))
 
-    # Use a *** fixed *** polynomial order of 11 to keep results consistent
-    # from data set to data set. Any systematics would remain fixed.
+    # Fit the CoM y-positions with a polynomial and use the result as the true y-positions.
     param = np.polyfit(tracex_best[induse], tracey_best[induse], poly_order)
     tracey_best = np.polyval(param, tracex_best)
 
