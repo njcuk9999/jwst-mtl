@@ -349,29 +349,29 @@ def shift(xs, n):
 
 def edge_trigger(column, triggerscale=2, verbose=False, yos=1):
     """"""
-    # triggerscale must be an integer, expressed in native pixel size
 
-    # dimension of the column array
-    dim, = np.shape(column)
+    # Dimension of the column array.
+    dimy, = column.shape
+    halfwidth = triggerscale*yos
 
-    # halftrig = int((triggerscale-1)/2)
-    half = triggerscale*yos
+    # Positions along that column where the full triggerscale is accessible.
+    ic = halfwidth + np.arange(dimy - 2*halfwidth)
 
-    # positions along that column where the full triggerscale is accessible
-    ic = half + np.arange(dim - 2*half)
-
-    # slope of the flux at position datax
+    # Slope of the flux at position datax.
     slope = []
-    datax = np.arange(2*half+1)
+    datax = np.arange(2*halfwidth + 1)
+
     # For each position, grab current n pixels, exclude NaN, fit a slope
     for i in ic:
-        data = column[i-half:i+half+1]
-        ind = np.where(np.isfinite(data))
-        if np.size(ind) >= 3:
-            param = np.polyfit(datax[ind], data[ind], 1)
+        data = column[i - halfwidth:i + halfwidth + 1]
+
+        mask = np.isfinite(data)
+        if np.sum(mask) >= 3:
+            param = np.polyfit(datax[mask], data[mask], 1)
             slope.append(param[0])
         else:
             slope.append(np.nan)
+
     slope = np.array(slope)
 
     # Determine which x sees the maximum slope
@@ -392,21 +392,25 @@ def edge_trigger(column, triggerscale=2, verbose=False, yos=1):
     # Initialize the combined slope maximum value (valmax), x index (indcomb) and trace width
     valmax, indcomb, widthcomb = 0, -1, 0
     widthrange = [18, 19, 20, 21, 22, 23, 24, 25, 26, 27]
-    # Scan for 9 trace widths 18 to 27 native pixels
+
+    # Scan through a range of trace widths.
     for width in widthrange:
-        # add the slope and its offsetted negative
-        # comb = slope - np.roll(slope, -yos*width)
+
+        # Add the slope and its offsetted negative.
         comb = slope - shift(slope, -yos*width)
+
         # Find the maximum resulting slope
         indcurr = np.argwhere((comb == np.nanmax(comb)) & (comb != 0))
         valcurr = -1
         if indcurr.size > 0:
             valcurr = comb[indcurr[0][0]]
+
         # Keep that as the optimal if it is among all trace widths
         if valcurr > valmax:
             valmax = np.copy(valcurr)
             indcomb = np.copy(indcurr[0][0])
             widthcomb = yos*width
+
     edgecomb = np.nan
     if np.size(indcomb) > 0:
         if indcomb != -1:
@@ -419,6 +423,7 @@ def edge_trigger(column, triggerscale=2, verbose=False, yos=1):
         plt.show()
 
     return edgemax, edgemin, edgecomb
+
 
 # TODO Fix this return_what bullcrap.
 # TODO general clean-up.
