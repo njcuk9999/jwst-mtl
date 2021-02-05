@@ -13,130 +13,113 @@ import matplotlib.pyplot as plt
 PATH = '/home/talens-irex/Dropbox/SOSS_Ref_Files'
 
 
-def determine_stack_dimensions(stack, header=None, verbose=False):
-    """Determine the size of a stack array. Will be called by
-    get_uncontam_centroids and make_trace_mask.
+def get_image_dim(image, header=None, verbose=False):
+    """Determine the properties of the image array.
 
-    Parameters
-    ----------
-    stack : array of floats (2D)
-        Data frame. Assumes DMS orientation.
-        This array could be a native pixel sized SOSS subarray or FF.
-        Could also be a 2D trace reference file in which case padding exists
-        around the edges, and the pixels may be oversampled by an integer
-        factor.
-    header : fits header
-        Header associated to the stack array.
-        If the header is None then some assumptions will be made regarding the
-        stack array. If the header is passed, then specific keywords will be
-        read in it to assess what the stack array is. This ensures that a 2D
-        Trace Reference file will be digested properly.
-    verbose : bool
-        Control verbosity.
+    :param image: A 2D image of the detector.
+    :param header: The header from one of the SOSS reference files.
+    :param verbose: If set True some diagnostic plots will be made.
 
-    Returns
-    -------
-    dimx, dimy : int
+    :type image: array[float]
+    :type header: astropy.io.fits.Header
+    :type verbose: bool
+
+    :returns:
+    dimx, dimy
         The dimensions of the stack array.
-    xos, yos : int
-        The oversampling factor of the stack array.
-    xnative, ynative : int
+    xos, yos
+        The oversampling factors of the stack array.
+    xnative, ynative
         The dimensions of the stack image, in native pixels.
-    padding : int
-        Amount of padding all around the image, in native pixels.
-    working_pixel_bool : array of bool (2D)
-        2D array of the same size as stack with boolean values of False where
-        pixels are not light sensitive (the reference pixels). True elsewhere.
+    padding
+        Amount of padding around the image, in native pixels.
+    refpix_mask
+        Boolean array indicating which pixels are lightsensitive (True) and which are reference pixels (False).
 
-    Raises
-    ------
-    ValueError
-        If the data dimensions are non-standard, or the header information
-        does not match up with the data shape.
+    :rtype: Tuple(int, int, int, int, int, int, int, array[bool])
     """
 
     # Dimensions of the subarray.
-    dimy, dimx = np.shape(stack)
+    dimy, dimx = np.shape(image)
 
-    # Determine what is the input stack based either on its dimensions or on
-    # the header if passed. Construct a mask of working pixels in case the
-    # stack contains reference pixels.
+    # If no header was passed we have to check all possible sizes.
     if header is None:
-        # No header passed - Assume stack is valid SOSS subarray or FF, i.e.
-        # 2048x256 or 2040x252 (working pixels) or multiple of if oversampled
-        # 2048x96 or 2040x96 (working pixels) or multiple of
-        # 2048x2048 or 2040x2040 (working pixels) or multiple of
+
+        # Initialize padding to zero in this case because it is not a reference file.
+        padding = 0
+
+        # Assume the stack is a valid SOSS subarray.
+        # FULL: 2048x2048 or 2040x2040 (working pixels) or multiple if oversampled.
+        # SUBSTRIP96: 2048x96 or 2040x96 (working pixels) or multiple if oversampled.
+        # SUBSTRIP256: 2048x256 or 2040x252 (working pixels) or multiple if oversampled.
+
+        # Check if the size of the x-axis is valid.
         if (dimx % 2048) == 0:
-            # stack is a multiple of native pixels.
             xnative = 2048
-            # The x-axis oversampling is:
-            xos = int(dimx / 2048)
+            xos = int(dimx // 2048)
+
         elif (dimx % 2040) == 0:
-            # stack is a multiple of native *** working *** pixels.
             xnative = 2040
-            # The y-axis oversampling is:
-            xos = int(dimx / 2040)
+            xos = int(dimx // 2040)
+
         else:
-            # stack x dimension has unrecognized size.
             raise ValueError('Stack X dimension has unrecognized size of {:}. Accepts 2048, 2040 or multiple of.'.format(dimx))
-        # Check if the Y axis is consistent with the X axis.
+
+        # Check if the y-axis is consistent with the x-axis.
         acceptable_ydim = [96, 256, 252, 2040, 2048]
         yaxis_consistent = False
-        for accdim in acceptable_ydim:
+        for accdim in acceptable_ydim:  # TODO See if this can be done more similarly to the x-axis.
+
             if dimy / (accdim*xos) == 1:
-                # Found the acceptable dimension
+
+                # Found the acceptable dimension.
                 yos = np.copy(xos)
                 ynative = np.copy(accdim)
                 yaxis_consistent = True
-        if yaxis_consistent is False:
-            # stack y dimension is inconsistent with the x dimension.
+
+        if not yaxis_consistent:
             raise ValueError('Stack Y dimension ({:}) is inconsistent with X dimension ({:}) for acceptable SOSS arrays'.format(dimy, dimx))
-        # Construct a boolean mask (true or false) of working pixels
-        working_pixel_bool = np.full((dimy, dimx), True)
 
-        # For dimensions where reference pixels would have been included in
-        # stack, mask those reference pixels out.
-        # Sizes 96, 252 and 2040 should not contain any reference pixel.
+        # Create a boolean mask indicating which pixels are not reference pixels.
+        refpix_mask = np.ones_like(image, dtype='bool')
         if xnative == 2048:
-            # Mask out the left and right columns of reference pixels
-            working_pixel_bool[:, 0:xos * 4] = False
-            working_pixel_bool[:, -xos * 4:] = False
-        if ynative == 2048:
-            # Mask out the top and bottom rows of reference pixels
-            working_pixel_bool[0:yos * 4, :] = False
-            working_pixel_bool[-yos * 4:, :] = False
-        if ynative == 256:
-            # Mask the top rows of reference pixels
-            working_pixel_bool[-yos * 4:, :] = False
+            # Mask out the left and right columns of reference pixels.
+            refpix_mask[:, :xos * 4] = False
+            refpix_mask[:, -xos * 4:] = False
 
-        # Initialize padding to zero in this case because it is not a 2D Trace
-        # ref file.
-        padding = int(0)
+        if ynative == 2048:
+            # Mask out the top and bottom rows of reference pixels.
+            refpix_mask[:yos * 4, :] = False
+            refpix_mask[-yos * 4:, :] = False
+
+        if ynative == 256:
+            # Mask the top rows of reference pixels.
+            refpix_mask[-yos * 4:, :] = False
 
     else:
-        # header was passed
-        # Read in the relevant keywords
-        xos, yos = int(header['OVERSAMP']), int(header['OVERSAMP'])
+        # Read the oversampling and padding from the header.
         padding = int(header['PADDING'])
-        # The 2D Trace profile is for FULL FRAME so 2048x2048
-        xnative, ynative = int(2048), int(2048)
-        # Check that the stack respects its intended format
-        if dimx != ((xnative+2*padding)*xos):
-            # Problem
-            raise ValueError('The header passed is inconsistent with the X dimension of the stack.')
-        if dimy != ((ynative+2*padding)*yos):
-            # Problem
-            raise ValueError('The header passed is inconsistent with the Y dimension of the stack.')
-        # Construct a mask of working pixels. The 2D Trace REFERENCE file does
-        # not contain any reference pixel. So all are True.
-        working_pixel_bool = np.full((dimy, dimx), True)
+        xos, yos = int(header['OVERSAMP']), int(header['OVERSAMP'])
 
-    # For debugging purposes...
-    if verbose is True:
+        # The 2D Trace profile is for FULL FRAME so 2048x2048.
+        xnative, ynative = 2048, 2048
+
+        # Check that the stack respects its intended format.
+        if dimx != (xnative + 2*padding)*xos:
+            raise ValueError('The header passed is inconsistent with the X dimension of the stack.')
+
+        if dimy != (ynative + 2*padding)*yos:
+            raise ValueError('The header passed is inconsistent with the Y dimension of the stack.')
+
+        # The trace file contains no reference pixels so all pixels are good.
+        refpix_mask = np.ones_like(image, dtype='bool')
+
+    # If verbose print the output.
+    if verbose:
         print('Data dimensions:\n')
         print('dimx={:}, dimy={:}, xos={:}, yos={:}, xnative={:}, ynative={:}'.format(dimx, dimy, xos, yos, xnative, ynative))
 
-    return dimx, dimy, xos, yos, xnative, ynative, padding, working_pixel_bool
+    return dimx, dimy, xos, yos, xnative, ynative, padding, refpix_mask
 
 
 def _plot_centroid(image, x, y):
@@ -211,18 +194,16 @@ def get_uncontam_centroids(stack, header=None, mask=None, poly_order=11, verbose
         Best estimate data y centroids.
     """
 
-    # Call the script that determines the dimensions of the stack. It handles
-    # regular science images of various subaaray sizes, with or without the
-    # reference pixels, oversampled or not. It also handles the 2D Trace
-    # Reference File.
-    dimx, dimy, xos, yos, xnative, ynative, padding, working_pixel_bool = \
-        determine_stack_dimensions(stack, header=header, verbose=verbose)
-
+    # If no mask was given use all pixels.
     if mask is None:
         mask = np.zeros_like(stack, dtype='bool')
 
+    # Call the script that determines the dimensions of the stack.
+    dimx, dimy, xos, yos, xnative, ynative, padding, refpix_mask = \
+        get_image_dim(stack, header=header, verbose=verbose)
+
     # Replace masked pixel values with NaNs.
-    stackm = np.where(mask | ~working_pixel_bool, np.nan, stack)
+    stackm = np.where(mask | ~refpix_mask, np.nan, stack)  # TODO rename variable
 
     # Identify the floor level of all 2040 working cols to subtract it first.
     floorlevel = np.nanpercentile(stackm, 10, axis=0)
@@ -456,18 +437,16 @@ def get_uncontam_centroids_edgetrig(stack, header=None, mask=None, poly_order=11
         'tracewidth' : scalar representing the median of (red edge - blue edge) y values
     """
 
-    # Call the script that determines the dimensions of the stack. It handles
-    # regular science images of various subarray sizes, with or without the
-    # reference pixels, oversampled or not. It also handles the 2D Trace
-    # Reference File.
-    dimx, dimy, xos, yos, xnative, ynative, padding, working_pixel_bool = \
-        determine_stack_dimensions(stack, header=header)
-
+    # If no mask was given use all pixels.
     if mask is None:
         mask = np.zeros_like(stack, dtype='bool')
 
+    # Call the script that determines the dimensions of the stack.
+    dimx, dimy, xos, yos, xnative, ynative, padding, refpix_mask = \
+        get_image_dim(stack, header=header, verbose=verbose)
+
     # Replace masked pixel values with NaNs.
-    stackm = np.where(mask | ~working_pixel_bool, np.nan, stack)
+    stackm = np.where(mask | ~refpix_mask, np.nan, stack)
 
     # Use edge trigger to compute the edges and center of the trace.
     ytrace_max, ytrace_min, ytrace_comb = edge_trigger(stackm, triggerscale=triggerscale, yos=yos, verbose=verbose)
