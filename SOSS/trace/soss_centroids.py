@@ -154,6 +154,21 @@ def _plot_centroid(image, x, y):
 
     return
 
+
+def center_of_mass(column, ypos, halfwidth):
+    """"""
+
+    dimy, = column.shape
+    rows = np.arange(dimy)
+
+    miny = np.int(np.fmax(np.around(ypos - halfwidth), 0))
+    maxy = np.int(np.fmin(np.around(ypos + halfwidth), dimy))
+
+    com = np.nansum(column[miny:maxy]*rows[miny:maxy])/np.nansum(column[miny:maxy])
+
+    return com
+
+
 # TODO add widths as parameters.
 def get_uncontam_centroids(stack, header=None, mask=None, poly_order=11, verbose=False):
     """Determine the x, y positions of the trace centroids from an
@@ -231,33 +246,25 @@ def get_uncontam_centroids(stack, header=None, mask=None, poly_order=11, verbose
     # from an area around the centroid determined earlier.
     tracex = np.arange(dimx)
     tracey = np.zeros(dimx)*np.nan
-    row = np.arange(dimy)
-    w = 30 * yos
-    for i in range(dimx):
-        miny = np.int(np.nanmax([np.around(tracey_best[i] - w), 0]))
-        maxy = np.int(np.nanmin([np.around(tracey_best[i] + w), dimy - 1]))
-        val = backsub[miny:maxy, i] / np.nanmax(backsub[:, i])
-        ind = np.where(np.isfinite(val))
-        thisrow = (row[miny:maxy])[ind]
-        thisval = val[ind]
-        com = np.sum(thisrow * thisval) / np.sum(thisval)
+    halfwidth = 30 * yos
+    for i in range(dimx):  # TODO loop over icol for clarity.
+
+        com = center_of_mass(backsub[:, i], tracey_best[i], halfwidth)
+
         # Ensure that the centroid position is not getting too close to an edge
         # such that it is biased.
         if (not np.isfinite(com)) or (com <= 5*yos) or (com >= (ynative-6)*yos):
             continue
+
         # For a bright second order, it is likely that the centroid at this
         # point will be somewhere in between the first and second order.
         # If this is the case (i.e. the pixel value of the centroid is very low
         # compared to the column average), restrict the range of pixels
         # considered to be above the current centroid.
-        if backsub[int(com)][i] < np.nanmean(backsub[(int(com) - w):(int(com) + w), i]):
-            miny = np.int(np.nanmax([np.around(com) - 2*w, 0]))
-            maxy = np.int(np.nanmin([np.around(com), dimy - 1]))
-            val = backsub[miny:maxy, i] / np.nanmax(backsub[:, i])
-            ind = np.where(np.isfinite(val))
-            thisrow = (row[miny:maxy])[ind]
-            thisval = val[ind]
-            com = np.sum(thisrow * thisval) / np.sum(thisval)
+        if backsub[int(com)][i] < np.nanmean(backsub[(int(com) - halfwidth):(int(com) + halfwidth), i]):
+
+            com = center_of_mass(backsub[:, i], com - halfwidth, halfwidth)
+
         tracey[i] = com
 
     # Adopt these trace values as best.
@@ -267,16 +274,11 @@ def get_uncontam_centroids(stack, header=None, mask=None, poly_order=11, verbose
     # Third pass - fine tuning.
     tracex = np.arange(dimx)
     tracey = np.zeros(dimx) * np.nan
-    row = np.arange(dimy)
-    w = 16 * yos
-    for i in range(len(tracex_best)):
-        miny = np.int(np.nanmax([np.around(tracey_best[i] - w), 0]))
-        maxy = np.int(np.nanmin([np.around(tracey_best[i] + w), dimy - 1]))
-        val = backsub[miny:maxy, i] / np.nanmax(backsub[:, i])
-        ind = np.where(np.isfinite(val))
-        thisrow = (row[miny:maxy])[ind]
-        thisval = val[ind]
-        com = np.sum(thisrow * thisval) / np.sum(thisval)
+    halfwidth = 16 * yos
+    for i in range(len(tracex_best)):  # TODO loop over icol for clarity, Use dimx.
+
+        com = center_of_mass(backsub[:, i], tracey_best[i], halfwidth)
+
         tracex[i] = np.copy(tracex_best[i])
         tracey[i] = np.copy(com)
 
@@ -301,7 +303,7 @@ def get_uncontam_centroids(stack, header=None, mask=None, poly_order=11, verbose
     tracey_best = np.polyval(param, tracex_best)
 
     if verbose is True:
-        _plot_centroid(stack, tracex_best, tracey_best)
+        _plot_centroid(stackm, tracex_best, tracey_best)
 
     return tracex_best, tracey_best
 
