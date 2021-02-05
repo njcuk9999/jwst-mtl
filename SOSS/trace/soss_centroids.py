@@ -347,82 +347,81 @@ def shift(xs, n):
     return e
 
 
-def edge_trigger(column, triggerscale=2, verbose=False, yos=1):
+def edge_trigger(image, triggerscale=2, yos=1, verbose=False):
     """"""
 
-    # Dimension of the column array.
-    dimy, = column.shape
-    halfwidth = triggerscale*yos
+    dimy, dimx = image.shape
+    halfwidth = triggerscale * yos
 
-    # Positions along that column where the full triggerscale is accessible.
-    ic = halfwidth + np.arange(dimy - 2*halfwidth)
+    # Create coordinate arrays.
+    xpix = np.arange(dimx)
+    ypix = np.arange(dimy)
+    _, ygrid = np.meshgrid(xpix, ypix)
 
-    # Slope of the flux at position datax.
-    slope = []
-    datax = np.arange(2*halfwidth + 1)
+    # Compute windowed slopes over the columns.
+    slopevals = np.full_like(image, fill_value=np.nan)
+    for irow in range(halfwidth, dimy-halfwidth):
 
-    # For each position, grab current n pixels, exclude NaN, fit a slope
-    for i in ic:
-        data = column[i - halfwidth:i + halfwidth + 1]
+        # Compute the window indices.
+        ymin = irow - halfwidth
+        ymax = irow + halfwidth + 1
 
-        mask = np.isfinite(data)
-        if np.sum(mask) >= 3:
-            param = np.polyfit(datax[mask], data[mask], 1)
-            slope.append(param[0])
-        else:
-            slope.append(np.nan)
+        # Get the x and y data to find the slope to.
+        datay = image[ymin:ymax, :]
+        mask = np.isfinite(datay)
+        datax = np.where(mask, ygrid[ymin:ymax, :], np.nan)  # Need to set values NaN in y to NaN in x.
 
-    slope = np.array(slope)
+        # Compute the slope.
+        xmean = np.nanmean(datax, axis=0, keepdims=True)
+        ymean = np.nanmean(datay, axis=0, keepdims=True)
+        slope = np.nansum((datax - xmean) * (datay - ymean), axis=0) / np.nansum((datax - xmean) ** 2, axis=0)
 
-    # Determine which x sees the maximum slope
-    indmax = np.argwhere((slope == np.nanmax(slope)) & (slope != 0))
-    edgemax = np.nan  # default value because ref pixels produce no slope
-    if indmax.size > 0:
-        edgemax = ic[indmax[0][0]]
+        # Set slopes computed from < 3 datapoints to NaN.
+        slopevals[irow, :] = np.where(np.sum(mask, axis=0) >= 3, slope, np.nan)
 
-    # Determine which x sees the minimum slope
-    indmin = np.argwhere((slope == np.nanmin(slope)) & (slope != 0))
-    edgemin = np.nan
-    if indmin.size > 0:
-        edgemin = ic[indmin[0][0]]
+    # Find the upper and lower bounds on the trace.
+    args = np.nanargmax(slopevals, axis=0)
+    vals = np.nanmax(slopevals, axis=0)
+    ytrace_max = np.where(vals != 0, ypix[args], np.nan)
 
-    # Determine which (x,x+width) pair sees the maximum and minimum slopes simultaneously.
-    # This methods is the most robust. It scans the combined slope peak for 12 different
-    # trace widths 15 to 27 native pixels and triggers on the maximum combined slope.
-    # Initialize the combined slope maximum value (valmax), x index (indcomb) and trace width
-    valmax, indcomb, widthcomb = 0, -1, 0
-    widthrange = [18, 19, 20, 21, 22, 23, 24, 25, 26, 27]
+    args = np.nanargmin(slopevals, axis=0)
+    vals = np.nanmin(slopevals, axis=0)
+    ytrace_min = np.where(vals != 0, ypix[args], np.nan)
 
     # Scan through a range of trace widths.
+    slopes_best = np.zeros_like(ypix)
+    ytrace_best = np.zeros_like(ypix)
+    widths_best = np.zeros_like(ypix)
+    widthrange = [18, 19, 20, 21, 22, 23, 24, 25, 26, 27]
     for width in widthrange:
 
-        # Add the slope and its offsetted negative.
-        comb = slope - shift(slope, -yos*width)
+        # Add the slope and its offset negative.
+        comb = slopevals - shift(slopevals, -yos*width)
 
-        # Find the maximum resulting slope
-        indcurr = np.argwhere((comb == np.nanmax(comb)) & (comb != 0))
-        valcurr = -1
-        if indcurr.size > 0:
-            valcurr = comb[indcurr[0][0]]
+        # Find the maximum resulting slope.
+        args = np.nanargmax(comb, axis=0)
+        vals = np.nanmax(comb, axis=0)
 
-        # Keep that as the optimal if it is among all trace widths
-        if valcurr > valmax:
-            valmax = np.copy(valcurr)
-            indcomb = np.copy(indcurr[0][0])
-            widthcomb = yos*width
+        # Update the best values.
+        mask = (vals > slopes_best)
+        slopes_best = np.where(mask, vals, slopes_best)
+        ytrace_best = np.where(mask, ypix[args], ytrace_best)
+        widths_best = np.where(mask, yos*width, widths_best)
 
-    edgecomb = np.nan
-    if np.size(indcomb) > 0:
-        if indcomb != -1:
-            edgecomb = ic[indcomb] + widthcomb/2.
+    # Set the y position to NaN if the best slope was zero.
+    ytrace_best = np.where(slopes_best != 0, ytrace_best + widths_best/2., np.nan)
 
-    # Make a plot if verbose is True
     if verbose:
-        plt.plot(ic, slope)
-        plt.plot(ic, comb)
-        plt.show()
 
-    return edgemax, edgemin, edgecomb
+        plt.imshow(image, origin='lower')
+        plt.plot(ytrace_min)
+        plt.plot(ytrace_max)
+        plt.plot(ytrace_best)
+
+        plt.show()
+        plt.close()
+
+    return ytrace_max, ytrace_min, ytrace_best
 
 
 # TODO Fix this return_what bullcrap.
@@ -473,19 +472,8 @@ def get_uncontam_centroids_edgetrig(stack, header=None, mask=None, poly_order=11
     # Replace masked pixel values with NaNs.
     stackm = np.where(mask | ~working_pixel_bool, np.nan, stack)
 
-    edge1 = np.zeros(dimx)
-    edge2 = np.zeros(dimx)
-    edgecomb = np.zeros(dimx)
-    for i in range(dimx):
-
-        if (i % 100 == 0) & verbose:
-            y1, y2, ycomb = edge_trigger(stackm[:, i], triggerscale=triggerscale, verbose=True, yos=yos)
-        else:
-            y1, y2, ycomb = edge_trigger(stackm[:, i], triggerscale=triggerscale, verbose=False, yos=yos)
-
-        edge1[i] = y1
-        edge2[i] = y2
-        edgecomb[i] = ycomb
+    # Use edge trigger to compute the edges and center of the trace.
+    edge1, edge2, edgecomb = edge_trigger(stackm, triggerscale=triggerscale, yos=yos, verbose=verbose)
 
     # Fit the red edge
     x_red = np.arange(dimx)
