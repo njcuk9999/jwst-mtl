@@ -301,7 +301,7 @@ def get_uncontam_centroids(stack, header=None, mask=None, poly_order=11, verbose
     if verbose is True:
         _plot_centroid(stackm, tracex_best, tracey_best)
 
-    return tracex_best, tracey_best
+    return tracex_best, tracey_best, param
 
 
 def test_uncontam_centroids():
@@ -310,9 +310,9 @@ def test_uncontam_centroids():
     filename = os.path.join(PATH, 'SOSS_ref_2D_profile.fits.gz')
 
     image, header = fits.getdata(filename, ext=2, header=True)
-    x_o1, y_o1 = get_uncontam_centroids(image, header=header, verbose=True)
+    xtrace, ytrace, param = get_uncontam_centroids(image, header=header, verbose=True)
 
-    return x_o1, y_o1
+    return xtrace, ytrace
 
 
 def robust_polyfit(x, y, order, maxiter=5, nstd=3.):
@@ -424,11 +424,8 @@ def edge_trigger(image, triggerscale=2, yos=1, verbose=False):
     return ytrace_max, ytrace_min, ytrace_best
 
 
-# TODO Fix this return_what bullcrap.
-# TODO general clean-up.
-# TODO split diagnostic plot to function.
 def get_uncontam_centroids_edgetrig(stack, header=None, mask=None, poly_order=11,
-                                    return_what='edgecomb_param', triggerscale=5, verbose=False):
+                                    triggerscale=5, mode='combined', verbose=False):
     """ Determine the x, y positions of the trace centroids from an exposure
     using the two edges and the width of the traces. This should be performed on a very high SNR
     stack.
@@ -473,68 +470,32 @@ def get_uncontam_centroids_edgetrig(stack, header=None, mask=None, poly_order=11
     stackm = np.where(mask | ~working_pixel_bool, np.nan, stack)
 
     # Use edge trigger to compute the edges and center of the trace.
-    edge1, edge2, edgecomb = edge_trigger(stackm, triggerscale=triggerscale, yos=yos, verbose=verbose)
+    ytrace_max, ytrace_min, ytrace_comb = edge_trigger(stackm, triggerscale=triggerscale, yos=yos, verbose=verbose)
 
-    # Fit the red edge
-    x_red = np.arange(dimx)
-    ind = np.where(np.isfinite(edge1))
-    param_red = robust_polyfit(x_red[ind], edge1[ind], poly_order)
-    y_red = np.polyval(param_red, x_red)
+    if mode == 'maxedge':
+        ytrace = ytrace_max
+    elif mode == 'minedge':
+        ytrace = ytrace_min
+    elif mode == 'mean':
+        ytrace = (ytrace_min + ytrace_max)/2.
+    elif mode == 'combined':
+        ytrace = ytrace_comb
+    else:
+        raise ValueError('Unknow mode: {}'.format(mode))
 
-    # Fit the blue edge
-    x_blue = np.arange(dimx)
-    ind = np.where(np.isfinite(edge2))
-    param_blue = robust_polyfit(x_blue[ind], edge2[ind], poly_order)
-    y_blue = np.polyval(param_blue, x_blue)
+    # Fit the y-positions with a polynomial and use the result as the true y-positions.
+    xtrace = np.arange(dimx)
+    mask = np.isfinite(ytrace)
+    param = np.polyfit(xtrace[mask], ytrace[mask], poly_order)
+    ytrace = np.polyval(param, xtrace)
 
-    # Fit the combined edges simultaneously
-    x_comb = np.arange(dimx)
-    ind = np.where(np.isfinite(edgecomb))
-    param_comb = robust_polyfit(x_comb[ind], edgecomb[ind], poly_order)
-    y_comb = np.polyval(param_comb, x_comb)
+    if verbose is True:
+        _plot_centroid(stackm, xtrace, ytrace)
 
-    # Fit the mean of both edges
-    x_both = np.arange(dimx)
-    both = (edge1 + edge2)/2.
-    ind = np.where(np.isfinite(both))
-    param_both = robust_polyfit(x_both[ind], both[ind], poly_order)
-    y_both = np.polyval(param_both, x_both)
+    # Compute an estimate of the trace width.
+    tracewidth = np.nanmedian(np.abs(ytrace_max - ytrace_min))
 
-    # Plot the edge position as a function of x
-    if True:
-        plt.scatter(x_red, edge1, marker=",", s=0.8, label='RAW Rising edge')
-        plt.scatter(x_blue, edge2, marker=",", s=0.8, label='RAW Falling edge')
-        plt.scatter(x_comb, edgecomb, marker=",", s=0.8, label='RAW Combined+inverted+offset rising edges')
-        plt.scatter(x_both, both, marker=",", s=0.8, label='RAW Rising + falling edges average')
-        plt.plot(x_red, y_red, label='FIT Rising edge')
-        plt.plot(x_blue, y_blue, label='FIT Falling edge')
-        plt.plot(x_comb, y_comb, label='FIT Combined+inverted+offset rising edges')
-        plt.plot(x_both, y_both, label='FIT Rising + falling edges average')
-        plt.scatter(x_red, np.abs(edge1-edge2), marker=",", s=0.8, label='RAW Trace width')
-        plt.legend()
-        plt.show()
-
-    # Trace width
-    tracewidth = np.nanmedian(np.abs(edge1 - edge2))
-
-    if return_what == 'edgemean_param':
-        return param_both
-    if return_what == 'rededge_param':
-        return param_red
-    if return_what == 'blueedge_param':
-        return param_blue
-    if return_what == 'edgecomb_param':
-        return param_comb
-    if return_what == 'edgemean_xy':
-        return x_both, y_both
-    if return_what == 'rededge_xy':
-        return x_red, y_red
-    if return_what == 'blueedge_xy':
-        return x_blue, y_blue
-    if return_what == 'edgecomb_xy':
-        return x_comb, y_comb
-    if return_what == 'tracewidth':
-        return tracewidth
+    return xtrace, ytrace, tracewidth, param
 
 
 def test_uncontam_centroids_edgetrig():
@@ -543,10 +504,9 @@ def test_uncontam_centroids_edgetrig():
     filename = os.path.join(PATH, 'SOSS_ref_2D_profile.fits.gz')
 
     image, header = fits.getdata(filename, ext=2, header=True)
-    x_o1, y_o1 = get_uncontam_centroids_edgetrig(image, header=header, return_what='edgecomb_xy',
-                                                 verbose=False)
+    xtrace, ytrace, width, param = get_uncontam_centroids_edgetrig(image, header=header, verbose=True)
 
-    return x_o1, y_o1
+    return xtrace, ytrace
 
 
 def main():
