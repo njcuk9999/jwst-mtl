@@ -464,7 +464,7 @@ def get_uncontam_centroids_edgetrig(stack, header=None, mask=None, poly_order=11
         determine_stack_dimensions(stack, header=header)
 
     if mask is None:
-        mask = np.zeros_like(stack)
+        mask = np.zeros_like(stack, dtype='bool')
 
     # Replace masked pixel values with NaNs.
     stackm = np.where(mask | ~working_pixel_bool, np.nan, stack)
