@@ -716,10 +716,19 @@ def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
     # Indices of all unmasked points in the left wing.
     inds3 = np.isfinite(prof_r2)
     # Fit with a 7th order polynomial.
+    # To ensure that the polynomial does not start turning up in the padded
+    # region, extend the linear fit to the edge of the pad to force the fit
+    # to continue decreasing.
+    ext_ax = np.arange(10) + np.max(axis_r[inds3]) + pad
+    ext_prof = pp[1] + pp[0]*ext_ax
+    # Concatenate right-hand profile with the extended linear trend.
+    fit_ax = np.concatenate([axis_r[inds3], ext_ax])
+    fit_prof = np.concatenate([prof_r2[inds3], ext_prof])
+
     # Use np.polyfit for a first estimate of the coefficients.
-    pp_r0 = np.polyfit(axis_r[inds3], prof_r2[inds3], 7)
+    pp_r0 = np.polyfit(fit_ax, fit_prof, 7)
     # Robust fit using the polyfit results as a starting point.
-    pp_r = _robust_polyfit(axis_r[inds3], prof_r2[inds3], pp_r0)
+    pp_r = _robust_polyfit(fit_ax, fit_prof, pp_r0)
 
     # === Stitching ===
     # Find pixel to stitch right wing fit.
@@ -769,6 +778,9 @@ def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
     xnew = np.arange(18)+(iil2-9)
     # Insert spline interpolation.
     newprof[np.max([0, iil2-9]):np.min([iil2+9, dimy])] = interp3(xnew)
+
+    # Set any negatives to zero
+    newprof[newprof < 0] = 0
 
     # Do diagnostic plot if requested.
     if verbose is True:

@@ -102,5 +102,6 @@ def _plot_wing_reconstruction(profile, ycens, axis_r, prof_r2, axis_l_pad,
 
     plt.xlabel('Spatial Pixel', fontsize=14)
     plt.xlim(int(axis_l_pad[0]), int(axis_r_pad[-1]))
+    plt.ylim(0, 1.1*np.max(np.log10(newprof)))
     plt.legend(fontsize=12)
     plt.show()
