@@ -210,14 +210,13 @@ def get_uncontam_centroids(image, header=None, mask=None, poly_order=11, verbose
 
     # CoM analysis to find initial positions using all rows.
     with np.errstate(invalid='ignore'):
-        ytrace_best = np.nansum(image_norm*ygrid, axis=0)/np.nansum(image_norm, axis=0)
+        ytrace = np.nansum(image_norm*ygrid, axis=0)/np.nansum(image_norm, axis=0)
 
     # Second pass - use a windowed CoM at the previous position.
     halfwidth = 30 * yos
-    ytrace = np.full_like(ytrace_best, fill_value=np.nan)
     for icol in range(dimx):
 
-        ycom = center_of_mass(image_norm[:, icol], ytrace_best[icol], halfwidth)
+        ycom = center_of_mass(image_norm[:, icol], ytrace[icol], halfwidth)
 
         # Ensure that the centroid position is not getting too close to an edge
         # such that it is biased.
@@ -233,37 +232,31 @@ def get_uncontam_centroids(image, header=None, mask=None, poly_order=11, verbose
 
             ycom = center_of_mass(image_norm[:, icol], ycom - halfwidth, halfwidth)
 
+        # Update the position if both the above checks passed.
         ytrace[icol] = ycom
-
-    # Adopt these trace values as best.
-    ytrace_best = np.copy(ytrace)
 
     # Third pass - fine tuning using a smaller window.
     halfwidth = 16 * yos
-    ytrace = np.full_like(ytrace_best, fill_value=np.nan)
     for icol in range(dimx):
 
-        ytrace[icol] = center_of_mass(image_norm[:, icol], ytrace_best[icol], halfwidth)
-
-    # Adopt these trace values as best.
-    ytrace_best = np.copy(ytrace)
+        ytrace[icol] = center_of_mass(image_norm[:, icol], ytrace[icol], halfwidth)
 
     # Fit the y-positions with a polynomial and use the result as the true y-positions.
     xtrace = np.arange(dimx)
-    mask = np.isfinite(ytrace_best)
+    mask = np.isfinite(ytrace)
 
     # For padded arrays ignore padding for consistency with real data
     if padding != 0:
         mask = mask & (xtrace >= xos*padding) & (xtrace < (dimx - xos*padding))
 
-    param = robust_polyfit(xtrace[mask], ytrace_best[mask], poly_order)
-    ytrace_best = np.polyval(param, xtrace)
+    param = robust_polyfit(xtrace[mask], ytrace[mask], poly_order)
+    ytrace = np.polyval(param, xtrace)
 
     # If verbose visualize the result.
     if verbose is True:
-        _plot_centroid(image_masked, xtrace, ytrace_best)
+        _plot_centroid(image_masked, xtrace, ytrace)
 
-    return xtrace, ytrace_best, param
+    return xtrace, ytrace, param
 
 
 def test_uncontam_centroids():
