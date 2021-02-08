@@ -115,7 +115,7 @@ def get_image_dim(image, header=None, verbose=False):
     return dimx, dimy, xos, yos, xnative, ynative, padding, refpix_mask
 
 
-def _plot_centroid(image, x, y):
+def _plot_centroid(image, xtrace, ytrace):
     """Overplot the extracted trace positions on the image."""
 
     nrows, ncols = image.shape
@@ -123,7 +123,7 @@ def _plot_centroid(image, x, y):
     plt.figure(figsize=(ncols/128, nrows/128))
 
     plt.imshow(image, origin='lower', cmap='inferno')
-    plt.plot(x, y, lw=2, c='white')
+    plt.plot(xtrace, ytrace, lw=2, c='white')
 
     plt.show()
     plt.close()
