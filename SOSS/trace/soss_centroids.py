@@ -153,65 +153,46 @@ def center_of_mass(column, ypos, halfwidth):
     return ycom
 
 
-def get_uncontam_centroids(stack, header=None, mask=None, poly_order=11, verbose=False):
-    """Determine the x, y positions of the trace centroids from an
-    exposure using a center-of-mass analysis. Works for either order if there
-    is no contamination, or for order 1 on a detector where the two orders
-    are overlapping.
-    This is Loïc's update to my adaptation of Loïc's get_order1_centroids.
+def get_uncontam_centroids(image, header=None, mask=None, poly_order=11, verbose=False):
+    """Determine the x, y coordinates of the trace using a center-of-mass analysis.
+    Works for either order if there is no contamination, or for order 1 on a detector
+    where the two orders are overlapping.
 
-    Parameters
-    ----------
-    stack : array of floats (2D)
-        Data frame. Assumes DMS orientation.
-        This array could be a native pixel size SOSS subarray or FF.
-        It could also be a 2D trace reference file in which case padding exists
-        around the edges, and the pixels may be oversampled by some integer
-        factor.
-    header : fits header
-        Header associated to the stack array.
-        If the header is None then some assumptions will be made regarding the
-        stack array. If the header is passed, then specific keywords will be
-        read in it to assess what the stack array is. This ensures that a 2D
-        Trace Reference file will be digested properly.
-    badpix : array of floats (2D)
-        Anything different than zero indicates a bad pixel. Optional input bad
-        pixel mask to apply to the stack. Should be of the same dimensions as
-        the stack.
-    tracemask : array of floats (2D)
-        Anything different than zero indicates a masked out pixel. The spirit
-        is to have zeros along one spectral order with a certain width.
-    poly_order : int
-        Order of the polynomial fit to the extracted positions.
-    verbose : bool
-        Control verbosity.
+    :param image: A 2D image of the detector.
+    :param header: The header from one of the SOSS reference files.
+    :param mask: A boolean array of the same shape as stack. Pixels corresponding to True values will be masked.
+    :param poly_order: Order of the polynomial to fit to the extracted trace positions.
+    :param verbose: If set True some diagnostic plots will be made.
 
-    Returns
-    -------
-    tracexbest : np.array
-        Best estimate data x centroids.
-    traceybest : np.array
-        Best estimate data y centroids.
+    :type image: array[float]
+    :type header: astropy.io.fits.Header
+    :type mask: array[bool]
+    :type poly_order: int
+    :type verbose: bool
+
+    :returns: xtrace, ytrace, param - The x, y coordinates of trace as computed from the best fit polynomial
+    and the best-fit polynomial parameters.
+    :rtype: Tuple(array[float], array[float], array[float])
     """
 
     # If no mask was given use all pixels.
     if mask is None:
-        mask = np.zeros_like(stack, dtype='bool')
+        mask = np.zeros_like(image, dtype='bool')
 
     # Call the script that determines the dimensions of the stack.
     dimx, dimy, xos, yos, xnative, ynative, padding, refpix_mask = \
-        get_image_dim(stack, header=header, verbose=verbose)
+        get_image_dim(image, header=header, verbose=verbose)
 
     # Replace masked pixel values with NaNs.
-    stackm = np.where(mask | ~refpix_mask, np.nan, stack)  # TODO rename variable
+    image_masked = np.where(mask | ~refpix_mask, np.nan, image)
 
-    # Identify the floor level of all 2040 working cols to subtract it first.
-    floorlevel = np.nanpercentile(stackm, 10, axis=0)
-    backsub = stackm - floorlevel
+    # Compute and subtract the background level of each column.
+    col_bkg = np.nanpercentile(image_masked, 10, axis=0)
+    image_masked_bkg = image_masked - col_bkg
 
     # Find centroid - first pass, use all pixels in the column.
     # Normalize each column
-    norm = backsub / np.nanmax(backsub, axis=0)
+    image_norm = image_masked_bkg / np.nanmax(image_masked_bkg, axis=0)
 
     # Create 2D Array of pixel positions.
     xpix = np.arange(dimx)
@@ -219,14 +200,14 @@ def get_uncontam_centroids(stack, header=None, mask=None, poly_order=11, verbose
     _, ygrid = np.meshgrid(xpix, ypix)
 
     # CoM analysis to find initial positions using all rows.
-    ytrace_best = np.nansum(norm*ygrid, axis=0)/np.nansum(norm, axis=0)
+    ytrace_best = np.nansum(image_norm*ygrid, axis=0)/np.nansum(image_norm, axis=0)
 
     # Second pass - use a windowed CoM at the previous position.
     halfwidth = 30 * yos
     ytrace = np.full_like(ytrace_best, fill_value=np.nan)
     for icol in range(dimx):
 
-        com = center_of_mass(backsub[:, icol], ytrace_best[icol], halfwidth)
+        com = center_of_mass(image_norm[:, icol], ytrace_best[icol], halfwidth)
 
         # Ensure that the centroid position is not getting too close to an edge
         # such that it is biased.
@@ -238,9 +219,9 @@ def get_uncontam_centroids(stack, header=None, mask=None, poly_order=11, verbose
         # If this is the case (i.e. the pixel value of the centroid is very low
         # compared to the column average), restrict the range of pixels
         # considered to be above the current centroid.
-        if backsub[int(com), icol] < np.nanmean(backsub[int(com) - halfwidth:int(com) + halfwidth + 1, icol]):
+        if image_norm[int(com), icol] < np.nanmean(image_norm[int(com) - halfwidth:int(com) + halfwidth + 1, icol]):
 
-            com = center_of_mass(backsub[:, icol], com - halfwidth, halfwidth)
+            com = center_of_mass(image_norm[:, icol], com - halfwidth, halfwidth)
 
         ytrace[icol] = com
 
@@ -252,7 +233,7 @@ def get_uncontam_centroids(stack, header=None, mask=None, poly_order=11, verbose
     ytrace = np.full_like(ytrace_best, fill_value=np.nan)
     for icol in range(dimx):
 
-        ytrace[icol] = center_of_mass(backsub[:, icol], ytrace_best[icol], halfwidth)
+        ytrace[icol] = center_of_mass(image_norm[:, icol], ytrace_best[icol], halfwidth)
 
     # Adopt these trace values as best.
     ytrace_best = np.copy(ytrace)
@@ -270,7 +251,7 @@ def get_uncontam_centroids(stack, header=None, mask=None, poly_order=11, verbose
 
     # If verbose visualize the result.
     if verbose is True:
-        _plot_centroid(stackm, xtrace, ytrace_best)
+        _plot_centroid(image_masked, xtrace, ytrace_best)
 
     return xtrace, ytrace_best, param
 
