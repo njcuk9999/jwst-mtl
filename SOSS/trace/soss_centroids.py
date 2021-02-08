@@ -391,11 +391,10 @@ def edge_trigger(image, halfwidth=5, yos=1, verbose=False):
     slopes_best = np.zeros_like(ypix)
     ytrace_best = np.zeros_like(ypix)
     widths_best = np.zeros_like(ypix)
-    widthrange = [18, 19, 20, 21, 22, 23, 24, 25, 26, 27]
-    for width in widthrange:
+    for width in range(18*yos, 27*yos):
 
         # Add the slope and its offset negative.
-        comb = slopevals - my_roll(slopevals, -yos*width)
+        comb = slopevals - my_roll(slopevals, -width)
 
         # Find the maximum resulting slope.
         args = np.nanargmax(comb, axis=0)
@@ -405,7 +404,7 @@ def edge_trigger(image, halfwidth=5, yos=1, verbose=False):
         mask = (vals > slopes_best)
         slopes_best = np.where(mask, vals, slopes_best)
         ytrace_best = np.where(mask, ypix[args], ytrace_best)
-        widths_best = np.where(mask, yos*width, widths_best)
+        widths_best = np.where(mask, width, widths_best)
 
     # Set the y position to NaN if the best slope was zero.
     ytrace_best = np.where(slopes_best != 0, ytrace_best + widths_best/2., np.nan)
@@ -481,6 +480,7 @@ def get_uncontam_centroids_edgetrig(image, header=None, mask=None, poly_order=11
     # Fit the y-positions with a polynomial and use the result as the true y-positions.
     xtrace = np.arange(dimx)
     mask = np.isfinite(ytrace)
+
     param = robust_polyfit(xtrace[mask], ytrace[mask], poly_order)
     ytrace = np.polyval(param, xtrace)
 
