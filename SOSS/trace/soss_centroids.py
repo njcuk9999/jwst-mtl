@@ -376,51 +376,45 @@ def edge_trigger(image, triggerscale=2, yos=1, verbose=False):
     return ytrace_max, ytrace_min, ytrace_best
 
 
-def get_uncontam_centroids_edgetrig(stack, header=None, mask=None, poly_order=11,
+def get_uncontam_centroids_edgetrig(image, header=None, mask=None, poly_order=11,
                                     triggerscale=5, mode='combined', verbose=False):
-    """ Determine the x, y positions of the trace centroids from an exposure
-    using the two edges and the width of the traces. This should be performed on a very high SNR
-    stack.
-    INPUTS
-    stack : a fits image, preferably a high SNR stack with 2 dimensions. Not for raw images
-        with 4 dimensions. The best stack here is from the 2D Trace reference file. You call
-        this for each order.
-    OPTIONAL INPUTS
-    header :
-        In the case that the input stack comes from the 2D Trace reference file, pass its
-        header which contains important info regrading the padding, for example.
-    badpix : Can provide a bad pixel mask, it is assumed to be of same dimensions as the stack
-    mask : Can provide a mask that will be applied on top of the stack, assumed same dimensions as stack
-    poly_order : For the fit to the trace positions.
-    triggerscale : The number of pixels to median spatially when calculating the column slopes to identify edges.
-        Default 5. Has to be an odd number. Should not play too much with that.
-    verbose : Will output stuff and make plots if set to True, default False.
-    return_what : What to return. Either x,y positions or polynomial parameters,
-        either for one of the edges or for the mean of both edges (i.e. trace center)
-        'edgemean_param' : polynomial fit parameters to the mean of both edges, i.e. trace center
-        'edgeman_xy' : x, y values for the mean of both edges
-        'rededge_param' : polynomial fit parameters to the red edge (spatially)
-        'rededge_xy' : x, y values for the red edge
-        'blueedge_param' : polynomial fit parameters to the blue edge (spatially)
-        'blueedge_xy' : x, y values for the blue edge
-        'edgecomb_param' : when both edges are detected simultaneously (one inverted with a trace width offset)
-        'edgecomb_xy' : x, y values
-        'tracewidth' : scalar representing the median of (red edge - blue edge) y values
+    """Determine the x, y coordinates of the trace using the derivatives along the y-axis.
+    Works for either order if there is no contamination.
+
+    :param image: A 2D image of the detector.
+    :param header: The header from one of the SOSS reference files.
+    :param mask: A boolean array of the same shape as stack. Pixels corresponding to True values will be masked.
+    :param poly_order: Order of the polynomial to fit to the extracted trace positions.
+    :param triggerscale: the smoothing factor used when computing the derivatives.
+    :param mode: Which trace values to use. Can be 'maxedge', 'minedge', 'mean' or 'combined'.
+    :param verbose: If set True some diagnostic plots will be made.
+
+    :type image: array[float]
+    :type header: astropy.io.fits.Header
+    :type mask: array[bool]
+    :type poly_order: int
+    :type triggerscale: int
+    :type mode: str
+    :type verbose: bool
+
+    :returns: xtrace, ytrace, tracewidth, param - The x, y coordinates of trace as computed from the best fit polynomial
+    and the best-fit polynomial parameters.
+    :rtype: Tuple(array[float], array[float], array[float])
     """
 
     # If no mask was given use all pixels.
     if mask is None:
-        mask = np.zeros_like(stack, dtype='bool')
+        mask = np.zeros_like(image, dtype='bool')
 
     # Call the script that determines the dimensions of the stack.
     dimx, dimy, xos, yos, xnative, ynative, padding, refpix_mask = \
-        get_image_dim(stack, header=header, verbose=verbose)
+        get_image_dim(image, header=header, verbose=verbose)
 
     # Replace masked pixel values with NaNs.
-    stackm = np.where(mask | ~refpix_mask, np.nan, stack)
+    image_masked = np.where(mask | ~refpix_mask, np.nan, image)
 
     # Use edge trigger to compute the edges and center of the trace.
-    ytrace_max, ytrace_min, ytrace_comb = edge_trigger(stackm, triggerscale=triggerscale, yos=yos, verbose=verbose)
+    ytrace_max, ytrace_min, ytrace_comb = edge_trigger(image_masked, triggerscale=triggerscale, yos=yos, verbose=verbose)
 
     # Compute an estimate of the trace width.
     tracewidth = np.nanmedian(np.abs(ytrace_max - ytrace_min))
@@ -445,7 +439,7 @@ def get_uncontam_centroids_edgetrig(stack, header=None, mask=None, poly_order=11
 
     # If verbose visualize the result.
     if verbose is True:
-        _plot_centroid(stackm, xtrace, ytrace)
+        _plot_centroid(image_masked, xtrace, ytrace)
 
     return xtrace, ytrace, tracewidth, param
 
