@@ -65,18 +65,11 @@ def get_image_dim(image, header=None, verbose=False):
             raise ValueError('Stack X dimension has unrecognized size of {:}. Accepts 2048, 2040 or multiple of.'.format(dimx))
 
         # Check if the y-axis is consistent with the x-axis.
-        acceptable_ydim = [96, 256, 252, 2040, 2048]
-        yaxis_consistent = False
-        for accdim in acceptable_ydim:  # TODO See if this can be done more similarly to the x-axis.
+        if dimy/xos in [96, 256, 252, 2040, 2048]:
+            yos = np.copy(xos)
+            ynative = dimy/yos
 
-            if dimy / (accdim*xos) == 1:
-
-                # Found the acceptable dimension.
-                yos = np.copy(xos)
-                ynative = np.copy(accdim)
-                yaxis_consistent = True
-
-        if not yaxis_consistent:
+        else:
             raise ValueError('Stack Y dimension ({:}) is inconsistent with X dimension ({:}) for acceptable SOSS arrays'.format(dimy, dimx))
 
         # Create a boolean mask indicating which pixels are not reference pixels.
@@ -115,7 +108,7 @@ def get_image_dim(image, header=None, verbose=False):
 
     # If verbose print the output.
     if verbose:
-        print('Data dimensions:\n')
+        print('Data dimensions:')
         print('dimx={:}, dimy={:}, xos={:}, yos={:}, xnative={:}, ynative={:}'.format(dimx, dimy, xos, yos, xnative, ynative))
 
     return dimx, dimy, xos, yos, xnative, ynative, padding, refpix_mask
