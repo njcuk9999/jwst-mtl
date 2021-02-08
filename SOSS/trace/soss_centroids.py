@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 
 import os
-import sys
 
 import numpy as np
 
@@ -144,15 +143,16 @@ def center_of_mass(column, ypos, halfwidth):
     dimy, = column.shape
     ypix = np.arange(dimy)
 
+    # Find the indices of the window.
     miny = np.int(np.fmax(np.around(ypos - halfwidth), 0))
-    maxy = np.int(np.fmin(np.around(ypos + halfwidth), dimy))
+    maxy = np.int(np.fmin(np.around(ypos + halfwidth + 1), dimy))
 
-    com = np.nansum(column[miny:maxy]*ypix[miny:maxy])/np.nansum(column[miny:maxy])
+    # Compute the center of mass on the window.
+    ycom = np.nansum(column[miny:maxy]*ypix[miny:maxy])/np.nansum(column[miny:maxy])
 
-    return com
+    return ycom
 
 
-# TODO add widths as parameters.
 def get_uncontam_centroids(stack, header=None, mask=None, poly_order=11, verbose=False):
     """Determine the x, y positions of the trace centroids from an
     exposure using a center-of-mass analysis. Works for either order if there
@@ -216,20 +216,17 @@ def get_uncontam_centroids(stack, header=None, mask=None, poly_order=11, verbose
     # Create 2D Array of pixel positions.
     xpix = np.arange(dimx)
     ypix = np.arange(dimy)
-    _, ypix = np.meshgrid(xpix, ypix)
+    _, ygrid = np.meshgrid(xpix, ypix)
 
-    # CoM analysis to find centroid using all rows.
-    com = np.nansum(norm*ypix, axis=0)/np.nansum(norm, axis=0)
+    # CoM analysis to find initial positions using all rows.
+    ytrace_best = np.nansum(norm*ygrid, axis=0)/np.nansum(norm, axis=0)
 
-    # Adopt these trace values as best
-    tracey_best = np.copy(com)
-
-    # Second pass, use a windowed CoM at the previous position.
-    tracey = np.full_like(tracey_best, fill_value=np.nan)
+    # Second pass - use a windowed CoM at the previous position.
     halfwidth = 30 * yos
+    ytrace = np.full_like(ytrace_best, fill_value=np.nan)
     for icol in range(dimx):
 
-        com = center_of_mass(backsub[:, icol], tracey_best[icol], halfwidth)
+        com = center_of_mass(backsub[:, icol], ytrace_best[icol], halfwidth)
 
         # Ensure that the centroid position is not getting too close to an edge
         # such that it is biased.
@@ -241,48 +238,41 @@ def get_uncontam_centroids(stack, header=None, mask=None, poly_order=11, verbose
         # If this is the case (i.e. the pixel value of the centroid is very low
         # compared to the column average), restrict the range of pixels
         # considered to be above the current centroid.
-        if backsub[int(com), icol] < np.nanmean(backsub[int(com) - halfwidth:int(com) + halfwidth, icol]):
+        if backsub[int(com), icol] < np.nanmean(backsub[int(com) - halfwidth:int(com) + halfwidth + 1, icol]):
 
             com = center_of_mass(backsub[:, icol], com - halfwidth, halfwidth)
 
-        tracey[icol] = com
+        ytrace[icol] = com
 
     # Adopt these trace values as best.
-    tracey_best = np.copy(tracey)
+    ytrace_best = np.copy(ytrace)
 
-    # Third pass - fine tuning.
-    tracey = np.full_like(tracey_best, fill_value=np.nan)
+    # Third pass - fine tuning using a smaller window.
     halfwidth = 16 * yos
+    ytrace = np.full_like(ytrace_best, fill_value=np.nan)
     for icol in range(dimx):
 
-        com = center_of_mass(backsub[:, icol], tracey_best[icol], halfwidth)
-
-        tracey[icol] = np.copy(com)
+        ytrace[icol] = center_of_mass(backsub[:, icol], ytrace_best[icol], halfwidth)
 
     # Adopt these trace values as best.
-    tracey_best = np.copy(tracey)
+    ytrace_best = np.copy(ytrace)
 
-    # Final pass : Fitting a polynomial to the measured (noisy) positions
-    tracex_best = np.arange(dimx)
+    # Fit the y-positions with a polynomial and use the result as the true y-positions.
+    xtrace = np.arange(dimx)
+    mask = np.isfinite(ytrace_best)
 
-    if padding == 0:
-        # Only use the non NaN pixels.
-        induse = np.isfinite(tracex_best) & np.isfinite(tracey_best)
-    else:
-        # Important steps in the case of the 2D Trace reference file.
-        # Mask out the padded pixels from the fit so it is rigorously the
-        # same as for regular science images.
-        induse = np.isfinite(tracex_best) & np.isfinite(tracey_best) & \
-                 (tracex_best >= xos*padding) & (tracex_best < (dimx - xos*padding))
+    # For padded arrays ignore padding for consistency with real data
+    if padding != 0:
+        mask = mask & (xtrace >= xos*padding) & (xtrace < (dimx - xos*padding))
 
-    # Fit the CoM y-positions with a polynomial and use the result as the true y-positions.
-    param = np.polyfit(tracex_best[induse], tracey_best[induse], poly_order)
-    tracey_best = np.polyval(param, tracex_best)
+    param = np.polyfit(xtrace[mask], ytrace_best[mask], poly_order)
+    ytrace_best = np.polyval(param, xtrace)
 
+    # If verbose visualize the result.
     if verbose is True:
-        _plot_centroid(stackm, tracex_best, tracey_best)
+        _plot_centroid(stackm, xtrace, ytrace_best)
 
-    return tracex_best, tracey_best, param
+    return xtrace, ytrace_best, param
 
 
 def test_uncontam_centroids():
@@ -451,6 +441,10 @@ def get_uncontam_centroids_edgetrig(stack, header=None, mask=None, poly_order=11
     # Use edge trigger to compute the edges and center of the trace.
     ytrace_max, ytrace_min, ytrace_comb = edge_trigger(stackm, triggerscale=triggerscale, yos=yos, verbose=verbose)
 
+    # Compute an estimate of the trace width.
+    tracewidth = np.nanmedian(np.abs(ytrace_max - ytrace_min))
+
+    # Use different y-positions depending on the mode parameter.
     if mode == 'maxedge':
         ytrace = ytrace_max
     elif mode == 'minedge':
@@ -468,11 +462,9 @@ def get_uncontam_centroids_edgetrig(stack, header=None, mask=None, poly_order=11
     param = np.polyfit(xtrace[mask], ytrace[mask], poly_order)
     ytrace = np.polyval(param, xtrace)
 
+    # If verbose visualize the result.
     if verbose is True:
         _plot_centroid(stackm, xtrace, ytrace)
-
-    # Compute an estimate of the trace width.
-    tracewidth = np.nanmedian(np.abs(ytrace_max - ytrace_min))
 
     return xtrace, ytrace, tracewidth, param
 
