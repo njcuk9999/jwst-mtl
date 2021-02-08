@@ -265,7 +265,7 @@ def get_uncontam_centroids(stack, header=None, mask=None, poly_order=11, verbose
     if padding != 0:
         mask = mask & (xtrace >= xos*padding) & (xtrace < (dimx - xos*padding))
 
-    param = np.polyfit(xtrace[mask], ytrace_best[mask], poly_order)
+    param = robust_polyfit(xtrace[mask], ytrace_best[mask], poly_order)
     ytrace_best = np.polyval(param, xtrace)
 
     # If verbose visualize the result.
@@ -459,7 +459,7 @@ def get_uncontam_centroids_edgetrig(stack, header=None, mask=None, poly_order=11
     # Fit the y-positions with a polynomial and use the result as the true y-positions.
     xtrace = np.arange(dimx)
     mask = np.isfinite(ytrace)
-    param = np.polyfit(xtrace[mask], ytrace[mask], poly_order)
+    param = robust_polyfit(xtrace[mask], ytrace[mask], poly_order)
     ytrace = np.polyval(param, xtrace)
 
     # If verbose visualize the result.
