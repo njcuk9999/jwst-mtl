@@ -314,18 +314,27 @@ def robust_polyfit(x, y, order, maxiter=5, nstd=3.):
     return param
 
 
-def shift(xs, n):
-    """Like np.roll but the wrapped around part is set to zero"""
+def my_roll(a, shift):
+    """Like np.roll but the wrapped around part is set to zero.
+    Only works along the first axis of the array.
 
-    e = np.empty_like(xs)
-    if n >= 0:
-        e[:n] = 0.0
-        e[n:] = xs[:-n]
+    :param a: The input array.
+    :param shift: The number of rows to shift by.
+
+    :type a: array[any]
+    :type shift: int
+
+    :returns: result - the array with the rows shifted.
+    :rtype: array[any]
+    """
+
+    result = np.zeros_like(a)
+    if shift >= 0:
+        result[shift:] = a[:-shift]
     else:
-        e[n:] = 0.0
-        e[:n] = xs[-n:]
+        result[:shift] = a[-shift:]
 
-    return e
+    return result
 
 
 def edge_trigger(image, triggerscale=5, yos=1, verbose=False):  # TODO change name of triggrecsale.
@@ -392,7 +401,7 @@ def edge_trigger(image, triggerscale=5, yos=1, verbose=False):  # TODO change na
     for width in widthrange:
 
         # Add the slope and its offset negative.
-        comb = slopevals - shift(slopevals, -yos*width)
+        comb = slopevals - my_roll(slopevals, -yos*width)
 
         # Find the maximum resulting slope.
         args = np.nanargmax(comb, axis=0)
