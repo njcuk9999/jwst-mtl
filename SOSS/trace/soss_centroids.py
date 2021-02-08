@@ -138,8 +138,21 @@ def _plot_centroid(image, x, y):
 
 
 def center_of_mass(column, ypos, halfwidth):
-    """"""
+    """Compute a windowed center-of-mass along a column.
 
+    :param column: The column on which to compute the windowed center of mass.
+    :param ypos: The position along the column to center the window on.
+    :param halfwidth: The half-size of the window in pixels.
+
+    :type column: array[float]
+    :type ypos: float
+    :type halfwidth: int
+
+    :returns: ycom - the centerof-mass of the pixels withn the window.
+    :rtype: float
+    """
+
+    # Get the column shape and create a corresponding array of positions.
     dimy, = column.shape
     ypix = np.arange(dimy)
 
