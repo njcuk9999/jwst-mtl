@@ -8,7 +8,7 @@ import numpy as np
 
 from astropy.io import fits
 
-from .soss_utils import my_roll, robust_polyfit, get_image_dim
+from .soss_utils import zero_roll, robust_polyfit, get_image_dim
 
 import matplotlib.pyplot as plt
 
@@ -241,7 +241,7 @@ def edge_trigger(image, halfwidth=5, yos=1, verbose=False):
     for width in range(18*yos, 27*yos):
 
         # Add the slope and its offset negative.
-        comb = slopevals - my_roll(slopevals, -width)
+        comb = slopevals - zero_roll(slopevals, -width)
 
         # Find the maximum resulting slope.
         args = np.nanargmax(comb, axis=0)

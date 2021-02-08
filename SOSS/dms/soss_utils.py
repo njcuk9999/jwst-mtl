@@ -4,7 +4,7 @@
 import numpy as np
 
 
-def my_roll(a, shift):
+def zero_roll(a, shift):
     """Like np.roll but the wrapped around part is set to zero.
     Only works along the first axis of the array.
 
