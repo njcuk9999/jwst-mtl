@@ -328,8 +328,23 @@ def shift(xs, n):
     return e
 
 
-def edge_trigger(image, triggerscale=2, yos=1, verbose=False):
-    """"""
+def edge_trigger(image, triggerscale=5, yos=1, verbose=False):  # TODO change name of triggrecsale.
+    """Detect the edges and center of the trace based on the minima and maxima of the derivate
+     of the columns, which is computed in a running window along the columns of the detector image
+
+     :param image: A 2D image of the detector.
+     :param triggerscale: the smoothing factor used when computing the derivatives.
+     :param yos: the oversampling factor of the image array along the y-direction.
+     :param verbose: If set True some diagnostic plots will be made.
+
+     :type image: array[float]
+     :type triggerscale: int
+     :type yos: int
+     :type verbose: bool
+
+     :returns: ytrace_max, ytrace_min, ytrace_comb - The upper edge, lower edge and center of the trace.
+     :rtype: Tuple(array[float], array[float], array[float])
+     """
 
     dimy, dimx = image.shape
     halfwidth = triggerscale * yos
