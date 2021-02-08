@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import os
+import warnings
 
 import numpy as np
 
@@ -154,7 +155,8 @@ def center_of_mass(column, ypos, halfwidth):
     maxy = np.int(np.fmin(np.around(ypos + halfwidth + 1), dimy))
 
     # Compute the center of mass on the window.
-    ycom = np.nansum(column[miny:maxy]*ypix[miny:maxy])/np.nansum(column[miny:maxy])
+    with np.errstate(invalid='ignore'):
+        ycom = np.nansum(column[miny:maxy]*ypix[miny:maxy])/np.nansum(column[miny:maxy])
 
     return ycom
 
@@ -198,7 +200,8 @@ def get_uncontam_centroids(image, header=None, mask=None, poly_order=11, verbose
 
     # Find centroid - first pass, use all pixels in the column.
     # Normalize each column
-    image_norm = image_masked_bkg / np.nanmax(image_masked_bkg, axis=0)
+    with np.errstate(invalid='ignore'):
+        image_norm = image_masked_bkg / np.nanmax(image_masked_bkg, axis=0)
 
     # Create 2D Array of pixel positions.
     xpix = np.arange(dimx)
@@ -206,7 +209,8 @@ def get_uncontam_centroids(image, header=None, mask=None, poly_order=11, verbose
     _, ygrid = np.meshgrid(xpix, ypix)
 
     # CoM analysis to find initial positions using all rows.
-    ytrace_best = np.nansum(image_norm*ygrid, axis=0)/np.nansum(image_norm, axis=0)
+    with np.errstate(invalid='ignore'):
+        ytrace_best = np.nansum(image_norm*ygrid, axis=0)/np.nansum(image_norm, axis=0)
 
     # Second pass - use a windowed CoM at the previous position.
     halfwidth = 30 * yos
@@ -370,9 +374,13 @@ def edge_trigger(image, halfwidth=5, yos=1, verbose=False):
         datax = np.where(mask, ygrid[ymin:ymax, :], np.nan)  # Need to set values NaN in y to NaN in x.
 
         # Compute the slope.
-        xmean = np.nanmean(datax, axis=0, keepdims=True)
-        ymean = np.nanmean(datay, axis=0, keepdims=True)
-        slope = np.nansum((datax - xmean) * (datay - ymean), axis=0) / np.nansum((datax - xmean) ** 2, axis=0)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            xmean = np.nanmean(datax, axis=0, keepdims=True)
+            ymean = np.nanmean(datay, axis=0, keepdims=True)
+
+        with np.errstate(invalid='ignore'):
+            slope = np.nansum((datax - xmean) * (datay - ymean), axis=0) / np.nansum((datax - xmean) ** 2, axis=0)
 
         # Set slopes computed from < 3 datapoints to NaN.
         slopevals[irow, :] = np.where(np.sum(mask, axis=0) >= 3, slope, np.nan)
