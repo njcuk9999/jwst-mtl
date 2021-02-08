@@ -218,21 +218,25 @@ def get_uncontam_centroids(image, header=None, mask=None, poly_order=11, verbose
 
         ycom = center_of_mass(image_norm[:, icol], ytrace[icol], halfwidth)
 
-        # Ensure that the centroid position is not getting too close to an edge
-        # such that it is biased.
-        if (not np.isfinite(ycom)) or (ycom <= 5*yos) or (ycom >= (ynative - 6)*yos):
+        # If NaN was returned we are done.
+        if not np.isfinite(ycom):
+            ytrace[icol] = np.nan
             continue
 
-        # For a bright second order, it is likely that the centroid at this
-        # point will be somewhere in between the first and second order.
-        # If this is the case (i.e. the pixel value of the centroid is very low
-        # compared to the column average), restrict the range of pixels
-        # considered to be above the current centroid.
-        if image_norm[int(ycom), icol] < np.nanmean(image_norm[int(ycom) - halfwidth:int(ycom) + halfwidth + 1, icol]):
-
+        # If the pixel at the centroid is below the local mean we are likely mid-way between orders and
+        # we should shift the window downward to get a reliable centroid for order 1.
+        irow = np.int(np.around(ycom))
+        miny = np.int(np.fmax(np.around(ycom) - halfwidth, 0))
+        maxy = np.int(np.fmin(np.around(ycom) + halfwidth + 1, dimy))
+        if image_norm[irow, icol] < np.nanmean(image_norm[miny:maxy, icol]):
             ycom = center_of_mass(image_norm[:, icol], ycom - halfwidth, halfwidth)
 
-        # Update the position if both the above checks passed.
+        # If NaN was returned or the position is too close to the array edge, use NaN.
+        if not np.isfinite(ycom) or (ycom <= 5 * yos) or (ycom >= (ynative - 6) * yos):
+            ytrace[icol] = np.nan
+            continue
+
+        # Update the position if the above checks were succesfull.
         ytrace[icol] = ycom
 
     # Third pass - fine tuning using a smaller window.
