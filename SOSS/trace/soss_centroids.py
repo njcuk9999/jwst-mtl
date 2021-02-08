@@ -337,17 +337,17 @@ def my_roll(a, shift):
     return result
 
 
-def edge_trigger(image, triggerscale=5, yos=1, verbose=False):  # TODO change name of triggrecsale.
+def edge_trigger(image, halfwidth=5, yos=1, verbose=False):
     """Detect the edges and center of the trace based on the minima and maxima of the derivate
      of the columns, which is computed in a running window along the columns of the detector image
 
      :param image: A 2D image of the detector.
-     :param triggerscale: the smoothing factor used when computing the derivatives.
+     :param halfwidth: the size of the window used when computing the derivatives.
      :param yos: the oversampling factor of the image array along the y-direction.
      :param verbose: If set True some diagnostic plots will be made.
 
      :type image: array[float]
-     :type triggerscale: int
+     :type halfwidth: int
      :type yos: int
      :type verbose: bool
 
@@ -356,7 +356,7 @@ def edge_trigger(image, triggerscale=5, yos=1, verbose=False):  # TODO change na
      """
 
     dimy, dimx = image.shape
-    halfwidth = triggerscale * yos
+    halfwidth = halfwidth * yos
 
     # Create coordinate arrays.
     xpix = np.arange(dimx)
@@ -430,7 +430,7 @@ def edge_trigger(image, triggerscale=5, yos=1, verbose=False):  # TODO change na
 
 
 def get_uncontam_centroids_edgetrig(image, header=None, mask=None, poly_order=11,
-                                    triggerscale=5, mode='combined', verbose=False):
+                                    halfwidth=5, mode='combined', verbose=False):
     """Determine the x, y coordinates of the trace using the derivatives along the y-axis.
     Works for either order if there is no contamination.
 
@@ -438,7 +438,7 @@ def get_uncontam_centroids_edgetrig(image, header=None, mask=None, poly_order=11
     :param header: The header from one of the SOSS reference files.
     :param mask: A boolean array of the same shape as stack. Pixels corresponding to True values will be masked.
     :param poly_order: Order of the polynomial to fit to the extracted trace positions.
-    :param triggerscale: the smoothing factor used when computing the derivatives.
+    :param halfwidth: the size of the window used when computing the derivatives.
     :param mode: Which trace values to use. Can be 'maxedge', 'minedge', 'mean' or 'combined'.
     :param verbose: If set True some diagnostic plots will be made.
 
@@ -446,7 +446,7 @@ def get_uncontam_centroids_edgetrig(image, header=None, mask=None, poly_order=11
     :type header: astropy.io.fits.Header
     :type mask: array[bool]
     :type poly_order: int
-    :type triggerscale: int
+    :type halfwidth: int
     :type mode: str
     :type verbose: bool
 
@@ -467,7 +467,7 @@ def get_uncontam_centroids_edgetrig(image, header=None, mask=None, poly_order=11
     image_masked = np.where(mask | ~refpix_mask, np.nan, image)
 
     # Use edge trigger to compute the edges and center of the trace.
-    ytrace_max, ytrace_min, ytrace_comb = edge_trigger(image_masked, triggerscale=triggerscale, yos=yos, verbose=verbose)
+    ytrace_max, ytrace_min, ytrace_comb = edge_trigger(image_masked, halfwidth=halfwidth, yos=yos, verbose=verbose)
 
     # Compute an estimate of the trace width.
     tracewidth = np.nanmedian(np.abs(ytrace_max - ytrace_min))
