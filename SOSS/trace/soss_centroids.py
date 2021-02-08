@@ -217,11 +217,11 @@ def get_uncontam_centroids(image, header=None, mask=None, poly_order=11, verbose
     ytrace = np.full_like(ytrace_best, fill_value=np.nan)
     for icol in range(dimx):
 
-        com = center_of_mass(image_norm[:, icol], ytrace_best[icol], halfwidth)
+        ycom = center_of_mass(image_norm[:, icol], ytrace_best[icol], halfwidth)
 
         # Ensure that the centroid position is not getting too close to an edge
         # such that it is biased.
-        if (not np.isfinite(com)) or (com <= 5*yos) or (com >= (ynative-6)*yos):
+        if (not np.isfinite(ycom)) or (ycom <= 5*yos) or (ycom >= (ynative - 6)*yos):
             continue
 
         # For a bright second order, it is likely that the centroid at this
@@ -229,11 +229,11 @@ def get_uncontam_centroids(image, header=None, mask=None, poly_order=11, verbose
         # If this is the case (i.e. the pixel value of the centroid is very low
         # compared to the column average), restrict the range of pixels
         # considered to be above the current centroid.
-        if image_norm[int(com), icol] < np.nanmean(image_norm[int(com) - halfwidth:int(com) + halfwidth + 1, icol]):
+        if image_norm[int(ycom), icol] < np.nanmean(image_norm[int(ycom) - halfwidth:int(ycom) + halfwidth + 1, icol]):
 
-            com = center_of_mass(image_norm[:, icol], com - halfwidth, halfwidth)
+            ycom = center_of_mass(image_norm[:, icol], ycom - halfwidth, halfwidth)
 
-        ytrace[icol] = com
+        ytrace[icol] = ycom
 
     # Adopt these trace values as best.
     ytrace_best = np.copy(ytrace)
