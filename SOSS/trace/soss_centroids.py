@@ -281,7 +281,23 @@ def test_uncontam_centroids():
 
 
 def robust_polyfit(x, y, order, maxiter=5, nstd=3.):
-    """"""
+    """Perform a robust polynomial fit.
+
+    :param x: x data to fit.
+    :param y: y data to fit.
+    :param order: polynomial order to use.
+    :param maxiter: number of iterations for rejecting outliers.
+    :param nstd: number of standard deviations to use when rejecting outliers.
+
+    :type x: array[float]
+    :type y: array[float]
+    :type order: int
+    :type maxiter: int
+    :type nstd: float
+
+    :returns: param - best-fit polynomial parameters.
+    :rtype: array[float]
+    """
 
     mask = np.ones_like(x, dtype='bool')
     for niter in range(maxiter):
