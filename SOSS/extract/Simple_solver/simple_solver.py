@@ -17,7 +17,7 @@ import re
 import warnings
 import emcee
 from scipy.ndimage.interpolation import rotate
-from SOSS.trace import get_uncontam_centroids as ctd
+from SOSS.dms import soss_centroids as ctd
 from SOSS.extract import soss_read_refs
 from SOSS.extract.simple_solver import plotting as plotting
 
@@ -364,7 +364,7 @@ def simple_solver(clear, verbose=False, save_to_file=True):
     ycen_ref = ttab_file('Y', subarray=subarray)[1][inds]
 
     # Get centroids from data.
-    xcen_dat, ycen_dat = ctd.get_uncontam_centroids(clear, verbose=verbose)
+    xcen_dat, ycen_dat, p = ctd.get_uncontam_centroids(clear, verbose=verbose)
 
     # Fit the reference file centroids to the data.
     fit = _do_emcee(xcen_ref, ycen_ref, xcen_dat, ycen_dat,
