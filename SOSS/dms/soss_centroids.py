@@ -10,6 +10,7 @@ from astropy.io import fits
 
 from .soss_utils import zero_roll, robust_polyfit, get_image_dim
 
+from matplotlib import colors
 import matplotlib.pyplot as plt
 
 PATH = '/home/talens-irex/Dropbox/SOSS_Ref_Files'
@@ -22,8 +23,8 @@ def _plot_centroid(image, xtrace, ytrace):
 
     plt.figure(figsize=(ncols/128, nrows/128))
 
-    plt.imshow(image, origin='lower', cmap='inferno')
-    plt.plot(xtrace, ytrace, lw=2, c='white')
+    plt.imshow(image, origin='lower', cmap='inferno', norm=colors.LogNorm())
+    plt.plot(xtrace, ytrace, lw=2, c='black')
 
     plt.show()
     plt.close()
@@ -258,10 +259,10 @@ def edge_trigger(image, halfwidth=5, yos=1, verbose=False):
 
     if verbose:
 
-        plt.imshow(image, origin='lower')
-        plt.plot(ytrace_min)
-        plt.plot(ytrace_max)
-        plt.plot(ytrace_best)
+        plt.imshow(image, origin='lower', cmap='inferno', norm=colors.LogNorm())
+        plt.plot(ytrace_min, lw=2, ls='--', c='black')
+        plt.plot(ytrace_max, lw=2, ls='--', c='black')
+        plt.plot(ytrace_best, lw=2, c='black')
 
         plt.show()
         plt.close()
