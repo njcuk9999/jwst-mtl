@@ -14,7 +14,9 @@ import numpy as np
 from astropy.io import fits
 from scipy.optimize import least_squares
 from scipy.interpolate import interp1d
+from tqdm import tqdm
 import webbpsf
+from SOSS.extract import soss_read_refs
 from SOSS.extract.empirical_trace import centroid as ctd
 from SOSS.extract.empirical_trace import plotting as plotting
 from SOSS.extract.overlap import TrpzOverlap, TrpzBox
@@ -25,8 +27,9 @@ from SOSS.extract.convolution import WebbKer
 path = '/Users/michaelradica/Documents/School/Ph.D./Research/SOSS/Extraction/Input_Files/'
 
 
-def build_empirical_trace(clear, F277W, filename='spatial_profile.fits',
-                          pad=(0, 0), oversample=1, verbose=False):
+def build_empirical_trace(clear, F277W, badpix_mask,
+                          filename='spatial_profile.fits', pad=(0, 0),
+                          oversample=1, verbose=False):
     ''' Procedural function to wrap around construct orders 1 and 2.
     Will do centroiding and call the functions to construct the models.
 
@@ -46,6 +49,14 @@ def build_empirical_trace(clear, F277W, filename='spatial_profile.fits',
     # Print overwrite warning if output file already exists.
     if os.path.exists(filename):
         print('Output file {} already exists. It will be overwritten'.format(filename))
+
+    # Replace bad pixels.
+    if verbose is True:
+        print('Replacing bad pixels...', flush=True)
+    clear = replace_badpix(clear, badpix_mask, verbose=verbose)
+    if F277W is not None:
+        F277W = replace_badpix(F277W, badpix_mask, verbose=verbose)
+
     # Get the centroid positions for both orders from the data.
     if verbose is True:
         print('Getting trace centroids...')
@@ -363,7 +374,7 @@ def construct_order2(clear, ref_file_args, extract_params):
     '''
 
     # Set up the extraction.
-    extra = TrpzOverlap(*ref_file_args, **extract_params)
+    extra = TrpzOverlap(*ref_file_args, **extract_params, orders=[1])
     # Preform the extraction with only the first order.
     f_k = extra.extract(data=clear)
     # Rebuild the detector.
@@ -373,7 +384,7 @@ def construct_order2(clear, ref_file_args, extract_params):
     # order from the data
     residual = clear - rebuilt
 
-    return residual
+    return rebuilt
 
 
 def get_extract_params():
@@ -381,11 +392,11 @@ def get_extract_params():
     '''
     params = {}
     # Map of expected noise (sig)
-    bkgd_noise = 20.
+    bkgd_noise = 10.
     # Oversampling
     params["n_os"] = 1
     # Threshold on the spatial profile
-    params["thresh"] = 1e-6
+    params["thresh"] = 1e-5
 
     return params
 
@@ -393,13 +404,16 @@ def get_extract_params():
 def get_ref_file_args(o1frame):
     '''
     '''
-    path = '/Users/michaelradica/Documents/GitHub/jwst-mtl/SOSS/'
+    #path = '/Users/michaelradica/Documents/GitHub/jwst-mtl/SOSS/'
+    path = '/Users/michaelradica/Documents/School/Ph.D./Research/SOSS/Extraction/Input_Files/'
     # List of orders to consider in the extraction
     order_list = [1]
 
     # Wavelength solution
     wave_maps = []
-    wave_maps.append(fits.getdata(path+"extract/Ref_files/wavelengths_m1.fits"))
+    #wave_maps.append(fits.getdata(path+"extract/Ref_files/wavelengths_m1.fits"))
+    wavemap_file = soss_read_refs.Ref2dWave(path+'SOSS_ref_2D_wave.fits')
+    wave_maps.append(wavemap_file(order=1, subarray='SUBSTRIP256', native=True))
 
     # Spatial profiles
     spat_pros = []
@@ -732,12 +746,22 @@ def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
 
     # === Stitching ===
     # Find pixel to stitch right wing fit.
-    jjr = ycens[0]+12
+    jjr = ycens[0]+18
     # Pad the right axis.
-    axis_r_pad = np.arange(len(axis_r[ycens[0]+12:])+pad) + axis_r[ycens[0]+12]
+    axis_r_pad = np.arange(len(axis_r[ycens[0]+18:])+pad) + axis_r[ycens[0]+18]
     iir = np.where(axis_r_pad == jjr)[0][0]
     # Join right wing to old trace profile.
     newprof = np.concatenate([profile[:jjr], 10**np.polyval(pp_r, axis_r_pad)[iir:]])
+
+    # Interpolate between wing and core profiles for continuity.
+    # Get pixels and values around the joint.
+    xs = np.concatenate([jjr-2-np.arange(4), np.arange(4)+jjr+2])
+    ys = newprof[xs]
+    # Cubic spline interpolation over the above pixels.
+    interp = np.polyfit(xs, ys, 5)
+    xnew = np.arange(4)+(jjr-2)
+    # Insert spline interpolation.
+    newprof[(jjr-2):(jjr+2)] = np.polyval(interp, xnew)
 
     # ====== Reconstruct left wing ======
     # Mask the core of the first order, and fit a third order polynomial to all
@@ -755,12 +779,12 @@ def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
 
     # === Stitching ===
     # Find pixels to stitch left wing fit.
-    jjl = ycens[0]-13  # Join fit to profile.
+    jjl = ycens[0]-14  # Join fit to profile.
     jjl2 = ycens[0]-30  # Join core and extended fits.
     # Pad the left axis.
     axis_l_pad = np.linspace(axis_l[0]-pad, axis_l[-1], len(axis_l)+pad)
     #  Mirror of axis_l_pad to the right.
-    axis_l_pad2 = np.arange(len(axis_l_pad)) + axis_r[ycens[0]+13]
+    axis_l_pad2 = np.arange(len(axis_l_pad)) + axis_r[ycens[0]+14]
     iil = np.where(axis_l_pad == jjl)[0][0]
     iil2 = np.where(axis_l_pad == jjl2)[0][0]
     # Join left wing to old trace profile.
@@ -768,16 +792,16 @@ def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
                               10**np.polyval(pp_l, axis_l_pad)[iil2:iil],
                               newprof[jjl:]])
 
-    # Spline interpolate between core and extended solutions for continuity.
+    # Interpolate between core and extended solutions for continuity.
     # Get pixels and values around the joint.
     xs = np.concatenate([np.arange(4)+np.max([0, iil2-9]),
                          np.min([iil2+9, dimy])-np.arange(4)])
     ys = newprof[xs]
-    # Cubic spline interpolation over the above pixels.
-    interp3 = interp1d(xs, ys, kind='cubic')
+    # Interpolation over the above pixels.
+    interp = np.polyfit(xs, ys, 5)
     xnew = np.arange(18)+(iil2-9)
-    # Insert spline interpolation.
-    newprof[np.max([0, iil2-9]):np.min([iil2+9, dimy])] = interp3(xnew)
+    # Insert interpolation.
+    newprof[np.max([0, iil2-9]):np.min([iil2+9, dimy])] = np.polyval(interp, xnew)
 
     # Set any negatives to zero
     newprof[newprof < 0] = 0
@@ -882,6 +906,49 @@ def reconstruct_wings2(frame, ycen, pad_factor=1):
         newframe[:, col] = newcol / np.nansum(newcol)
 
     return newframe
+
+
+def replace_badpix(clear, badpix_mask, fill_negatives=True, verbose=False):
+    '''Replace all bad pixels with the median of the pixels values of a 5x5 box
+    centered on the bad pixel.
+
+    Parameters
+    ----------
+    clear : np.ndarray (2D)
+        Dataframe with bad pixels.
+    badpix_mask : np.ndarray (2D)
+        Boolean array with the same dimensions as clear. Values of True
+        indicate a bad pixel.
+    fill_negatives : bool
+        If True, also interpolates all negatives values in the frame.
+
+    Returns
+    -------
+    clear : np.ndarray (2D)
+        Input clear frame with bad pixels interpolated.
+    '''
+
+    # Get frame dimensions
+    dimy, dimx = np.shape(clear)
+
+    # Include all negative and zero pixels in the mask if necessary.
+    if fill_negatives is True:
+        mask = badpix_mask | (clear <= 0)
+    else:
+        mask = badpix_mask
+
+    # Loop over all bad pixels.
+    ys, xs = np.where(mask)
+    for y, x in tqdm(zip(ys, xs), total=len(ys), disable=not verbose):
+        # Get coordinates of pixels in the 5x5 box.
+        starty = np.max([(y-2), 0])
+        endy = np.min([(y+2), dimy])
+        startx = np.max([0, (x-2)])
+        endx = np.min([dimx, (x+2)])
+        # Replace bad pixel with the median value.
+        clear[y, x] = np.nanmedian(clear[starty:endy, startx:endx])
+
+    return clear
 
 
 def _robust_polyfit(x, y, p0):
