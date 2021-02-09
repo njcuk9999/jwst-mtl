@@ -80,9 +80,9 @@ print(simuPars.pmodeltype[0])
 
 # Here one can manually edit the parameters but we encourage rather to change
 # the simulation parameter file directly.
-simuPars.noversample = 1  #example of changing a model parameter
-simuPars.xout = 3000      #spectral axis
-simuPars.yout = 300       #spatial (cross-dispersed axis)
+simuPars.noversample = 2  #example of changing a model parameter
+simuPars.xout = 2048#3000      #spectral axis
+simuPars.yout = 256#300       #spatial (cross-dispersed axis)
 
 
 if False:
@@ -112,9 +112,10 @@ print(timesteps/frametime)
 print('nint={:} nsteps={:} frametime={:}'.format(nint, len(timesteps), frametime))
 
 # For testing purposes, reduce the number of steps
-if False:
-    timesteps = timesteps[0:2]
-    simuPars.nint = 2
+if True:
+    n = 1
+    timesteps = timesteps[0:n]
+    simuPars.nint = n
 ######
 
 # Generate the Time-Series simulation
@@ -131,6 +132,9 @@ imagelist = soss.generate_traces(pathPars, simuPars, tracePars, response,
 # Here, a single out-of-transit simulation is used to establish
 # the normalization scale that will anchor to a requested magnitude.
 normalization_scale = np.ones(norders)*10000.0
+# To override the simpar parameters:
+# simuPars.filter = 'J'
+# simuPars.magnitude = 8.5
 expected_counts = smag.expected_flux_calibration(
                     simuPars.filter, simuPars.magnitude,
                     starmodel_angstrom, starmodel_flambda,
@@ -144,10 +148,11 @@ expected_counts = smag.expected_flux_calibration(
 # with the 3rd dimension being the number of time steps.
 data = soss.write_dmsready_fits_init(imagelist, normalization_scale, simuPars)
 # All simulations (e-/sec) are converted to up-the-ramp images.
-write_dmsready_fits(data[:,:,0:256,0:2048], os.path.join(WORKING_DIR,'test.fits'),
+write_dmsready_fits(data[:,:,0:256,0:2048], os.path.join(WORKING_DIR,'test2.fits'),
                     os=simuPars.noversample, input_frame='sim')
 
-detector.add_noise(os.path.join(WORKING_DIR,'test.fits'),outputfilename=os.path.join(WORKING_DIR,'test_noisy.fits'))
 
-result = Detector1Pipeline.call(os.path.join(WORKING_DIR, 'test_noisy.fits'))
+#detector.add_noise(os.path.join(WORKING_DIR,'test.fits'),outputfilename=os.path.join(WORKING_DIR,'test_noisy.fits'))
+
+#result = Detector1Pipeline.call(os.path.join(WORKING_DIR, 'test_noisy.fits'))
 

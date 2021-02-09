@@ -1,256 +1,51 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Wed Oct 28 11:15 2020
+Created on Wed Dec 09 10:41 2020
 
 @author: MCR
 
 Functions for the 'simple solver' - calculating rotation and offset of
-reference order 1 and 2 trace profiles.
+reference order 1 and 2 trace profiles, as well as wavelength maps. This
+iteration incorporates offset and rotation to the transformation, and uses a
+rotation matrix to preform the rotation transformation.
 """
 
 import numpy as np
 from astropy.io import fits
-import matplotlib.pyplot as plt
+import re
+import warnings
 import emcee
-import corner
-import sys
-tppath = '../../trace'
-sys.path.insert(1, tppath)
-import tracepol as tp
+from scipy.ndimage.interpolation import rotate
+from SOSS.trace import get_uncontam_centroids as ctd
+from SOSS.extract import soss_read_refs
+from SOSS.extract.simple_solver import plotting as plotting
+
+warnings.simplefilter(action='ignore', category=RuntimeWarning)
+
+# local path to reference files.
+path = '/Users/michaelradica/Documents/School/Ph.D./Research/SOSS/Extraction/Input_Files/'
 
 
-def get_contam_centroids(clear, return_rot_params=False, doplot=False):
-    '''Get the trace centroids for both orders when there is
-    contaminationof the first order by the second on the detector.
-    Fits the first order centroids using the uncontaminated method, and
-    determines the second order centroids via the well-calibrated relationship
-    between the first and second order profiles in the optics model.
-
-    Parameters
-    ----------
-    clear : np.ndarray (2D)
-        CLEAR SOSS exposure data frame.
-    return_rot_params : bool
-        Whether to return the rotation angle and anchor point required to
-        transform the optics model to match the data.
-    doplot : bool
-        Whether to plot the corner plot of the optics model fit to the
-        first order centroids.
-
-    Returns
-    -------
-    atthesex : np.array
-        X-centroids for the order 1 trace.
-    ycen_o1 : np.array
-        y-centroids for the order 1 trace.
-    atthesex[inds] : np.array
-        x-centroids for the order 2 trace.
-    ycen_o2 : np.array
-        y-centroids for the order 2 trace.
-    ang : float (optional)
-        rotation angle for optics model to data transformation.
-    xanch : float (optional)
-        x coordinate of rotation center for optics model to data transform.
-    yanch : float (optional)
-        y coordinate of rotation center for optics model to data transform.
-    '''
-
-    # Determine optics model centroids for both orders
-    # as well as order 1 data centroids
-    atthesex = np.arange(2048)
-    xOM1, yOM1, tp1 = get_om_centroids(atthesex)
-    xOM2, yOM2, tp2 = get_om_centroids(atthesex, order=2)
-    xcen_o1, ycen_o1 = get_uncontam_centroids(clear, atthesex)
-    p_o1 = np.polyfit(xcen_o1, ycen_o1, 5)
-    ycen_o1 = np.polyval(p_o1, atthesex)
-
-    # Fit the OM to the data for order 1
-    AA = _do_emcee(xOM1, yOM1, atthesex, ycen_o1)
-
-    # Plot MCMC results if required
-    if doplot is True:
-        _plot_corner(AA)
-
-    # Get fitted rotation parameters
-    flat_samples = AA.get_chain(discard=500, thin=15, flat=True)
-    ang = np.percentile(flat_samples[:, 0], 50)
-    xanch = np.percentile(flat_samples[:, 1], 50)
-    yanch = np.percentile(flat_samples[:, 2], 50)
-
-    # Get rotated OM centroids for order 2
-    xcen_o2, ycen_o2 = rot_om2det(ang, xanch, yanch, xOM2, yOM2, order=2)
-    # Ensure that the second order centroids cover the whole detector
-    p_o2 = np.polyfit(xcen_o2, ycen_o2, 5)
-    ycen_o2 = np.polyval(p_o2, atthesex)
-    inds = np.where((ycen_o2 >= 0) & (ycen_o2 < 256))[0]
-
-    # Also return rotation parameters if requested
-    if return_rot_params is True:
-        return atthesex, ycen_o1, atthesex[inds], ycen_o2[inds], (ang, xanch, yanch)
-    else:
-        return atthesex, ycen_o1, atthesex[inds], ycen_o2[inds]
-
-
-def get_om_centroids(atthesex=None, order=1):
-    '''Get trace profile centroids from the NIRISS SOSS optics model.
+def _do_emcee(xref, yref, xdat, ydat, subarray='SUBSTRIP256',
+              showprogress=False):
+    '''Calls the emcee package to preform an MCMC determination of the best
+    fitting rotation angle and offsets to map the reference centroids onto the
+    data for the first order.
 
     Parameters
     ----------
-    atthesex : list of floats
-        Pixel x values at which to evaluate the centroid position.
-    order : int
-        Diffraction order for which to return the optics model solution.
-
-    Returns
-    -------
-    xOM : list of floats
-        Optics model x centroids.
-    yOM : list of floats
-        Optics model y centroids.
-    tp2 : list of floats
-        trace polynomial coefficients.
-    '''
-
-    if atthesex is None:
-        atthesex = np.linspace(0, 2047, 2048)
-
-    # Derive the trace polynomials.
-    tp2 = tp.get_tracepars(filename='%s/NIRISS_GR700_trace.csv' % tppath)
-
-    # Evaluate the trace polynomials at the desired coordinates.
-    w = tp.specpix_to_wavelength(atthesex, tp2, order, frame='nat')[0]
-    xOM, yOM, mas = tp.wavelength_to_pix(w, tp2, order, frame='nat')
-
-    return xOM, yOM[::-1], tp2
-
-
-def get_uncontam_centroids(stack, atthesex=None):
-    '''Determine the x, y positions of the trace centroids from an
-    exposure using a center-of-mass analysis. Works for either order if there
-    is no contamination, or for order 1 on a detector where the two orders
-    are overlapping.
-    This is an adaptation of Loïc's get_order1_centroids which can better
-    deal with a bright second order.
-
-    Parameters
-    ----------
-    stack : array of floats (2D)
-        Data frame.
-    atthesex : list of floats
-        Pixel x values at which to extract the trace centroids.
-
-    Returns
-    -------
-    tracexbest : np.array
-        Best estimate data x centroid.
-    traceybest : np.array
-        Best estimate data y centroids.
-    '''
-
-    # Dimensions of the subarray.
-    dimx = len(atthesex)
-    dimy = np.shape(stack)[0]
-
-    # Identify the floor level of all 2040 working pixels to subtract it first.
-    floorlevel = np.nanpercentile(stack, 10, axis=0)
-    backsubtracted = stack*1
-    for i in range(dimx-8):
-        backsubtracted[:, i] = stack[:, i] - floorlevel[i]
-
-    # Find centroid - first pass, use all pixels in the column.
-    tracex = []
-    tracey = []
-    row = np.arange(dimy)
-    for i in range(dimx - 8):
-        val = backsubtracted[:, i + 4] / np.nanmax(backsubtracted[:, i + 4])
-        ind = np.where(np.isfinite(val))
-        thisrow = row[ind]
-        thisval = val[ind]
-        cx = np.sum(thisrow * thisval) / np.sum(thisval)
-        tracex.append(i + 4)
-        tracey.append(cx)
-
-    # Adopt these trace values as best
-    tracex_best = np.array(tracex) * 1
-    tracey_best = np.array(tracey) * 1
-
-    # Second pass, find centroid on a subset of pixels
-    # from an area around the centroid determined earlier.
-    tracex = []
-    tracey = []
-    row = np.arange(dimy)
-    w = 30
-    for i in range(dimx - 8):
-        miny = np.int(np.nanmax([np.around(tracey_best[i] - w), 0]))
-        maxy = np.int(np.nanmax([np.around(tracey_best[i] + w), dimy - 1]))
-        val = backsubtracted[miny:maxy, i + 4] / np.nanmax(backsubtracted[:, i + 4])
-        ind = np.where(np.isfinite(val))
-        thisrow = (row[miny:maxy])[ind]
-        thisval = val[ind]
-        cx = np.sum(thisrow * thisval) / np.sum(thisval)
-
-        # For a bright second order, it is likely that the centroid at this
-        # point will be somewhere in between the first and second order.
-        # If this is the case (i.e. the pixel value of the centroid is very low
-        # compared to the column average), restrict the range of pixels
-        # considered to be above the current centroid.
-        if backsubtracted[int(cx)][i+4] < np.nanmean(backsubtracted[(int(cx) - w):(int(cx)+w), i+4]):
-            miny = np.int(np.nanmax([np.around(cx), 0]))
-            maxy = np.int(np.nanmin([np.around(cx + 2*w), dimy - 1]))
-            val = backsubtracted[miny:maxy, i + 4] / np.nanmax(backsubtracted[:, i + 4])
-            ind = np.where(np.isfinite(val))
-            thisrow = (row[miny:maxy])[ind]
-            thisval = val[ind]
-            cx = np.sum(thisrow * thisval) / np.sum(thisval)
-
-            tracex.append(i + 4)
-            tracey.append(cx)
-
-        else:
-            tracex.append(i + 4)
-            tracey.append(cx)
-
-    # Adopt these trace values as best.
-    tracex_best = np.array(tracex) * 1
-    tracey_best = np.array(tracey) * 1
-
-    # Third pass - fine tuning.
-    tracex = []
-    tracey = []
-    row = np.arange(dimy)
-    w = 16
-    for i in range(dimx - 8):
-        miny = np.int(np.nanmax([np.around(tracey_best[i] - w), 0]))
-        maxy = np.int(np.nanmax([np.around(tracey_best[i] + w), dimy - 1]))
-        val = backsubtracted[miny:maxy, i + 4] / np.nanmax(backsubtracted[:, i + 4])
-        ind = np.where(np.isfinite(val))
-        thisrow = (row[miny:maxy])[ind]
-        thisval = val[ind]
-        cx = np.sum(thisrow * thisval) / np.sum(thisval)
-
-        tracex.append(i + 4)
-        tracey.append(cx)
-
-    tracex_best = np.array(tracex)
-    tracey_best = np.array(tracey)
-
-    return tracex_best, tracey_best
-
-
-def _do_emcee(xOM, yOM, xCV, yCV):
-    '''Utility function which calls the emcee package to preform
-    an MCMC determination of the best fitting rotation angle/center to
-    map the OM onto the data.
-
-    Parameters
-    ----------
-    xOM, yOM : array of floats
-        X and Y trace centroids respectively in the optics model system,
-        for example: returned by get_om_centroids.
-    xCV, yCV : array of floats
-        X and Y trace centroids determined from the data, for example:
-        returned by get_o1_data_centroids.
+    xref, yref : array of float
+        X and Y trace centroids respectively to be used as a reference point,
+        for example: as returned by get_om_centroids.
+    xdat, ydat : array of float
+        X and Y trace centroids determined from the data, for example: as
+        returned by get_uncontam_centroids.
+    subarray : str
+        Identifier for the correct subarray. Allowed values are "SUBSTRIP96",
+        "SUBSTRIP256", or "FULL".
+    showprogress: bool
+        If True, show the emcee progress bar.
 
     Returns
     -------
@@ -259,198 +54,386 @@ def _do_emcee(xOM, yOM, xCV, yCV):
     '''
 
     # Set up the MCMC run.
-    initial = np.array([1, 1577, 215])  # Initial guess parameters
+    initial = np.array([0, 0, 0])  # Initial guess parameters
     pos = initial + 0.5*np.random.randn(32, 3)
     nwalkers, ndim = pos.shape
 
     sampler = emcee.EnsembleSampler(nwalkers, ndim, _log_probability,
-                                    args=[xOM, yOM, xCV, yCV])
-    # Run the MCMC for 5000 steps - it has generally converged
-    # within ~3000 steps in trial runs.
-    sampler.run_mcmc(pos, 5000, progress=False)
+                                    args=[xref, yref, xdat, ydat, subarray])
+    # Run the MCMC for 5000 steps - it has generally converged well before.
+    sampler.run_mcmc(pos, 5000, progress=showprogress)
 
     return sampler
 
 
-def _log_likelihood(theta, xvals, yvals, xCV, yCV):
-    '''Definition of the log likelihood. Called by do_emcee.
-    '''
-    ang, orx, ory = theta
-    # Calculate rotated model
-    modelx, modely = rot_om2det(ang, orx, ory, xvals, yvals, bound=True)
-    # Interpolate rotated model onto same x scale as data
-    modely = np.interp(xCV, modelx, modely)
+def _do_transform(data, rot_ang, x_shift, y_shift, pad=0, oversample=1,
+                  verbose=False):
+    '''Do the rotation (via a rotation matrix) and offset of the reference
+    files to match the data. Rotation angle and center, as well as the
+    required vertical and horizontal displacements must be calculated
+    beforehand.
+    This assumes that we have a sufficiently padded reference file, and that
+    oversampling is equal in the spatial and spectral directions.
+    The reference file is interpolated to the native detector resolution after
+    the transformations if oversampled.
 
-    return -0.5 * np.sum((yCV - modely)**2 - 0.5 * np.log(2 * np.pi * 1))
+    Parameters
+    ----------
+    data : np.ndarray
+        Reference file data.
+    rot_ang : float
+        Rotation angle in degrees.
+    x_shift : float
+        Offset in the spectral direction to be applied after rotation.
+    y_shift : float
+        Offset in the spatial direction to be applied after rotation.
+    pad : int
+        Number of native pixels of padding on each side of the frame.
+    oversample : int
+        Factor by which the reference data is oversampled. The
+        oversampling is assumed to be equal in both the spectral and
+        spatial directions.
+    verbose : bool
+        Whether to do diagnostic plots and prints.
+
+    Returns
+    -------
+    data_sub256_nat : np.ndarray
+        Reference file with all transformations applied and interpolated
+        to the native detector resolution.
+    '''
+
+    x_shift, y_shift = int(round(x_shift, 0)), int(round(y_shift, 0))
+    # Determine x and y center of the padded dataframe
+    pad_ydim, pad_xdim = np.shape(data)
+    nat_xdim = int(round(pad_xdim / oversample - 2*pad, 0))
+    nat_ydim = int(round(pad_ydim / oversample - 2*pad, 0))
+    pad_xcen = pad_xdim // 2
+    pad_ycen = pad_ydim // 2
+
+    # Rotation anchor is o1 trace centroid halfway along the spectral axis.
+    x_anch = int((1024+pad)*oversample)
+    y_anch = int((50+pad)*oversample)
+
+    # Shift dataframe such that rotation anchor is in the center of the frame.
+    data_shift = np.roll(data, (pad_ycen-y_anch, pad_xcen-x_anch), (0, 1))
+    # Rotate the shifted dataframe by the required amount.
+    data_rot = rotate(data_shift, rot_ang, reshape=False)
+    # Shift the rotated data back to its original position.
+    data_shiftback = np.roll(data_rot, (-pad_ycen+y_anch, -pad_xcen+x_anch),
+                             (0, 1))
+    # Apply vertical and horizontal offsets.
+    data_offset = np.roll(data_shiftback, (y_shift*oversample,
+                          x_shift*oversample), (0, 1))
+    if verbose is True:
+        plotting._plot_transformation_steps(data_shift, data_rot,
+                                            data_shiftback, data_offset)
+    # Remove the padding.
+    data_sub = data_offset[(pad*oversample):(-pad*oversample),
+                           (pad*oversample):(-pad*oversample)]
+
+    # Interpolate to native resolution if the reference frame is oversampled.
+    if oversample != 1:
+        data_nat1 = np.ones((nat_ydim, nat_xdim*oversample))
+        data_nat = np.ones((nat_ydim, nat_xdim))
+        # Loop over the spectral direction and interpolate the oversampled
+        # spatial profile to native resolution.
+        for i in range(nat_xdim*oversample):
+            new_ax = np.arange(nat_ydim)
+            oversamp_ax = np.linspace(0, nat_ydim, nat_ydim*oversample,
+                                      endpoint=False)
+            oversamp_prof = data_sub[:, i]
+            data_nat1[:, i] = np.interp(new_ax, oversamp_ax, oversamp_prof)
+        # Same for the spectral direction.
+        for i in range(nat_ydim):
+            new_ax = np.arange(nat_xdim)
+            oversamp_ax = np.linspace(0, nat_xdim, nat_xdim*oversample,
+                                      endpoint=False)
+            oversamp_prof = data_nat1[i, :]
+            data_nat[i, :] = np.interp(new_ax, oversamp_ax, oversamp_prof)
+    else:
+        data_nat = data_sub
+
+    return data_nat
+
+
+def _log_likelihood(theta, xmod, ymod, xdat, ydat, subarray):
+    '''Definition of the log likelihood. Called by _do_emcee.
+    xmod/ymod should extend past the edges of the detector.
+    '''
+    ang, xshift, yshift = theta
+    # Calculate rotated model
+    modelx, modely = rot_centroids(ang, xshift, yshift, xmod, ymod, bound=True,
+                                   subarray=subarray)
+    # Interpolate rotated model onto same x scale as data
+    modely = np.interp(xdat, modelx, modely)
+
+    return -0.5 * np.sum((ydat - modely)**2 - 0.5 * np.log(2 * np.pi * 1))
 
 
 def _log_prior(theta):
-    '''Definition of the priors. Called by do_emcee.
+    '''Definition of the priors. Called by _do_emcee.
+    Angle within +/- 5 deg (one motor step is 0.15deg).
+    X-shift within +/- 100 pixels, TA shoukd be accurate to within 1 pixel.
+    Y-shift to within +/- 50 pixels.
+    Currently, very broad bounds. Can likely be refined once informed by actual
+    observations.
     '''
-    ang, orx, ory = theta
+    ang, xshift, yshift = theta
 
-    if -15 <= ang < 15 and 0 < orx < 4048 and 0 < ory < 456:
+    if -5 <= ang < 5 and -100 <= xshift < 100 and -50 <= yshift < 50:
         return -1
     else:
         return -np.inf
 
 
-def _log_probability(theta, xvals, yvals, xCV, yCV):
-    '''Definition of the final probability. Called by do_emcee.
+def _log_probability(theta, xmod, ymod, xdat, ydat, subarray):
+    '''Definition of the final probability. Called by _do_emcee.
     '''
     lp = _log_prior(theta)
     if not np.isfinite(lp):
         return -np.inf
 
-    return lp + _log_likelihood(theta, xvals, yvals, xCV, yCV)
+    return lp + _log_likelihood(theta, xmod, ymod, xdat, ydat, subarray)
 
 
-def _plot_corner(sampler):
-    '''Utility function to produce the corner plot
-    for the results of do_emcee.
-    '''
-    labels = [r"ang", "cenx", "ceny"]
-    flat_samples = sampler.get_chain(discard=500, thin=15, flat=True)
-    fig = corner.corner(flat_samples, labels=labels)
-
-    return None
-
-
-def rot_om2det(ang, cenx, ceny, xval, yval, order=1, bound=True):
-    '''Utility function to map coordinates in the optics model
-    reference frame, onto the detector reference frame, given
-    the correct transofmration parameters.
+def rot_centroids(ang, xshift, yshift, xpix, ypix, bound=True, atthesex=None,
+                  cenx=1024, ceny=50, subarray='SUBSTRIP256'):
+    '''Apply a rotation and shift to the trace centroids positions. This
+    assumes that the trace centroids are already in the CV3 coordinate system.
 
     Parameters
     ----------
     ang : float
         The rotation angle in degrees CCW.
-    cenx, ceny : float
-        The X and Y pixel values to use as the center of rotation
-        in the optics model coordinate system.
-    xval, yval : float
-        Pixel X and Y values in the optics model coordinate system
-        to transform into the detector frame.
-    order : int
-        Diffraction order.
+    xshift : float
+        Offset in the X direction to be rigidly applied after rotation.
+    yshift : float
+        Offset in the Y direction to be rigidly applied after rotation.
+    xpix : float or np.array of float
+        Centroid pixel X values.
+    ypix : float or np.array of float
+        Centroid pixel Y values.
     bound : bool
-        Whether to trim rotated solutions to fit within the subarray256.
+        Whether to trim rotated solutions to fit within the specified subarray.
+    atthesex : list of float
+        Pixel values at which to calculate rotated centroids.
+    cenx : int
+        X-coordinate in pixels of the rotation center.
+    ceny : int
+        Y-coordinate in pixels of the rotation center.
+    subarray : str
+        Subarray identifier. One of SUBSTRIP96, SUBSTRIP256 or FULL.
 
     Returns
     -------
-    rot_xpix, rot_ypix : float
-        xval and yval respectively transformed into the
-        detector coordinate system.
+    rot_xpix : np.array of float
+        xval after the application of the rotation and translation
+        transformations.
+    rot_ypix : np.array of float
+        yval after the application of the rotation and translation
+        transformations.
+
+    Raises
+    ------
+    ValueError
+        If bad subarray identifier is passed.
     '''
 
-    # Map OM onto detector - the parameters for this transformation
-    # are already well known.
-    if order == 1:
-        t = 1.489*np.pi / 180
-        R = np.array([[np.cos(t), -np.sin(t)], [np.sin(t), np.cos(t)]])
-        points1 = np.array([xval - 1514, yval - 456])
-        b = R @ points1
-
-        b[0] += 1514
-        b[1] += 456
-
-    if order == 2:
-        t = 1.84*np.pi / 180
-        R = np.array([[np.cos(t), -np.sin(t)], [np.sin(t), np.cos(t)]])
-        points1 = np.array([xval - 1366, yval - 453])
-        b = R @ points1
-
-        b[0] += 1366
-        b[1] += 453
-
+    # Convert to numpy arrays
+    xpix = np.atleast_1d(xpix)
+    ypix = np.atleast_1d(ypix)
     # Required rotation in the detector frame to match the data.
-    t = (ang+0.95)*np.pi / 180
+    t = np.deg2rad(ang)
     R = np.array([[np.cos(t), -np.sin(t)], [np.sin(t), np.cos(t)]])
 
-    points1 = np.array([b[0] - cenx, b[1] - ceny])
+    # Rotation center set to o1 trace centroid halfway along spectral axis.
+    points1 = np.array([xpix - cenx, ypix - ceny])
     rot_pix = R @ points1
 
     rot_pix[0] += cenx
     rot_pix[1] += ceny
 
-    # Polynomial fit to rotated centroids to ensure there is a centroid at
-    # each pixel on the detector
-    pp = np.polyfit(rot_pix[0], rot_pix[1], 5)
-    rot_xpix = np.arange(2048)
-    rot_ypix = np.polyval(pp, rot_xpix)
+    # Apply the offsets
+    rot_pix[0] += xshift
+    rot_pix[1] += yshift
+
+    if xpix.size >= 10:
+        if atthesex is None:
+            # Ensure that there are no jumps of >1 pixel.
+            min = int(round(np.min(rot_pix[0]), 0))
+            max = int(round(np.max(rot_pix[0]), 0))
+            # Same range as rotated pixels but with step of 1 pixel.
+            atthesex = np.linspace(min, max, max-min+1)
+        # Polynomial fit to ensure a centroid at each pixel in atthesex
+        pp = np.polyfit(rot_pix[0], rot_pix[1], 5)
+        # Warn user if atthesex extends beyond polynomial domain.
+        if np.max(atthesex) > np.max(rot_pix[0])+25 or np.min(atthesex) < np.min(rot_pix[0])-25:
+            warnings.warn('atthesex extends beyond rot_xpix. Use results with caution.')
+        rot_xpix = atthesex
+        rot_ypix = np.polyval(pp, rot_xpix)
+    else:
+        # If too few pixels for fitting, keep rot_pix.
+        if atthesex is not None:
+            print('Too few pixels for polynomial fitting. Ignoring atthesex.')
+        rot_xpix = rot_pix[0]
+        rot_ypix = rot_pix[1]
 
     # Check to ensure all points are on the subarray.
     if bound is True:
-        inds = [(rot_ypix >= 0) & (rot_ypix < 256) & (rot_xpix >= 0) &
+        # Get dimensions of the subarray
+        if subarray == 'SUBSTRIP96':
+            yend = 96
+        elif subarray == 'SUBSTRIP256':
+            yend = 256
+        elif subarray == 'FULL':
+            yend = 2048
+        else:
+            raise ValueError('Unknown subarray. Allowed identifiers are "SUBSTRIP96", "SUBSTRIP256", or "FULL".')
+        # Reject pixels which are not on the subarray.
+        inds = [(rot_ypix >= 0) & (rot_ypix < yend) & (rot_xpix >= 0) &
                 (rot_xpix < 2048)]
+        rot_xpix = rot_xpix[inds]
+        rot_ypix = rot_ypix[inds]
 
-        return rot_xpix[inds], rot_ypix[inds]
-    else:
-        return rot_xpix, rot_ypix
+    return rot_xpix, rot_ypix
 
 
-def simple_solver(xc, yc, order=1):
-    '''Calculate and preform corrections to the reference trace profiles
-    due to rotation and vertical/horizontal offsets.
+def simple_solver(clear, verbose=False, save_to_file=True):
+    '''Algorithm to calculate and preform the necessary rotation and offsets to
+    transform the reference traces and wavelength maps to match the science
+    data.
+    The steps are as follows:
+        1. Determine the correct subarray for the data.
+        2. Get the first order centroids for the refrence trace.
+        3. Determine the first order centroids for the data.
+        4. Fit the reference centroids to the data to determine the correct
+           rotation angle and offset.
+        5. Apply this transformation to the reference traces and wavelength
+           maps for the first and second order.
+        6. Save transformed reference files to disk.
 
     Parameters
     ----------
-    xc : list
-        List of data x-centroids for the desired order.
-    yc : list
-        List of data y-centroids for the desired order
-    order : int
-        Desired order, either 1 or 2.
+    clear : np.ndarray
+        CLEAR science exposure.
+    verbose : bool
+        Whether to do diagnostic prints and plots.
+    save_to_file : bool
+        If True, write the transformed wavelength map and 2D trace profiles to
+        disk in two multi-extension fits files.
 
     Returns
     -------
-    rot_frame : np.ndarray
-        Reference trace frame (2D) with rotation and offset corrections
-        applied.
+    ref_trace_trans : np.ndarray
+        2xYx2048 array containing the reference trace profiles transformed
+        to match the science data.
+    wave_map_trans : np.ndarray
+        2xYx2048 array containing the reference trace profiles transformed
+        to match the science data.
+
+    Raises
+    ------
+    ValueError
+        If shape of clear input does not match known subarrays.
     '''
 
-    # Open the reference trace profile for the desired order
-    if order == 1:
-        ref_frame = fits.open('../Ref_files/trace_profile_om1.fits')[0].data[::-1, :]
-    if order == 2:
-        ref_frame = fits.open('../Ref_files/trace_profile_om2.fits')[0].data[::-1, :]
+    # Open 2D trace profile reference file.
+    ref_trace_file = soss_read_refs.Ref2dProfile(path+'SOSS_ref_2D_profile.fits')
+    # Open trace table reference file.
+    ttab_file = soss_read_refs.RefTraceTable(path+'SOSS_ref_trace_table.fits')
+    # Get first order centroids (in DMS coords).
+    wavemap_file = soss_read_refs.Ref2dWave(path+'SOSS_ref_2D_wave.fits')
 
-    # Initalize black frame
-    rot_frame = np.zeros((256, 2048))
+    # Determine correct subarray dimensions and offsets.
+    dimy, dimx = np.shape(clear)
+    if dimy == 96:
+        subarray = 'SUBSTRIP96'
+    elif dimy == 256:
+        subarray = 'SUBSTRIP256'
+    elif dimy == 2048:
+        subarray = 'FULL'
+    else:
+        raise ValueError('Unrecognized subarray shape: {}x{}.'.format(dimy, dimx))
 
-    # Get the optics model centroids (which are the reference trace centroids)
-    xcen, ycen, tp = get_om_centroids(atthesex=np.arange(2048), order=order)
-    # Convert the y-centroids to ints
-    # Scale by 10 to allow for 10x oversampling
-    ycen = (np.round(ycen*10, 0)).astype(int)
+    # Get first order centroids on subarray.
+    xcen_ref = ttab_file('X', subarray=subarray)[1]
+    # Extend centroids beyond edges of the subarray for more accurate fitting.
+    inds = np.where((xcen_ref >= -50) & (xcen_ref < 2098))
+    xcen_ref = xcen_ref[inds]
+    ycen_ref = ttab_file('Y', subarray=subarray)[1][inds]
 
-    # Loop over all columns for which the data centroids fall on the detector
-    for newi in range(len(xc)):
-        # For the second order, the reference trace is only defined
-        # for the first 1710 spectral pixels.
-        # If more spectral pixels are required, reuse the 1710 profile.
-        if order == 2 and newi > 1710:
-            refi = 1710
-        else:
-            refi = newi
+    # Get centroids from data.
+    xcen_dat, ycen_dat = ctd.get_uncontam_centroids(clear, verbose=verbose)
 
-        # 10x oversampled axis accounting for trace profile extending above
-        # or below the detector (in spatial direction)
-        ax_os = np.linspace(-341, 512, 8531)
-        # Oversample the reference trace slice
-        slice_os = np.interp(ax_os, np.arange(256), ref_frame[:, refi])
-        # Extract the trace spetial profile
-        tslice = slice_os[(3411+ycen[refi]-340):(3411+ycen[refi]+351)]
+    # Fit the reference file centroids to the data.
+    fit = _do_emcee(xcen_ref, ycen_ref, xcen_dat, ycen_dat,
+                    subarray=subarray, showprogress=verbose)
+    flat_samples = fit.get_chain(discard=500, thin=15, flat=True)
+    # Get best fitting rotation angle and pixel offsets.
+    rot_ang = np.percentile(flat_samples[:, 0], 50)
+    x_shift = np.percentile(flat_samples[:, 1], 50)
+    y_shift = np.percentile(flat_samples[:, 2], 50)
+    # Plot posteriors if necessary.
+    if verbose is True:
+        plotting._plot_corner(fit)
 
-        # New 10x oversampled axis for corrected frame, shifted to
-        # spatial position of data
-        axis = np.linspace(-34, 34, 690) + yc[newi] - 1
-        # Keep only positions where the new axis is on the detector
-        inds = np.where((axis < 256) & (axis >= 0))[0]
-        # interpolate oversampled trace profile back to native resolution
-        newslice = np.interp(np.arange(256), axis[inds], tslice[inds])
+    # Transform reference files to match data.
+    ref_trace_trans = np.ones((2, dimy, dimx))
+    wave_map_trans = np.ones((2, dimy, dimx))
+    for order in [1, 2]:
+        # Load the reference trace and wavelength map for the current order and
+        # correct subarray, as well as padding and oversampling information.
+        ref_trace, os_t, pad_t = ref_trace_file(order=order, subarray=subarray,
+                                                native=False, only_prof=False)
+        ref_wavemap, os_w, pad_w = wavemap_file(order=order, subarray=subarray,
+                                                native=False, only_prof=False)
+        # Set NaN pixels to zero - the rotation doesn't handle NaNs well.
+        ref_trace[np.isnan(ref_trace)] = 0
+        ref_wavemap[np.isnan(ref_wavemap)] = 0
 
-        # Add corrected slice to new frame
-        rot_frame[:, newi] = newslice
+        # Do the transformation for the reference 2D trace.
+        # Pass negative rot_ang to convert from CCW to CW rotation
+        trace_trans = _do_transform(ref_trace, -rot_ang, x_shift, y_shift,
+                                    pad=pad_t, oversample=os_t,
+                                    verbose=verbose)
+        # Renormalize the spatial profile so columns sum to one.
+        ref_trace_trans[order-1] = trace_trans / np.nansum(trace_trans, axis=0)
+        # Transform the wavelength map.
+        wave_map_trans[order-1, :, :] = _do_transform(ref_wavemap, -rot_ang,
+                                                      x_shift, y_shift,
+                                                      pad=pad_w,
+                                                      oversample=os_w,
+                                                      verbose=verbose)
+    # Write files to disk if requested.
+    if save_to_file is True:
+        write_to_file(ref_trace_trans, filename='SOSS_ref_2D_profile_simplysolved')
+        write_to_file(wave_map_trans, filename='SOSS_ref_2D_wave_simplysolved')
 
-    return rot_frame
+    return ref_trace_trans, wave_map_trans
+
+
+def write_to_file(stack, filename):
+    '''Utility function to write transformed 2D trace profile or wavelength map
+    files to disk. Data will be saved as a multi-extension fits file.
+
+    Parameters
+    ----------
+    stack : np.ndarray (2xYx2048)
+        Array containing transformed 2D trace profile or wavelength map data.
+        The first dimension must be the spectral order, the second dimension
+        the spatial dimension, and the third the spectral dimension.
+    filename : str
+        Name of the file to which to write the data.
+    '''
+
+    hdu_p = fits.PrimaryHDU()
+    hdulist = [hdu_p]
+    for order in [1, 2]:
+        hdu_o = fits.ImageHDU(data=stack[order-1])
+        hdu_o.header['ORDER'] = order
+        hdu_o.header.comments['ORDER'] = 'Spectral order.'
+        hdulist.append(hdu_o)
+
+    hdu = fits.HDUList(hdulist)
+    hdu.writeto('{}.fits'.format(filename), overwrite=True)
