@@ -85,7 +85,7 @@ def _plot_interpmodel(waves, nw1, nw2, p1, p2):
 
 
 def _plot_wing_reconstruction(profile, ycens, axis_r, prof_r2, axis_l_pad,
-                              axis_r_pad, pp_r, newprof):
+                              axis_r_pad, pp_r, newprof, text=None):
     '''Do diagnositic plotting for wing reconstruction.
     '''
 
@@ -99,8 +99,10 @@ def _plot_wing_reconstruction(profile, ycens, axis_r, prof_r2, axis_l_pad,
              label='reconstructed profile',)
     plt.plot(axis_r_pad, np.polyval(pp_r, axis_r_pad), c='red', lw=2,
              ls='--', label='right wing fit')
+    if text is not None:
+        plt.text(5, 0.01*np.max(np.log10(newprof)), text, fontsize=14)
 
-    plt.xlabel('Spatial Pixel', fontsize=14)
+    plt.xlabel('Spatial Pixel', fontsize=12)
     plt.xlim(int(axis_l_pad[0]), int(axis_r_pad[-1]))
     plt.ylim(0, 1.1*np.max(np.log10(newprof)))
     plt.legend(fontsize=12)

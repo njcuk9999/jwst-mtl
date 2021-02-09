@@ -69,20 +69,20 @@ def build_empirical_trace(clear, F277W, badpix_mask,
 
     # Construct the first order profile.
     if verbose is True:
-        print('Interpolating the first order trace...')
+        print('Building the first order trace model...')
     o1frame = construct_order1(clear, F277W, rot_pars, centroids, pad=pad[0],
                                verbose=verbose, subarray='SUBSTRIP256')
     # Pad the spectral axis.
     if pad[1] != 0:
         if verbose is True:
-            print('Adding padding to first order spectral axis...')
+            print('  Adding padding to first order spectral axis...')
         o1frame = pad_spectral_axis(o1frame, centroids['order 1'][0],
                                     centroids['order 1'][1], pad=pad[1])
 
     # Add oversampling
     if oversample != 1:
         if verbose is True:
-            print('Oversampling...')
+            print('  Oversampling...')
         o1frame = oversample_frame(o1frame, oversample=oversample)
 
     # Get the extraction parameters
@@ -187,7 +187,7 @@ def construct_order1(clear, F277, rot_params, ycens, subarray, pad=0,
     pad : int
         Number of pixels of padding to add on both ends of the spatial axis.
     verbose : bool
-        if True, do diagnostic plotting.
+        if True, do diagnostic plotting and progress prints.
 
     Returns
     -------
@@ -211,6 +211,9 @@ def construct_order1(clear, F277, rot_params, ycens, subarray, pad=0,
     wavecal_x = np.arange(dimx)
     wavecal_w = np.polyval(pp_w, wavecal_x)
 
+    if verbose is True:
+        print('  Getting anchor profiles...')
+
     # Determine the anchor profiles - blue anchor.
     # Find the pixel position of 2.1µm.
     i_b = np.where(wavecal_w >= 2.1)[0][-1]
@@ -225,7 +228,7 @@ def construct_order1(clear, F277, rot_params, ycens, subarray, pad=0,
     cens = [ycens['order 1'][1][xdb], ycens['order 2'][1][xdb],
             ycens['order 3'][1][xdb]]
     Banch = reconstruct_wings(Banch, ycens=cens, contamination=True, pad=pad,
-                              verbose=verbose)
+                              verbose=verbose, **{'text': 'Blue anchor'})
     # Remove the lambda/D scaling.
     Banch = _chromescale(2.1, Banch, ydb)
     # Normalize
@@ -256,7 +259,8 @@ def construct_order1(clear, F277, rot_params, ycens, subarray, pad=0,
         Ranch = np.interp(np.arange(dimy), np.arange(dimy)-dimy/2+ydr, Ranch)
         # Reconstruct wing structure and pad.
         Ranch = reconstruct_wings(Ranch, ycens=[ydr], contamination=False,
-                                  pad=pad, verbose=verbose)
+                                  pad=pad, verbose=verbose,
+                                  **{'text': 'Red anchor'})
         # Rescale to remove chromatic effects.
         Ranch = _chromescale(2.9, Ranch, ydr)
         # Normalize
@@ -283,7 +287,8 @@ def construct_order1(clear, F277, rot_params, ycens, subarray, pad=0,
         # Reconstruct wing structure and pad.
         cens = [ycens['order 1'][1][xdr]]
         Ranch = reconstruct_wings(Ranch, ycens=cens, contamination=False,
-                                  pad=pad, verbose=verbose)
+                                  pad=pad, verbose=verbose,
+                                  **{'text': 'Red anchor'})
         Ranch = _chromescale(2.45, Ranch, ydr)
         # Normalize
         Ranch /= np.nansum(Ranch)
@@ -300,7 +305,10 @@ def construct_order1(clear, F277, rot_params, ycens, subarray, pad=0,
     lmbda = wavecal_w[cenx_d]
 
     # Create an interpolated 1D PSF at each required position.
-    for i, vals in enumerate(zip(cenx_d, ceny_d, lmbda)):
+    if verbose is True:
+        print('  Interpolating trace and reconstructing wings...', flush=True)
+    for i, vals in tqdm(enumerate(zip(cenx_d, ceny_d, lmbda)),
+                        total=len(lmbda), disable=not verbose):
         cenx, ceny, lbd = vals[0], vals[1], vals[2]
         # Evaluate the interpolation polynomials at the current wavelength.
         wb_i = np.polyval(coef_b, lbd)
@@ -631,7 +639,7 @@ def pad_spectral_axis(frame, xcens, ycens, pad=0):
 
 
 def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
-                      verbose=False):
+                      verbose=False, **kwargs):
     '''Masks the second and third diffraction orders and reconstructs the
      underlying wing structure of the first order. Also adds padding in the
      spatial direction if required.
@@ -688,11 +696,11 @@ def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
             start = 0
             end = ycen+25
         elif order == 1:
-            start = np.min([ycen-15, dimy-2])
-            end = np.min([ycen+15, dimy-1])
+            start = np.min([ycen-17, dimy-2])
+            end = np.min([ycen+17, dimy-1])
         else:
-            start = np.min([ycen-15, dimy-2])
-            end = np.min([ycen+15, dimy-1])
+            start = np.min([ycen-17, dimy-2])
+            end = np.min([ycen+17, dimy-1])
         # Set core of each order to NaN.
         prof_r[start:end] = np.nan
 
@@ -717,11 +725,11 @@ def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
     if contamination is True:
         for order, ycen in enumerate(ycens):
             if order == 1:
-                start = np.max([ycen-15, 0])
-                end = np.max([ycen+15, 1])
+                start = np.max([ycen-17, 0])
+                end = np.max([ycen+17, 1])
             elif order == 2:
-                start = np.max([ycen-15, 0])
-                end = np.max([ycen+15, 1])
+                start = np.max([ycen-17, 0])
+                end = np.max([ycen+17, 1])
             # Set core of each order to NaN.
             prof_r2[start:end] = np.nan
     # Mask outliers
@@ -733,22 +741,22 @@ def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
     # To ensure that the polynomial does not start turning up in the padded
     # region, extend the linear fit to the edge of the pad to force the fit
     # to continue decreasing.
-    ext_ax = np.arange(10) + np.max(axis_r[inds3]) + pad
+    ext_ax = np.arange(25) + np.max(axis_r[inds3]) + np.max([pad, 25])
     ext_prof = pp[1] + pp[0]*ext_ax
     # Concatenate right-hand profile with the extended linear trend.
     fit_ax = np.concatenate([axis_r[inds3], ext_ax])
     fit_prof = np.concatenate([prof_r2[inds3], ext_prof])
 
     # Use np.polyfit for a first estimate of the coefficients.
-    pp_r0 = np.polyfit(fit_ax, fit_prof, 7)
+    pp_r0 = np.polyfit(fit_ax, fit_prof, 9)
     # Robust fit using the polyfit results as a starting point.
     pp_r = _robust_polyfit(fit_ax, fit_prof, pp_r0)
 
     # === Stitching ===
     # Find pixel to stitch right wing fit.
-    jjr = ycens[0]+18
+    jjr = ycens[0]+14
     # Pad the right axis.
-    axis_r_pad = np.arange(len(axis_r[ycens[0]+18:])+pad) + axis_r[ycens[0]+18]
+    axis_r_pad = np.arange(len(axis_r[ycens[0]+14:])+pad) + axis_r[ycens[0]+14]
     iir = np.where(axis_r_pad == jjr)[0][0]
     # Join right wing to old trace profile.
     newprof = np.concatenate([profile[:jjr], 10**np.polyval(pp_r, axis_r_pad)[iir:]])
@@ -810,7 +818,7 @@ def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
     if verbose is True:
         plotting._plot_wing_reconstruction(profile, ycens, axis_r[inds3],
                                            prof_r2[inds3], axis_l_pad,
-                                           axis_r_pad, pp_r, newprof)
+                                           axis_r_pad, pp_r, newprof, **kwargs)
 
     return newprof
 
@@ -924,7 +932,7 @@ def replace_badpix(clear, badpix_mask, fill_negatives=True, verbose=False):
 
     Returns
     -------
-    clear : np.ndarray (2D)
+    clear_r : np.ndarray (2D)
         Input clear frame with bad pixels interpolated.
     '''
 
@@ -938,6 +946,7 @@ def replace_badpix(clear, badpix_mask, fill_negatives=True, verbose=False):
         mask = badpix_mask
 
     # Loop over all bad pixels.
+    clear_r = clear*1
     ys, xs = np.where(mask)
     for y, x in tqdm(zip(ys, xs), total=len(ys), disable=not verbose):
         # Get coordinates of pixels in the 5x5 box.
@@ -946,9 +955,9 @@ def replace_badpix(clear, badpix_mask, fill_negatives=True, verbose=False):
         startx = np.max([0, (x-2)])
         endx = np.min([dimx, (x+2)])
         # Replace bad pixel with the median value.
-        clear[y, x] = np.nanmedian(clear[starty:endy, startx:endx])
+        clear_r[y, x] = np.nanmedian(clear[starty:endy, startx:endx])
 
-    return clear
+    return clear_r
 
 
 def _robust_polyfit(x, y, p0):
