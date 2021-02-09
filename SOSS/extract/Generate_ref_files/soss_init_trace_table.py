@@ -7,6 +7,7 @@ Created on Wed Nov  4 15:35:32 2020
 """
 
 import sys
+from datetime import datetime
 sys.path.insert(0, "../../trace/")
 
 import numpy as np
@@ -22,17 +23,15 @@ def main():
     TODO CAR NIS-017-GR700XD Flux Calibration
     """
 
-    # Fixed input files.
-    throughput_file = '../Ref_files/NIRISS_Throughput_STScI.fits'
-    tilt_file = '../../trace/SOSS_wavelength_dependent_tilt.ecsv'
-    trace_pos_file = '../../trace/NIRISS_GR700_trace_extended.csv'
-    soss_ref_trace_table = 'SOSS_ref_trace_table.fits'  # Output SOSS reference file.
+    # Fixed parameters for the 2D wavelength map reference file.
+    subarrays = ['FULL', 'SUBSTRIP96', 'SUBSTRIP256']
+    filepattern = 'SOSS_ref_trace_table_{}.fits'  # Output SOSS reference file.
 
     # Reference wavelength grid in micron.
     wave_grid = np.linspace(0.5, 5.5, 5001)
 
     # Read the SOSS total throughput as a function of wavelength.
-    tab, hdr = fits.getdata(throughput_file, ext=1, header=True)
+    tab, hdr = fits.getdata('../Ref_files/NIRISS_Throughput_STScI.fits', ext=1, header=True)
 
     throughput_wave = tab[0]['LAMBDA']/1e3
     throughput_order1 = tab[0]['SOSS_ORDER1']
@@ -50,7 +49,7 @@ def main():
     throughput_order3 = np.where(throughput_order3 < 0, 0, throughput_order3)
 
     # Read the tilt as a function of wavelength.
-    tab = Table.read(tilt_file)
+    tab = Table.read('../../trace/SOSS_wavelength_dependent_tilt.ecsv')
 
     tilt_wave = tab['Wavelength']
     tilt_order1 = tab['order 1']
@@ -65,67 +64,89 @@ def main():
 
     # Get the trace parameters, function found in tracepol imported above.
     # TODO once in-flight data are available tracepol should not be used. Use interpolation instead.
-    tracepars = tracepol.get_tracepars(trace_pos_file)
+    tracepars = tracepol.get_tracepars('../../trace/NIRISS_GR700_trace_extended.csv')
 
-    # Using tracepol, compute trace positions for each order and mask out-of-bound values.
-    x_order1, y_order1, mask = tracepol.wavelength_to_pix(wave_grid, tracepars, m=1, frame='dms', subarray='FULL')
-    x_order1 = np.where(mask, x_order1, np.nan)
-    y_order1 = np.where(mask, y_order1, np.nan)
+    for subarray in subarrays:
 
-    x_order2, y_order2, mask = tracepol.wavelength_to_pix(wave_grid, tracepars, m=2, frame='dms', subarray='FULL')
-    x_order2 = np.where(mask, x_order2, np.nan)
-    y_order2 = np.where(mask, y_order2, np.nan)
+        filename = filepattern.format(subarray)
 
-    x_order3, y_order3, mask = tracepol.wavelength_to_pix(wave_grid, tracepars, m=3, frame='dms', subarray='FULL')
-    x_order3 = np.where(mask, x_order3, np.nan)
-    y_order3 = np.where(mask, y_order3, np.nan)
+        # Create the reference file.
+        hdul = list()
+        hdu = fits.PrimaryHDU()
+        hdu.header['DATE'] = (datetime.now().strftime('%Y-%m-%dT%H:%M:%S'), 'Date this file was created (UTC)')
+        hdu.header['ORIGIN'] = ('SOSS Team MTL', 'Orginazation responsible for creating file')
+        hdu.header['TELESCOP'] = ('JWST', 'Telescope used to acquire the data')
+        hdu.header['INSTRUME'] = ('NIRISS', 'Instrument used to acquire the data')
+        hdu.header['SUBARRAY'] = (subarray, 'Subarray used')
+        hdu.header['FILENAME'] = (filename, 'Name of the file')
+        hdu.header['REFTYPE'] = ('SPECTRACE', 'Reference file type')
+        hdu.header['PEDIGREE'] = ('GROUND', 'The pedigree of the refernce file')
+        hdu.header['DESCRIP'] = ('1D trace decscription', 'Desription of the reference file')
+        hdu.header['AUTHOR'] = ('Geert Jan Talens', 'Author of the reference file')
+        hdu.header['USEAFTER'] = ('2000-01-01T00:00:00', 'Use after date of the reference file')
+        hdu.header['EXP_TYPE'] = ('NIS_SOSS', 'Type of data in the exposure')
+        hdul.append(hdu)
 
-    # Create the reference file.
-    hdu0 = fits.PrimaryHDU()
-    hdu0.header['CREATOR'] = 'Geert Jan Talens'
+        # Using tracepol, compute trace positions for each order and mask out-of-bound values.
+        xtrace, ytrace, mask = tracepol.wavelength_to_pix(wave_grid, tracepars, m=1, frame='dms', subarray=subarray)
+        xtrace = np.where(mask, xtrace, np.nan)
+        ytrace = np.where(mask, ytrace, np.nan)
 
-    # Order 1 table.
-    col1 = fits.Column(name='WAVELENGTH', format='F', array=wave_grid)
-    col2 = fits.Column(name='X', format='F', array=x_order1)
-    col3 = fits.Column(name='Y', format='F', array=y_order1)
-    col4 = fits.Column(name='THROUGHPUT', format='F', array=throughput_order1)
-    col5 = fits.Column(name='TILT', format='F', array=tilt_order1)
-    cols = fits.ColDefs([col1, col2, col3, col4, col5])
+        # Order 1 table.
+        col1 = fits.Column(name='WAVELENGTH', format='F', array=wave_grid)
+        col2 = fits.Column(name='X', format='F', array=xtrace)
+        col3 = fits.Column(name='Y', format='F', array=ytrace)
+        col4 = fits.Column(name='THROUGHPUT', format='F', array=throughput_order1)
+        col5 = fits.Column(name='TILT', format='F', array=tilt_order1)
+        cols = fits.ColDefs([col1, col2, col3, col4, col5])
 
-    hdu1 = fits.BinTableHDU.from_columns(cols)
-    hdu1.header['ORDER'] = (1, 'Spectral order.')
-    hdu1.header['DYSUB96'] = (-1802, 'Y offset for SUBSTRIP96 images.')  # Hardcode the offsets for the other subarrays.
-    hdu1.header['DYSUB256'] = (-1792, 'Y offset for SUBSTRIP256 images.')
+        hdu = fits.BinTableHDU.from_columns(cols)
+        hdu.header['ORDER'] = (1, 'Spectral order.')
+        hdu.header['EXTNAME'] = 'ORDER_1'
+        hdu.header['EXTVER'] = 1
+        hdul.append(hdu)
 
-    # Order 2 table.
-    col1 = fits.Column(name='WAVELENGTH', format='F', array=wave_grid)
-    col2 = fits.Column(name='X', format='F', array=x_order2)
-    col3 = fits.Column(name='Y', format='F', array=y_order2)
-    col4 = fits.Column(name='THROUGHPUT', format='F', array=throughput_order2)
-    col5 = fits.Column(name='TILT', format='F', array=tilt_order2)
-    cols = fits.ColDefs([col1, col2, col3, col4, col5])
+        # Using tracepol, compute trace positions for each order and mask out-of-bound values.
+        xtrace, ytrace, mask = tracepol.wavelength_to_pix(wave_grid, tracepars, m=2, frame='dms', subarray=subarray)
+        xtrace = np.where(mask, xtrace, np.nan)
+        ytrace = np.where(mask, ytrace, np.nan)
 
-    hdu2 = fits.BinTableHDU.from_columns(cols)
-    hdu2.header['ORDER'] = (2, 'Spectral order.')
-    hdu2.header['DYSUB96'] = (-1802, 'Y offset for SUBSTRIP96 images.')  # Hardcode the offsets for the other subarrays.
-    hdu2.header['DYSUB256'] = (-1792, 'Y offset for SUBSTRIP256 images.')
+        # Order 2 table.
+        col1 = fits.Column(name='WAVELENGTH', format='F', array=wave_grid)
+        col2 = fits.Column(name='X', format='F', array=xtrace)
+        col3 = fits.Column(name='Y', format='F', array=ytrace)
+        col4 = fits.Column(name='THROUGHPUT', format='F', array=throughput_order2)
+        col5 = fits.Column(name='TILT', format='F', array=tilt_order2)
+        cols = fits.ColDefs([col1, col2, col3, col4, col5])
 
-    # Order 3 table.
-    col1 = fits.Column(name='WAVELENGTH', format='F', array=wave_grid)
-    col2 = fits.Column(name='X', format='F', array=x_order3)
-    col3 = fits.Column(name='Y', format='F', array=y_order3)
-    col4 = fits.Column(name='THROUGHPUT', format='F', array=throughput_order3)
-    col5 = fits.Column(name='TILT', format='F', array=tilt_order3)
-    cols = fits.ColDefs([col1, col2, col3, col4, col5])
+        hdu = fits.BinTableHDU.from_columns(cols)
+        hdu.header['ORDER'] = (2, 'Spectral order.')
+        hdu.header['EXTNAME'] = 'ORDER_2'
+        hdu.header['EXTVER'] = 2
+        hdul.append(hdu)
 
-    hdu3 = fits.BinTableHDU.from_columns(cols)
-    hdu3.header['ORDER'] = (3, 'Spectral order.')
-    hdu3.header['DYSUB96'] = (-1802, 'Y offset for SUBSTRIP96 images.')  # Hardcode the offsets for the other subarrays.
-    hdu3.header['DYSUB256'] = (-1792, 'Y offset for SUBSTRIP256 images.')
+        # Using tracepol, compute trace positions for each order and mask out-of-bound values.
+        xtrace, ytrace, mask = tracepol.wavelength_to_pix(wave_grid, tracepars, m=3, frame='dms', subarray=subarray)
+        xtrace = np.where(mask, xtrace, np.nan)
+        ytrace = np.where(mask, ytrace, np.nan)
 
-    hdul = fits.HDUList([hdu0, hdu1, hdu2, hdu3])
-    hdul.writeto(soss_ref_trace_table, overwrite=True)
-    hdul.writeto(soss_ref_trace_table + '.gz', overwrite=True)
+        # Order 3 table.
+        col1 = fits.Column(name='WAVELENGTH', format='F', array=wave_grid)
+        col2 = fits.Column(name='X', format='F', array=xtrace)
+        col3 = fits.Column(name='Y', format='F', array=ytrace)
+        col4 = fits.Column(name='THROUGHPUT', format='F', array=throughput_order3)
+        col5 = fits.Column(name='TILT', format='F', array=tilt_order3)
+        cols = fits.ColDefs([col1, col2, col3, col4, col5])
+
+        hdu = fits.BinTableHDU.from_columns(cols)
+        hdu.header['ORDER'] = (3, 'Spectral order.')
+        hdu.header['EXTNAME'] = 'ORDER_3'
+        hdu.header['EXTVER'] = 3
+        hdul.append(hdu)
+
+        hdul = fits.HDUList(hdul)
+        hdul.writeto(filename, overwrite=True)
+        hdul.writeto(filename + '.gz', overwrite=True)
 
     return
 
