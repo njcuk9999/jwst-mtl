@@ -202,7 +202,7 @@ def edge_trigger(image, halfwidth=5, yos=1, verbose=False):
     _, ygrid = np.meshgrid(xpix, ypix)
 
     # Compute windowed slopes over the columns.
-    slopevals = np.full_like(image, fill_value=np.nan)
+    slopevals = np.zeros_like(image)
     for irow in range(halfwidth, dimy-halfwidth):
 
         # Compute the window indices.
@@ -224,7 +224,7 @@ def edge_trigger(image, halfwidth=5, yos=1, verbose=False):
             slope = np.nansum((datax - xmean) * (datay - ymean), axis=0) / np.nansum((datax - xmean) ** 2, axis=0)
 
         # Set slopes computed from < 3 datapoints to NaN.
-        slopevals[irow, :] = np.where(np.sum(mask, axis=0) >= 3, slope, np.nan)
+        slopevals[irow, :] = np.where(np.sum(mask, axis=0) >= 3, slope, 0.)
 
     # Find the upper and lower bounds on the trace.
     args = np.nanargmax(slopevals, axis=0)
