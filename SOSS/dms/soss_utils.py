@@ -114,9 +114,9 @@ def get_image_dim(image, header=None, verbose=False):
             raise ValueError('Stack X dimension has unrecognized size of {:}. Accepts 2048, 2040 or multiple of.'.format(dimx))
 
         # Check if the y-axis is consistent with the x-axis.
-        if dimy/xos in [96, 256, 252, 2040, 2048]:
+        if np.int(dimy/xos) in [96, 256, 252, 2040, 2048]:
             yos = np.copy(xos)
-            ynative = dimy/yos
+            ynative = np.int(dimy/yos)
 
         else:
             raise ValueError('Stack Y dimension ({:}) is inconsistent with X dimension ({:}) for acceptable SOSS arrays'.format(dimy, dimx))
@@ -142,15 +142,16 @@ def get_image_dim(image, header=None, verbose=False):
         padding = int(header['PADDING'])
         xos, yos = int(header['OVERSAMP']), int(header['OVERSAMP'])
 
-        # The 2D Trace profile is for FULL FRAME so 2048x2048.
-        xnative, ynative = 2048, 2048
-
         # Check that the stack respects its intended format.
-        if dimx != (xnative + 2*padding)*xos:
+        if (dimx/xos - 2*padding) not in [2048]:
             raise ValueError('The header passed is inconsistent with the X dimension of the stack.')
+        else:
+            xnative = 2048
 
-        if dimy != (ynative + 2*padding)*yos:
+        if (dimy/yos - 2*padding) not in [96, 256, 2048]:
             raise ValueError('The header passed is inconsistent with the Y dimension of the stack.')
+        else:
+            ynative = np.int(dimy/yos - 2*padding)
 
         # The trace file contains no reference pixels so all pixels are good.
         refpix_mask = np.ones_like(image, dtype='bool')
