@@ -306,7 +306,7 @@ def construct_order1(clear, F277, rot_params, ycens, subarray, pad=0,
 
     # Create an interpolated 1D PSF at each required position.
     if verbose is True:
-        print('  Interpolating trace and reconstructing wings...', flush=True)
+        print('  Interpolating trace...', flush=True)
     for i, vals in tqdm(enumerate(zip(cenx_d, ceny_d, lmbda)),
                         total=len(lmbda), disable=not verbose):
         cenx, ceny, lbd = vals[0], vals[1], vals[2]
@@ -331,12 +331,14 @@ def construct_order1(clear, F277, rot_params, ycens, subarray, pad=0,
             # 2.9µm (i=0) limit may be off the end of the detector.
             rend = int(round(cenx, 0))
 
+    if verbose is True:
+        print('  Stitching models and reconstructing wings...', flush=True)
     # Stitch together the interpolation and data.
     newmap = np.zeros((dimy+2*pad, dimx))
     # Insert interpolated data.
     newmap[:, rend:bend] = map2D[:, rend:bend]
     # Bluer region is known from the CLEAR exposure.
-    for col in range(bend, dimx):
+    for col in tqdm(range(bend, dimx), disable=not verbose):
         cens = [ycens['order 1'][1][col], ycens['order 2'][1][col],
                 ycens['order 3'][1][col]]
         # Mask contamination from second and third orders, reconstruct wings
@@ -344,7 +346,7 @@ def construct_order1(clear, F277, rot_params, ycens, subarray, pad=0,
         newmap[:, col] = reconstruct_wings(clear[:, col], ycens=cens, pad=pad)
     if F277 is not None:
         # Add on the F277W frame to the red of the model.
-        for col in range(rend):
+        for col in tqdm(range(rend), disable=not verbose):
             cens = [ycens['order 1'][1][col]]
             # Reconstruct wing structure and pad.
             newmap[:, col] = reconstruct_wings(F277[:, col], ycens=cens,
@@ -404,7 +406,7 @@ def get_extract_params():
     # Oversampling
     params["n_os"] = 1
     # Threshold on the spatial profile
-    params["thresh"] = 1e-5
+    params["thresh"] = 1e-6
 
     return params
 
@@ -643,6 +645,10 @@ def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
     '''Masks the second and third diffraction orders and reconstructs the
      underlying wing structure of the first order. Also adds padding in the
      spatial direction if required.
+     Note: the algorithm struggles in the region where the first and second
+     orders completely overlap (pixels ~0-450). However, this region is either
+     interpolated or from an F277W exposure in the empirical trace model,
+     circumventing this issue.
 
     Parameters
     ----------
@@ -678,6 +684,9 @@ def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
     ycens = np.round(ycens, 0).astype(int)
     if contamination is True and ycens.size != 3:
         raise ValueError('Centroids must be provided for first three orders if there is contamination.')
+
+    # mask negative and zero values.
+    profile[profile <= 0] = np.nan
 
     # ====== Reconstruct right wing ======
     # Mask the cores of the first three diffraction orders and fit a straight
@@ -748,7 +757,7 @@ def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
     fit_prof = np.concatenate([prof_r2[inds3], ext_prof])
 
     # Use np.polyfit for a first estimate of the coefficients.
-    pp_r0 = np.polyfit(fit_ax, fit_prof, 9)
+    pp_r0 = np.polyfit(fit_ax, fit_prof, 11)
     # Robust fit using the polyfit results as a starting point.
     pp_r = _robust_polyfit(fit_ax, fit_prof, pp_r0)
 
@@ -763,13 +772,13 @@ def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
 
     # Interpolate between wing and core profiles for continuity.
     # Get pixels and values around the joint.
-    xs = np.concatenate([jjr-2-np.arange(4), np.arange(4)+jjr+2])
+    xs = np.concatenate([jjr-1-np.arange(3), np.arange(3)+jjr+1])
     ys = newprof[xs]
-    # Cubic spline interpolation over the above pixels.
+    # Interpolation over the above pixels.
     interp = np.polyfit(xs, ys, 5)
-    xnew = np.arange(4)+(jjr-2)
-    # Insert spline interpolation.
-    newprof[(jjr-2):(jjr+2)] = np.polyval(interp, xnew)
+    xnew = np.arange(2)+(jjr-1)
+    # Insert interpolation.
+    newprof[(jjr-1):(jjr+1)] = np.polyval(interp, xnew)
 
     # ====== Reconstruct left wing ======
     # Mask the core of the first order, and fit a third order polynomial to all
@@ -800,7 +809,16 @@ def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
                               10**np.polyval(pp_l, axis_l_pad)[iil2:iil],
                               newprof[jjl:]])
 
-    # Interpolate between core and extended solutions for continuity.
+    # Interpolate between wing and core profiles for continuity.
+    # Get pixels and values around the joint.
+    xs = np.concatenate([jjl-1-np.arange(3), np.arange(3)+jjl+1])
+    ys = newprof[xs]
+    # Interpolation over the above pixels.
+    interp = np.polyfit(xs, ys, 5)
+    xnew = np.arange(2)+(jjl-1)
+    # Insert interpolation.
+    newprof[(jjl-1):(jjl+1)] = np.polyval(interp, xnew)
+    # Interpolate between wing and extended solutions for continuity.
     # Get pixels and values around the joint.
     xs = np.concatenate([np.arange(4)+np.max([0, iil2-9]),
                          np.min([iil2+9, dimy])-np.arange(4)])
@@ -954,8 +972,19 @@ def replace_badpix(clear, badpix_mask, fill_negatives=True, verbose=False):
         endy = np.min([(y+2), dimy])
         startx = np.max([0, (x-2)])
         endx = np.min([dimx, (x+2)])
-        # Replace bad pixel with the median value.
-        clear_r[y, x] = np.nanmedian(clear[starty:endy, startx:endx])
+        # calculate replacement value to be median of surround pixels.
+        rep_val = np.nanmedian(clear[starty:endy, startx:endx])
+        i = 1
+        # if the median value is still bad, widen the surrounding region
+        while np.isnan(rep_val) or rep_val <= 0:
+            starty = np.max([(y-2-i), 0])
+            endy = np.min([(y+2+i), dimy])
+            startx = np.max([0, (x-2-i)])
+            endx = np.min([dimx, (x+2-i)])
+            rep_val = np.nanmedian(clear[starty:endy, startx:endx])
+            i += 1
+        # Replace bad pixel with the new value.
+        clear_r[y, x] = rep_val
 
     return clear_r
 

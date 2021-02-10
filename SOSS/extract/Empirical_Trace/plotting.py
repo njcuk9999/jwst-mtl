@@ -100,10 +100,9 @@ def _plot_wing_reconstruction(profile, ycens, axis_r, prof_r2, axis_l_pad,
     plt.plot(axis_r_pad, np.polyval(pp_r, axis_r_pad), c='red', lw=2,
              ls='--', label='right wing fit')
     if text is not None:
-        plt.text(5, 0.01*np.max(np.log10(newprof)), text, fontsize=14)
+        plt.text(ax_tot[5], np.min(np.log10(newprof)), text, fontsize=14)
 
     plt.xlabel('Spatial Pixel', fontsize=12)
-    plt.xlim(int(axis_l_pad[0]), int(axis_r_pad[-1]))
-    plt.ylim(0, 1.1*np.max(np.log10(newprof)))
+    plt.xlim(int(ax_tot[0]), int(ax_tot[-1]))
     plt.legend(fontsize=12)
     plt.show()
