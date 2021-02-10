@@ -236,9 +236,9 @@ def edge_trigger(image, halfwidth=5, yos=1, verbose=False):
     ytrace_min = np.where(vals != 0, ypix[args], np.nan)
 
     # Scan through a range of trace widths.
-    slopes_best = np.zeros_like(ypix)
-    ytrace_best = np.zeros_like(ypix)
-    widths_best = np.zeros_like(ypix)
+    slopes_best = np.zeros_like(xpix)
+    ytrace_best = np.zeros_like(xpix)
+    widths_best = np.zeros_like(xpix)
     for width in range(18*yos, 27*yos):
 
         # Add the slope and its offset negative.
