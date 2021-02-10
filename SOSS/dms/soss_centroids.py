@@ -167,12 +167,12 @@ def get_uncontam_centroids(image, header=None, mask=None, poly_order=11, verbose
 def test_uncontam_centroids():
     """"""
 
-    filename = os.path.join(PATH, 'SOSS_ref_2D_profile.fits.gz')
+    filename = os.path.join(PATH, 'SOSS_ref_2D_profile_SUBSTRIP256.fits.gz')
 
     image, header = fits.getdata(filename, ext=2, header=True)
     xtrace, ytrace, param = get_uncontam_centroids(image, header=header, verbose=True)
 
-    return xtrace, ytrace
+    return
 
 
 def edge_trigger(image, halfwidth=5, yos=1, verbose=False):
@@ -342,12 +342,17 @@ def get_uncontam_centroids_edgetrig(image, header=None, mask=None, poly_order=11
 def test_uncontam_centroids_edgetrig():
     """"""
 
-    filename = os.path.join(PATH, 'SOSS_ref_2D_profile.fits.gz')
+    filename = os.path.join(PATH, 'SOSS_ref_2D_profile_SUBSTRIP256.fits.gz')
 
     image, header = fits.getdata(filename, ext=2, header=True)
     xtrace, ytrace, width, param = get_uncontam_centroids_edgetrig(image, header=header, verbose=True)
 
-    return xtrace, ytrace
+    filename = '/home/talens-irex/Downloads/stack_256_ng3_DMS.fits'
+
+    image = fits.getdata(filename)
+    xtrace, ytrace, width, param = get_uncontam_centroids_edgetrig(image, verbose=True)
+
+    return
 
 
 def main():
