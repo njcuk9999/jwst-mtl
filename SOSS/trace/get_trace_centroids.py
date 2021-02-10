@@ -163,6 +163,11 @@ def make_trace_mask(stack, tracex, tracey, halfwidth=30, extend_redward=None,
     return mask
 
 
+def make_mask_for_second_order(stack, header=None):
+    ''' Builds a mask to allow detailed fitting for the position of the second order trace.
+    This requires as input the order 1 trace x,y positions such that we can have a first
+    guess as to the position of the second order and masks appropriate regions on the stack.'''
+
 
 def make_mask_vertical(stack, header=None, masked_side = 'blue', native_x = 1700,
                        inverted=False):
@@ -856,10 +861,41 @@ if False:
     plt.plot(x_o1_cv3, y_o1_cv3, label='CV3 - edges')
     plt.plot(x_o1_sim, y_o1_sim, label='simu - edges')
     plt.legend()
+    plt.savefig('/genesis/jwst/userland-soss/loic_review/trace_position_cv3_vs_sim.pdf')
     plt.show()
     sys.exit()
 
+
 if True:
+    # Compare COM vs edge trigger on order 1
+    a = fits.open('/genesis/jwst/userland-soss/loic_review/stack_256_ng3_DMS.fits')
+    im = a[0].data
+
+    verbose = False
+    header = None
+    badpix = None
+    # Call the centroiding algorithm
+    x_com, y_com = get_centerofmass_centroids(im, header=header, badpix=badpix,
+                                            verbose=verbose)
+    # Construct a mask that not only covers the order 1 trace but everything blueward
+    # along the spatial axis. In prevision of making an inversion.
+    mask_o1_inverted = make_trace_mask(im, x_com, y_com, halfwidth=34, extend_blueward=True,
+                                       verbose=verbose, header=header, inverted=True)
+
+    # Make a second pass at order 1 with a different method
+    x_edg, y_edg = get_edge_centroids(im, header=header, badpix=badpix, mask=mask_o1_inverted,
+                                    return_what='edgecomb_xy', polynomial_order=10, verbose=verbose)
+
+    plt.figure(figsize=(10,10))
+    plt.imshow(im, origin='lower', aspect='auto')
+    plt.plot(x_edg, y_edg, label='Edge Trigger', color='pink')
+    plt.plot(x_com, y_com, label='Center of Mass', color='orange')
+    plt.ylim((25,120))
+    plt.legend()
+    plt.savefig('/genesis/jwst/userland-soss/loic_review/edge_vs_com_order1_cv3.pdf')
+    plt.show()
+
+if False:
     # Test the whole chain on CV3 data
     # Get an image of the traces
     a = fits.open('/genesis/jwst/userland-soss/loic_review/stack_256_ng3_DMS.fits')
@@ -867,11 +903,13 @@ if True:
 
     x_o1, y_o1, x_o2, y_o2, x_o3, y_o3 = trace_centroids(im, verbose=False)
 
-    plt.imshow(np.log10(im), origin='bottom')
+    plt.figure(figsize=(10,10))
+    plt.imshow(np.log10(im), origin='lower', aspect='auto')
     plt.plot(x_o1, y_o1)
     plt.plot(x_o2, y_o2)
     plt.plot(x_o3, y_o3)
     plt.ylim((0,256))
+    plt.savefig('/genesis/jwst/userland-soss/loic_review/edgecentroid_oncv3.pdf')
     plt.show()
 
 if False:

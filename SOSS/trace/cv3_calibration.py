@@ -190,6 +190,5 @@ def generate_calibration():
     return res2.x
 
 # RUN!
-
-a = generate_calibration()
+# a = generate_calibration()
 
