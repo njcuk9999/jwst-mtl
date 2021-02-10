@@ -8,7 +8,7 @@ import numpy as np
 from astropy.io import fits
 
 
-PATH = '/path/to/files'
+PATH = '/Users/michaelradica/Documents/School/Ph.D./Research/SOSS/Extraction/Input_Files/SOSS_Ref_Files/'
 
 
 class RefTraceTable:
@@ -112,9 +112,9 @@ class Ref2dWave(Ref2dProfile):
     def __init__(self, filenames=None):
 
         if filenames is None:
-            filenames = {'FULL': 'SOSS_ref_2D_profile_FULL.fits.gz',
-                         'SUBSTRIP96': 'SOSS_ref_2D_profile_SUBSTRIP96.fits.gz',
-                         'SUBSTRIP256': 'SOSS_ref_2D_profile_SUBSTRIP256.fits.gz'}
+            filenames = {'FULL': 'SOSS_ref_2D_wave_FULL.fits.gz',
+                         'SUBSTRIP96': 'SOSS_ref_2D_wave_SUBSTRIP96.fits.gz',
+                         'SUBSTRIP256': 'SOSS_ref_2D_wave_SUBSTRIP256.fits.gz'}
 
         Ref2dProfile.__init__(self, filenames=filenames)
 
