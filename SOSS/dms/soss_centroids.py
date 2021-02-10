@@ -8,7 +8,7 @@ import numpy as np
 
 from astropy.io import fits
 
-from .soss_utils import zero_roll, robust_polyfit, get_image_dim
+from soss_utils import zero_roll, robust_polyfit, get_image_dim
 
 from matplotlib import colors
 import matplotlib.pyplot as plt
