@@ -414,15 +414,14 @@ def get_extract_params():
 def get_ref_file_args(o1frame):
     '''
     '''
-    #path = '/Users/michaelradica/Documents/GitHub/jwst-mtl/SOSS/'
-    path = '/Users/michaelradica/Documents/School/Ph.D./Research/SOSS/Extraction/Input_Files/'
+
+    path = '/Users/michaelradica/Documents/School/Ph.D./Research/SOSS/Extraction/Input_Files/SOSS_Ref_Files/'
     # List of orders to consider in the extraction
     order_list = [1]
 
     # Wavelength solution
     wave_maps = []
-    #wave_maps.append(fits.getdata(path+"extract/Ref_files/wavelengths_m1.fits"))
-    wavemap_file = soss_read_refs.Ref2dWave(path+'SOSS_ref_2D_wave.fits')
+    wavemap_file = soss_read_refs.Ref2dWave()
     wave_maps.append(wavemap_file(order=1, subarray='SUBSTRIP256', native=True))
 
     # Spatial profiles

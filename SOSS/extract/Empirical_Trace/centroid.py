@@ -19,9 +19,6 @@ from SOSS.extract.empirical_trace import plotting as plotting
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
-# hack to get around the fact that relative paths are constantly messing up atm
-path = '/Users/michaelradica/Documents/School/Ph.D./Research/SOSS/Extraction/Input_Files/'
-
 
 def _do_emcee(xref, yref, xdat, ydat, showprogress=False):
     '''Calls the emcee package to preform an MCMC determination of the best
@@ -186,7 +183,7 @@ def get_ref_centroids(atthesex=None, subarray='SUBSTRIP256', order=1):
         raise ValueError('Unknown subarray identifier.')
 
     # Open trace table reference file.
-    ttab_file = soss_read_refs.RefTraceTable(path+'SOSS_ref_trace_table.fits')
+    ttab_file = soss_read_refs.RefTraceTable()
     # Get first order centroids on subarray.
     xcen_ref = ttab_file('X', subarray=subarray, order=order)[1][::-1]
     ycen_ref = ttab_file('Y', subarray=subarray, order=order)[1][::-1]
