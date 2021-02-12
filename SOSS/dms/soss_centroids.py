@@ -311,7 +311,7 @@ def get_uncontam_centroids_edgetrig(image, header=None, mask=None, poly_order=11
     ytrace_max, ytrace_min, ytrace_comb = edge_trigger(image_masked, halfwidth=halfwidth, yos=yos, verbose=verbose)
 
     # Compute an estimate of the trace width.
-    tracewidth = np.nanmedian(np.abs(ytrace_max - ytrace_min))
+    tracewidth = np.abs(ytrace_min - ytrace_max)
 
     # Use different y-positions depending on the mode parameter.
     if mode == 'maxedge':
