@@ -267,7 +267,7 @@ def edge_trigger(image, halfwidth=5, yos=1, verbose=False):
         plt.show()
         plt.close()
 
-    return ytrace_max, ytrace_min, ytrace_best
+    return ytrace_max, ytrace_min, ytrace_best, widths_best
 
 
 def get_uncontam_centroids_edgetrig(image, header=None, mask=None, poly_order=11,
@@ -308,10 +308,7 @@ def get_uncontam_centroids_edgetrig(image, header=None, mask=None, poly_order=11
     image_masked = np.where(mask | ~refpix_mask, np.nan, image)
 
     # Use edge trigger to compute the edges and center of the trace.
-    ytrace_max, ytrace_min, ytrace_comb = edge_trigger(image_masked, halfwidth=halfwidth, yos=yos, verbose=verbose)
-
-    # Compute an estimate of the trace width.
-    tracewidth = np.abs(ytrace_min - ytrace_max)
+    ytrace_max, ytrace_min, ytrace_best, widths_best = edge_trigger(image_masked, halfwidth=halfwidth, yos=yos, verbose=verbose)
 
     # Use different y-positions depending on the mode parameter.
     if mode == 'maxedge':
@@ -321,7 +318,7 @@ def get_uncontam_centroids_edgetrig(image, header=None, mask=None, poly_order=11
     elif mode == 'mean':
         ytrace = (ytrace_min + ytrace_max)/2.
     elif mode == 'combined':
-        ytrace = ytrace_comb
+        ytrace = ytrace_best
     else:
         raise ValueError('Unknow mode: {}'.format(mode))
 
@@ -336,7 +333,7 @@ def get_uncontam_centroids_edgetrig(image, header=None, mask=None, poly_order=11
     if verbose is True:
         _plot_centroid(image_masked, xtrace, ytrace)
 
-    return xtrace, ytrace, tracewidth, param
+    return xtrace, ytrace, widths_best, param
 
 
 def test_uncontam_centroids_edgetrig():
