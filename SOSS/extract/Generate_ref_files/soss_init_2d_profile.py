@@ -77,7 +77,7 @@ def main():
             hdu.header['ORDER'] = (m, 'Spectral order.')
             hdu.header['OVERSAMP'] = (oversample, 'Pixel oversampling.')
             hdu.header['PADDING'] = (padding, 'Native pixel-size padding around the image.')
-            hdu.header['EXTNAME'] = 'ORDER_{}'.format(m)
+            hdu.header['EXTNAME'] = 'ORDER'
             hdu.header['EXTVER'] = m
             hdul.append(hdu)
 

@@ -102,7 +102,7 @@ def main():
 
         hdu = fits.BinTableHDU.from_columns(cols)
         hdu.header['ORDER'] = (1, 'Spectral order.')
-        hdu.header['EXTNAME'] = 'ORDER_1'
+        hdu.header['EXTNAME'] = 'ORDER'
         hdu.header['EXTVER'] = 1
         hdul.append(hdu)
 
@@ -121,7 +121,7 @@ def main():
 
         hdu = fits.BinTableHDU.from_columns(cols)
         hdu.header['ORDER'] = (2, 'Spectral order.')
-        hdu.header['EXTNAME'] = 'ORDER_2'
+        hdu.header['EXTNAME'] = 'ORDER'
         hdu.header['EXTVER'] = 2
         hdul.append(hdu)
 
@@ -140,7 +140,7 @@ def main():
 
         hdu = fits.BinTableHDU.from_columns(cols)
         hdu.header['ORDER'] = (3, 'Spectral order.')
-        hdu.header['EXTNAME'] = 'ORDER_3'
+        hdu.header['EXTNAME'] = 'ORDER'
         hdu.header['EXTVER'] = 3
         hdul.append(hdu)
 
