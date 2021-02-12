@@ -30,7 +30,7 @@ class RefTraceTable:
             raise ValueError('Unknown subarray: {}'.format(subarray))
 
         filename = os.path.join(PATH, self.filenames[subarray])
-        trace_table, header, = fits.getdata(filename, header=True, ext=order)
+        trace_table, header, = fits.getdata(filename, header=True, extname='ORDER', extver=order)
 
         if wavelengths is None:
             wavelengths = trace_table['WAVELENGTH']
@@ -82,7 +82,7 @@ class Ref2dProfile:
 
         # Read the reference file.
         filename = os.path.join(PATH, self.filenames[subarray])
-        ref_2d_profile, header, = fits.getdata(filename, header=True, ext=order)
+        ref_2d_profile, header, = fits.getdata(filename, header=True, extname='ORDER', extver=order)
 
         # Read necessary header information.
         ovs = header['OVERSAMP']
