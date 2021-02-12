@@ -256,6 +256,7 @@ def edge_trigger(image, halfwidth=5, yos=1, verbose=False):
 
     # Set the y position to NaN if the best slope was zero.
     ytrace_best = np.where(slopes_best != 0, ytrace_best + widths_best/2., np.nan)
+    widths_best = np.where(slopes_best != 0, widths_best, np.nan)
 
     if verbose:
 
