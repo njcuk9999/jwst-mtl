@@ -266,7 +266,7 @@ class _BaseOverlap:
                         & (~np.array(mask_p)).all(axis=0))
 
         # Apply this new global mask to each orders
-        mask_ord = np.any([mask_lam, global_mask[None, :, :]], axis=0)
+        mask_ord = (mask_lam | global_mask[None, :, :])
 
         return global_mask, mask_ord
 

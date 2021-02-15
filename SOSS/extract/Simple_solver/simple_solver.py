@@ -23,9 +23,6 @@ from SOSS.extract.simple_solver import plotting as plotting
 
 warnings.simplefilter(action='ignore', category=RuntimeWarning)
 
-# local path to reference files.
-path = '/Users/michaelradica/Documents/School/Ph.D./Research/SOSS/Extraction/Input_Files/'
-
 
 def _do_emcee(xref, yref, xdat, ydat, subarray='SUBSTRIP256',
               showprogress=False):
@@ -339,11 +336,11 @@ def simple_solver(clear, verbose=False, save_to_file=True):
     '''
 
     # Open 2D trace profile reference file.
-    ref_trace_file = soss_read_refs.Ref2dProfile(path+'SOSS_ref_2D_profile.fits')
+    ref_trace_file = soss_read_refs.Ref2dProfile()
     # Open trace table reference file.
-    ttab_file = soss_read_refs.RefTraceTable(path+'SOSS_ref_trace_table.fits')
+    ttab_file = soss_read_refs.RefTraceTable()
     # Get first order centroids (in DMS coords).
-    wavemap_file = soss_read_refs.Ref2dWave(path+'SOSS_ref_2D_wave.fits')
+    wavemap_file = soss_read_refs.Ref2dWave()
 
     # Determine correct subarray dimensions and offsets.
     dimy, dimx = np.shape(clear)
