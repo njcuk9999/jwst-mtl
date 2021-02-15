@@ -50,7 +50,7 @@ group = 'General'
 # Define the user config file
 Consts.add('USER_CONFIG_FILE', value=None, dtype=str,
            source=__NAME__, user=False, argument=True, group=group,
-           description='Define the user config file', command='--config')
+           description='Define the user config file', command='--uconfig')
 
 # Define the package name
 Consts.add('PACKAGE_NAME', value=base.PACKAGE, dtype=str,
@@ -115,8 +115,14 @@ group = 'instrument'
 Consts.add('PIX_SCALE', value=0.065, dtype=float, units=uu.arcsec / uu.pixel,
            source=__NAME__, user=False, argument=False, group=group,
            description='Define the pixel scale (expected to be very close '
-                       'to 0.065 arcsec/pixel)')
+                       'to 0.065 arcsec/pixel)',
+           path='instrument.pix_scale')
 
+# Define all allowed filters
+Consts.add('ALL_FILTERS', value=['F277W', 'F380M', 'F430M', 'F480M'],
+           dtype=list, source=__NAME__, user=False, argument=False,
+           group=group,
+           description='Define all allowed filters')
 
 # =============================================================================
 #   Simulation constants

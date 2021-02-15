@@ -53,7 +53,8 @@ class Constant:
                  options: Union[None, list] = None,
                  check: bool = True,
                  command: Union[None, List[str], str] = None,
-                 units: Union[None, Any] = None):
+                 units: Union[None, Any] = None,
+                 path: Union[str, None] = None):
         """
         Construct a constant file
 
@@ -99,6 +100,7 @@ class Constant:
         self.options = options
         self.check = check
         self.units = units
+        self.path = path
         # deal with commands (for command line arguments)
         self.command = command
         self.__list_commands()
@@ -122,6 +124,7 @@ class Constant:
         kwargs['check'] = kwargs.get('check', bool(self.check))
         kwargs['command'] = kwargs.get('command', copy.deepcopy(self.command))
         kwargs['units'] = kwargs.get('units', copy.deepcopy(self.units))
+        kwargs['path'] = kwargs.get('path', copy.deepcopy(self.path))
         # return new instances of Constant
         return Constant(**kwargs)
 

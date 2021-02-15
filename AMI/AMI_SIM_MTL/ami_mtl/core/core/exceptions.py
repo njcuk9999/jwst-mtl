@@ -168,6 +168,37 @@ class ImportException(Exception):
         return '{0}: {1}'.format(self.__name__, self.__str__())
 
 
+class ObservationException(Exception):
+    def __init__(self, message: str, kind: str,
+                 instance: Union[None, object] = None,
+                 funcname: Union[None, str] = None):
+        """
+        Construct a Observation Exception instance
+
+        for use with raise ObservationException(...)
+
+        :param message: a string to explain the exception
+        :param kind: the kind of error that occurred
+        :param instance: object, a constants instance or None
+        :param funcname: the function name that error was raise in
+        """
+        self.constant = instance
+        self.kind = kind
+        self.message = message
+        self.funcname = funcname
+
+    def __str__(self):
+        """
+        Return a string representation of the Constant Exception
+        :return:
+        """
+        emsg = '[{0}] {1}'.format(self.kind, self.message)
+        emsg += '\n\tFunc: {0}'.format(self.funcname)
+        return emsg
+
+    def __log__(self):
+        return '{0}: {1}'.format(self.__name__, self.__str__())
+
 # =============================================================================
 # Start of code
 # =============================================================================
