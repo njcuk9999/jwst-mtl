@@ -377,6 +377,8 @@ def _update_params(params: ParamDict, properties: Dict[str, Any],
             if isinstance(value, dict):
                 if rkey in value:
                     value = value[rkey]
+        if isinstance(value, dict):
+            value = None
         # only update value if not None
         if value is not None:
             # set param and source

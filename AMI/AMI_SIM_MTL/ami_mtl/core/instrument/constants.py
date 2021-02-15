@@ -119,7 +119,8 @@ Consts.add('PIX_SCALE', value=0.065, dtype=float, units=uu.arcsec / uu.pixel,
            path='instrument.pix_scale')
 
 # Define all allowed filters
-Consts.add('ALL_FILTERS', value=['F277W', 'F380M', 'F430M', 'F480M'],
+FILTERS = ['F277W', 'F380M', 'F430M', 'F480M']
+Consts.add('ALL_FILTERS', value=FILTERS,
            dtype=list, source=__NAME__, user=False, argument=False,
            group=group,
            description='Define all allowed filters')
@@ -128,118 +129,143 @@ Consts.add('ALL_FILTERS', value=['F277W', 'F380M', 'F430M', 'F480M'],
 #   Simulation constants
 # =============================================================================
 group = 'Simulation'
-# Define whether to add the jitter
-# TODO: Note used
-Consts.add('ADD_JITTER', value=True, dtype=bool,
-           source=__NAME__, user=True, argument=True, group=group,
-           description='Define whether to add the jitter',
-           command='--add_jitter')
-
-# Define whether to add the jitter
-# TODO: Note used
-Consts.add('JITTER_RMS', value=7.0, dtype=float,
-           source=__NAME__, user=True, argument=True, group=group,
-           description='Define the jitter rms level [mas]',
-           command='--jitter_rms')
-
 # Define the pupil mask (for use when recomputing PSF)
 Consts.add('PUPIL_MASK', value='MASK_NRM', dtype=str,
            source=__NAME__, user=True, argument=False,
            group=group,
            description='Define the pupil mask (for use when recomputing PSF)')
 
-# Define location and filename of PSF file to use
-Consts.add('PSF', value=None, dtype=str, source=__NAME__, user=True,
-           argument=True, group=group,
-           description='Define location and filename of PSF file to use',
-           command=['--psf'])
+# -----------------------------------------------------------------------------
+# psf filter constants (depends on which filters we want)
+for _filter in FILTERS:
+    # Define the psf {FILTER} location
+    Consts.add('PSF_{0}_PATH'.format(_filter), value=None, dtype=str,
+               source=__NAME__, user=False, argument=False, group=group,
+               description='Define the {0} psf location'.format(_filter),
+               path='simulation.psf.{0}.path'.format(_filter))
+    # Define whether to recompute filter {FILTER}
+    Consts.add('PSF_{0}_RECOMPUTE'.format(_filter), value=False, dtype=bool,
+               source=__NAME__, user=False, argument=False, group=group,
+               description='Define the {0} psf location'.format(_filter),
+               path='simulation.psf.{0}.recompute_psf'.format(_filter))
 
 # Define the native image size (FOV in pixels)
 Consts.add('FOV_PIXELS', value=79, dtype=int, source=__NAME__,
            user=False, argument=False, group=group,
-           description='Define the native image size (FOV in pixels)')
+           description='Define the native image size (FOV in pixels)',
+           path='simulation.fov_pixels')
 
 # Define the oversampling factor
 Consts.add('OVERSAMPLE_FACTOR', value=11, dtype=int, source=__NAME__,
            user=False, argument=False, group=group,
-           description='Define the oversampling factor')
-
-# Define whether to recompute PSF images, if False uses supplied ones
-Consts.add('RECOMPUTE_PSF', value=False, dtype=bool, source=__NAME__,
-           user=True, argument=False, group=group,
-           description='Define whether to recompute PSF images, if False uses '
-                       'supplied ones')
+           description='Define the oversampling factor',
+           path='simulation.oversample')
 
 # =============================================================================
 #   AMI-SIM constants
 # =============================================================================
 group = 'ami-smi'
+# Define switch whether to use ami-sim
+Consts.add('AMISIM-USE', value=True, dtype=bool, source=__NAME__,
+           user=True, argument=False, group=group,
+           description='Define switch whether to use ami-sim',
+           path='ami-sim.use')
+
 # Define whether to produce up-the-ramp images
 Consts.add('AMISMI-UPTHERAMP', value=False, dtype=bool, source=__NAME__,
            user=True, argument=False, group=group,
-           description='Define whether to produce up-the-ramp images')
+           description='Define whether to produce up-the-ramp images',
+           path='ami-sim.uptheramp')
 
 # Define whether to create calibrator (passed to ami-sim)
 Consts.add('AMISMI-CREATE_CALIBRATOR', value=0, dtype=int, source=__NAME__,
            options=[0, 1], user=False, argument=False, group=group,
            description='Define whether to create calibrator '
-                       '(passed to ami-sim)')
+                       '(passed to ami-sim)',
+           path='ami-sim.create_calibrator')
 
 # Define whether to overwrite AMI-SIM outputs
 Consts.add('AMISIM-OVERWRITE', value=1, dtype=int, source=__NAME__,
            options=[0, 1], user=False, argument=False, group=group,
-           description='Define whether to overwrite AMI-SIM outputs')
+           description='Define whether to overwrite AMI-SIM outputs',
+           path='ami-sim.overwrite')
 
 # Define whether to use uniform flat field (passed to ami-sim)
 Consts.add('AMISIM-UNIFORM_FLATFIELD', value=0, dtype=int, source=__NAME__,
            options=[0, 1], user=False, argument=False, group=group,
            description='Define whether to use uniform flat field '
-                       '(passed to ami-sim)')
+                       '(passed to ami-sim)',
+           path='ami-sim.uniform_flatfield')
 
 # Define whether to overwrite flat-field (passed to ami-sim)
 Consts.add('AMISIM-OVERWRITE_FLATFIELD', value=0, dtype=int, source=__NAME__,
            options=[0, 1], user=False, argument=False, group=group,
            description='Define whether to overwrite flat-field '
-                       '(passed to ami-sim)')
+                       '(passed to ami-sim)',
+           path='ami-sim.overwrite_flatfield')
 
 # Define the random seed ami-sim uses
 Consts.add('AMISIM-RANDOM_SEED', value=1, dtype=int, source=__NAME__,
            user=False, argument=False, group=group,
-           description='Define the random seed ami-sim uses')
+           description='Define the random seed ami-sim uses',
+           path='ami-sim.random-seed')
 
 # Define whether ami-sim is verbose
 Consts.add('AMISIM-VERBOSE', value=1, dtype=int, source=__NAME__,
            options=[0, 1], user=False, argument=False, group=group,
-           description='Define whether ami-sim is verbose')
+           description='Define whether ami-sim is verbose',
+           path='ami-sim.verbose')
 
 # Define whether ami-sim applies jitter
 Consts.add('AMISIM-APPLY_JITTER', value=0, dtype=int, source=__NAME__,
            options=[0, 1], user=False, argument=False, group=group,
-           description='Define whether ami-sim applies jitter')
+           description='Define whether ami-sim applies jitter',
+           path='ami-sim.apply_jitter')
 
 # Define whether ami-sim applies dither
 Consts.add('AMISIM-APPLY_DITHER', value=0, dtype=int, source=__NAME__,
            options=[0, 1], user=False, argument=False, group=group,
-           description='Define whether ami-sim applies dither')
+           description='Define whether ami-sim applies dither',
+           path='ami-sim.apply_dither')
 
 # Define whether ami-sim includes detection noise
 Consts.add('AMISIM-INCLUDE_DET_NOISE', value=1, dtype=int, source=__NAME__,
            options=[0, 1], user=False, argument=False, group=group,
-           description='Define whether ami-sim includes detection noise')
+           description='Define whether ami-sim includes detection noise',
+           path='ami-sim.include-det-noise')
 
 # Define where ami-sim is installed (None means already in python path)
 Consts.add('AMISIM-INSTALL', value=None, dtype=str, source=__NAME__,
            user=True, argument=False, group=group,
            description='Define where ami-sim is installed (None means '
-                       'already in python path)')
+                       'already in python path)',
+           path='ami-sim.install-dir')
 
 # Define the ami-sim package to run
 Consts.add('AMISIM-PACKAGE', value='ami_sim.driver_scene', dtype=str,
            source=__NAME__, user=False, argument=False, group=group,
-           description='Define the ami-sim package to run')
+           description='Define the ami-sim package to run',
+           path='ami-sim.package')
 
 # Define any other ami-sim packages that need importing
-Consts.add('AMISIM-MODULES', value='ami_sim/pyami', dtype=str,
+Consts.add('AMISIM-MODULES', value='ami_sim.pyami', dtype=str,
            source=__NAME__, user=False, argument=False, group=group,
-           description='Define any other ami-sim packages that need importing')
+           description='Define any other ami-sim packages that need importing',
+           path='ami-sim.modules')
+
+# =============================================================================
+#   Mirage constants
+# =============================================================================
+
+# =============================================================================
+#   DMS constants
+# =============================================================================
+
+# =============================================================================
+#   AMICAL constants
+# =============================================================================
+
+# =============================================================================
+#   IMPLANEIA constants
+# =============================================================================
 

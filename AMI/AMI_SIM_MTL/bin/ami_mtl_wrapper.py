@@ -84,7 +84,7 @@ def __main__(params):
     # =========================================================================
     # deal with wrapper file
     # =========================================================================
-    simulations = wrap.load_simulations(params, params['WCONFIG'])
+    simulations = wrap.load_simulations(params, str(params['WCONFIG']))
 
     # =========================================================================
     # Simulation section
@@ -118,10 +118,11 @@ if __name__ == "__main__":
 
     params = param_functions.setup(lconsts, dict(), log=log,
                                    desc=__DESCRIPTION__, name=__NAME__)
-    simulations = wrap.load_simulations(params, params['WCONFIG'])
+    simulations = wrap.load_simulations(params, str(params['WCONFIG']))
 
     sim1 = simulations[0]
 
+    # TODO: write code to use simulations / targets / calibrators / companions
 
     # run main code
     #ll = main()
