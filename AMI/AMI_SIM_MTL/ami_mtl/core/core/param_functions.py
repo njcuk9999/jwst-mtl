@@ -911,6 +911,10 @@ class ParamDict(CaseInsensitiveDict):
                 pp.set_instance(key, self.instances[key])
             else:
                 pp.set_instance(key, None)
+
+        # deal with setting other properties
+        # log --> shallow copy
+        pp.log = self.log
         # return new param dict filled
         return pp
 

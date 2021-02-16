@@ -54,7 +54,8 @@ class Constant:
                  check: bool = True,
                  command: Union[None, List[str], str] = None,
                  units: Union[None, Any] = None,
-                 path: Union[str, None] = None):
+                 path: Union[str, None] = None,
+                 apt: Union[str, None] = None):
         """
         Construct a constant file
 
@@ -70,21 +71,22 @@ class Constant:
         :param group: the group this constant belongs to
         :param description: the descriptions to use for the help file /
                             user config file
+        :param options: if set a list of options that are allowed for this
+                        constant
         :param check: whether to check dtype/source/min/max etc
-        :pararm command: string or list or strings, the commands to use as
+        :param command: string or list or strings, the commands to use as
                          arguments
-
-        :type name: str
-        :type value: object
-        :type dtype: Union[None, type]
-        :type source: Union[None, str]
-        :type user: bool
-        :type argument: bool
-        :type required: bool
-        :type group: Union[None, str]
-        :type description: Union[None, str]
-        :type check: bool
-        :type command: Union[None, List[str], str]
+        :param units: units associated with this constant
+        :param path: str, if set this allows loading from a yaml file - this
+                     is the keys in the parameters yaml constant
+                     i.e.
+                     params:
+                        const1:
+                            const2:
+                     would have path = "params.const1.const2"
+        :param apt: str, if set this allows loading from apt xml - this is the
+                    key by which we should expect this constant (and updates
+                    the parameter dictionary)
         """
         self.name = name
         self.value = value
@@ -101,6 +103,7 @@ class Constant:
         self.check = check
         self.units = units
         self.path = path
+        self.apt = apt
         # deal with commands (for command line arguments)
         self.command = command
         self.__list_commands()
@@ -125,6 +128,7 @@ class Constant:
         kwargs['command'] = kwargs.get('command', copy.deepcopy(self.command))
         kwargs['units'] = kwargs.get('units', copy.deepcopy(self.units))
         kwargs['path'] = kwargs.get('path', copy.deepcopy(self.path))
+        kwargs['apt'] = kwargs.get('apt', copy.deepcopy(self.apt))
         # return new instances of Constant
         return Constant(**kwargs)
 

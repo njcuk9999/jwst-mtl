@@ -13,11 +13,18 @@ import logging
 from pathlib import Path
 from typing import Union
 
+from ami_mtl.core.core import exceptions
 
 # =============================================================================
 # Define variables
 # =============================================================================
 NO_THEME = [False, 'False', 'OFF', 'off', 'Off', 'None']
+# get exceptions
+DrsException = exceptions.DrsException
+LogException = exceptions.LogException
+
+
+
 
 # =============================================================================
 # Define functions
@@ -42,6 +49,8 @@ class Log:
         self.logger.setLevel(self.baselevel)
         # add debug level names
         self.add_debug_levels()
+        # get any custom exceptions
+        self.python_exception = LogException
         # set the log format
         self.theme = kwargs.get('theme', None)
         self.confmt = ConsoleFormat(theme=self.theme)
@@ -211,7 +220,11 @@ class Log:
 
         :return:
         """
+        # log error
         self.logger.error(*args, **kwargs)
+        kwargs['kind'] = 'error'
+        if kwargs.get('raise_exception', True):
+            self.raise_exception(*args, **kwargs)
 
     def critical(self, *args, **kwargs):
         """
@@ -220,6 +233,9 @@ class Log:
         :return:
         """
         self.logger.critical(*args, **kwargs)
+        kwargs['kind'] = 'critical'
+        if kwargs.get('raise_exception', True):
+            self.raise_exception(*args, **kwargs)
 
     def exception(self, *args, **kwargs):
         """
@@ -228,6 +244,9 @@ class Log:
         :return:
         """
         self.logger.exception(*args, **kwargs)
+        kwargs['kind'] = 'exception'
+        if kwargs.get('raise_exception', True):
+            self.raise_exception(*args, **kwargs)
 
     def empty(self, message, _colour=None, *args, **kwargs):
         """
@@ -278,6 +297,18 @@ class Log:
             # if name matches with required name then update level
             if 'CONSOLE' == hname.upper():
                 handler.setFormatter(self.confmt)
+
+    def raise_exception(self, *args, **kwargs):
+        # raise exception
+        msg = str(args[0])
+        funcname = kwargs.get('funcname', None)
+        exception = kwargs.get('exception', self.python_exception)
+        kind = kwargs.get('kind', 'Unknown')
+        # get exception
+        if issubclass(exception, DrsException):
+            raise exception(msg, kind=kind, funcname=funcname)
+        elif issubclass(exception, Exception):
+            raise exception(msg)
 
 
 # Custom formatter

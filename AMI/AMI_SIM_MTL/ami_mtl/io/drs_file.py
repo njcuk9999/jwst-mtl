@@ -117,10 +117,10 @@ def write_fits(params: ParamDict, filename: Union[str, Path],
     filename = str(filename)
     # try to write to disk
     try:
-        with fits.open(filename):
-            primary = fits.PrimaryHDU(data=data, header=header)
-            hdulist = fits.HDUList([primary])
-            hdulist.writeto(filename, overwrite=overwrite)
+        primary = fits.PrimaryHDU(data=data, header=header)
+        hdulist = fits.HDUList([primary])
+        hdulist.writeto(filename, overwrite=overwrite)
+        hdulist.close()
     except Exception as e:
         emsg = 'WriteFits Error {0}: {1}'
         eargs = [type(e), str(e)]

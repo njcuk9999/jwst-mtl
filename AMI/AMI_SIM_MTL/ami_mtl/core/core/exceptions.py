@@ -24,7 +24,7 @@ __NAME__ = 'core.core.exceptions.py'
 # =============================================================================
 # Define classes
 # =============================================================================
-class ConstantException(Exception):
+class DrsException(Exception):
     def __init__(self, message: str, kind: str,
                  instance: Union[None, object] = None,
                  funcname: Union[None, str] = None):
@@ -38,7 +38,7 @@ class ConstantException(Exception):
         :param instance: object, a constants instance or None
         :param funcname: the function name that error was raise in
         """
-        self.__name__ = 'ConstantException'
+        self.__name__ = 'DrsException'
         self.constant = instance
         self.kind = kind
         self.message = message
@@ -57,22 +57,58 @@ class ConstantException(Exception):
         return '{0}: {1}'.format(self.__name__, self.__str__())
 
 
-class PathException(Exception):
+class LogException(DrsException):
+    def __init__(self, message: str, kind: str,
+                 instance: Union[None, object] = None,
+                 funcname: Union[None, str] = None):
+        """
+        Construct an Exception instance
+
+        for use with raise ConstantException(...)
+
+        :param message: a string to explain the exception
+        :param kind: the kind of error that occurred
+        :param instance: object, a constants instance or None
+        :param funcname: the function name that error was raise in
+        """
+        super().__init__(message, kind, instance, funcname)
+        self.__name__ = 'LogException'
+
+
+class ConstantException(DrsException):
+    def __init__(self, message: str, kind: str,
+                 instance: Union[None, object] = None,
+                 funcname: Union[None, str] = None):
+        """
+        Construct an Exception instance
+
+        for use with raise ConstantException(...)
+
+        :param message: a string to explain the exception
+        :param kind: the kind of error that occurred
+        :param instance: object, a constants instance or None
+        :param funcname: the function name that error was raise in
+        """
+        super().__init__(message, kind, instance, funcname)
+        self.__name__ = 'ConstantException'
+
+
+class PathException(DrsException):
     def __init__(self, path: Union[str, Path],
                  exception: Union[None, Exception] = None,
                  funcname: Union[str, None] = None,
                  message: Union[str, None] = None):
         """
-        Create a Path Exception
+        Construct an Exception instance
 
-        for use with raise PathException(...)
+        for use with raise ConstantException(...)
 
-        :param path: str, the path to the file
-        :param exception: the exception that was caused and then raised this
-                          (can be None)
+        :param message: a string to explain the exception
+        :param kind: the kind of error that occurred
+        :param instance: object, a constants instance or None
         :param funcname: the function name that error was raise in
-        :param message: if set this is the error that is printed
         """
+        super().__init__(message, '', None, funcname)
         self.__name__ = 'PathException'
         self.exception = exception
         self.path = path
@@ -96,32 +132,79 @@ class PathException(Exception):
             emsg += '\n\tFunc: {0}'.format(self.funcname)
         return emsg
 
-    def __log__(self):
-        return '{0}: {1}'.format(self.__name__, self.__str__())
+
+class ParamDictException(DrsException):
+    def __init__(self, message: str, kind: str,
+                 instance: Union[None, object] = None,
+                 funcname: Union[None, str] = None):
+        """
+        Construct an Exception instance
+
+        for use with raise ConstantException(...)
+
+        :param message: a string to explain the exception
+        :param kind: the kind of error that occurred
+        :param instance: object, a constants instance or None
+        :param funcname: the function name that error was raise in
+        """
+        super().__init__(message, kind, instance, funcname)
+        self.__name__ = 'ParamDictException'
 
 
-class ParamDictException(Exception):
+class ImportException(DrsException):
+    def __init__(self, message: str, kind: str,
+                 instance: Union[None, object] = None,
+                 funcname: Union[None, str] = None):
+        """
+        Construct an Exception instance
+
+        for use with raise ConstantException(...)
+
+        :param message: a string to explain the exception
+        :param kind: the kind of error that occurred
+        :param instance: object, a constants instance or None
+        :param funcname: the function name that error was raise in
+        """
+        super().__init__(message, kind, instance, funcname)
+        self.__name__ = 'ImportException'
+
+
+class ObservationException(DrsException):
+    def __init__(self, message: str, kind: str,
+                 instance: Union[None, object] = None,
+                 funcname: Union[None, str] = None):
+        """
+        Construct an Exception instance
+
+        for use with raise ConstantException(...)
+
+        :param message: a string to explain the exception
+        :param kind: the kind of error that occurred
+        :param instance: object, a constants instance or None
+        :param funcname: the function name that error was raise in
+        """
+        super().__init__(message, kind, instance, funcname)
+        self.__name__ = 'ObservationException'
+
+
+class XMLException(DrsException):
     def __init__(self, message: str, kind: str,
                  instance: Union[None, object] = None,
                  funcname: Union[None, str] = None,
-                 exception: Union[None, Exception] = None):
+                 filename: Union[None, str] = None):
         """
-        Construct a Parameter Dictionary Exception instance
+        Construct an Exception instance
 
-        for use with raise ParamDictException(...)
+        for use with raise ConstantException(...)
 
         :param message: a string to explain the exception
         :param kind: the kind of error that occurred
         :param instance: object, a constants instance or None
         :param funcname: the function name that error was raise in
-        :param exception: store the exception if given
         """
-        self.__name__ = 'ParamDictException'
-        self.constant = instance
-        self.kind = kind
-        self.message = message
-        self.funcname = funcname
-        self.exception = exception
+        super().__init__(message, kind, instance, funcname)
+        self.__name__ = 'XMLException'
+        self.filename = filename
 
     def __str__(self):
         """
@@ -129,75 +212,10 @@ class ParamDictException(Exception):
         :return:
         """
         emsg = '[{0}] {1}'.format(self.kind, self.message)
+        emsg += '\n\tFilename: {0}'.format(self.filename)
         emsg += '\n\tFunc: {0}'.format(self.funcname)
+
         return emsg
-
-    def __log__(self):
-        return '{0}: {1}'.format(self.__name__, self.__str__())
-
-
-class ImportException(Exception):
-    def __init__(self, message: str, kind: str,
-                 instance: Union[None, object] = None,
-                 funcname: Union[None, str] = None):
-        """
-        Construct a Import Exception instance
-
-        for use with raise ImportException(...)
-
-        :param message: a string to explain the exception
-        :param kind: the kind of error that occurred
-        :param instance: object, a constants instance or None
-        :param funcname: the function name that error was raise in
-        """
-        self.constant = instance
-        self.kind = kind
-        self.message = message
-        self.funcname = funcname
-
-    def __str__(self):
-        """
-        Return a string representation of the Constant Exception
-        :return:
-        """
-        emsg = '[{0}] {1}'.format(self.kind, self.message)
-        emsg += '\n\tFunc: {0}'.format(self.funcname)
-        return emsg
-
-    def __log__(self):
-        return '{0}: {1}'.format(self.__name__, self.__str__())
-
-
-class ObservationException(Exception):
-    def __init__(self, message: str, kind: str,
-                 instance: Union[None, object] = None,
-                 funcname: Union[None, str] = None):
-        """
-        Construct a Observation Exception instance
-
-        for use with raise ObservationException(...)
-
-        :param message: a string to explain the exception
-        :param kind: the kind of error that occurred
-        :param instance: object, a constants instance or None
-        :param funcname: the function name that error was raise in
-        """
-        self.constant = instance
-        self.kind = kind
-        self.message = message
-        self.funcname = funcname
-
-    def __str__(self):
-        """
-        Return a string representation of the Constant Exception
-        :return:
-        """
-        emsg = '[{0}] {1}'.format(self.kind, self.message)
-        emsg += '\n\tFunc: {0}'.format(self.funcname)
-        return emsg
-
-    def __log__(self):
-        return '{0}: {1}'.format(self.__name__, self.__str__())
 
 # =============================================================================
 # Start of code

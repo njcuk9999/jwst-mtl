@@ -86,12 +86,12 @@ Consts.add('GENERATE_CONFIG_FILE', value=False, dtype=bool,
            command='--getconfig')
 
 # Define an output directory
-Consts.add('DIRECTORY', value=None, dtype=str, source=__NAME__, user=False,
+Consts.add('DIRECTORY', value='.', dtype=str, source=__NAME__, user=False,
            argument=True, group=group,
            description='Define the working directory '
                        '(note this can also be set by setting the AMIDIR '
                        'environmental variable)',
-           command='--dir')
+           command='--dir', path='general.out_dir')
 
 # set the environmental variable for ami sim dir
 Consts.add('ENV_DIR', value=base.ENV_DIR, dtype=str, source=__NAME__,
@@ -105,6 +105,41 @@ Consts.add('DEBUG', value=0, dtype=int, source=__NAME__, user=True,
            description='Set debug mode (1-9) the higher the number the '
                        'more verbose',
            command='--debug')
+
+
+# =============================================================================
+#   APT constants
+# =============================================================================
+group = 'APT'
+# Define the APT target name
+Consts.add('APT-TARGET-NAME', value=None, dtype=str, source=__NAME__,
+           user=False, argument=False, group=group,
+           description='Define the APT target name',
+           apt='TargetID')
+
+# Define the APT-xml target Right Ascension
+Consts.add('APT-TARGET-RA', value=None, dtype=float, source=__NAME__,
+           user=False, argument=False, group=group,
+           description='Define the APT target Right Ascension',
+           apt='TargetRA')
+
+# Define the APT-xml target Declination
+Consts.add('APT-TARGET-DEC', value=None, dtype=float, source=__NAME__,
+           user=False, argument=False, group=group,
+           description='Define the APT target Declination',
+           apt='TargetDec')
+
+# Define the APT-xml target number of groups
+Consts.add('APT-TARGET-NGROUP', value=None, dtype=int, source=__NAME__,
+           user=False, argument=False, group=group,
+           description='Define the APT-xml target number of groups',
+           apt='Groups')
+
+# Define the APT-xml target number of groups
+Consts.add('APT-TARGET-NINT', value=None, dtype=int, source=__NAME__,
+           user=False, argument=False, group=group,
+           description='Define the APT-xml target number of integrations',
+           apt='Integrations')
 
 # =============================================================================
 #   Instrument constants
@@ -170,6 +205,30 @@ Consts.add('AMISIM-USE', value=True, dtype=bool, source=__NAME__,
            user=True, argument=False, group=group,
            description='Define switch whether to use ami-sim',
            path='ami-sim.use')
+
+# Define path to save ami-sim files to / read ami-sim scenes from
+Consts.add('AMISIM-PATH', value=None, dtype=str, source=__NAME__,
+           user=True, argument=False, group=group,
+           description='Define path to save ami-sim files to / read ami-sim '
+                       'scenes from',
+           path='ami-sim.path')
+
+# loop around filters
+for _filter in FILTERS:
+    # Define ami-sim scene file to save scenes (only use this if
+    #     not creating scene)
+    Consts.add('AMI-SIM-SCENE-{0}'.format(_filter), value=None, dtype=str,
+               source=__NAME__, user=False, argument=False, group=group,
+               description='Define ami-sim scene file to save scene '
+                           '(filter {0}) (only use this if not creating '
+                           'scene)'.format(_filter),
+               path='ami-sim.scene.{0}'.format(_filter))
+    # Define ami-sim output file (only use this if not running ami-sim)
+    Consts.add('AMI-SIM-OUT_{0}'.format(_filter), value=None, dtype=str,
+               source=__NAME__, user=False, argument=False, group=group,
+               description='Define ami-sim output file (only use this if not '
+                           'running ami-sim)',
+               path='ami-sim.out.{0}'.format(_filter))
 
 # Define whether to produce up-the-ramp images
 Consts.add('AMISMI-UPTHERAMP', value=False, dtype=bool, source=__NAME__,
@@ -256,6 +315,11 @@ Consts.add('AMISIM-MODULES', value='ami_sim.pyami', dtype=str,
 # =============================================================================
 #   Mirage constants
 # =============================================================================
+# Define switch whether to use Mirage
+Consts.add('MIRAGE-USE', value=True, dtype=bool, source=__NAME__,
+           user=True, argument=False, group=group,
+           description='Define switch whether to use Mirage',
+           path='mirage.use')
 
 # =============================================================================
 #   DMS constants

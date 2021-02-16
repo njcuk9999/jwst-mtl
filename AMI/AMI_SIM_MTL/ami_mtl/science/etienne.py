@@ -14,7 +14,7 @@ import numpy as np
 import os
 from pathlib import Path
 import sys
-from typing import Union
+from typing import Tuple, Union
 import webbpsf
 
 from ami_mtl.io import drs_file
@@ -27,8 +27,8 @@ from ami_mtl.core.core import general
 # Define variables
 # =============================================================================
 # set name
-__NAME__ = 'blank.py'
-__DESCRIPTION__ = 'description here'
+__NAME__ = 'science.etienne.py'
+__DESCRIPTION__ = 'Functions adapted from Etienne Artigau'
 # set very basic constants
 __VERSION__ = base.VERSION
 __DATE__ = base.DATE
@@ -44,47 +44,23 @@ display_func = general.display_func
 # =============================================================================
 # Define functions
 # =============================================================================
-def simple_target_scene(params: ParamDict) -> ParamDict:
+def ami_sim_observation(fov_pixels: float, oversample: int,
+                        pix_scale: float, ext_flux: float,
+                        tot_exp: float) -> Tuple[np.ndarray, ParamDict]:
     """
-    Create a simple target scene and save it to disk
+    Create a simple target scene (one point source at the center)
 
-    Construct a very simple sky scene on a oversampled pixel grid.
-    The scene has 2 pixels that are non-zero, one for the primary, one for
-    the secondary and the contrast between the two is defined by the
-    'contrast' parameter  note that the separation/pa will not be exactly
-    the same as the input values as we fall on integer pixels.
+    :param fov_pixels: the native image size (FOV in pixels)
+    :param oversample: the oversampling factor
+    :param pix_scale: pixel scale (expected to be very close to 0.065
+                      arcsec/pixel)
+    :param ext_flux: extracted flux in e-/s
+    :param tot_exp: total exposure time in seconds
 
-    :param params: ParamDict, the parameter dictionary of constants
-
-    :return: ParamDict, the parameter dictionary of the simple scene
+    :return: image and header
     """
     # set function name
     func_name = display_func('simple_scene', __NAME__)
-    # -------------------------------------------------------------------------
-    # Get parameters
-    # -------------------------------------------------------------------------
-    # get fov_pixels
-    fov_pixels = get_param(params, 'FOV_PIXELS')
-    # get the oversample function
-    oversample = get_param(params, 'OVERSAMPLE_FACTOR')
-    # get position angle
-    position_angle = get_param(params, 'OBJ_COMP_PA')
-    # get separation
-    separation = get_param(params, 'OBJ_COMP_SEP')
-    # get pixel scale
-    pix_scale = get_param(params, 'PIX_SCALE')
-    # get extracted flux
-    ext_flux = get_param(params, 'EXT_FLUX')
-    # get total exposure time in seconds
-    tot_exp = get_param(params, 'TOT_EXP')
-    # get companion contrast
-    contrast = get_param(params, 'OBJ_COMP_CONTRAST')
-    # get the target name
-    target_name = get_param(params, 'OBJ_NAME')
-    # get the filter
-    filter = get_param(params, 'FILTER')
-    # get output path
-    output_dir = Path(str(params['OUTPUTDIR']))
     # -------------------------------------------------------------------------
     # set up
     # -------------------------------------------------------------------------
@@ -97,13 +73,58 @@ def simple_target_scene(params: ParamDict) -> ParamDict:
     ycen = image.shape[0] // 2
     # calculate count rate
     count_rate = ext_flux * tot_exp
-    # clean the target name
-    target_name = general.clean_name(target_name)
-    # construct filename for sky
-    oargs = [target_name, filter]
-    output_file = 'SKY_SCENE_{0}_{1}.fits'.format(*oargs)
-    # construct path
-    outpath = output_dir.joinpath(output_file)
+    # -------------------------------------------------------------------------
+    # Add primary
+    # -------------------------------------------------------------------------
+    # add primary
+    image[xcen, ycen] = count_rate
+    # -------------------------------------------------------------------------
+    # Write sky file
+    # -------------------------------------------------------------------------
+    hdict = ParamDict()
+    hdict['FOVPX'] = (fov_pixels, 'Input FOV pixels')
+    hdict['OSAMPLE'] = (oversample, 'Input Oversample')
+    hdict['PIXSCALE'] = (pix_scale, 'Input pixel scale')
+    hdict['COUNT0'] = (count_rate, 'Count rate of primary')
+    # set sources
+    hdict.set_sources(['FOVPX', 'OSAMPLE', 'PIXSCALE', 'COUNT0'], func_name)
+    # -------------------------------------------------------------------------
+    return image, hdict
+
+
+def ami_sim_add_companion(params: ParamDict, image: np.ndarray,
+                          hdict: ParamDict, num: int,
+                          position_angle: float, separation: float,
+                          contrast: float) -> Tuple[np.ndarray, ParamDict]:
+    """
+    Add a companion to an image where the primary is assumed to be at the
+    center of the image
+
+    :param params: ParamDict, parameter dictionary of constants
+    :param image: numpy array (2D) - the image before this companion is added
+    :param hdict: ParamDict, the keys for header
+    :param num: int, the companion number (must be unique for target)
+    :param position_angle: float, the position angle of companion from
+                           primary (ra-dec coord system) in degrees
+    :param separation: float, separation between primary (assume to be at the
+                       center or the detector) and companion in arcsec
+    :param contrast: contrast of companion
+
+    :return: updated  image and header
+    """
+    # set function name
+    func_name = display_func('ami_sim_add_companion', __NAME__)
+    # -------------------------------------------------------------------------
+    # set up
+    # -------------------------------------------------------------------------
+    # get parameters
+    pix_scale = float(hdict['PIXSCALE'][0])
+    oversample = float(hdict['OSAMPLE'][0])
+    count_rate = float(hdict['COUNT0'][0])
+    # get the central pixel
+    xcen = image.shape[1] // 2
+    ycen = image.shape[0] // 2
+
     # -------------------------------------------------------------------------
     # Calculate pixel position for companion
     # -------------------------------------------------------------------------
@@ -117,12 +138,20 @@ def simple_target_scene(params: ParamDict) -> ParamDict:
     xcen2 = int(xcen + odx)
     ycen2 = int(ycen + ody)
     # -------------------------------------------------------------------------
-    # Add primary + companion to image
+    # Add companion to image
     # -------------------------------------------------------------------------
-    # add primary
-    image[xcen, ycen] = count_rate
+    # test bounds
+    cond1 = (xcen2 > 0) and (xcen2 < image.shape[1])
+    cond2 = (ycen2 > 0) and (ycen2 < image.shape[0])
     # add companion
-    image[xcen2, ycen2] = count_rate * contrast
+    if cond1 and cond2:
+        image[xcen2, ycen2] = count_rate * contrast
+    # else log error
+    else:
+        emsg = ('AMI-SIM: Companion {0} out of bounds: PA: {1} deg '
+                'Sep: {2} arcsec')
+        eargs = [num, position_angle, separation]
+        params.log.error(emsg.format(*eargs))
     # -------------------------------------------------------------------------
     # Work out true separation and angle (given the rounding to the nearest
     #   pixel)
@@ -133,40 +162,113 @@ def simple_target_scene(params: ParamDict) -> ParamDict:
     true_sep = np.sqrt(tx2 + ty2) * pix_scale / oversample
     # true position angle
     ay2 = ycen - ycen2
-    true_angle = 360 - (180 * np.arcsin(ay2 / np.sqrt(tx2 + ty2) / np.pi + 180))
+    true_angle = 180 * np.arcsin(ay2 / np.sqrt(tx2 + ty2)) / np.pi + 180
     # log true separation and angle
-    msg = 'True separation = {0:.4f} arcsec \nTrue angle = {0:.4f} deg'
-    margs = [true_sep, true_angle]
+    msg = ('AMI-SIM: Companion {0} \n\tTrue separation = {1:.4f} arcsec '
+           '\n\tTrue angle = {2:.4f} deg')
+    margs = [num, true_sep, true_angle]
     params.log.info(msg.format(*margs))
     # -------------------------------------------------------------------------
-    # Write sky file
+    # add to hdict
     # -------------------------------------------------------------------------
+    # text for comment
+    ctxt = 'companion {0}'.format(num)
+    # save input separation
+    kw_in_sep = 'IN_SEP{0}'.format(num)
+    hdict[kw_in_sep] = (separation,
+                        'Input separation of scene [arcsec] {0}'.format(ctxt))
+    # save input position angle
+    kw_in_ang = 'IN_ANG{0}'.format(num)
+    hdict[kw_in_ang] = (position_angle,
+                        'Input position angle of scene [deg] {0}'.format(ctxt))
+    # save true separtion
+    kw_t_sep = 'T_SEP{0}'.format(num)
+    hdict[kw_t_sep] = (true_sep,
+                       'True separation of scene [arcsec] {0}'.format(ctxt))
+    # save true position angle
+    kw_t_ang = 'T_ANG{0}'.format(num)
+    hdict[kw_t_ang] = (true_angle,
+                       'True position angle of scene [deg] {0}'.format(ctxt))
+    # save count rate of companion
+    kw_count = 'COUNT{0}'.format(num)
+    hdict[kw_count] = (count_rate * contrast, 'Count rate of {0}'.format(ctxt))
+    # set sources
+    hkeys = [kw_in_sep, kw_in_ang, kw_t_sep, kw_t_ang, kw_count]
+    hdict.set_sources(hkeys, func_name)
+
+    # -------------------------------------------------------------------------
+    # return image and header
+    return image, hdict
+
+
+def ami_sim_save_scene(params: ParamDict, outpath: str,
+                       image: np.ndarray, hdict: dict):
+    """
+    Save an ami sim scene to disk (using image and hdict)
+
+    :param params: ParamDict, parameter dictionary of constants
+    :param outpath: str, the path to save the file to
+    :param image: numpy array 2D, the image to save
+    :param hdict: dict, the keys/values/comments to add to header
+
+    :return: None - write to fits file
+    """
+    # load hdict into header
     header = drs_file.Header()
-    header['IN_SEP'] = (separation, 'Input separation of scene [arcsec]')
-    header['IN_ANG'] = (position_angle, 'Input position angle of scene [deg]')
-    header['TRUE_SEP'] = (true_sep, 'True separation of scene [arcsec]')
-    header['TRUE_ANG'] = (true_angle, 'True position angle of scene [deg]')
-    header['COUNT0'] = (count_rate, 'Count rate of primary')
-    header['COUNT1'] = (count_rate * contrast, 'Count rate of companion')
-    # write file
+    # loop around keys and add to header
+    for key in hdict:
+        if len(hdict[key]) == 1:
+            header[key] = hdict[key]
+        else:
+            header[key] = (hdict[key][0], hdict[key][1])
+    # log that we are recomputing PSF
+    params.log.info('AMI-SIM: Writing file: {0}'.format(outpath))
+    # write file to disk
     drs_file.write_fits(params, outpath, data=image, header=header,
                         overwrite=True)
-    # -------------------------------------------------------------------------
-    # Add outputs to out params
-    # -------------------------------------------------------------------------
-    props = ParamDict()
-    props['COUNT_RATE'] = count_rate
-    props['SKYFILE'] = outpath
-    # add source
-    keys = ['CONTRAST', 'SKY_FILE']
-    props.set_sources(keys, func_name)
-    # return properties
-    return props
 
 
-def recompute_psf(filter: str, filename: Union[str, Path],
-                  fov_pixels: int, oversample: int,
-                  pupil_mask: str):
+def ami_sim_get_psf(params, path: Union[Path, str], fov_pixels: int,
+                    oversample: int, _filter: str, recompute: bool = True):
+    # -------------------------------------------------------------------------
+    # Check compatibility between PSF and SKY
+    # -------------------------------------------------------------------------
+    # make psf_path a Path
+    if isinstance(path, str):
+        path = Path(path)
+    if path.exists():
+        # get psf header
+        psf_header = drs_file.read_fits(params, filename=path, get_data=False)
+        # work out the over sample pixel width
+        osample_pix_width = fov_pixels * oversample
+        # compare NAXIS1 and NAXIS2
+        if psf_header['NAXIS1'] != osample_pix_width:
+            recompute = True
+        if psf_header['NAXIS2'] != osample_pix_width:
+            recompute = True
+    else:
+        recompute = True
+    # -------------------------------------------------------------------------
+    # Deal with recomputing PSF
+    # -------------------------------------------------------------------------
+    if recompute:
+        # log that we are recomputing PSF
+        params.log.info('AMI-SIM: Recomputing PSF')
+        # recompute the AMI PSF
+        ami_sim_recompute_psf(_filter=_filter, filename=path,
+                              pupil_mask=str(params['PUPIL_MASK']),
+                              fov_pixels=fov_pixels, oversample=oversample)
+    else:
+        # log that we are not recomputing PSF
+        params.log.info('AMI-SIM: Not recomputing PSF')
+    # -------------------------------------------------------------------------
+    # return psf filename
+    return path
+
+
+def ami_sim_recompute_psf(_filter: str, filename: Union[str, Path],
+                          fov_pixels: int, oversample: int,
+                          pupil_mask: str):
     """
     Recompute the PSF using webbpsf
 
@@ -181,14 +283,104 @@ def recompute_psf(filter: str, filename: Union[str, Path],
     # get niriss instance from webb psf
     niriss = webbpsf.NIRISS()
     # set the filter name
-    niriss.filter = filter
+    niriss.filter = _filter
     # set the pupil mask
     niriss.pupil_mask = pupil_mask
+    # TODO: This shouldn't be needed but without it calc_psf breaks?
+    # TODO:  Error --> AttributeError: 'NIRISS' object has no attribute
+    # TODO:                            '_extra_keywords'
+    niriss._extra_keywords = []
     # run the psf calculation
-    niriss.calc_psf(filename, fov_pixels=fov_pixels, oversample=oversample)
+    niriss.calc_psf(str(filename), fov_pixels=fov_pixels, oversample=oversample)
+
+def ami_sim_run_code(params: ParamDict, path: str, _filter: str,
+                     psf_filename: str, scene_file: str, count_rate: float,
+                     simname: str, target_name: str):
+    # construct tag
+    tag = '{0}_{1}'.format(simname, target_name)
+    # -------------------------------------------------------------------------
+    # Get arguments for ami-sim
+    # -------------------------------------------------------------------------
+    try:
+        # add arguments
+        args = []
+        # output directory path (relative to home directory)
+        args += ['--target_dir', path]
+        # absolute output directory path, if specified it overrides --target_dir
+        args += ['--output_absolute_path', path]
+        # overwrite yes/no, default 0 (no)
+        args += ['--overwrite', params['AMISIM-OVERWRITE']]
+        # generate up-the-ramp fits file? yes/no, default 0 (no)
+        args += ['--uptheramp', params['AMISMI-UPTHERAMP']]
+        # filter name (upper/lower case)
+        args += ['--filter', _filter]
+        # absolute path to oversampled PSF fits file. Spectral type set in this
+        args += ['--psf', str(psf_filename)]
+        # absolute path to oversampled sky scene fits file, normalized to sum
+        #   to unity
+        args += ['--sky', str(scene_file)]
+        # sky scene oversampling (must be odd integer number)
+        args += ['--oversample', params['OVERSAMPLE_FACTOR']]
+        # number of integrations (IR community calls these exposures sometimes)
+        args += ['--nint', params['NINT']]
+        # number of up-the-ramp readouts
+        args += ['--ngroups', params['NGROUP']]
+        # create calibrator observation yes/no default 1 (yes)
+        args += ['--create_calibrator', params['AMISMI-CREATE_CALIBRATOR']]
+        # Photon count rate on 25m^2 per sec in the bandpass
+        args += ['--countrate', count_rate]
+        # Tag to include in the names of the produced files
+        args += ['--tag', tag]
+        # Generate random-noise flatfield (default) or uniform noiseless
+        #     flatfield (if set to 1)
+        args += ['--uniform_flatfield', params['AMISIM-UNIFORM_FLATFIELD']]
+        # Random seed for all noise generations (seed is altered for every
+        #    integration), allows for well-controlled simulations
+        args += ['--random_seed', params['AMISIM-RANDOM_SEED']]
+        # Directory for simulated flatfield. Defaults to targetDir.
+        args += ['--flatfield_dir', params['OUTPUTDIR']]
+        # Overwrite simulated flatfield. Defaults to No.
+        args += ['--overwrite_flatfield', params['AMISIM-OVERWRITE_FLATFIELD']]
+        # Verbose output to screen. Default is off
+        args += ['--verbose', params['AMISIM-VERBOSE']]
+        # Dither the observations. Default is on
+        args += ['--apply_dither', params['AMISIM-APPLY_DITHER']]
+        # Include pointing errors in the observations. Default is on
+        args += ['--apply_jitter', params['AMISIM-APPLY_JITTER']]
+        # Include photon noise, read noise, background noise, and dark
+        #     current. Default is on
+        args += ['--include_detection_noise',
+                 params['AMISIM-INCLUDE_DET_NOISE']]
+        # load module
+        mod = ami_sim(params)
+        # run module main function
+        mod.main(args)
+
+    except Exception as e:
+        # log error
+        emsg = 'AMI-SIM Error: {0}: {1}'
+        eargs = [type(e), str(e)]
+        params.log.error(emsg.format(*eargs))
+    # -------------------------------------------------------------------------
+    # Construct names of ami-sim outputs
+    # -------------------------------------------------------------------------
+    # get psf basename
+    psf_basename = os.path.basename(psf_filename).split('.fits')[0]
+    # construct ami-sim out filename
+    oargs = [tag, _filter, psf_basename]
+    outfile = 't_{0}_{1}_{2}_Obs1_00.fits'.format(*oargs)
+    # return out filename
+    return outfile
 
 
 def ami_sim(params: ParamDict):
+    """
+    Load the AMI-SIM module
+
+    :param params: ParamDict, parameter dictionary of constants
+
+    :return: AMI-SIM module (with a .main function)
+    """
     # get install parameter
     install_location = params['AMISIM-INSTALL']
     # get ami sim module
@@ -220,128 +412,6 @@ def ami_sim(params: ParamDict):
             emsg += '\n\tLocation = {0}'.format(install_location)
         emsg += '\n\tError {0}: {1}'.format(type(e), str(e))
         params.log.error(emsg)
-
-
-def run_ami_sim(params: ParamDict, sky_scene: Union[str, Path],
-                count_rate: float):
-    # set function name
-    func_name = display_func('run_ami_sim', __NAME__)
-    # -------------------------------------------------------------------------
-    # Get parameters
-    # -------------------------------------------------------------------------
-    # get PSF file
-    psf_filename = drs_file.get_param(params, 'PSF')
-    # get fov_pixels
-    fov_pixels = get_param(params, 'FOV_PIXELS')
-    # get the oversample function
-    oversample = get_param(params, 'OVERSAMPLE_FACTOR')
-    # get the target name
-    target_name = get_param(params, 'OBJ_TARGET_NAME')
-    # clean the target name
-    target_name = general.clean_name(target_name)
-    # -------------------------------------------------------------------------
-    # Check compatibility between PSF and SKY
-    # -------------------------------------------------------------------------
-    if psf_filename.exists():
-        # get psf header
-        psf_header = drs_file.read_fits(params, filename=psf_filename,
-                                        get_data=False)
-        # work out the over sample pixel width
-        osample_pix_width = fov_pixels * oversample
-        # compare NAXIS1 and NAXIS2
-        if psf_header['NAXIS1'] != osample_pix_width:
-            params['RECOMPUTE_PSF'] = True
-            params.set_source('RECOMPUTE_PSF', func_name)
-        if psf_header['NAXIS2'] != osample_pix_width:
-            params['RECOMPUTE_PSF'] = True
-            params.set_source('RECOMPUTE_PSF', func_name)
-    else:
-        params['RECOMPUTE_PSF'] = True
-        params.set_source('RECOMPUTE_PSF', func_name)
-    # -------------------------------------------------------------------------
-    # Deal with recomputing PSF
-    # -------------------------------------------------------------------------
-    if params['RECOMPUTE_PSF']:
-        # log that we are recomputing PSF
-        params.log.info('Recomputing PSF')
-        # recompute the AMI PSF
-        recompute_psf(filter=str(params['FILTER']), filename=psf_filename,
-                      pupil_mask=str(params['PUPIL_MASK']),
-                      fov_pixels=fov_pixels, oversample=oversample)
-    else:
-        # log that we are not recomputing PSF
-        params.log.info('Not recomputing PSF')
-    # -------------------------------------------------------------------------
-    # Get arguments for ami-sim
-    # -------------------------------------------------------------------------
-    try:
-        # add arguments
-        args = []
-        # output directory path (relative to home directory)
-        args += ['--target_dir', params['OUTPUTDIR']]
-        # absolute output directory path, if specified it overrides --target_dir
-        args += ['--output_absolute_path', params['OUTPUTDIR']]
-        # overwrite yes/no, default 0 (no)
-        args += ['--overwrite', params['AMISIM-OVERWRITE']]
-        # generate up-the-ramp fits file? yes/no, default 0 (no)
-        args += ['--uptheramp', params['AMISMI-UPTHERAMP']]
-        # filter name (upper/lower case)
-        args += ['--filter', params['FILTER']]
-        # absolute path to oversampled PSF fits file. Spectral type set in this
-        args += ['--psf', params['PSF']]
-        # absolute path to oversampled sky scene fits file, normalized to sum
-        #   to unity
-        args += ['--sky', str(sky_scene)]
-        # sky scene oversampling (must be odd integer number)
-        args += ['--oversample', params['OVERSAMPLE_FACTOR']]
-        # number of integrations (IR community calls these exposures sometimes)
-        args += ['--nint', params['NINT']]
-        # number of up-the-ramp readouts
-        args += ['--ngroups', params['NGROUP']]
-        # create calibrator observation yes/no default 1 (yes)
-        args += ['--create_calibrator', params['AMISMI-CREATE_CALIBRATOR']]
-        # Photon count rate on 25m^2 per sec in the bandpass
-        args += ['--countrate', count_rate]
-        # Tag to include in the names of the produced files
-        args += ['--tag', target_name]
-        # Generate random-noise flatfield (default) or uniform noiseless
-        #     flatfield (if set to 1)
-        args += ['--uniform_flatfield', params['AMISIM-UNIFORM_FLATFIELD']]
-        # Random seed for all noise generations (seed is altered for every
-        #    integration), allows for well-controlled simulations
-        args += ['--random_seed', params['AMISIM-RANDOM_SEED']]
-        # Directory for simulated flatfield. Defaults to targetDir.
-        args += ['--flatfield_dir', params['OUTPUTDIR']]
-        # Overwrite simulated flatfield. Defaults to No.
-        args += ['--overwrite_flatfield', params['AMISIM-OVERWRITE_FLATFIELD']]
-        # Verbose output to screen. Default is off
-        args += ['--verbose', params['AMISIM-VERBOSE']]
-        # Dither the observations. Default is on
-        args += ['--apply_dither', params['AMISIM-APPLY_DITHER']]
-        # Include pointing errors in the observations. Default is on
-        args += ['--apply_jitter', params['AMISIM-APPLY_JITTER']]
-        # Include photon noise, read noise, background noise, and dark
-        #     current. Default is on
-        args += ['--include_detection_noise',
-                 params['AMISIM-INCLUDE_DET_NOISE']]
-        # load module
-        mod = ami_sim(params)
-        # run module main function
-        mod.main(args)
-
-    except Exception as e:
-        # log error
-        emsg = 'AMI-SIM Error: {0}: {1}'
-        eargs = [type(e), str(e)]
-        params.log.error(emsg.format(*eargs))
-
-    # -------------------------------------------------------------------------
-    # Construct names of ami-sim outputs
-    # -------------------------------------------------------------------------
-    psf_filename = os.path.basename(params['PSF']).split('.fits')[0]
-
-    oargs = [target_name, params['FILTER'], psf_filename]
-    outfile = 't_{0}_{1}_{2}_Obs1_00.fits'
 
 
 # =============================================================================

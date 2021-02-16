@@ -89,6 +89,7 @@ def __main__(params):
     # =========================================================================
     # Simulation section
     # =========================================================================
+    wrap.sim_module(simulations)
 
     # =========================================================================
     # DMS section
@@ -120,7 +121,7 @@ if __name__ == "__main__":
                                    desc=__DESCRIPTION__, name=__NAME__)
     simulations = wrap.load_simulations(params, str(params['WCONFIG']))
 
-    sim1 = simulations[0]
+    wrap.sim_module(simulations)
 
     # TODO: write code to use simulations / targets / calibrators / companions
 

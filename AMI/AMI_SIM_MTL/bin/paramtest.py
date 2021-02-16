@@ -79,7 +79,8 @@ def __main__(params):
     # test logging
     params.log.info('This is a test of info')
     params.log.warning('This is a test of warning')
-    params.log.error('This is a test of an error')
+    params.log.error('This is a test of an error',
+                     raise_exception=False)
 
     return params
 
