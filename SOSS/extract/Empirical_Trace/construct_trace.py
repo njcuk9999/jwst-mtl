@@ -218,24 +218,46 @@ def construct_order1(clear, F277, rot_params, ycens, subarray, pad=0,
     # Find the pixel position of 2.1µm.
     i_b = np.where(wavecal_w >= 2.1)[0][-1]
     xdb = int(wavecal_x[i_b])
-    ydb = int(round(ycens['order 1'][1][xdb], 0))
+    ydb = ycens['order 1'][1][xdb]
 
     # Extract the 2.1µm anchor profile from the data - take median profile of
     # neighbouring 5 columns to mitigate effects of outliers.
-    Banch = np.median([clear[:, xdb-2], clear[:, xdb-1], clear[:, xdb],
-                       clear[:, xdb+1], clear[:, xdb+2]], axis=0)
+    Banch = np.median(clear[:, (xdb-2):(xdb+2)], axis=1)
     # Mask second and third order, reconstruct wing structure and pad.
     cens = [ycens['order 1'][1][xdb], ycens['order 2'][1][xdb],
             ycens['order 3'][1][xdb]]
     Banch = reconstruct_wings(Banch, ycens=cens, contamination=True, pad=pad,
                               verbose=verbose, **{'text': 'Blue anchor'})
     # Remove the lambda/D scaling.
-    Banch = _chromescale(2.1, Banch, ydb)
+    Banch = _chromescale(2.1, Banch, ydb+pad)
     # Normalize
     Banch /= np.nansum(Banch)
 
     # Determine the anchor profiles - red anchor.
-    if F277 is None:
+    if F277 is not None:
+        # If an F277W exposure is provided, only interpolate out to 2.45µm.
+        # Redwards of 2.45µm we have perfect knowledge of the order 1 trace.
+        # Find the pixel position of 2.45µm.
+        i_r = np.where(wavecal_w >= 2.45)[0][-1]
+        xdr = int(wavecal_x[i_r])
+        ydr = ycens['order 1'][1][xdr]
+
+        # Extract and rescale the 2.45µm profile - take median of neighbouring
+        # five columns to mitigate effects of outliers.
+        Ranch = np.median(F277[:, (xdr-2):(xdr+2)], axis=1)
+        # Reconstruct wing structure and pad.
+        cens = [ycens['order 1'][1][xdr]]
+        Ranch = reconstruct_wings(Ranch, ycens=cens, contamination=False,
+                                  pad=pad, verbose=verbose,
+                                  **{'text': 'Red anchor'})
+        Ranch = _chromescale(2.45, Ranch, ydr+pad)
+        # Normalize
+        Ranch /= np.nansum(Ranch)
+
+        # Interpolation polynomial coeffs, calculated via calc_interp_coefs
+        coef_b = [1.51850915, -9.76581613, 14.80720191]
+        coef_r = [-1.51850915,  9.76581613, -13.80720191]
+    else:
         # If no F277W exposure is provided, interpolate out to 2.9µm.
         # Generate a simulated 2.9µm PSF.
         stand = loicpsf([2.9*1e-6], save_to_disk=False, oversampling=1,
@@ -253,7 +275,7 @@ def construct_order1(clear, F277, rot_params, ycens, subarray, pad=0,
         # Find position of 2.9µm on extended detector.
         i_r = np.where(wave_ext >= 2.9)[0][-1]
         xdr = int(round(xpix[i_r], 0))
-        ydr = int(round(ycen_ext[i_r], 0))
+        ydr = ycen_ext[i_r]
 
         # Interpolate the WebbPSF generated profile to the correct location.
         Ranch = np.interp(np.arange(dimy), np.arange(dimy)-dimy/2+ydr, Ranch)
@@ -262,7 +284,7 @@ def construct_order1(clear, F277, rot_params, ycens, subarray, pad=0,
                                   pad=pad, verbose=verbose,
                                   **{'text': 'Red anchor'})
         # Rescale to remove chromatic effects.
-        Ranch = _chromescale(2.9, Ranch, ydr)
+        Ranch = _chromescale(2.9, Ranch, ydr+pad)
         # Normalize
         Ranch /= np.nansum(Ranch)
 
@@ -271,31 +293,6 @@ def construct_order1(clear, F277, rot_params, ycens, subarray, pad=0,
         coef_r = [-0.80175603, 5.27434345, -7.54474316]
         # Pixel coords at which to start the interpolation.
         xdr = 0
-
-    else:
-        # If an F277W exposure is provided, only interpolate out to 2.45µm.
-        # Redwards of 2.45µm we have perfect knowledge of the order 1 trace.
-        # Find the pixel position of 2.45µm.
-        i_r = np.where(wavecal_w >= 2.45)[0][-1]
-        xdr = int(wavecal_x[i_r])
-        ydr = int(round(ycens['order 1'][1][xdr], 0))
-
-        # Extract and rescale the 2.45µm profile - take median of neighbouring
-        # five columns to mitigate effects of outliers.
-        Ranch = np.median([F277[:, xdr-2], F277[:, xdr-1], F277[:, xdr],
-                           F277[:, xdr+1], F277[:, xdr+2]], axis=0)
-        # Reconstruct wing structure and pad.
-        cens = [ycens['order 1'][1][xdr]]
-        Ranch = reconstruct_wings(Ranch, ycens=cens, contamination=False,
-                                  pad=pad, verbose=verbose,
-                                  **{'text': 'Red anchor'})
-        Ranch = _chromescale(2.45, Ranch, ydr)
-        # Normalize
-        Ranch /= np.nansum(Ranch)
-
-        # Interpolation polynomial coeffs, calculated via calc_interp_coefs
-        coef_b = [1.51850915, -9.76581613, 14.80720191]
-        coef_r = [-1.51850915,  9.76581613, -13.80720191]
 
     # Create the interpolated order 1 PSF.
     map2D = np.zeros((dimy+2*pad, dimx))*np.nan
@@ -321,7 +318,7 @@ def construct_order1(clear, F277, rot_params, ycens, subarray, pad=0,
         # Construct the interpolated profile.
         prof_int = (wb_i * Banch_i + wr_i * Ranch_i)
         # Re-add the lambda/D scaling.
-        prof_int_cs = _chromescale(lbd, prof_int, ceny, invert=True)
+        prof_int_cs = _chromescale(lbd, prof_int, ceny+pad, invert=True)
         # Put the interpolated profile on the detector.
         map2D[:, int(round(cenx, 0))] = prof_int_cs
 
@@ -950,7 +947,7 @@ def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
     # To ensure that the polynomial does not start turning up in the padded
     # region, extend the linear fit to the edge of the pad to force the fit
     # to continue decreasing.
-    ext_ax = np.arange(25) + np.max(axis_r[inds3]) + np.max([pad, 25])
+    ext_ax = np.arange(np.max([pad, 25])) + np.max(axis_r)
     ext_prof = pp[1] + pp[0]*ext_ax
     # Concatenate right-hand profile with the extended linear trend.
     fit_ax = np.concatenate([axis_r[inds3], ext_ax])
@@ -1005,7 +1002,7 @@ def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
     # === Stitching ===
     # Find pixels to stitch left wing fit.
     #jjl = ycens[0]-14  # Join fit to profile.
-    jjl2 = ycens[0]-30  # Join core and extended fits.
+    jjl2 = np.max([4, ycens[0]-50])  # Join core and extended fits.
     # Pad the left axis.
     axis_l_pad = np.linspace(axis_l[0]-pad, axis_l[-1], len(axis_l)+pad)
     #  Mirror of axis_l_pad to the right.
