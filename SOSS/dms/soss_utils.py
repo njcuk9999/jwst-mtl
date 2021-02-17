@@ -111,7 +111,9 @@ def get_image_dim(image, header=None, verbose=False):
             xos = int(dimx // 2040)
 
         else:
-            raise ValueError('Stack X dimension has unrecognized size of {:}. Accepts 2048, 2040 or multiple of.'.format(dimx))
+            msg = ('Stack X dimension has unrecognized size of {:}. '
+                   'Accepts 2048, 2040 or multiple of.')
+            raise ValueError(msg.format(dimx))
 
         # Check if the y-axis is consistent with the x-axis.
         if np.int(dimy/xos) in [96, 256, 252, 2040, 2048]:
@@ -119,7 +121,9 @@ def get_image_dim(image, header=None, verbose=False):
             ynative = np.int(dimy/yos)
 
         else:
-            raise ValueError('Stack Y dimension ({:}) is inconsistent with X dimension ({:}) for acceptable SOSS arrays'.format(dimy, dimx))
+            msg = ('Stack Y dimension ({:}) is inconsistent with '
+                   'stack X dimension ({:}) for acceptable SOSS arrays')
+            raise ValueError(msg.format(dimy, dimx))
 
         # Create a boolean mask indicating which pixels are not reference pixels.
         refpix_mask = np.ones_like(image, dtype='bool')
@@ -159,6 +163,18 @@ def get_image_dim(image, header=None, verbose=False):
     # If verbose print the output.
     if verbose:
         print('Data dimensions:')
-        print('dimx={:}, dimy={:}, xos={:}, yos={:}, xnative={:}, ynative={:}'.format(dimx, dimy, xos, yos, xnative, ynative))
+        str_args = dimx, dimy, xos, yos, xnative, ynative
+        msg = 'dimx={:}, dimy={:}, xos={:}, yos={:}, xnative={:}, ynative={:}'
+        print(msg.format(*str_args))
 
     return dimx, dimy, xos, yos, xnative, ynative, padding, refpix_mask
+
+
+def main():
+    """Placeholder for potential multiprocessing."""
+
+    return
+
+
+if __name__ == '__main__':
+    main()
