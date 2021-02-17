@@ -1,34 +1,43 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import os
 import warnings
 
 import numpy as np
-
-from astropy.io import fits
 
 from .soss_utils import zero_roll, robust_polyfit, get_image_dim
 
 from matplotlib import colors
 import matplotlib.pyplot as plt
 
-PATH = '/home/talens-irex/Dropbox/SOSS_Ref_Files'
-
 
 def _plot_centroid(image, xtrace, ytrace):
-    """Overplot the extracted trace positions on the image."""
+    """Overplot the extracted trace positions on the image.
+
+    :param image: A 2D image of the detector.
+    :param xtrace: The x coordinates of the trace to overplot on the image.
+    :param ytrace: The y coordinates of the trace to overplot on the image.
+
+    :type image: array[float]
+    :type xtrace: array[float]
+    :type ytrace: array[float]
+
+    """
 
     nrows, ncols = image.shape
 
     plt.figure(figsize=(ncols/128, nrows/128))
 
+    plt.title('Trace Centroids')
+
     plt.imshow(image, origin='lower', cmap='inferno', norm=colors.LogNorm())
-    plt.plot(xtrace, ytrace, lw=2, ls='--', c='black', label='centroids')
+    plt.plot(xtrace, ytrace, lw=2, ls='--', c='black', label='Centroids')
 
     plt.xlabel('Spectral Pixel', fontsize=14)
     plt.ylabel('Spatial Pixel', fontsize=14)
     plt.legend(fontsize=12)
+
+    plt.tight_layout()
 
     plt.show()
     plt.close()
@@ -172,17 +181,6 @@ def get_uncontam_centroids(image, header=None, mask=None, poly_order=11, verbose
     return xtrace, ytrace, param
 
 
-def test_uncontam_centroids():
-    """"""
-
-    filename = os.path.join(PATH, 'SOSS_ref_2D_profile_SUBSTRIP256.fits.gz')
-
-    image, header = fits.getdata(filename, ext=2, header=True)
-    xtrace, ytrace, param = get_uncontam_centroids(image, header=header, verbose=True)
-
-    return
-
-
 def edge_trigger(image, halfwidth=5, yos=1, verbose=False):
     """Detect the edges and center of the trace based on the minima and maxima of the derivate
      of the columns, which is computed in a running window along the columns of the detector image
@@ -229,7 +227,9 @@ def edge_trigger(image, halfwidth=5, yos=1, verbose=False):
             ymean = np.nanmean(datay, axis=0, keepdims=True)
 
         with np.errstate(invalid='ignore'):
-            slope = np.nansum((datax - xmean) * (datay - ymean), axis=0) / np.nansum((datax - xmean) ** 2, axis=0)
+            num = np.nansum((datax - xmean) * (datay - ymean), axis=0)
+            denom = np.nansum((datax - xmean) ** 2, axis=0)
+            slope = num / denom
 
         # Set slopes computed from < 3 datapoints to NaN.
         slopevals[irow, :] = np.where(np.sum(mask, axis=0) >= 3, slope, 0.)
@@ -268,10 +268,22 @@ def edge_trigger(image, halfwidth=5, yos=1, verbose=False):
 
     if verbose:
 
+        nrows, ncols = image.shape
+
+        plt.figure(figsize=(ncols/128, nrows/128))
+
+        plt.title('Edge-trigger Trace Positions')
+
         plt.imshow(image, origin='lower', cmap='inferno', norm=colors.LogNorm())
-        plt.plot(ytrace_min, lw=2, ls='--', c='black')
+        plt.plot(ytrace_min, lw=2, ls='--', c='black', label='Edges')
         plt.plot(ytrace_max, lw=2, ls='--', c='black')
-        plt.plot(ytrace_best, lw=2, c='black')
+        plt.plot(ytrace_best, lw=2, c='black', label='Centroids')
+
+        plt.xlabel('Spectral Pixel', fontsize=14)
+        plt.ylabel('Spatial Pixel', fontsize=14)
+        plt.legend(fontsize=12)
+
+        plt.tight_layout()
 
         plt.show()
         plt.close()
@@ -317,7 +329,8 @@ def get_uncontam_centroids_edgetrig(image, header=None, mask=None, poly_order=11
     image_masked = np.where(mask | ~refpix_mask, np.nan, image)
 
     # Use edge trigger to compute the edges and center of the trace.
-    ytrace_max, ytrace_min, ytrace_best, widths_best = edge_trigger(image_masked, halfwidth=halfwidth, yos=yos, verbose=verbose)
+    fkwargs = dict(halfwidth=halfwidth, yos=yos, verbose=verbose)
+    ytrace_max, ytrace_min, ytrace_best, widths_best = edge_trigger(image_masked, **fkwargs)
 
     # Use different y-positions depending on the mode parameter.
     if mode == 'maxedge':
@@ -329,7 +342,7 @@ def get_uncontam_centroids_edgetrig(image, header=None, mask=None, poly_order=11
     elif mode == 'combined':
         ytrace = ytrace_best
     else:
-        raise ValueError('Unknow mode: {}'.format(mode))
+        raise ValueError('Unknown mode: {}'.format(mode))
 
     # Fit the y-positions with a polynomial and use the result as the true y-positions.
     xtrace = np.arange(dimx)
@@ -349,26 +362,7 @@ def get_uncontam_centroids_edgetrig(image, header=None, mask=None, poly_order=11
     return xtrace, ytrace, widths_best, param
 
 
-def test_uncontam_centroids_edgetrig():
-    """"""
-
-    filename = os.path.join(PATH, 'SOSS_ref_2D_profile_SUBSTRIP256.fits.gz')
-
-    image, header = fits.getdata(filename, ext=2, header=True)
-    xtrace, ytrace, width, param = get_uncontam_centroids_edgetrig(image, header=header, verbose=True)
-
-    filename = '/home/talens-irex/Downloads/stack_256_ng3_DMS.fits'
-
-    image = fits.getdata(filename)
-    xtrace, ytrace, width, param = get_uncontam_centroids_edgetrig(image, verbose=True)
-
-    return
-
-
 def main():
-
-    test_uncontam_centroids()
-    test_uncontam_centroids_edgetrig()
 
     return
 
