@@ -115,7 +115,7 @@ def __main__(params):
 if __name__ == "__main__":
     # test
     import sys
-    sys.argv = 'test.py --config=/data/jwst_ami/data/ea_betapic/example.yaml'.split()
+    sys.argv = 'test.py --config=/data/jwst_ami/data/neil_wrap/inputs/example.yaml'.split()
 
     params = param_functions.setup(lconsts, dict(), log=log,
                                    desc=__DESCRIPTION__, name=__NAME__)

@@ -10,9 +10,11 @@ Created on
 @author: 
 """
 import numpy as np
+import os
+import sys
 from pathlib import Path
 from typing import Any, Dict, List, Union
-from mirage import read_apt_xml
+from mirage.apt import read_apt_xml
 import yaml
 
 from ami_mtl.core.core import constant_functions
@@ -29,6 +31,7 @@ __DESCRIPTION__ = 'module of wrapper classes and functions'
 # get parameter dictionary
 ParamDict = param_functions.ParamDict
 # get Observation Exception
+DrsException = exceptions.DrsException
 ObservationException = exceptions.ObservationException
 # get general functions
 display_func = general.display_func
@@ -38,6 +41,9 @@ display_func = general.display_func
 # Define classes
 # =============================================================================
 class Simulation:
+
+    classname: str = 'Simulation'
+
     def __init__(self, params: ParamDict, properties: Dict[str, Any]):
         """
         Basic simulation class (what is passed around)
@@ -80,7 +86,7 @@ class Simulation:
 
         :return:
         """
-        return 'Simulation[{0}]'.format(self.name)
+        return '{0}[{1}]'.format(self.classname, self.name)
 
     def __repr__(self) -> str:
         """
@@ -113,6 +119,9 @@ class Simulation:
 
 
 class Observation:
+
+    classname: str = 'Observation'
+
     def __init__(self, params: ParamDict, properties: Dict[str, Any],
                  mag_key: str = 'magnitude'):
         """
@@ -125,20 +134,66 @@ class Observation:
         func_name = __NAME__ + 'Observation.__init__()'
         # set params
         self.params = params.copy()
+        self.properties = properties
         # set name
         self.name = properties.get('name', None)
         # deal with no name
         if self.name is None:
-            emsg = 'Name must be set for class {0}'.format(self.__str__())
+            emsg = ('ObservationError: Name must be set for class '
+                    '{0}'.format(self.__str__()))
             emsg += '\n input properties: '
             emsg += '\n\t'.join(self._str_properties(properties))
-            raise ObservationException(emsg, 'error', None, func_name)
+            params.log.error(emsg, exception=ObservationException,
+                             funcname=func_name)
         # clean name
         self.name = general.clean_name(self.name)
+
+        # ---------------------------------------------------------------------
         # set raw magnitudes
         self.raw_magnitudes = properties.get(mag_key, None)
         # get magnitudes
         self.magnitudes = dict()
+
+    def link_to_xml(self):
+        """
+        Link an observation to an xml file (name must be in xml file)
+        Note: name is cleaned in xml and from input name
+
+        :return: None, updates self.params
+        """
+        # set function name
+        func_name = display_func('link_to_xml', __NAME__, self.classname)
+        # ---------------------------------------------------------------------
+        # make sure observation is in apt-targets dictionary
+        apt_targets = dict(self.params['APT-TARGETS'])
+        # get target_names
+        target_names = list(apt_targets.keys())
+        # if name is not in target we need to raise an error
+        if self.name not in target_names:
+            # get xml file
+            xmlfile = apt_targets[target_names[0]]['XML-FILE']
+            # log error
+            emsg = 'ObservationError: Name must be in xml file.'
+            emsg += '\n xml file: {0}'.format(xmlfile)
+            emsg += '\n input properties: '
+            emsg += '\n\t'.join(self._str_properties(self.properties))
+            self.params.log.error(emsg, exception=ObservationException,
+                                  funcname=func_name)
+        # ---------------------------------------------------------------------
+        # get xml info for target
+        xml_target = apt_targets[self.name]
+        xml_filename = xml_target['XML-FILE']
+        # set parameters for target
+        for key in self.params:
+            # get instance
+            instance = self.params.instances[key]
+            # deal with no apt value (skip)
+            if instance is None or instance.apt is None:
+                continue
+            # else add to params (if in apt file)
+            self.params[key] = xml_target[instance.apt]
+            sargs = [xml_filename, self.name, instance.apt]
+            self.params.set_source(key, '{0}[{1}].{2}'.format(*sargs))
 
     def _str_properties(self, properties: Dict[str, Any]) -> list:
         """
@@ -160,7 +215,7 @@ class Observation:
                 out_list.append('{0}: {1}'.format(prop, value))
             # don't show sub-dictionaries
             if isinstance(value, dict):
-                out_list.append('{0}: Dict')
+                out_list.append('{0}: Dict'.format(prop))
         # return list
         return out_list
 
@@ -170,7 +225,7 @@ class Observation:
 
         :return:
         """
-        return 'Observation[{0}]'.format(self.name)
+        return '{0}[{1}]'.format(self.classname, self.name)
 
     def __repr__(self) -> str:
         """
@@ -198,6 +253,9 @@ class Observation:
 
 
 class Target(Observation):
+
+    classname: str = 'Target'
+
     def __init__(self, params: ParamDict, properties: Dict[str, Any]):
         """
         Basic target class
@@ -206,27 +264,13 @@ class Target(Observation):
         :param properties: target dictionary (from yaml file)
         """
         super().__init__(params, properties)
+        # link to xml file
+        self.link_to_xml()
         # load magnitudes
         self.get_magnitudes()
         # deal with companions
         self.companions = []
         self.get_companion(properties)
-
-    def __str__(self) -> str:
-        """
-        String representation of class
-
-        :return:
-        """
-        return 'Target[{0}]'.format(self.name)
-
-    def __repr__(self) -> str:
-        """
-        String representation of class
-
-        :return:
-        """
-        return self.__str__()
 
     def get_companion(self, properties: Dict[str, Any]):
         """
@@ -251,6 +295,9 @@ class Target(Observation):
 
 
 class Calibrator(Observation):
+
+    classname: str = 'Calibrator'
+
     def __init__(self, params: ParamDict, properties: Dict[str, Any]):
         """
         Basic calibrator class
@@ -259,27 +306,16 @@ class Calibrator(Observation):
         :param properties: calibrator dictionary (from yaml file)
         """
         super().__init__(params, properties)
+        # link to xml file
+        self.link_to_xml()
         # load magnitudes
         self.get_magnitudes()
 
-    def __str__(self) -> str:
-        """
-        String representation of class
-
-        :return:
-        """
-        return 'Calibrator[{0}]'.format(self.name)
-
-    def __repr__(self) -> str:
-        """
-        String representation of class
-
-        :return:
-        """
-        return self.__str__()
-
 
 class Companion(Observation):
+
+    classname: str = 'Companion'
+
     def __init__(self, params: ParamDict, properties: Dict[str, Any]):
         """
         Basic companion class
@@ -300,21 +336,24 @@ class Companion(Observation):
         self.magnitudes = dict()
         self.get_magnitudes()
 
-    def __str__(self) -> str:
-        """
-        String representation of class
 
+class XMLReader(read_apt_xml.ReadAPTXML):
+
+    def read_xml_silent(self, infile: Union[Path, str]) -> dict:
+        """
+        Suppresses print outs
+
+        :param infile: str
         :return:
         """
-        return 'Companion[{0}]'.format(self.name)
-
-    def __repr__(self) -> str:
-        """
-        String representation of class
-
-        :return:
-        """
-        return self.__str__()
+        # suppress all print outs
+        sys.stdout = open(os.devnull, 'w')
+        # run read xml
+        table = self.read_xml(str(infile), False)
+        # restore all print outs
+        sys.stdout = sys.__stdout__
+        # return table
+        return table
 
 
 # =============================================================================
@@ -342,9 +381,16 @@ def load_simulations(params: ParamDict, config_file: Union[str, Path]):
         # companions should start with "companion"
         if key.startswith('Simulation'):
             # load companion
-            simulation = Simulation(params, properties[key])
-            # add to list
-            simulations.append(simulation)
+            try:
+                simulation = Simulation(params, properties[key])
+                # add to list
+                simulations.append(simulation)
+            except DrsException as e:
+                name = general.clean_name(properties[key].get('name', None))
+                wmsg = 'Cannot process simulation: {0}'.format(name)
+                wmsg += '\n\t Error {0}'.format(type(e))
+                wmsg += '\n\t Skipping simulation'
+                params.log.warning(wmsg)
     # return simulations
     return simulations
 
@@ -573,8 +619,17 @@ def _update_params(params: ParamDict, properties: Dict[str, Any],
 
 def _load_xml(params: ParamDict,
               filename: Union[str, None] = None) -> ParamDict:
+    """
+    Load an xml into "APT-TARGETS" in the parameter dictionary
+
+    :param params: ParamDict, the parameter dictionary of constants
+    :param filename: str, the filename of the xml file to open
+
+    :return:
+    """
     # set function name
     func_name = display_func('_load_xml', __NAME__)
+    # -------------------------------------------------------------------------
     # deal with filename
     if filename is None:
         # log error
@@ -582,26 +637,44 @@ def _load_xml(params: ParamDict,
         params.log.error(msg)
     else:
         filename = Path(filename)
+    # -------------------------------------------------------------------------
     # deal with file not existing
     if not filename.exists():
         # log error
         msg = 'XML-Error: Filename {0} does not exist'
         params.log.error(msg)
-
+    # -------------------------------------------------------------------------
+    # get target name column
+    target_name_col = params.instances['APT-TARGET-NAME'].apt
+    # log reading xml
+    params.log.info('Reading XML: {0}'.format(filename))
     # load xml file as dictionary of keys
-    xml = read_apt_xml.ReadAPTXML()
-    table = xml.read_xml(filename)
-
-
-    # TODO: just load the parameters into individual dictionaries for
-    # TODO:    each target - then search for it in Observation
-    # # get apt column name for target
-    # target_name_col = params.instances('APT-TARGET-NAME').apt
-    #
-    # # search for name in table using cleaned TargetID
-    # table_names = list(map(table[target_name_col], general.clean_name))
-
-
+    xml = XMLReader()
+    table = xml.read_xml_silent(filename)
+    # get target names (cleaned)
+    target_names = list(map(general.clean_name, table[target_name_col]))
+    # get length of table
+    length = len(target_names)
+    # storage of xml targets
+    xml_targets = dict()
+    # -------------------------------------------------------------------------
+    # loop around all targets
+    for it in range(length):
+        # get name for this iteration
+        name = target_names[it]
+        # each entry should be a dictionary
+        xml_targets[name] = dict()
+        # loop around entrys
+        for entry in list(table.keys()):
+            xml_targets[name][entry] = table[entry][it]
+        # add xml file path to parameters
+        xml_targets[name]['XML-FILE'] = filename
+    # -------------------------------------------------------------------------
+    # finally add to params
+    params['APT-TARGETS'] = xml_targets
+    params.set_source('APT-TARGETS', func_name)
+    # -------------------------------------------------------------------------
+    # return params
     return params
 
 

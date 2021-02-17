@@ -11,7 +11,8 @@ Created on 2020-05-21
 """
 import logging
 from pathlib import Path
-from typing import Union
+import textwrap
+from typing import List, Union
 
 from ami_mtl.core.core import exceptions
 
@@ -22,7 +23,8 @@ NO_THEME = [False, 'False', 'OFF', 'off', 'Off', 'None']
 # get exceptions
 DrsException = exceptions.DrsException
 LogException = exceptions.LogException
-
+# message width
+MSG_WIDTH = 80
 
 
 
@@ -171,6 +173,25 @@ class Log:
         self.set_level('console', rlevel)
         self.set_level('file', rlevel)
 
+    def wrap(self, message: str) -> List[str]:
+        # split by new lines
+        raw_message = message.split('\n')
+        # split up messages
+        raw_messages = []
+        for raw_msg in raw_message:
+            raw_messages += textwrap.wrap(raw_msg, MSG_WIDTH)
+        # save messages
+        messages = []
+        for it, msg in enumerate(raw_messages):
+            if it == 0:
+                messages.append(msg)
+            elif msg.startswith('\t'):
+                messages.append(msg)
+            else:
+                messages.append('\t' + msg)
+        # return messages
+        return messages
+
     def ldebug(self, message: str, _level: int = 1, *args, **kwargs):
         """
         Add a log at a custom level (for debug messages)
@@ -195,8 +216,11 @@ class Log:
             _level = 0
         if _level > 10:
             _level = 10
-        # send custom level log message
-        self.logger._log(logging.INFO - _level, message, args, **kwargs)
+        # wrap text
+        msgs = self.wrap(message)
+        for msg in msgs:
+            # send custom level log message
+            self.logger._log(logging.INFO - _level, msg, args, **kwargs)
 
     def info(self, *args, **kwargs):
         """
@@ -204,7 +228,9 @@ class Log:
 
         :return:
         """
-        self.logger.info(*args, **kwargs)
+        messages = self.wrap(args[0])
+        for message in messages:
+            self.logger.info(message, **kwargs)
 
     def warning(self, *args, **kwargs):
         """
@@ -212,7 +238,9 @@ class Log:
 
         :return:
         """
-        self.logger.warning(*args, **kwargs)
+        messages = self.wrap(args[0])
+        for message in messages:
+            self.logger.warning(message, **kwargs)
 
     def error(self, *args, **kwargs):
         """
@@ -220,11 +248,12 @@ class Log:
 
         :return:
         """
+        messages = self.wrap(args[0])
+        for message in messages:
+            self.logger.error(message)
         # log error
-        self.logger.error(*args, **kwargs)
-        kwargs['kind'] = 'error'
         if kwargs.get('raise_exception', True):
-            self.raise_exception(*args, **kwargs)
+            self.raise_exception(args[0], **kwargs)
 
     def critical(self, *args, **kwargs):
         """
@@ -232,10 +261,11 @@ class Log:
 
         :return:
         """
-        self.logger.critical(*args, **kwargs)
-        kwargs['kind'] = 'critical'
+        messages = self.wrap(args[0])
+        for message in messages:
+            self.logger.critical(message)
         if kwargs.get('raise_exception', True):
-            self.raise_exception(*args, **kwargs)
+            self.raise_exception(args[0], **kwargs)
 
     def exception(self, *args, **kwargs):
         """
@@ -243,10 +273,11 @@ class Log:
 
         :return:
         """
-        self.logger.exception(*args, **kwargs)
-        kwargs['kind'] = 'exception'
+        messages = self.wrap(args[0])
+        for message in messages:
+            self.logger.exception(message)
         if kwargs.get('raise_exception', True):
-            self.raise_exception(*args, **kwargs)
+            self.raise_exception(args[0], **kwargs)
 
     def empty(self, message, _colour=None, *args, **kwargs):
         """
@@ -263,8 +294,11 @@ class Log:
             _colour = None
         # construct coloured message
         message = Colors().print(message, _colour)
+        # empty message
+        messages = self.wrap(message)
         # push to logger
-        self.logger._log(999, message, args, **kwargs)
+        for msg in messages:
+            self.logger._log(999, msg, args, **kwargs)
 
     def header(self, color='m'):
         """
@@ -298,12 +332,11 @@ class Log:
             if 'CONSOLE' == hname.upper():
                 handler.setFormatter(self.confmt)
 
-    def raise_exception(self, *args, **kwargs):
+    def raise_exception(self, msg, funcname=None, exception=None,
+                        kind='Unknown'):
         # raise exception
-        msg = str(args[0])
-        funcname = kwargs.get('funcname', None)
-        exception = kwargs.get('exception', self.python_exception)
-        kind = kwargs.get('kind', 'Unknown')
+        if exception is None:
+            exception = self.python_exception
         # get exception
         if issubclass(exception, DrsException):
             raise exception(msg, kind=kind, funcname=funcname)

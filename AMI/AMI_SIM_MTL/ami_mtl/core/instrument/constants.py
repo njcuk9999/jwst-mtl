@@ -111,6 +111,13 @@ Consts.add('DEBUG', value=0, dtype=int, source=__NAME__, user=True,
 #   APT constants
 # =============================================================================
 group = 'APT'
+
+# Define the APT target dictionaries (to be filled in code)
+Consts.add('APT-TARGETS', value=None, dtype=dict, source=__NAME__,
+           user=False, argument=False, group=group,
+           description='Define the APT target dictionaries '
+                       '(to be filled in code)')
+
 # Define the APT target name
 Consts.add('APT-TARGET-NAME', value=None, dtype=str, source=__NAME__,
            user=False, argument=False, group=group,

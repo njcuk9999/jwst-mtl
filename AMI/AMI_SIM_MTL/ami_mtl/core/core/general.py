@@ -130,6 +130,9 @@ def clean_name(name: str) -> str:
 
     :return: str, the cleaned name
     """
+    # we can't do anything for non-strings
+    if not isinstance(name, str):
+        return name
     # remove bad characters
     for bad_char in BAD_CHARS:
         name = name.replace(bad_char, '_')
