@@ -154,8 +154,12 @@ def get_uncontam_centroids(image, header=None, mask=None, poly_order=11, verbose
     if padding != 0:
         mask = mask & (xtrace >= xos*padding) & (xtrace < (dimx - xos*padding))
 
-    param = robust_polyfit(xtrace[mask], ytrace[mask], poly_order)
-    ytrace = np.polyval(param, xtrace)
+    # If no polynomial order was given return the raw measurements.
+    if poly_order is None:
+        param = []
+    else:
+        param = robust_polyfit(xtrace[mask], ytrace[mask], poly_order)
+        ytrace = np.polyval(param, xtrace)
 
     # If verbose visualize the result.
     if verbose is True:
@@ -327,8 +331,12 @@ def get_uncontam_centroids_edgetrig(image, header=None, mask=None, poly_order=11
     xtrace = np.arange(dimx)
     mask = np.isfinite(ytrace)
 
-    param = robust_polyfit(xtrace[mask], ytrace[mask], poly_order)
-    ytrace = np.polyval(param, xtrace)
+    # If no polynomial order was given return the raw measurements.
+    if poly_order is None:
+        param = []
+    else:
+        param = robust_polyfit(xtrace[mask], ytrace[mask], poly_order)
+        ytrace = np.polyval(param, xtrace)
 
     # If verbose visualize the result.
     if verbose is True:
