@@ -10,8 +10,8 @@ Created on 2020-05-21
 
 # set very basic constants
 NAME = 'core.instruments.constants.py'
-VERSION = '0.0.005'
-DATE = '2021-02-01'
+VERSION = '0.0.006'
+DATE = '2021-02-17'
 
 # set environmental variable
 ENV_DIR = 'AMIDIR'
