@@ -19,6 +19,61 @@ from .regularisation import Tikhonov, tikho_solve, get_nyquist_matrix
 import matplotlib.pyplot as plt
 
 
+def sparse_k(val, k, n_k):
+    """
+    Transform a 2D array `val` to a sparse matrix.
+    `k` is use for the position in the second axis
+    of the matrix. The resulting sparse matrix will
+    have the shape : ((len(k), n_k))
+    Set k elements to a negative value when not defined
+    """
+
+    # Length of axis 0
+    n_i = len(k)
+
+    # Get row index
+    i_k = np.indices(k.shape)[0]
+
+    # Take only well defined coefficients
+    row = i_k[k >= 0]
+    col = k[k >= 0]
+    data = val[k >= 0]
+
+    return csr_matrix((data, (row, col)), shape=(n_i, n_k))
+
+
+def unsparse(matrix, fill_value=np.nan):
+    """
+    Convert a sparse matrix to a 2D array of values and a 2D array of position.
+
+    Returns
+    ------
+    out: 2d array
+        values of the matrix. The shape of the array is given by:
+        (matrix.shape[0], maximum number of defined value in a column).
+    col_out: 2d array
+        position of the columns. Same shape as `out`.
+    """
+
+    col, row, val = find(matrix.T)
+    n_row, n_col = matrix.shape
+
+    good_rows, counts = np.unique(row, return_counts=True)
+
+    # Define the new position in columns
+    i_col = np.indices((n_row, counts.max()))[1]
+    i_col = i_col[good_rows]
+    i_col = i_col[i_col < counts[:, None]]
+
+    # Create outputs and assign values
+    col_out = np.ones((n_row, counts.max()), dtype=int) * -1
+    col_out[row, i_col] = col
+    out = np.ones((n_row, counts.max())) * fill_value
+    out[row, i_col] = val
+
+    return out, col_out
+
+
 class _BaseOverlap:
     """
     Base class for overlaping extraction of the form:
@@ -1902,61 +1957,6 @@ class TrpzOverlap(_BaseOverlap):
         self.v_print('Done')
 
         return w_n, k_n
-
-
-def sparse_k(val, k, n_k):
-    """
-    Transform a 2D array `val` to a sparse matrix.
-    `k` is use for the position in the second axis
-    of the matrix. The resulting sparse matrix will
-    have the shape : ((len(k), n_k))
-    Set k elements to a negative value when not defined
-    """
-
-    # Length of axis 0
-    n_i = len(k)
-
-    # Get row index
-    i_k = np.indices(k.shape)[0]
-
-    # Take only well defined coefficients
-    row = i_k[k >= 0]
-    col = k[k >= 0]
-    data = val[k >= 0]
-
-    return csr_matrix((data, (row, col)), shape=(n_i, n_k))
-
-
-def unsparse(matrix, fill_value=np.nan):
-    """
-    Convert a sparse matrix to a 2D array of values and a 2D array of position.
-
-    Returns
-    ------
-    out: 2d array
-        values of the matrix. The shape of the array is given by:
-        (matrix.shape[0], maximum number of defined value in a column).
-    col_out: 2d array
-        position of the columns. Same shape as `out`.
-    """
-
-    col, row, val = find(matrix.T)
-    n_row, n_col = matrix.shape
-
-    good_rows, counts = np.unique(row, return_counts=True)
-
-    # Define the new position in columns
-    i_col = np.indices((n_row, counts.max()))[1]
-    i_col = i_col[good_rows]
-    i_col = i_col[i_col < counts[:, None]]
-
-    # Create outputs and assign values
-    col_out = np.ones((n_row, counts.max()), dtype=int) * -1
-    col_out[row, i_col] = col
-    out = np.ones((n_row, counts.max())) * fill_value
-    out[row, i_col] = val
-
-    return out, col_out
 
 
 class TrpzBox(TrpzOverlap):
