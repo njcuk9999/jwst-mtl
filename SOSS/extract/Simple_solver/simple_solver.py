@@ -22,6 +22,7 @@ from SOSS.extract import soss_read_refs
 from SOSS.extract.simple_solver import plotting as plotting
 
 warnings.simplefilter(action='ignore', category=RuntimeWarning)
+warnings.simplefilter(action='ignore', category=FutureWarning)
 
 
 def _do_emcee(xref, yref, xdat, ydat, subarray='SUBSTRIP256',
@@ -342,6 +343,8 @@ def simple_solver(clear, verbose=False, save_to_file=True):
     # Get first order centroids (in DMS coords).
     wavemap_file = soss_read_refs.Ref2dWave()
 
+    if verbose is True:
+        print('Reading reference files...')
     # Determine correct subarray dimensions and offsets.
     dimy, dimx = np.shape(clear)
     if dimy == 96:
@@ -361,6 +364,8 @@ def simple_solver(clear, verbose=False, save_to_file=True):
     ycen_ref = ttab_file('Y', subarray=subarray)[1][inds]
 
     # Get centroids from data.
+    if verbose is True:
+        print('Getting centroids...')
     xcen_dat, ycen_dat, p = ctd.get_uncontam_centroids(clear, verbose=verbose)
 
     # Fit the reference file centroids to the data.
@@ -376,6 +381,8 @@ def simple_solver(clear, verbose=False, save_to_file=True):
         plotting._plot_corner(fit)
 
     # Transform reference files to match data.
+    if verbose is True:
+        print('Transforming reference files...')
     ref_trace_trans = np.ones((2, dimy, dimx))
     wave_map_trans = np.ones((2, dimy, dimx))
     for order in [1, 2]:
@@ -404,8 +411,13 @@ def simple_solver(clear, verbose=False, save_to_file=True):
                                                       verbose=verbose)
     # Write files to disk if requested.
     if save_to_file is True:
+        if verbose is True:
+            print('Writing to file...')
         write_to_file(ref_trace_trans, filename='SOSS_ref_2D_profile_simplysolved')
         write_to_file(wave_map_trans, filename='SOSS_ref_2D_wave_simplysolved')
+
+    if verbose is True:
+        print('Done.')
 
     return ref_trace_trans, wave_map_trans
 

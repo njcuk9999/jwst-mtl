@@ -8,7 +8,7 @@ import numpy as np
 
 from astropy.io import fits
 
-from soss_utils import zero_roll, robust_polyfit, get_image_dim
+from .soss_utils import zero_roll, robust_polyfit, get_image_dim
 
 from matplotlib import colors
 import matplotlib.pyplot as plt
@@ -24,7 +24,11 @@ def _plot_centroid(image, xtrace, ytrace):
     plt.figure(figsize=(ncols/128, nrows/128))
 
     plt.imshow(image, origin='lower', cmap='inferno', norm=colors.LogNorm())
-    plt.plot(xtrace, ytrace, lw=2, c='black')
+    plt.plot(xtrace, ytrace, lw=2, ls='--', c='black', label='centroids')
+
+    plt.xlabel('Spectral Pixel', fontsize=14)
+    plt.ylabel('Spatial Pixel', fontsize=14)
+    plt.legend(fontsize=12)
 
     plt.show()
     plt.close()
