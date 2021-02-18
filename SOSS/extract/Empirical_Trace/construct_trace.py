@@ -15,10 +15,10 @@ from astropy.io import fits
 from scipy.optimize import least_squares
 from scipy.interpolate import interp1d
 from tqdm import tqdm
-import webbpsf
 from SOSS.extract import soss_read_refs
-from SOSS.extract.empirical_trace import centroid as ctd
-from SOSS.extract.empirical_trace import plotting as plotting
+from SOSS.extract.empirical_trace import centroid
+from SOSS.extract.empirical_trace import plotting
+from SOSS.extract.empirical_trace import _calc_interp_coefs
 from SOSS.extract.overlap import TrpzOverlap, TrpzBox
 from SOSS.extract.throughput import ThroughputSOSS
 from SOSS.extract.convolution import WebbKer
@@ -48,7 +48,9 @@ def build_empirical_trace(clear, F277W, badpix_mask,
 
     # Print overwrite warning if output file already exists.
     if os.path.exists(filename):
-        print('Output file {} already exists. It will be overwritten'.format(filename))
+        msg = 'Output file {} already exists.'\
+              ' It will be overwritten'.format(filename)
+        print(msg)
 
     # Replace bad pixels.
     if verbose is True:
@@ -60,8 +62,8 @@ def build_empirical_trace(clear, F277W, badpix_mask,
     # Get the centroid positions for both orders from the data.
     if verbose is True:
         print('Getting trace centroids...')
-    centroids, rot_pars = ctd.get_contam_centroids(clear, bound=False,
-                                                   verbose=verbose)
+    centroids, rot_pars = centroid.get_contam_centroids(clear, bound=False,
+                                                        verbose=verbose)
 
     # Overplot the data centroids on the CLEAR exposure if desired.
     if verbose is True:
@@ -207,7 +209,8 @@ def construct_order1(clear, F277, rot_params, ycens, subarray, pad=0,
     # Open wavelength calibration file.
     wavecal = fits.getdata(path+'jwst_niriss_soss-256-ord1_trace.fits', 1)
     # Get wavelength and detector pixel calibration info.
-    pp_w = np.polyfit(wavecal['Detector_Pixels'], wavecal['WAVELENGTH'][::-1], 1)
+    pp_w = np.polyfit(wavecal['Detector_Pixels'],
+                      wavecal['WAVELENGTH'][::-1], 1)
     wavecal_x = np.arange(dimx)
     wavecal_w = np.polyval(pp_w, wavecal_x)
 
@@ -261,8 +264,9 @@ def construct_order1(clear, F277, rot_params, ycens, subarray, pad=0,
     else:
         # If no F277W exposure is provided, interpolate out to 2.9µm.
         # Generate a simulated 2.9µm PSF.
-        stand = loicpsf([2.9*1e-6], save_to_disk=False, oversampling=1,
-                        pixel=256, verbose=False)[0][0].data
+        stand = _calc_interp_coefs.loicpsf([2.9*1e-6], save_to_disk=False,
+                                           oversampling=1, pixel=256,
+                                           verbose=False)[0][0].data
         # Extract the spatial profile.
         Ranch = np.sum(stand[124:132, :], axis=0)
 
@@ -407,8 +411,6 @@ def get_extract_params():
 def get_ref_file_args(o1frame):
     '''
     '''
-
-    path = '/Users/michaelradica/Documents/School/Ph.D./Research/SOSS/Extraction/Input_Files/SOSS_Ref_Files/'
     # List of orders to consider in the extraction
     order_list = [1]
 
@@ -435,78 +437,6 @@ def get_ref_file_args(o1frame):
     ref_file_args = [spat_pros, wave_maps, thrpt_list, ker_list]
 
     return ref_file_args
-
-
-def loicpsf(wavelist=None, wfe_real=None, filepath='', save_to_disk=True,
-            oversampling=10, pixel=128, verbose=True):
-    '''Calls the WebbPSF package to create monochromatic PSFs for NIRISS
-    SOSS observations and save them to disk.
-
-    Parameters
-    ----------
-    wavelist : list
-        List of wavelengths (in meters) for which to generate PSFs.
-    wfe_real : int
-        Index of wavefront realization to use for the PSF (if non-default
-        WFE realization is desired).
-    filepath : str
-        Path to the directory to which the PSFs will be written.
-        Defaults to the current directory.
-    save_to_disk : bool
-        Whether to save PSFs to disk, or return them from the function.
-    oversampling : int
-        Oversampling pixels scale for the PSF.
-    pixel : int
-        Width of the PSF in native pixels.
-    verbose : bool
-        Whether to print explanatory comments.
-
-    Returns
-    -------
-    psf_list : list
-        If save_to_disk is False, a list of the generated PSFs.
-    '''
-
-    psf_list = []
-
-    if wavelist is None:
-        # List of wavelengths to generate PSFs for
-        wavelist = np.linspace(0.5, 5.2, 95) * 1e-6
-    # Dimension of the PSF in native pixels
-    pixel = pixel
-
-    # Select the NIRISS instrument
-    niriss = webbpsf.NIRISS()
-
-    # Override the default minimum wavelength of 0.6 microns
-    niriss.SHORT_WAVELENGTH_MIN = 0.5e-6
-    # Set correct filter and pupil wheel components
-    niriss.filter = 'CLEAR'
-    niriss.pupil_mask = 'GR700XD'
-
-    # Change the WFE realization if desired
-    if wfe_real is not None:
-        niriss.pupilopd = ('OPD_RevW_ote_for_NIRISS_predicted.fits.gz',
-                           wfe_real)
-
-    # Loop through all wavelengths to generate PSFs
-    for wave in wavelist:
-        if verbose is True:
-            print('Calculating PSF at wavelength ',
-                  round(wave/1e-6, 2), ' microns')
-        psf = niriss.calc_psf(monochromatic=wave, fov_pixels=pixel,
-                              oversample=oversampling, display=False)
-        psf_list.append(psf)
-
-        if save_to_disk is True:
-            # Save psf realization to disk
-            text = '{0:5f}'.format(wave*1e+6)
-            psf.writeto(str(filepath)+'SOSS_os'+str(oversampling)+'_'+str(pixel)
-                        + 'x'+str(pixel)+'_'+text+'_'+str(wfe_real)+'.fits',
-                        overwrite=True)
-
-        if save_to_disk is False:
-            return psf_list
 
 
 def oversample_frame(frame, oversample=1):
@@ -640,9 +570,12 @@ def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
     ycens = np.atleast_1d(ycens)
     ycens = np.round(ycens, 0).astype(int)
     if contamination is True and ycens.size != 3:
-        raise ValueError('Centroids must be provided for first three orders if there is contamination.')
+        errmsg = 'Centroids must be provided for first three orders '\
+                 'if there is contamination.'
+        raise ValueError(errmsg)
     if smooth not in ['edges', 'all', 'None']:
-        raise ValueError('Smooth parameter must be one of "edges", "all", or "None".')
+        errmsg = 'Smooth parameter must be one of "edges", "all", or "None".'
+        raise ValueError(errmsg)
 
     # mask negative and zero values.
     profile[profile <= 0] = np.nan
@@ -742,9 +675,11 @@ def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
         # Replace highly deviant pixels throughout the whole axis.
         wing_fit = np.polyval(pp_r, axis_r[(ycens[0]+18):])
         # Calculate the standard dev of unmasked points from the wing fit.
-        stddev_f = np.sqrt(np.nanmedian((np.log10(newprof[(ycens[0]+18):]) - wing_fit)**2))
+        stddev_f = np.sqrt(np.nanmedian((np.log10(newprof[(ycens[0]+18):])
+                                         - wing_fit)**2))
         # Find all outliers that are >3-sigma deviant from the mean.
-        inds4 = np.where(np.abs(np.log10(newprof[(ycens[0]+18):]) - wing_fit) > 3*stddev_f)
+        inds4 = np.where(np.abs(np.log10(newprof[(ycens[0]+18):]) - wing_fit)
+                         > 3*stddev_f)
         newprof[(ycens[0]+18):][inds4] = 10**wing_fit[inds4]
 
     # Add padding - padding values are constant at the median of edge pixels.

@@ -6,14 +6,13 @@ Created on Wed Feb 3 11:31 2021
 @author: MCR
 
 Function to calculate the interpolation coefficients for the empirical trace
-construction. This should never need to used by the end user.
+construction. This shouldn't need to called by the end user.
 """
 
 import numpy as np
 from astropy.io import fits
 import webbpsf
-from SOSS.extract.empirical_trace import plotting as plotting
-from SOSS.extract.empirical_trace import construct_trace as tm
+from SOSS.extract.empirical_trace import plotting
 
 
 def calc_interp_coefs(make_psfs=False, doplot=True, F277W=True, filepath=''):
@@ -66,19 +65,20 @@ def calc_interp_coefs(make_psfs=False, doplot=True, F277W=True, filepath=''):
         psf_run = []
         # Create the PSF if user has indicated to.
         if make_psfs is True:
-            tm.loicpsf(wavelist=wave_range*1e-6, wfe_real=i)
+            loicpsf(wavelist=wave_range*1e-6, wfe_real=i)
         # If user already has PSFs generated.
         for w in wave_range:
             try:
-                psf_run.append(fits.open('{0:s}SOSS_os10_128x128_{1:.6f}_{2:.0f}.fits'
-                                         .format(filepath, w, i))[0].data)
+                infile = '{0:s}SOSS_os10_128x128_{1:.6f}_{2:.0f}.fits'\
+                         .format(filepath, w, i)
+                psf_run.append(fits.open(infile)[0].data)
             # Generate missing PSFs if necessary.
             except FileNotFoundError:
-                print('No monochromatic PSF found for {0:.2f}µm and WFE realization {1:.0f}.'
-                      .format(w, i))
-                tm.loicpsf(wavelist=[w*1e-6], wfe_real=i, filepath=filepath)
-                psf_run.append(fits.open('{0:s}SOSS_os10_128x128_{1:.6f}_{2:.0f}.fits'
-                                         .format(filepath, w, i))[0].data)
+                errmsg = 'No monochromatic PSF found for {0:.2f}µm and WFE'\
+                         'realization {1:.0f}.'.format(w, i)
+                print(errmsg)
+                loicpsf(wavelist=[w*1e-6], wfe_real=i, filepath=filepath)
+                psf_run.append(fits.open(infile)[0].data)
         PSFs.append(psf_run)
 
     # Determine specific interpolation coefficients for all WFEs
@@ -147,3 +147,75 @@ def calc_interp_coefs(make_psfs=False, doplot=True, F277W=True, filepath=''):
         plotting._plot_interpmodel(wave_range, wb, wr, pb, pr)
 
     return pb, pr, wb, wr
+
+
+def loicpsf(wavelist=None, wfe_real=None, filepath='', save_to_disk=True,
+            oversampling=10, pixel=128, verbose=True):
+    '''Calls the WebbPSF package to create monochromatic PSFs for NIRISS
+    SOSS observations and save them to disk.
+
+    Parameters
+    ----------
+    wavelist : list
+        List of wavelengths (in meters) for which to generate PSFs.
+    wfe_real : int
+        Index of wavefront realization to use for the PSF (if non-default
+        WFE realization is desired).
+    filepath : str
+        Path to the directory to which the PSFs will be written.
+        Defaults to the current directory.
+    save_to_disk : bool
+        Whether to save PSFs to disk, or return them from the function.
+    oversampling : int
+        Oversampling pixels scale for the PSF.
+    pixel : int
+        Width of the PSF in native pixels.
+    verbose : bool
+        Whether to print explanatory comments.
+
+    Returns
+    -------
+    psf_list : list
+        If save_to_disk is False, a list of the generated PSFs.
+    '''
+
+    psf_list = []
+
+    if wavelist is None:
+        # List of wavelengths to generate PSFs for
+        wavelist = np.linspace(0.5, 5.2, 95) * 1e-6
+    # Dimension of the PSF in native pixels
+    pixel = pixel
+
+    # Select the NIRISS instrument
+    niriss = webbpsf.NIRISS()
+
+    # Override the default minimum wavelength of 0.6 microns
+    niriss.SHORT_WAVELENGTH_MIN = 0.5e-6
+    # Set correct filter and pupil wheel components
+    niriss.filter = 'CLEAR'
+    niriss.pupil_mask = 'GR700XD'
+
+    # Change the WFE realization if desired
+    if wfe_real is not None:
+        niriss.pupilopd = ('OPD_RevW_ote_for_NIRISS_predicted.fits.gz',
+                           wfe_real)
+
+    # Loop through all wavelengths to generate PSFs
+    for wave in wavelist:
+        if verbose is True:
+            print('Calculating PSF at wavelength ',
+                  round(wave/1e-6, 2), ' microns')
+        psf = niriss.calc_psf(monochromatic=wave, fov_pixels=pixel,
+                              oversample=oversampling, display=False)
+        psf_list.append(psf)
+
+        if save_to_disk is True:
+            # Save psf realization to disk
+            text = '{0:5f}'.format(wave*1e+6)
+            filepars = [filepath, oversampling, pixel, text, wfe_real]
+            outfile = '{0}SOSS_os{1}_{2}x{2}_{3}_{4}.fits'.format(filepars)
+            psf.writeto(outfile, overwrite=True)
+
+        if save_to_disk is False:
+            return psf_list

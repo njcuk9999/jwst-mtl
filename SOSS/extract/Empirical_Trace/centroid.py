@@ -13,9 +13,9 @@ import numpy as np
 from numpy.polynomial import Legendre
 import emcee
 import warnings
-from SOSS.trace import get_uncontam_centroids as uctd
+from SOSS.dms import soss_centroids
 from SOSS.extract import soss_read_refs
-from SOSS.extract.empirical_trace import plotting as plotting
+from SOSS.extract.empirical_trace import plotting
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
@@ -104,7 +104,8 @@ def get_contam_centroids(clear, ref_centroids=None, return_orders=[1, 2, 3],
             raise ValueError('Insufficient reference centroids provided.')
         # Repackage into a dictionary
         for i, order in enumerate(return_orders):
-            ref_cen['order '+str(order)] = [ref_centroids[2*i], ref_centroids[2*i+1]]
+            ref_cen['order ' + str(order)] = [ref_centroids[2*i],
+                                              ref_centroids[2*i + 1]]
     # Or from the trace table (currently the optics model).
     else:
         for order in return_orders:
@@ -114,7 +115,7 @@ def get_contam_centroids(clear, ref_centroids=None, return_orders=[1, 2, 3],
             ref_cen['order '+str(order)] = [xref, yref]
 
     # Get the order 1 centroids from the data.
-    xdat_o1, ydat_o1 = uctd.get_uncontam_centroids(clear)
+    xdat_o1, ydat_o1, pars = soss_centroids.get_uncontam_centroids(clear)
     trans_cen['order 1'] = [xdat_o1, ydat_o1]
 
     # Fit the reference centroids to the data for order 1.
@@ -135,16 +136,17 @@ def get_contam_centroids(clear, ref_centroids=None, return_orders=[1, 2, 3],
         if order == 1:
             continue
         xtrans, ytrans = rot_centroids(ang, xshift, yshift,
-                                       ref_cen['order '+str(order)][0],
-                                       ref_cen['order '+str(order)][1])
+                                       ref_cen['order ' + str(order)][0],
+                                       ref_cen['order ' + str(order)][1])
         # Ensure that the centroids cover the whole detector.
         pp = np.polyfit(xtrans, ytrans, 5)
         ytrans = np.polyval(pp, np.arange(2048))
         if bound is True:
             inds = np.where((ytrans >= 0) & (ytrans < 256))[0]
-            trans_cen['order '+str(order)] = [np.arange(2048)[inds], ytrans[inds]]
+            trans_cen['order ' + str(order)] = [np.arange(2048)[inds],
+                                                ytrans[inds]]
         else:
-            trans_cen['order '+str(order)] = [np.arange(2048), ytrans]
+            trans_cen['order ' + str(order)] = [np.arange(2048), ytrans]
 
     return trans_cen, rot_params
 
@@ -190,7 +192,7 @@ def get_ref_centroids(atthesex=None, subarray='SUBSTRIP256', order=1):
 
     # Use Legendre polynomial fit to extend centroids beyond detector edges.
     inds = np.where((xcen_ref < 2098) & (xcen_ref >= -50))
-    pp = Legendre.fit(xcen_ref[inds], ycen_ref[inds], 6-order)
+    pp = Legendre.fit(xcen_ref[inds], ycen_ref[inds], 6 - order)
     xcen_ref = atthesex
     ycen_ref = pp(xcen_ref)
 
@@ -208,7 +210,7 @@ def _log_likelihood(theta, xmod, ymod, xdat, ydat):
     # Interpolate rotated model onto same x scale as data
     modely = np.interp(xdat, modelx, modely)
 
-    return -0.5 * np.sum((ydat - modely)**2 - 0.5 * np.log(2 * np.pi * 1))
+    return -0.5*np.sum((ydat - modely)**2 - 0.5*np.log(2*np.pi*1))
 
 
 def _log_prior(theta):
@@ -302,12 +304,14 @@ def rot_centroids(ang, xshift, yshift, xpix, ypix, bound=True, atthesex=None,
             min = int(round(np.min(rot_pix[0]), 0))
             max = int(round(np.max(rot_pix[0]), 0))
             # Same range as rotated pixels but with step of 1 pixel.
-            atthesex = np.linspace(min, max, max-min+1)
+            atthesex = np.linspace(min, max, max - min + 1)
         # Polynomial fit to ensure a centroid at each pixel in atthesex
         pp = np.polyfit(rot_pix[0], rot_pix[1], 5)
         # Warn user if atthesex extends beyond polynomial domain.
         if np.max(atthesex) > np.max(rot_pix[0])+25 or np.min(atthesex) < np.min(rot_pix[0])-25:
-            warnings.warn('atthesex extends beyond rot_xpix. Use results with caution.')
+            warnmsg = 'atthesex extends beyond rot_xpix.'\
+                      ' Use results with caution.'
+            warnings.warn(warnmsg)
         rot_xpix = atthesex
         rot_ypix = np.polyval(pp, rot_xpix)
     else:
@@ -327,7 +331,9 @@ def rot_centroids(ang, xshift, yshift, xpix, ypix, bound=True, atthesex=None,
         elif subarray == 'FULL':
             yend = 2048
         else:
-            raise ValueError('Unknown subarray. Allowed identifiers are "SUBSTRIP96", "SUBSTRIP256", or "FULL".')
+            errmsg = 'Unknown subarray. Allowed identifiers are "SUBSTRIP96",'\
+                     ' "SUBSTRIP256", or "FULL".'
+            raise ValueError(errmsg)
         # Reject pixels which are not on the subarray.
         inds = [(rot_ypix >= 0) & (rot_ypix < yend) & (rot_xpix >= 0) &
                 (rot_xpix < 2048)]

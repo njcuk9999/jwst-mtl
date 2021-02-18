@@ -101,8 +101,8 @@ def _plot_wing_reconstruction(profile, ycens, axis_r, prof_r2, pp_r, newprof,
     plt.plot(ax_tot, np.log10(newprof), c='blue', alpha=1,
              label='reconstructed profile',)
     plt.plot(ax_tot[(ycens[0]+18+pad):-(pad+4)],
-             np.polyval(pp_r, ax_tot[(ycens[0]+18+pad):-(pad+4)]), c='red', lw=2,
-             ls='--', label='right wing fit')
+             np.polyval(pp_r, ax_tot[(ycens[0]+18+pad):-(pad+4)]), c='red',
+             lw=2, ls='--', label='right wing fit')
     if text is not None:
         plt.text(ax_tot[5], np.min(np.log10(newprof)), text, fontsize=14)
 
