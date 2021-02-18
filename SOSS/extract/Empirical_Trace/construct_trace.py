@@ -227,7 +227,8 @@ def construct_order1(clear, F277, rot_params, ycens, subarray, pad=0,
     cens = [ycens['order 1'][1][xdb], ycens['order 2'][1][xdb],
             ycens['order 3'][1][xdb]]
     Banch = reconstruct_wings(Banch, ycens=cens, contamination=True, pad=pad,
-                              verbose=verbose, **{'text': 'Blue anchor'})
+                              verbose=verbose, smooth='all',
+                              **{'text': 'Blue anchor'})
     # Remove the lambda/D scaling.
     Banch = _chromescale(2.1, Banch, ydb+pad)
     # Normalize
@@ -248,7 +249,7 @@ def construct_order1(clear, F277, rot_params, ycens, subarray, pad=0,
         # Reconstruct wing structure and pad.
         cens = [ycens['order 1'][1][xdr]]
         Ranch = reconstruct_wings(Ranch, ycens=cens, contamination=False,
-                                  pad=pad, verbose=verbose,
+                                  pad=pad, verbose=verbose, smooth='all',
                                   **{'text': 'Red anchor'})
         Ranch = _chromescale(2.45, Ranch, ydr+pad)
         # Normalize
@@ -281,7 +282,7 @@ def construct_order1(clear, F277, rot_params, ycens, subarray, pad=0,
         Ranch = np.interp(np.arange(dimy), np.arange(dimy)-dimy/2+ydr, Ranch)
         # Reconstruct wing structure and pad.
         Ranch = reconstruct_wings(Ranch, ycens=[ydr], contamination=False,
-                                  pad=pad, verbose=verbose,
+                                  pad=pad, verbose=verbose, smooth='all',
                                   **{'text': 'Red anchor'})
         # Rescale to remove chromatic effects.
         Ranch = _chromescale(2.9, Ranch, ydr+pad)
@@ -636,209 +637,8 @@ def pad_spectral_axis(frame, xcens, ycens, pad=0):
     return newframe
 
 
-def reconstruct_wings_v2(profile, ycens=None, contamination=True, pad=0,
-                      verbose=False, **kwargs):
-    '''Masks the second and third diffraction orders and reconstructs the
-     underlying wing structure of the first order. Also adds padding in the
-     spatial direction if required.
-     Note: the algorithm struggles in the region where the first and second
-     orders completely overlap (pixels ~0-450). However, this region is either
-     interpolated or from an F277W exposure in the empirical trace model,
-     circumventing this issue.
-
-    Parameters
-    ----------
-    profile : np.array
-        Spectral trace spatial profile.
-    ycens : list
-        Y-coordinates of the trace centroids. Must include all three
-        diffraction orders if contamination is True, or only the first order if
-        False.
-    contamination : bool
-        If True, profile has contamination from the second and third
-        diffraction orders.
-    pad : int
-        Amount to pad each end of the spartial axis (in pixels).
-    verbose : bool
-        If True, does diagnostic plotting.
-
-    Returns
-    -------
-    newprof : np.array
-        Input spatial profile with reconstructed wings and padding.
-
-    Raises
-    ------
-    ValueError
-        If centroids are not provided for all three orders when contamination
-        is set to True.
-    '''
-
-    dimy = len(profile)
-    # Convert Y-centroid positions to indices
-    ycens = np.atleast_1d(ycens)
-    ycens = np.round(ycens, 0).astype(int)
-    if contamination is True and ycens.size != 3:
-        raise ValueError('Centroids must be provided for first three orders if there is contamination.')
-
-    # mask negative and zero values.
-    profile[profile <= 0] = np.nan
-
-    # ====== Reconstruct right wing ======
-    # Mask the cores of the first three diffraction orders and fit a straight
-    # line to the remaining pixels. Additionally mask any outlier pixels that
-    # are >3-sigma deviant from the mean. Fit a 7th order polynomial to
-    # remaining pixels.
-    # Get the right wing of the trace profile in log space.
-    prof_r = np.log10(profile)
-    # and corresponding axis.
-    axis_r = np.arange(dimy)
-
-    # === Outlier masking ===
-    # Mask the cores of each order.
-    for order, ycen in enumerate(ycens):
-        if order == 0:
-            start = 0
-            end = ycen+25
-        elif order == 1:
-            start = np.min([ycen-17, dimy-2])
-            end = np.min([ycen+17, dimy-1])
-        else:
-            start = np.min([ycen-17, dimy-2])
-            end = np.min([ycen+17, dimy-1])
-        # Set core of each order to NaN.
-        prof_r[start:end] = np.nan
-
-    # Fit the unmasked part of the wing to determine the mean trend.
-    inds = np.where(np.isfinite(prof_r))[0]
-    pp = _robust_polyfit(axis_r[inds], prof_r[inds], (0, 0))
-    wing_mean = pp[1]+pp[0]*axis_r[inds]
-
-    # Calculate the standard dev of unmasked points from the mean trend.
-    stddev = np.sqrt(np.median((prof_r[inds] - wing_mean)**2))
-    # Find all outliers that are >3-sigma deviant from the mean.
-    inds2 = np.where(np.abs(prof_r[inds] - wing_mean) > 3*stddev)
-
-    # === Wing fit ===
-    # Get fresh right wing profile.
-    prof_r2 = np.log10(profile)
-    # Mask first order core.
-    prof_r2[:(ycens[0]+12)] = np.nan
-    # Mask edge of the detector.
-    prof_r2[-4:] = np.nan
-    # Mask second and third orders.
-    if contamination is True:
-        for order, ycen in enumerate(ycens):
-            if order == 1:
-                start = np.max([ycen-17, 0])
-                end = np.max([ycen+17, 1])
-            elif order == 2:
-                start = np.max([ycen-17, 0])
-                end = np.max([ycen+17, 1])
-            # Set core of each order to NaN.
-            prof_r2[start:end] = np.nan
-    # Mask outliers
-    prof_r2[inds[inds2]] = np.nan
-
-    # Indices of all unmasked points in the left wing.
-    inds3 = np.isfinite(prof_r2)
-    # Fit with a 7th order polynomial.
-    # To ensure that the polynomial does not start turning up in the padded
-    # region, extend the linear fit to the edge of the pad to force the fit
-    # to continue decreasing.
-    ext_ax = np.arange(25) + np.max(axis_r[inds3]) + np.max([pad, 25])
-    ext_prof = pp[1] + pp[0]*ext_ax
-    # Concatenate right-hand profile with the extended linear trend.
-    fit_ax = np.concatenate([axis_r[inds3], ext_ax])
-    fit_prof = np.concatenate([prof_r2[inds3], ext_prof])
-
-    # Use np.polyfit for a first estimate of the coefficients.
-    pp_r0 = np.polyfit(fit_ax, fit_prof, 11)
-    # Robust fit using the polyfit results as a starting point.
-    pp_r = _robust_polyfit(fit_ax, fit_prof, pp_r0)
-
-    # === Stitching ===
-    # Find pixel to stitch right wing fit.
-    jjr = ycens[0]+14
-    # Pad the right axis.
-    axis_r_pad = np.arange(len(axis_r[ycens[0]+14:])+pad) + axis_r[ycens[0]+14]
-    iir = np.where(axis_r_pad == jjr)[0][0]
-    # Join right wing to old trace profile.
-    newprof = np.concatenate([profile[:jjr], 10**np.polyval(pp_r, axis_r_pad)[iir:]])
-
-    # Interpolate between wing and core profiles for continuity.
-    # Get pixels and values around the joint.
-    xs = np.concatenate([jjr-1-np.arange(3), np.arange(3)+jjr+1])
-    ys = newprof[xs]
-    # Interpolation over the above pixels.
-    interp = np.polyfit(xs, ys, 5)
-    xnew = np.arange(2)+(jjr-1)
-    # Insert interpolation.
-    newprof[(jjr-1):(jjr+1)] = np.polyval(interp, xnew)
-
-    # ====== Reconstruct left wing ======
-    # Mask the core of the first order, and fit a third order polynomial to all
-    # remaining pixels to capture the wing behaviour near the core. Reuse the
-    # 7th order solution from the right wing for the extended behaviour.
-    # Get the profile for the left wing in log space.
-    prof_l = np.log10(profile[:(ycens[0]-12)])
-    # and corresponding axis.
-    axis_l = np.arange(dimy)[:(ycens[0]-12)]
-    # Fit with third order polynomial - exclude detector edge.
-    # Use np.polyfit for a first estimate of the coefficients.
-    pp_l0 = np.polyfit(axis_l[3:], prof_l[3:], 5)
-    # Robust fit using the polyfit results as a starting point.
-    pp_l = _robust_polyfit(axis_l[3:], prof_l[3:], pp_l0)
-
-    # === Stitching ===
-    # Find pixels to stitch left wing fit.
-    jjl = ycens[0]-14  # Join fit to profile.
-    jjl2 = ycens[0]-30  # Join core and extended fits.
-    # Pad the left axis.
-    axis_l_pad = np.linspace(axis_l[0]-pad, axis_l[-1], len(axis_l)+pad)
-    #  Mirror of axis_l_pad to the right.
-    axis_l_pad2 = np.arange(len(axis_l_pad)) + axis_r[ycens[0]+14]
-    iil = np.where(axis_l_pad == jjl)[0][0]
-    iil2 = np.where(axis_l_pad == jjl2)[0][0]
-    # Join left wing to old trace profile.
-    newprof = np.concatenate([10**np.polyval(pp_r, axis_l_pad2)[::-1][:iil2],
-                              10**np.polyval(pp_l, axis_l_pad)[iil2:iil],
-                              newprof[jjl:]])
-
-    # Interpolate between wing and core profiles for continuity.
-    # Get pixels and values around the joint.
-    xs = np.concatenate([jjl-1-np.arange(3), np.arange(3)+jjl+1])
-    ys = newprof[xs]
-    # Interpolation over the above pixels.
-    interp = np.polyfit(xs, ys, 5)
-    xnew = np.arange(2)+(jjl-1)
-    # Insert interpolation.
-    newprof[(jjl-1):(jjl+1)] = np.polyval(interp, xnew)
-    # Interpolate between wing and extended solutions for continuity.
-    # Get pixels and values around the joint.
-    xs = np.concatenate([np.arange(4)+np.max([0, iil2-9]),
-                         np.min([iil2+9, dimy])-np.arange(4)])
-    ys = newprof[xs]
-    # Interpolation over the above pixels.
-    interp = np.polyfit(xs, ys, 5)
-    xnew = np.arange(18)+(iil2-9)
-    # Insert interpolation.
-    newprof[np.max([0, iil2-9]):np.min([iil2+9, dimy])] = np.polyval(interp, xnew)
-
-    # Set any negatives to zero
-    newprof[newprof < 0] = 0
-
-    # Do diagnostic plot if requested.
-    if verbose is True:
-        plotting._plot_wing_reconstruction(profile, ycens, axis_r[inds3],
-                                           prof_r2[inds3], axis_l_pad,
-                                           axis_r_pad, pp_r, newprof, **kwargs)
-
-    return newprof
-
-
 def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
-                      verbose=False, **kwargs):
+                      verbose=False, smooth='edges', **kwargs):
     '''Masks the second and third diffraction orders and reconstructs the
      underlying wing structure of the first order. Also adds padding in the
      spatial direction if required.
@@ -862,6 +662,10 @@ def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
         Amount to pad each end of the spartial axis (in pixels).
     verbose : bool
         If True, does diagnostic plotting.
+    smooth : str
+        Smooths over highly deviant pixels in the spatial profile. If 'edges',
+        only smooths over the extended wings. If 'all', smooths over the whole
+        profile. If 'None', no smoothing.
 
     Returns
     -------
@@ -873,6 +677,7 @@ def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
     ValueError
         If centroids are not provided for all three orders when contamination
         is set to True.
+        If bad smoothing keyword parameter provided.
     '''
 
     dimy = len(profile)
@@ -881,6 +686,8 @@ def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
     ycens = np.round(ycens, 0).astype(int)
     if contamination is True and ycens.size != 3:
         raise ValueError('Centroids must be provided for first three orders if there is contamination.')
+    if smooth not in ['edges', 'all', 'None']:
+        raise ValueError('Smooth parameter must be one of "edges", "all", or "None".')
 
     # mask negative and zero values.
     profile[profile <= 0] = np.nan
@@ -888,7 +695,7 @@ def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
     # ====== Reconstruct right wing ======
     # Mask the cores of the first three diffraction orders and fit a straight
     # line to the remaining pixels. Additionally mask any outlier pixels that
-    # are >3-sigma deviant from that mean. Fit a 9th order polynomial to
+    # are >3-sigma deviant from that line. Fit a 7th order polynomial to
     # remaining pixels.
     # Get the right wing of the trace profile in log space.
     prof_r = np.log10(profile)
@@ -902,8 +709,8 @@ def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
             start = 0
             end = ycen+25
         elif order == 1:
-            start = np.min([ycen-18, dimy-2])
-            end = np.min([ycen+18, dimy-1])
+            start = np.min([ycen-17, dimy-2])
+            end = np.min([ycen+17, dimy-1])
         else:
             start = np.min([ycen-17, dimy-2])
             end = np.min([ycen+17, dimy-1])
@@ -916,9 +723,9 @@ def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
     wing_mean = pp[1]+pp[0]*axis_r
 
     # Calculate the standard dev of unmasked points from the mean trend.
-    stddev = np.sqrt(np.median((prof_r[inds] - wing_mean[inds])**2))
+    stddev_m = np.sqrt(np.median((prof_r[inds] - wing_mean[inds])**2))
     # Find all outliers that are >3-sigma deviant from the mean.
-    inds2 = np.where(np.abs(prof_r[inds] - wing_mean[inds]) > 3*stddev)
+    inds2 = np.where(np.abs(prof_r[inds] - wing_mean[inds]) > 3*stddev_m)
 
     # === Wing fit ===
     # Get fresh right wing profile.
@@ -929,8 +736,8 @@ def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
     if contamination is True:
         for order, ycen in enumerate(ycens):
             if order == 1:
-                start = np.max([ycen-18, 0])
-                end = np.max([ycen+18, 1])
+                start = np.max([ycen-17, 0])
+                end = np.max([ycen+17, 1])
             elif order == 2:
                 start = np.max([ycen-17, 0])
                 end = np.max([ycen+17, 1])
@@ -939,90 +746,65 @@ def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
     # Mask outliers
     prof_r2[inds[inds2]] = np.nan
     # Mask edge of the detector.
-    prof_r2[-4:] = np.nan
+    prof_r2[-3:] = np.nan
     # Indices of all unmasked points in the left wing.
     inds3 = np.isfinite(prof_r2)
 
-    # Fit with a 9th order polynomial.
-    fit_ax = axis_r[inds3]
-    fit_prof = prof_r2[inds3]
+    # Fit with a 7th order polynomial.
+    # To ensure that the polynomial does not start turning up in the padded
+    # region, extend the linear fit to the edge of the pad to force the fit
+    # to continue decreasing.
+    ext_ax = np.arange(25) + np.max(axis_r[inds3]) + np.max([pad, 25])
+    ext_prof = pp[1] + pp[0]*ext_ax
+    # Concatenate right-hand profile with the extended linear trend.
+    fit_ax = np.concatenate([axis_r[inds3], ext_ax])
+    fit_prof = np.concatenate([prof_r2[inds3], ext_prof])
     # Use np.polyfit for a first estimate of the coefficients.
-    pp_r0 = np.polyfit(fit_ax, fit_prof, 9)
+    pp_r0 = np.polyfit(fit_ax, fit_prof, 7)
     # Robust fit using the polyfit results as a starting point.
     pp_r = _robust_polyfit(fit_ax, fit_prof, pp_r0)
 
     # === Stitching ===
-    # Find pixel to stitch right wing fit - try to retain as much of the
-    # original data as possible.
+    newprof = profile*1
+    # Interpolate contaminated regions.
     if contamination is True:
-        # Option 3: If completely contaminated by O2.
-        # Option 2: Some contamination from O2.
-        # Option 1: In uncontaminated case, smooth over background noise.
-        stitch_pix = np.min([ycens[0]+50, np.max([ycens[1]-20, ycens[0]+14])])
-    else:
-        stitch_pix = ycens[0]+50
-    jjr = stitch_pix
-    # Pad the right axis.
-    axis_r_pad = np.arange(len(axis_r[stitch_pix:])+pad) + axis_r[stitch_pix]
-    iir = np.where(axis_r_pad == jjr)[0][0]
-    # Join right wing to old trace profile.
-    newprof = np.concatenate([profile[:jjr], 10**np.polyval(pp_r, axis_r_pad)[iir:]])
+        for order in [2, 3]:
+            # Interpolate for +/- 20 pixels around the trace centroid.
+            start = np.max([ycens[order-1]-20, ycens[0]+14])
+            if start >= dimy-1:
+                # If order is off of the detector.
+                continue
+            end = np.min([ycens[order-1]+20, dimy-1])
+            # Join interpolations to the data.
+            newprof = np.concatenate([newprof[:start],
+                                      10**np.polyval(pp_r, axis_r)[start:end],
+                                      newprof[end:]])
 
-    # Interpolate between wing and core profiles for continuity.
-    # Get pixels and values around the joint.
-    xs = np.concatenate([jjr-1-np.arange(3), np.arange(3)+jjr+1])
-    ys = newprof[xs]
-    # Interpolation over the above pixels.
-    interp = np.polyfit(xs, ys, 5)
-    xnew = np.arange(2)+(jjr-1)
-    # Insert interpolation.
-    newprof[(jjr-1):(jjr+1)] = np.polyval(interp, xnew)
+    if smooth == 'edges' or smooth == 'all':
+        # Replace highly deviant pixels with mean wing trend in wing edges.
+        newprof[inds[inds2]][10:] = 10**wing_mean[inds[inds2]][10:]
+    if smooth == 'all':
+        # Replace highly deviant pixels throughout the whole axis.
+        wing_fit = np.polyval(pp_r, axis_r[(ycens[0]+18):])
+        # Calculate the standard dev of unmasked points from the wing fit.
+        stddev_f = np.sqrt(np.nanmedian((np.log10(newprof[(ycens[0]+18):]) - wing_fit)**2))
+        # Find all outliers that are >3-sigma deviant from the mean.
+        inds4 = np.where(np.abs(np.log10(newprof[(ycens[0]+18):]) - wing_fit) > 3*stddev_f)
+        newprof[(ycens[0]+18):][inds4] = 10**wing_fit[inds4]
 
-    # ====== Reconstruct left wing ======
-    # Mask the core of the first order, and fit a third order polynomial to all
-    # remaining pixels to capture the wing behaviour near the core. Reuse the
-    # 7th order solution from the right wing for the extended behaviour.
-    # Get the profile for the left wing in log space.
-    prof_l = np.log10(profile[:(ycens[0]-12)])
-    # and corresponding axis.
-    axis_l = np.arange(dimy)[:(ycens[0]-12)]
-    # Fit with third order polynomial - exclude detector edge.
-    # Use np.polyfit for a first estimate of the coefficients.
-    pp_l0 = np.polyfit(axis_l[3:], prof_l[3:], 5)
-    # Robust fit using the polyfit results as a starting point.
-    pp_l = _robust_polyfit(axis_l[3:], prof_l[3:], pp_l0)
-
-    # === Stitching ===
-    # Find pixels to stitch left wing fit.
-    jjl2 = np.max([4, ycens[0]-50])  # Join core and extended fits.
-    # Pad the left axis.
-    axis_l_pad = np.linspace(axis_l[0]-pad, axis_l[-1], len(axis_l)+pad)
-    #  Mirror of axis_l_pad to the right.
-    axis_l_pad2 = np.arange(len(axis_l_pad)) + axis_r[ycens[0]+14]
-    iil2 = np.where(axis_l_pad == jjl2)[0][0]
-    # Join left wing to old trace profile.
-    newprof = np.concatenate([10**np.polyval(pp_r, axis_l_pad2)[::-1][:iil2],
-                              #10**np.polyval(pp_l, axis_l_pad)[iil2:iil],
-                              newprof[jjl2:]])
-
-    # Interpolate between wing and core profiles for continuity.
-    # Get pixels and values around the joint.
-    xs = np.concatenate([jjl2-1-np.arange(3), np.arange(3)+jjl2+1])
-    ys = newprof[xs]
-    # Interpolation over the above pixels.
-    interp = np.polyfit(xs, ys, 5)
-    xnew = np.arange(2)+(jjl2-1)
-    # Insert interpolation.
-    newprof[(jjl2-1):(jjl2+1)] = np.polyval(interp, xnew)
-
-    # Set any negatives to zero
-    newprof[newprof < 0] = 0
+    # Add padding - padding values are constant at the median of edge pixels.
+    padval_r = np.median(newprof[-8:-3])
+    padval_l = np.median(newprof[3:8])
+    newprof = np.concatenate([np.tile(padval_l, pad+4), newprof[4:-4],
+                              np.tile(padval_r, pad+4)])
+    # Set any negatives to a floor value.
+    newprof[newprof < 0] = np.nanpercentile(newprof[newprof < 0], 1)
 
     # Do diagnostic plot if requested.
     if verbose is True:
         plotting._plot_wing_reconstruction(profile, ycens, axis_r[inds3],
-                                           prof_r2[inds3], axis_l_pad,
-                                           axis_r_pad, pp_r, newprof, **kwargs)
+                                           prof_r2[inds3], pp_r, newprof, pad,
+                                           **kwargs)
 
     return newprof
 
