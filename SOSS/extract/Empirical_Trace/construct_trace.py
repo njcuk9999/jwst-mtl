@@ -307,7 +307,7 @@ def construct_order1(clear, F277, rot_params, ycens, subarray, pad=0,
         print('  Interpolating trace...', flush=True)
     for i, vals in tqdm(enumerate(zip(cenx_d, ceny_d, lmbda)),
                         total=len(lmbda), disable=not verbose):
-        cenx, ceny, lbd = vals[0], vals[1], vals[2]
+        cenx, ceny, lbd = int(round(vals[0], 0)), vals[1], vals[2]
         # Evaluate the interpolation polynomials at the current wavelength.
         wb_i = np.polyval(coef_b, lbd)
         wr_i = np.polyval(coef_r, lbd)
@@ -321,13 +321,13 @@ def construct_order1(clear, F277, rot_params, ycens, subarray, pad=0,
         # Re-add the lambda/D scaling.
         prof_int_cs = _chromescale(lbd, prof_int, ceny+pad, invert=True)
         # Put the interpolated profile on the detector.
-        map2D[:, int(round(cenx, 0))] = prof_int_cs
+        map2D[:, cenx] = prof_int_cs
 
         # Note detector coordinates of the edges of the interpolated region.
-        bend = int(round(cenx, 0))
+        bend = cenx
         if i == 0:
             # 2.9µm (i=0) limit may be off the end of the detector.
-            rend = int(round(cenx, 0))
+            rend = cenx
 
     if verbose is True:
         print('  Stitching models and reconstructing wings...', flush=True)
@@ -351,11 +351,6 @@ def construct_order1(clear, F277, rot_params, ycens, subarray, pad=0,
                                                contamination=False, pad=pad)
 
     # Column normalize.
-    newmap /= np.nansum(newmap, axis=0)
-    # Add noise floor to prevent arbitrarily low values in padded wings.
-    floor = np.nanpercentile(newmap[pad:(-1-pad), :], 2)
-    newmap += floor
-    # Column renormalize.
     newmap /= np.nansum(newmap, axis=0)
 
     return newmap
@@ -512,46 +507,6 @@ def loicpsf(wavelist=None, wfe_real=None, filepath='', save_to_disk=True,
 
         if save_to_disk is False:
             return psf_list
-
-
-# depreciated
-def mask_order(frame, xpix, ypix):
-    '''
-    Create a pixel mask to isolate only the detector pixels belonging to
-    a specific diffraction order.
-
-    Parameters
-    ----------
-    frame : np.array of float (2D)
-        Science data frame.
-    xpix : np.array
-        Data x centroids for the desired order
-    ypix : np.array
-        Data y centroids for the desired order
-
-    Returns
-    -------
-    O1frame : np.array of float (2D)
-        The input data frame, with all pixels other than those within
-        +/- 20 pixels of ypix masked.
-    '''
-
-    mask = np.zeros([256, 2048])
-    xx = np.round(xpix, 0).astype(int)
-    yy = np.round(ypix, 0).astype(int)
-    xr = np.linspace(np.min(xx), np.max(xx), np.max(xx)+1).astype(int)
-
-    # Set all pixels within the extent of the spatial profile to 1
-    for xxx, yyy in zip(xr, yy):
-        # Ensure that we stay on the detector
-        p_max = np.min([yyy+20, 255])
-        p_min = np.max([yyy-21, 0])
-        mask[p_min:p_max, xxx] = 1
-
-    # Mask pixels not in the order we want
-    O1frame = (mask * frame)
-
-    return O1frame
 
 
 def oversample_frame(frame, oversample=1):
@@ -807,99 +762,6 @@ def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
                                            **kwargs)
 
     return newprof
-
-
-def reconstruct_wings2(frame, ycen, pad_factor=1):
-    '''
-    Depreciated!
-    Takes a reconstructed trace profile which has been truncated about the
-    centroid and reconstructs the extended wing structure using an exponential
-    profile. Also adds padding in the spatial direction by extending the
-    exponetial fit.
-
-    Parameters
-    ----------
-    frame : np.ndarray of float (2D)
-        Empirical trace model.
-    ycen : np.array of float
-        Y-pixel centroid positions.
-    pad_factor : int
-        Multiplicative padding factor on the spatial axis. Defaults to 1 (no
-        padding).
-
-    Returns
-    -------
-    newframe : np.ndarray of float (2D)
-        Trace model with reconstructed extended wing structure, and required
-        padding.
-    '''
-
-    # Create new detector array and spatial axis taking into account padding.
-    newframe = np.zeros(((pad_factor)*frame.shape[0], frame.shape[1]))
-    fullax = np.arange(frame.shape[0])
-    fullax_pad = np.arange((pad_factor)*frame.shape[0]) - (frame.shape[0]/2)*(pad_factor-1)
-
-    # Loop over each column on the detector.
-    for col in range(frame.shape[1]):
-
-        # Temporary hack for NaN columns
-        if np.any(np.isnan(frame[:, col])):
-            continue
-
-        # Get the centroid Y-position.
-        cen = int(round(ycen[col], 0))
-
-        # Extract the left wing
-        start = np.max([0, cen-75])
-        ax_l = np.arange(start, cen-9)
-        lwing = np.log10(frame[start:(cen-9), col])
-        # Find where the log is finite
-        lwing_noi = lwing[np.isfinite(lwing)]
-        ax_l_noi = ax_l[np.isfinite(lwing)]
-        # Fit a first order polynomial to the finite value of the log wing.
-        # Equivalent to fitting an exponential to the wing.
-        pp_l = np.polyfit(ax_l_noi, lwing_noi, 1)
-
-        # Locate pixels for stitching - where the left wing goes to zero.
-        ii_l = np.where(np.isinf(lwing))[0][-1]
-        # Location in full axis.
-        jj_l = np.where(fullax == ax_l[ii_l])[0][0]
-        # Location in padded axis.
-        kk_l = np.where(fullax_pad == ax_l[ii_l])[0][0]
-
-        # Extract the right wing
-        end = np.min([cen+50, 255])
-        ax_r = np.arange(cen+9, end)
-        rwing = np.log10(frame[(cen+9):end, col])
-        # Find where the log is finite
-        rwing_noi = rwing[np.isfinite(rwing)]
-        ax_r_noi = ax_r[np.isfinite(rwing)]
-        # Fit a first order polynomial to the finite value of the log wing.
-        # Equivalent to fitting an exponential to the wing.
-        pp_r = np.polyfit(ax_r_noi, rwing_noi, 1)
-
-        # Locate pixels for stitching - where the right wing goes to zero.
-        ii_r = np.where(np.isinf(rwing))[0][0]
-        jj_r = np.where(fullax == ax_r[ii_r])[0][0]
-        kk_r = np.where(fullax_pad == ax_r[ii_r])[0][0]
-
-        # Stitch the wings to the original profile, add padding if necessary.
-        newcol = np.concatenate([10**(np.polyval(pp_l, fullax_pad[:kk_l])),
-                                 frame[jj_l:jj_r, col],
-                                 10**(np.polyval(pp_r, fullax_pad[kk_r:]))])
-
-        try:
-            # Find any remaining pixels where the profile is zero.
-            inds = np.where(newcol == 0)[0][0]
-            # If there are remainining zeros, replace with mean of neighbours.
-            newcol[inds] = np.mean([newcol[inds-1], newcol[inds+1]])
-        except IndexError:
-            pass
-
-        # Renormalize the column.
-        newframe[:, col] = newcol / np.nansum(newcol)
-
-    return newframe
 
 
 def replace_badpix(clear, badpix_mask, fill_negatives=True, verbose=False):
