@@ -2,16 +2,11 @@
 # -*- coding: utf-8 -*-
 
 import numpy as np
-import sys
 from astropy.io import fits
 import matplotlib.pylab as plt
 import os
-
-#sys.path.insert(0, '/genesis/jwst/github/jwst-mtl/SOSS/')
 from SOSS.extract import soss_read_refs
-
-#soss_read_refs.PATH = '/genesis/jwst/jwst-ref-soss/dms/'
-PATH_SANDBOX = '/genesis/jwst/userland-soss/loic_review/'
+from SOSS.dms import soss_centroids as cen
 
 
 def build_mask_256(image, subarray='SUBSTRIP256', apex_order1=None,
@@ -357,39 +352,32 @@ def calib_lambda(x, order=1, subarray='SUBSTRIP256'):
     return lba
 
 
-def soss_trace_position(image, subarray='SUBSTRIP256', apex_order1=None, badpix=None, verbose=False):
-    '''
-    Function that determines the traces positions on a real image (native size) with as
-    little assumptions as possible. Those assumptions are:
-    1) The brightest order is order 1 and it is also the brightest of all order 1 traces
-    present on the image.
+def soss_trace_position(image, subarray='SUBSTRIP256', apex_order1=None,
+                        badpix=None, verbose=False, debug=False):
+    '''Function that determines the traces positions on a real image (native
+    size) with as little assumptions as possible. Those assumptions are:
+    1) The brightest order is order 1 and it is also the brightest of all order
+    1 traces present on the image.
     2) Order 2 has a minimum in transmission between ~1.0 and ~1.2 microns.
-    3) Order 2 width has the same values as the order 1 widt for similar wavelengths.
+    3) Order 2 width has the same values as the order 1 width for similar wavelengths.
     The algorithm to measure the trace positions is the 'edge trigger' function.
-    :param image: FF, SUBSTRIP96 or SUBSTRIP256 slope image. Expected GR700XD+CLEAR. For
-    the GR700XD+F277W case, an optional f277w keyword is passed or detected by header if
-    passed.
+    :param image: FF, SUBSTRIP96 or SUBSTRIP256 slope image. Expected
+    GR700XD+CLEAR. For the GR700XD+F277W case, an optional f277w keyword is
+    passed or detected by header if passed.
     :param header:
     :param badpix:
-    :param apex_order1: The y position of the apex of the order 1 trace on the image. The apex
-    is the row at the center of the trace where the trace reaches a minimum on the detector
-    (near 1.3 microns). A rough estimate is sufficient as that is only used to mask out
-    rows on a Full-Frame image to make sure that the target of interest is detected instead
-    of a field target.
+    :param apex_order1: The y position of the apex of the order 1 trace on the
+    image. The apex is the row at the center of the trace where the trace
+    reaches a minimum on the detector (near 1.3 microns). A rough estimate is
+    sufficient as that is only used to mask out rows on a Full-Frame image to
+    ensure that the target of interest is detected instead of a field target.
     :param verbose:
     :return:
     '''
 
-    sys.path.insert(0, '/genesis/jwst/github/jwst-mtl/SOSS/dms/')
-    from SOSS.dms import soss_centroids as cen
-
-    debug = False
-
-    # Builds a mask that restrict the analysis to 256 or less vertical
-    # pixels.
+    # Build mask that restrict the analysis to 256 or fewer vertical pixels.
     mask_256 = build_mask_256(image, subarray=subarray,
                               apex_order1=apex_order1, verbose=verbose)
-
     # Combine masks for subsection of ~256 vertical pixels
     mask_256 = mask_256 | badpix
 
@@ -397,6 +385,11 @@ def soss_trace_position(image, subarray='SUBSTRIP256', apex_order1=None, badpix=
     x_o1, y_o1, w_o1, par_o1 = cen.get_uncontam_centroids_edgetrig(
             image, header=None, mask=mask_256, poly_order=11, halfwidth=2,
             mode='combined', verbose=verbose)
+
+    if subarray == 'SUBSTRIP96':
+        # Only order 1 can be measured. So return.
+        return (x_o1), (y_o1), (w_o1), (par_o1)
+
     # Fit the width
     mask = np.isfinite(w_o1) & np.isfinite(x_o1)
     param_o1 = cen.robust_polyfit(x_o1[mask], w_o1[mask], 1)
@@ -414,68 +407,63 @@ def soss_trace_position(image, subarray='SUBSTRIP256', apex_order1=None, badpix=
     if debug is True:
         hdu = fits.PrimaryHDU()
         hdu.data = np.where(mask_o3, np.nan, image)
-        hdu.writeto(os.path.join(PATH_SANDBOX, 'mask_o3.fits'), overwrite=True)
+        hdu.writeto('mask_o3.fits', overwrite=True)
 
-    if subarray == 'SUBSTRIP96':
-        # Only order 1 can be measured. So return.
-        return x_o1, y_o1, w_o1, par_o1, None, None, None, None, None, None, None, None
-
-    # Get the centroid position by locking on the traces edges and returning their mean
-    x_o3, y_o3, w_o3, par_o3 = cen.get_uncontam_centroids_edgetrig(
-            image, header=None, mask=mask_o3, poly_order=3, halfwidth=2,
-            mode='combined', verbose=verbose)
+    # Get the centroid position by locking on trace edges and returning mean.
+    out = cen.get_uncontam_centroids_edgetrig(image, header=None, mask=mask_o3,
+                                              poly_order=3, halfwidth=2,
+                                              mode='combined', verbose=verbose)
+    x_o3, y_o3, w_o3, par_o3 = out
     # Fit the width
     mask = np.isfinite(w_o3) & np.isfinite(x_o3)
     param_o3 = cen.robust_polyfit(x_o3[mask], w_o3[mask], 1)
     w_o3_fit = np.polyval(param_o3, x_o3)
 
-
     # Making masks for the second order - split in two measurements:
-    # A) Uncontaminated region 700<x<1800 - fit both edges combined (the default)
+    # A) Uncontaminated region 700<x<1800 - fit both edges combined (default)
     # B) Contaminated region (x=0-200) - fit only the top edge
-
     # Build the mask to isolate the uncontaminated part of order 2
-    mask_o2_uncont = build_mask_order2_uncontaminated(x_o1, y_o1, x_o3, y_o3, subarray=subarray)
+    mask_o2_uncont = build_mask_order2_uncontaminated(x_o1, y_o1, x_o3, y_o3,
+                                                      subarray=subarray)
     # Add the bad pixel mask to it (including the reference pixels)
     mask_o2_uncont = mask_o2_uncont | badpix
     if debug is True:
         hdu = fits.PrimaryHDU()
         hdu.data = np.where(mask_o2_uncont, np.nan, image)
-        hdu.writeto(os.path.join(PATH_SANDBOX,'mask_o2_uncont.fits'), overwrite=True)
+        hdu.writeto('mask_o2_uncont.fits', overwrite=True)
 
     # Build the mask to isolate the contaminated part order 2
-    mask_o2_cont = build_mask_order2_contaminated(x_o1, y_o1, x_o3, y_o3, subarray=subarray)
+    mask_o2_cont = build_mask_order2_contaminated(x_o1, y_o1, x_o3, y_o3,
+                                                  subarray=subarray)
     # Combine masks
     mask_o2_cont = mask_o2_cont | badpix
     if debug is True:
         hdu = fits.PrimaryHDU()
         hdu.data = np.where(mask_o2_cont, np.nan, image)
-        hdu.writeto(os.path.join(PATH_SANDBOX, 'mask_o2_cont.fits'), overwrite=True)
+        hdu.writeto('mask_o2_cont.fits', overwrite=True)
 
-
-    # For uncontaminated blue part, make the position measurement with the default 'combined' edge method
-    x_o2_uncont, y_o2_uncont, w_o2_uncont, par_o2_uncont = cen.get_uncontam_centroids_edgetrig(
-            image, header=None, mask=mask_o2_uncont,
-            poly_order=4, halfwidth=2, mode = 'combined', verbose = verbose)
+    # For uncontaminated blue part, make the position measurement with the
+    # default 'combined' edge method.
+    out = cen.get_uncontam_centroids_edgetrig(image, header=None,
+                                              mask=mask_o2_uncont,
+                                              poly_order=4, halfwidth=2,
+                                              mode='combined', verbose=verbose)
+    x_o2_uncont, y_o2_uncont, w_o2_uncont, par_o2_uncont = out
     # Fit the width
     mask = np.isfinite(w_o2_uncont) & np.isfinite(x_o2_uncont)
     param_o2 = cen.robust_polyfit(x_o2_uncont[mask], w_o2_uncont[mask], 1)
     w_o2_uncont_fit = np.polyval(param_o2, x_o2_uncont)
 
-
-
-
-    ################ CALIBRATE pixels-->wavelength ######################
-    ############ TO COMPARE TRACE WIDTH BETWEEN ORDERS ##################
+    # CALIBRATE pixels-->wavelength TO COMPARE TRACE WIDTH BETWEEN ORDERS
     lba_o1 = calib_lambda(x_o1, order=1, subarray=subarray)
     lba_o2_uncont = calib_lambda(x_o2_uncont, order=2, subarray=subarray)
     lba_o3 = calib_lambda(x_o3, order=3, subarray=subarray)
 
     calibrate_width = False
     if calibrate_width is True:
-        #################### TRACE WIDTH PLOT RELATION ######################
+        # TRACE WIDTH PLOT RELATION
         # Group together data for orders 1 and 2
-        w_all = np.concatenate((w_o1,w_o2_uncont), axis=None)
+        w_all = np.concatenate((w_o1, w_o2_uncont), axis=None)
         lba_all = np.concatenate((lba_o1, lba_o2_uncont), axis=None)
         ind = np.argsort(lba_all)
         lba_all, w_all = lba_all[ind], w_all[ind]
@@ -488,40 +476,43 @@ def soss_trace_position(image, subarray='SUBSTRIP256', apex_order1=None, badpix=
             w_all_fit = np.polyval(param_all, lba_all)
         else:
             # Make a linear fit in the log-log plot - DEFAULT
-            param_all = cen.robust_polyfit(np.log(lba_all[mask]), np.log(w_all[mask]), 1)
-            W0, m = param_all[1], param_all[0] # w = W0 * lba^m
-            #print('param = ', param_all)
+            param_all = cen.robust_polyfit(np.log(lba_all[mask]),
+                                           np.log(w_all[mask]), 1)
+            W0, m = param_all[1], param_all[0]  # w = W0 * lba^m
             w_all_fit = np.polyval(param_all, np.log(lba_all))
             w_all_fit = np.exp(w_all_fit)
+
         # Make a figure of the trace width versus the wavelength
         if debug is True:
-            plt.figure(figsize=(6,6))
-            plt.scatter(lba_o1, w_o1, marker=',', s=1, color='red', label='Order 1')
-            #plt.plot(lba_o1, w_o1_fit, color='red', linewidth=5, label='Order 1 - Fit')
-            plt.scatter(lba_o2_uncont, w_o2_uncont+0.05, marker=',', s=1, color='orange', label='Order 2 - Uncontaminated')
-            #plt.plot(lba_o2_uncont, w_o2_uncont_fit+0.05, color='orange', linewidth=5, label='Order 2 - Uncontaminated - Fit')
-            plt.scatter(lba_o3, w_o3+0.15, marker=',', s=1, color='navy', label='Order 3')
-            #plt.plot(lba_o3, w_o3_fit, color='navy', linewidth=5, label='Order 3 - Fit')
+            plt.figure(figsize=(6, 6))
+            plt.scatter(lba_o1, w_o1, marker=',', s=1, color='red',
+                        label='Order 1')
+            plt.scatter(lba_o2_uncont, w_o2_uncont+0.05, marker=',', s=1,
+                        color='orange', label='Order 2 - Uncontaminated')
+            plt.scatter(lba_o3, w_o3+0.15, marker=',', s=1, color='navy',
+                        label='Order 3')
             plt.plot(lba_all, w_all_fit, color='black',  linewidth=5,
                      label='Order 1 and 2 - Fit:\nwidth = {:6.2F} $\lambda**({:6.4F})$'.format(np.exp(W0), m))
             plt.xlabel('Wavelength (microns)')
             plt.ylabel('Trace Width (pixels)')
-            #plt.loglog()
             plt.legend()
-            plt.savefig(os.path.join(PATH_SANDBOX,'tracewidth_vs_wavelength.pdf'))
             plt.show()
     else:
-        # Adopt the already computed width relation. The best fit parameters were obtained on
-        # the CV3 stack, using halfwidth=2 in the call to get_uncontam_centroids_edgetrig
-        # One should revisit the fit if using a different halfwidth, or different data set.
+        # Adopt the already computed width relation. The best fit parameters
+        # were obtained on the CV3 stack, using halfwidth=2 in the call to
+        # get_uncontam_centroids_edgetrig. One should revisit the fit if using
+        # a different halfwidth, or different data set.
         param_all = [-0.20711659, 3.16387517]
-        W0, m = np.exp(param_all[1]), param_all[0] # w = W0 * lba^m
+        W0, m = np.exp(param_all[1]), param_all[0]  # w = W0 * lba^m
 
-    # Apply the width relation on the contaminated second order trace 'top edge' positions
-    # to retrieve the trace center.
-    x_o2_top, y_o2_top, w_o2_top, par_o2_top = cen.get_uncontam_centroids_edgetrig(
-            image, header=None, mask=mask_o2_cont, poly_order=None, halfwidth=2,
-            mode='minedge', verbose=verbose)
+    # Apply the width relation on the contaminated second order trace 'top
+    # edge' positions to retrieve the trace center.
+    out = cen.get_uncontam_centroids_edgetrig(image, header=None,
+                                              mask=mask_o2_cont,
+                                              poly_order=None, halfwidth=2,
+                                              mode='minedge', verbose=verbose)
+    x_o2_top, y_o2_top, w_o2_top, par_o2_top = out
+
     # Calibrate the wavelength
     lba_o2_top = calib_lambda(x_o2_top, order=2, subarray=subarray)
     # Calibrate the trace width at those wavelengths
@@ -532,13 +523,16 @@ def soss_trace_position(image, subarray='SUBSTRIP256', apex_order1=None, badpix=
     y_o2_cont = y_o2_top - w_o2_cont/2.
     x_o2_cont = np.copy(x_o2_top)
 
-    # For the uncontaminated part of second order, make measurements again but return raw
-    # measurements rather than the fit.
-    x_o2_uncont, y_o2_uncont, w_o2_uncont, par_o2_uncont = cen.get_uncontam_centroids_edgetrig(
-            image, header=None, mask=mask_o2_uncont,
-            poly_order=None, halfwidth=2, mode = 'combined', verbose = verbose)
+    # For the uncontaminated part of second order, make measurements again but
+    # return raw measurements rather than the fit.
+    out = cen.get_uncontam_centroids_edgetrig(image, header=None,
+                                              mask=mask_o2_uncont,
+                                              poly_order=None, halfwidth=2,
+                                              mode='combined', verbose=verbose)
+    x_o2_uncont, y_o2_uncont, w_o2_uncont, par_o2_uncont = out
 
-    # For the final order 2 solution, merge the contaminated and the uncontaminated measurements
+    # For the final order 2 solution, merge the contaminated and the
+    # uncontaminated measurements
     y_o2 = np.nanmean([y_o2_uncont, y_o2_cont], axis=0)
     x_o2 = np.nanmean([x_o2_uncont, x_o2_cont], axis=0)
     w_o2 = np.nanmean([w_o2_uncont, w_o2_cont], axis=0)
@@ -549,23 +543,29 @@ def soss_trace_position(image, subarray='SUBSTRIP256', apex_order1=None, badpix=
     y_o2 = np.polyval(par_o2, x_o2)
 
     if debug is True:
-        plt.figure(figsize=(8,8))
+        plt.figure(figsize=(8, 8))
         plt.ylim((0, 256))
-        plt.imshow(np.log10(image), vmin=0.7, vmax=3, origin='lower', aspect='auto')
+        plt.imshow(np.log10(image), vmin=0.7, vmax=3, origin='lower',
+                   aspect='auto')
         plt.plot(x_o2_cont, y_o2_cont, color='red', label='Contaminated')
-        plt.plot(x_o2_uncont, y_o2_uncont, color='navy', label='Uncontaminated')
+        plt.plot(x_o2_uncont, y_o2_uncont, color='navy',
+                 label='Uncontaminated')
         plt.plot(x_o2, y_o2, color='black', label='Merged')
         plt.legend()
         plt.show()
 
-    return x_o1, y_o1, w_o1, par_o1, x_o2, y_o2, w_o2, par_o2, x_o3, y_o3, w_o3, par_o3
+    xcens = (x_o1, x_o2, x_o3)
+    ycens = (y_o1, y_o2, y_o3)
+    wids = (w_o1, w_o2, w_o3)
+    pars = (par_o1, par_o2, par_o3)
+    return xcens, ycens, wids, pars
 
 
-def test_soss_trace_position():
+# TODO - test function can be removed.
+def test_soss_trace_position(im, bad):
 
     # Read the CV3 deep stack and bad pixel mask
-    im = fits.getdata('/genesis/jwst/userland-soss/loic_review/stack_256_ng3_DMS.fits')
-    bad = fits.getdata('/genesis/jwst/userland-soss/loic_review/badpix_DMS.fits')
+    # image is the dataframe, bad the bad pixel map
     badpix = np.zeros_like(bad, dtype='bool')
     badpix[~np.isfinite(bad)] = True
 
@@ -575,23 +575,25 @@ def test_soss_trace_position():
     subarray = 'SUBSTRIP256'
     dimy = 256
     if try96 is True:
-        badpix = badpix[10:106,:]
-        im = im[10:106,:]
+        badpix = badpix[10:106, :]
+        im = im[10:106, :]
         subarray = 'SUBSTRIP96'
         dimy = 96
     if tryfull is True:
-        badpixtmp = np.zeros_like(np.zeros((2048,2048)), dtype='bool')
-        badpixtmp[1792:,:] = badpix
+        badpixtmp = np.zeros_like(np.zeros((2048, 2048)), dtype='bool')
+        badpixtmp[1792:, :] = badpix
         badpix = badpixtmp
-        imtmp = np.zeros((2048,2048))
-        imtmp[1792:,:] = im
+        imtmp = np.zeros((2048, 2048))
+        imtmp[1792:, :] = im
         im = imtmp
         subarray = 'FULL'
         dimy = 2048
 
     # Example for the call
-    lotastuff = dev.soss_trace_position(im, subarray=subarray, apex_order1=None, badpix=badpix, verbose=False)
-    x_o1, y_o1, w_o1, par_o1, x_o2, y_o2, w_o2, par_o2, x_o3, y_o3, w_o3, par_o3 = lotastuff
+    lotastuff = soss_trace_position(im, subarray=subarray, apex_order1=None,
+                                    badpix=badpix, verbose=False)
+    x_o1, y_o1, w_o1, par_o1, x_o2, y_o2, w_o2, par_o2, x_o3, y_o3, w_o3,\
+        par_o3 = lotastuff
 
     # Figure to show the positions for all 3 orders
     plt.figure(figsize=(10, 10))
@@ -614,8 +616,3 @@ def test_soss_trace_position():
 
     plt.legend()
     plt.show()
-
-
-# Test it
-if __name__ == "__main__":
-    test_soss_trace_position()
