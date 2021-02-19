@@ -39,7 +39,7 @@ def build_mask_256(image, subarray='SUBSTRIP256', apex_order1=None,
     return mask_256
 
 
-def build_trace_mask(stack, tracex, tracey, subarray='SUBSTRIP256',
+def build_trace_mask(tracex, tracey, subarray='SUBSTRIP256',
                      halfwidth=30, extend_redward=None,
                      extend_blueward=None, verbose=False):
 
@@ -58,7 +58,7 @@ def build_trace_mask(stack, tracex, tracey, subarray='SUBSTRIP256',
 
 
     # Intitialize the mask array to unmasked value.
-    mask = np.zeros_like(stack, dtype='bool')
+    mask = np.zeros_like(np.zeros(dimy,dimx), dtype='bool')
     if verbose == True: print(np.shape(mask))
 
     # Column by column, mask out pixels beyond the halfwidth of the
@@ -85,7 +85,7 @@ def build_trace_mask(stack, tracex, tracey, subarray='SUBSTRIP256',
     return mask
 
 
-def build_mask_vertical(stack, masked_side = 'blue',
+def build_mask_vertical(subarray='SUBSTRIP256', masked_side = 'blue',
                         cut_x = 1700, mask_between=True,
                         mask_outside=False, verbose=False):
     ''' Builds a mask where there are two sides: left and right, one
@@ -97,7 +97,12 @@ def build_mask_vertical(stack, masked_side = 'blue',
 
     if verbose is True: print('Going through build_mask_vertical.')
 
-    mask = np.zeros_like(stack, dtype='bool')
+    dimy, dimx = 256, 2048
+    if subarray == 'SUBSTRIP96': dimy = 96
+    if subarray == 'FULL': dimy = 2048
+
+    # Initialize a mask
+    mask = np.zeros_like(np.zeros(dimy,dimx), dtype='bool')
 
     if np.size(cut_x) == 2:
         if mask_between == True:
@@ -115,7 +120,7 @@ def build_mask_vertical(stack, masked_side = 'blue',
 
 
 
-def build_mask_sloped(stack, subarray='SUBSTRIP256', masked_side='blue',
+def build_mask_sloped(subarray='SUBSTRIP256', masked_side='blue',
                       pt1 = [0,0], pt2 = [2048,0], verbose=False):
     '''
     Draw a sloped line and mask on one side of it (the side is
@@ -128,6 +133,9 @@ def build_mask_sloped(stack, subarray='SUBSTRIP256', masked_side='blue',
     # TODO:
     # TO DO: handle the aper_order1 optional parameter to offset
     # all vertically.
+
+    if apex_order1 is not None:
+        print('Warning: apex_order1 is not yet implemented in build_mask_sloped')
 
     masked_value = True
 
@@ -143,7 +151,7 @@ def build_mask_sloped(stack, subarray='SUBSTRIP256', masked_side='blue',
     if verbose is True: print('line fit param:', param)
 
     # Initialize a mask
-    mask = np.zeros_like(stack, dtype='bool')
+    mask = np.zeros_like(np.zeros(dimy,dimx), dtype='bool')
 
     # Compute the position of the line at every x position
     fitx = np.arange(dimx)
@@ -167,7 +175,7 @@ def build_mask_sloped(stack, subarray='SUBSTRIP256', masked_side='blue',
     return mask
 
 
-def build_mask_order2_uncontaminated(image, x_o1, y_o1, x_o3, y_o3,
+def build_mask_order2_uncontaminated(x_o1, y_o1, x_o3, y_o3,
                                      subarray='SUBSTRIP256',
                                      halfwidth_o1 = 25,
                                      halfwidth_o3 = 15,
@@ -192,7 +200,7 @@ def build_mask_order2_uncontaminated(image, x_o1, y_o1, x_o3, y_o3,
     # First, the order 1 trace needs to be masked out. Construct a mask
     # that not only covers the order 1 trace but everything redward
     # along the spatial axis.
-    mask_aper_o1 = build_trace_mask(image, x_o1, y_o1,
+    mask_aper_o1 = build_trace_mask(x_o1, y_o1,
                                     subarray=subarray,
                                     halfwidth=halfwidth_o1,
                                     extend_redward=True,
@@ -200,23 +208,23 @@ def build_mask_order2_uncontaminated(image, x_o1, y_o1, x_o3, y_o3,
 
     # Do the same to mask out order 3 - this one is fainter so make a
     # narrower mask. Also mask all pixels blueward (spatially)
-    mask_aper_o3 = build_trace_mask(image, x_o3, y_o3,
+    mask_aper_o3 = build_trace_mask(x_o3, y_o3,
                                     subarray=subarray,
                                     halfwidth=halfwidth_o3,
                                     extend_blueward=True,
                                     verbose=verbose)
 
     # Mask what is on the left side where orders 1 and 2 are well blended
-    mask_red = build_mask_vertical(image, masked_side='red',
+    mask_red = build_mask_vertical(subarray=subarray, masked_side='red',
                                   cut_x=red_cut_x)
 
     # Mask everything to the right of where the 2nd order goes out of
     # the image
-    mask_blue = build_mask_vertical(image, masked_side='blue',
+    mask_blue = build_mask_vertical(subarray=subarray, masked_side='blue',
                                    cut_x=blue_cut_x)
 
     # Mask a slope below the order 2 to remove the wings of order 1
-    mask_slope = build_mask_sloped(image, subarray=subarray,
+    mask_slope = build_mask_sloped(subarray=subarray,
                                    masked_side='blue', pt1=pt1, pt2=pt2)
 
     # Combine masks
@@ -228,7 +236,7 @@ def build_mask_order2_uncontaminated(image, x_o1, y_o1, x_o3, y_o3,
 
 
 
-def build_mask_order2_contaminated(image, x_o1, y_o1, x_o3, y_o3,
+def build_mask_order2_contaminated(x_o1, y_o1, x_o3, y_o3,
                                    subarray='SUBSTRIP256',
                                    halfwidth_o1 = 25,
                                    halfwidth_o3 = 15,
@@ -251,7 +259,7 @@ def build_mask_order2_contaminated(image, x_o1, y_o1, x_o3, y_o3,
     # First, the order 1 trace needs to be masked out. Construct a mask
     # that not only covers the order 1 trace but everything redward
     # along the spatial axis.
-    mask_aper_o1 = build_trace_mask(image, x_o1, y_o1,
+    mask_aper_o1 = build_trace_mask(x_o1, y_o1,
                                     subarray=subarray,
                                     halfwidth=halfwidth_o1,
                                     extend_redward=True,
@@ -259,7 +267,7 @@ def build_mask_order2_contaminated(image, x_o1, y_o1, x_o3, y_o3,
 
     # Do the same to mask out order 3 - this one is fainter so make a
     # narrower mask. Also mask all pixels blueward (spatially)
-    mask_aper_o3 = build_trace_mask(image, x_o3, y_o3,
+    mask_aper_o3 = build_trace_mask(x_o3, y_o3,
                                     subarray=subarray,
                                     halfwidth=halfwidth_o3,
                                     extend_blueward=True,
@@ -267,7 +275,7 @@ def build_mask_order2_contaminated(image, x_o1, y_o1, x_o3, y_o3,
 
     # Mask everything to the right of the second order trace where the
     # transmission dip makes the trace disappear.
-    mask_blue = build_mask_vertical(image, masked_side='blue',
+    mask_blue = build_mask_vertical(subarray=subarray, masked_side='blue',
                                    cut_x=cut_x)
 
     # Combine masks
@@ -279,16 +287,23 @@ def build_mask_order2_contaminated(image, x_o1, y_o1, x_o3, y_o3,
 
 
 
-def build_mask_order3(image, subarray='SUBSTRIP256', apex_order1=40,
+def build_mask_order3(subarray='SUBSTRIP256', apex_order1=40,
                       verbose=False):
 
     ''' Builds the mask to isolate the 3rd order trace.
     '''
 
+    dimy, dimx = 256, 2048
+    if subarray == 'SUBSTRIP96': dimy = 96
+    if subarray == 'FULL': dimy = 2048
+
+    # Initialize a mask
+    mask = np.zeros_like(np.zeros((dimy, dimx)), dtype='bool')
+
     if subarray == 'SUBSTRIP96':
         # Nothing to be done because order 3 can not be present.
         print('warning. No mask produced for order 3 when subarray=SUBSTRIP96')
-        return np.zeros_like(image, dtype='bool')
+        return mask
     else:
         # As determined on a subarray=256, here are the line parameters to
         # constrain the region for masking.
@@ -297,12 +312,10 @@ def build_mask_order3(image, subarray='SUBSTRIP256', apex_order1=40,
         if subarray == 'SUBSTRIP256':
             yintercept = 132.0 # measured on a 256 subarray
             apex_default = 40 # center of the order 1 trace at its lowest row value
-            dimy = 256
         # Adapt if we are deealing with a FULLFRAME image
-        if subarray == 'FF':
+        if subarray == 'FULL':
             yintercept = 132.0 + 1792
             apex_default = 40 + 1792
-            dimy = 2048
         # vertical line redward of which no order 3 is detected
         maxcolumn = 700
 
@@ -321,7 +334,6 @@ def build_mask_order3(image, subarray='SUBSTRIP256', apex_order1=40,
                 print('warning: masking for order 3 with apex_order1={:} leaves too little of order 3 to fit position'.format(apex_order1))
 
         # Column by column, mask pixels below that line
-        mask = np.zeros_like(image, dtype='bool')
         for i in range(2048):
             y = np.int(np.round(yintercept + slope * i))
             y = np.min([dimy,y]) # Make sure y does not go above array size
@@ -384,7 +396,7 @@ def soss_trace_position(image, subarray='SUBSTRIP256', apex_order1=None, badpix=
     mask_256 = build_mask_256(image, subarray=subarray,
                               apex_order1=apex_order1, verbose=verbose)
 
-    # Combine Order 1 masks
+    # Combine masks for subsection of ~256 vertical pixels
     mask_256 = mask_256 | badpix
 
     # Get the Order 1 position
@@ -400,7 +412,7 @@ def soss_trace_position(image, subarray='SUBSTRIP256', apex_order1=None, badpix=
     apex_order1_measured = np.round(np.min(y_o1))
 
     # Make a mask to isolate the 3rd order trace
-    mask_o3 = build_mask_order3(image, subarray='SUBSTRIP256',
+    mask_o3 = build_mask_order3(subarray='SUBSTRIP256',
                                 apex_order1=apex_order1_measured,
                                 verbose=verbose)
     # Combine Order 3 mask
@@ -408,7 +420,7 @@ def soss_trace_position(image, subarray='SUBSTRIP256', apex_order1=None, badpix=
     if debug is True:
         hdu = fits.PrimaryHDU()
         hdu.data = np.where(mask_o3, np.nan, image)
-        hdu.writeto(os.path.join(PATH_SANDBOX, 'mask3.fits'), overwrite=True)
+        hdu.writeto(os.path.join(PATH_SANDBOX, 'mask_o3.fits'), overwrite=True)
 
     # Get the centroid position by locking on the traces edges and returning their mean
     x_o3, y_o3, w_o3, par_o3 = cen.get_uncontam_centroids_edgetrig(
@@ -425,7 +437,7 @@ def soss_trace_position(image, subarray='SUBSTRIP256', apex_order1=None, badpix=
     # B) Contaminated region (x=0-200) - fit only the top edge
 
     # Build the mask to isolate the uncontaminated part of order 2
-    mask_o2_uncont = build_mask_order2_uncontaminated(image, x_o1, y_o1, x_o3, y_o3)
+    mask_o2_uncont = build_mask_order2_uncontaminated(x_o1, y_o1, x_o3, y_o3, subarray=subarray)
     # Add the bad pixel mask to it (including the reference pixels)
     mask_o2_uncont = mask_o2_uncont | badpix
     if debug is True:
@@ -434,7 +446,7 @@ def soss_trace_position(image, subarray='SUBSTRIP256', apex_order1=None, badpix=
         hdu.writeto(os.path.join(PATH_SANDBOX,'mask_o2_uncont.fits'), overwrite=True)
 
     # Build the mask to isolate the contaminated part order 2
-    mask_o2_cont = build_mask_order2_contaminated(image, x_o1, y_o1, x_o3, y_o3)
+    mask_o2_cont = build_mask_order2_contaminated(x_o1, y_o1, x_o3, y_o3, subarray=subarray)
     # Combine masks
     mask_o2_cont = mask_o2_cont | badpix
     if debug is True:
@@ -581,7 +593,7 @@ def test_soss_trace_position():
     badpix[~np.isfinite(bad)] = True
 
     # Example for the call
-    lotastuff = dev.soss_trace_position(im, apex_order1=None, badpix=badpix, verbose=False)
+    lotastuff = dev.soss_trace_position(im, subarray='SUBSTRIP96', apex_order1=None, badpix=badpix, verbose=False)
     x_o1, y_o1, w_o1, par_o1, x_o2, y_o2, w_o2, par_o2, x_o3, y_o3, w_o3, par_o3 = lotastuff
 
     # Figure to show the positions for all 3 orders
