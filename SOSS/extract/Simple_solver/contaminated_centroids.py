@@ -58,7 +58,7 @@ def build_trace_mask(tracex, tracey, subarray='SUBSTRIP256',
 
 
     # Intitialize the mask array to unmasked value.
-    mask = np.zeros_like(np.zeros(dimy,dimx), dtype='bool')
+    mask = np.zeros_like(np.zeros((dimy,dimx)), dtype='bool')
     if verbose == True: print(np.shape(mask))
 
     # Column by column, mask out pixels beyond the halfwidth of the
@@ -102,7 +102,7 @@ def build_mask_vertical(subarray='SUBSTRIP256', masked_side = 'blue',
     if subarray == 'FULL': dimy = 2048
 
     # Initialize a mask
-    mask = np.zeros_like(np.zeros(dimy,dimx), dtype='bool')
+    mask = np.zeros_like(np.zeros((dimy,dimx)), dtype='bool')
 
     if np.size(cut_x) == 2:
         if mask_between == True:
@@ -130,12 +130,6 @@ def build_mask_sloped(subarray='SUBSTRIP256', masked_side='blue',
     y-axis, it depends on the array size. For SUBSTRIP256, y=0-255,
     for FF, y=0-2047
     '''
-    # TODO:
-    # TO DO: handle the aper_order1 optional parameter to offset
-    # all vertically.
-
-    if apex_order1 is not None:
-        print('Warning: apex_order1 is not yet implemented in build_mask_sloped')
 
     masked_value = True
 
@@ -151,7 +145,7 @@ def build_mask_sloped(subarray='SUBSTRIP256', masked_side='blue',
     if verbose is True: print('line fit param:', param)
 
     # Initialize a mask
-    mask = np.zeros_like(np.zeros(dimy,dimx), dtype='bool')
+    mask = np.zeros_like(np.zeros((dimy,dimx)), dtype='bool')
 
     # Compute the position of the line at every x position
     fitx = np.arange(dimx)
@@ -222,6 +216,15 @@ def build_mask_order2_uncontaminated(x_o1, y_o1, x_o3, y_o3,
     # the image
     mask_blue = build_mask_vertical(subarray=subarray, masked_side='blue',
                                    cut_x=blue_cut_x)
+
+    # Apply a y offset to the points determining the slope to handle
+    # different subarray cases
+    if subarray == 'FULL':
+        pt1[1] = pt1[1] + 1792
+        pt2[1] = pt2[1] + 1792
+    if subarray == 'SUBSTRIP96':
+        pt1[1] = pt1[1] - 150
+        pt2[1] = pt2[1] - 150
 
     # Mask a slope below the order 2 to remove the wings of order 1
     mask_slope = build_mask_sloped(subarray=subarray,
@@ -412,7 +415,7 @@ def soss_trace_position(image, subarray='SUBSTRIP256', apex_order1=None, badpix=
     apex_order1_measured = np.round(np.min(y_o1))
 
     # Make a mask to isolate the 3rd order trace
-    mask_o3 = build_mask_order3(subarray='SUBSTRIP256',
+    mask_o3 = build_mask_order3(subarray=subarray,
                                 apex_order1=apex_order1_measured,
                                 verbose=verbose)
     # Combine Order 3 mask
@@ -421,6 +424,10 @@ def soss_trace_position(image, subarray='SUBSTRIP256', apex_order1=None, badpix=
         hdu = fits.PrimaryHDU()
         hdu.data = np.where(mask_o3, np.nan, image)
         hdu.writeto(os.path.join(PATH_SANDBOX, 'mask_o3.fits'), overwrite=True)
+
+    if subarray == 'SUBSTRIP96':
+        # Only order 1 can be measured. So return.
+        return x_o1, y_o1, w_o1, par_o1, None, None, None, None, None, None, None, None
 
     # Get the centroid position by locking on the traces edges and returning their mean
     x_o3, y_o3, w_o3, par_o3 = cen.get_uncontam_centroids_edgetrig(
@@ -469,9 +476,9 @@ def soss_trace_position(image, subarray='SUBSTRIP256', apex_order1=None, badpix=
 
     ################ CALIBRATE pixels-->wavelength ######################
     ############ TO COMPARE TRACE WIDTH BETWEEN ORDERS ##################
-    lba_o1 = calib_lambda(x_o1, order=1, subarray='SUBSTRIP256')
-    lba_o2_uncont = calib_lambda(x_o2_uncont, order=2, subarray='SUBSTRIP256')
-    lba_o3 = calib_lambda(x_o3, order=3, subarray='SUBSTRIP256')
+    lba_o1 = calib_lambda(x_o1, order=1, subarray=subarray)
+    lba_o2_uncont = calib_lambda(x_o2_uncont, order=2, subarray=subarray)
+    lba_o3 = calib_lambda(x_o3, order=3, subarray=subarray)
 
     calibrate_width = False
     if calibrate_width is True:
@@ -525,7 +532,7 @@ def soss_trace_position(image, subarray='SUBSTRIP256', apex_order1=None, badpix=
             image, header=None, mask=mask_o2_cont, poly_order=None, halfwidth=2,
             mode='minedge', verbose=verbose)
     # Calibrate the wavelength
-    lba_o2_top = calib_lambda(x_o2_top, order=2, subarray='SUBSTRIP256')
+    lba_o2_top = calib_lambda(x_o2_top, order=2, subarray=subarray)
     # Calibrate the trace width at those wavelengths
     w_o2_cont = W0 * lba_o2_top**m
     # But make sure that unmeasured regions remain so
@@ -560,7 +567,6 @@ def soss_trace_position(image, subarray='SUBSTRIP256', apex_order1=None, badpix=
         plt.legend()
         plt.show()
 
-
     return x_o1, y_o1, w_o1, par_o1, x_o2, y_o2, w_o2, par_o2, x_o3, y_o3, w_o3, par_o3
 
 
@@ -592,26 +598,48 @@ def test_soss_trace_position():
     badpix = np.zeros_like(bad, dtype='bool')
     badpix[~np.isfinite(bad)] = True
 
+    # Modify the image to test the 3 subarray cases
+    try96 = True
+    tryfull = False
+    subarray = 'SUBSTRIP256'
+    dimy = 256
+    if try96 is True:
+        badpix = badpix[10:106,:]
+        im = im[10:106,:]
+        subarray = 'SUBSTRIP96'
+        dimy = 96
+    if tryfull is True:
+        badpixtmp = np.zeros_like(np.zeros((2048,2048)), dtype='bool')
+        badpixtmp[1792:,:] = badpix
+        badpix = badpixtmp
+        imtmp = np.zeros((2048,2048))
+        imtmp[1792:,:] = im
+        im = imtmp
+        subarray = 'FULL'
+        dimy = 2048
+
     # Example for the call
-    lotastuff = dev.soss_trace_position(im, subarray='SUBSTRIP96', apex_order1=None, badpix=badpix, verbose=False)
+    lotastuff = dev.soss_trace_position(im, subarray=subarray, apex_order1=None, badpix=badpix, verbose=False)
     x_o1, y_o1, w_o1, par_o1, x_o2, y_o2, w_o2, par_o2, x_o3, y_o3, w_o3, par_o3 = lotastuff
 
     # Figure to show the positions for all 3 orders
     plt.figure(figsize=(10, 10))
-    plt.ylim((0, 256))
+    plt.ylim((0, dimy))
     plt.imshow(np.log10(im), vmin=0.7, vmax=3, origin='lower', aspect='auto')
 
     plt.plot(x_o1, y_o1, color='orange', label='Order 1')
     plt.plot(x_o1, y_o1 - w_o1 / 2, color='orange')
     plt.plot(x_o1, y_o1 + w_o1 / 2, color='orange')
 
-    plt.plot(x_o2, y_o2, color='black', label='Order 2')
-    plt.plot(x_o2, y_o2 - w_o2 / 2, color='black')
-    plt.plot(x_o2, y_o2 + w_o2 / 2, color='black')
+    if x_o2 is not None:
+        plt.plot(x_o2, y_o2, color='black', label='Order 2')
+        plt.plot(x_o2, y_o2 - w_o2 / 2, color='black')
+        plt.plot(x_o2, y_o2 + w_o2 / 2, color='black')
 
-    plt.plot(x_o3, y_o3, color='red', label='Order 3')
-    plt.plot(x_o3, y_o3 - w_o3 / 2, color='red')
-    plt.plot(x_o3, y_o3 + w_o3 / 2, color='red')
+    if x_o3 is not None:
+        plt.plot(x_o3, y_o3, color='red', label='Order 3')
+        plt.plot(x_o3, y_o3 - w_o3 / 2, color='red')
+        plt.plot(x_o3, y_o3 + w_o3 / 2, color='red')
 
     plt.legend()
     plt.savefig('/genesis/jwst/userland-soss/loic_review/trace_position_asof20210217.pdf')
