@@ -9,11 +9,11 @@ File containing the necessary functions to create an empirical interpolated
 trace model in the overlap region for SOSS order 1.
 """
 
-import os
-import numpy as np
 from astropy.io import fits
+import numpy as np
+import os
 from scipy.optimize import least_squares
-from scipy.interpolate import interp1d
+from scipy.optimize import minimize
 from tqdm import tqdm
 from SOSS.extract import soss_read_refs
 from SOSS.extract.empirical_trace import centroid
@@ -345,14 +345,16 @@ def construct_order1(clear, F277, rot_params, ycens, subarray, pad=0,
                 ycens['order 3'][1][col]]
         # Mask contamination from second and third orders, reconstruct wings
         # and add padding.
-        newmap[:, col] = reconstruct_wings(clear[:, col], ycens=cens, pad=pad)
+        newmap[:, col] = reconstruct_wings(clear[:, col], ycens=cens, pad=pad,
+                                           smooth=True)
     if F277 is not None:
         # Add on the F277W frame to the red of the model.
         for col in tqdm(range(rend), disable=not verbose):
             cens = [ycens['order 1'][1][col]]
             # Reconstruct wing structure and pad.
             newmap[:, col] = reconstruct_wings(F277[:, col], ycens=cens,
-                                               contamination=False, pad=pad)
+                                               contamination=False, pad=pad,
+                                               smooth=True)
 
     # Column normalize.
     newmap /= np.nansum(newmap, axis=0)
@@ -743,6 +745,49 @@ def replace_badpix(clear, badpix_mask, fill_negatives=True, verbose=False):
         clear_r[y, x] = rep_val
 
     return clear_r
+
+
+def rescale_model(data, model, verbose=False):
+    '''Rescale a column normalized trace model to the flux level of an actual
+    observation. A multiplicative coefficient is determined via Chi^2
+    minimization independantly for each column, such that the rescaled model
+    best matches the data.
+
+    Parameters
+    ----------
+    data : np.ndarray (2D)
+        Observed dataframe.
+    model : np.ndarray (2D)
+        Column normalized trace model.
+    verbose : bool
+        If True, show diagnostic prints/plots.
+
+    Returns
+    -------
+    model_rescale : np.ndarray (2D)
+        Trace model after rescaling.
+    '''
+
+    # Define function to minimize - Chi^2.
+    def lik(k, data, model):
+        # Mulitply Chi^2 by data so wing values don't carry so much weight.
+        return np.nansum((data - k*model)**2)
+
+    # Determine first guess coefficients.
+    k0 = np.nanmax(data, axis=0)
+    ks = []
+    # Loop over all columns - surely there is a more vectorized way to do this
+    # but I can't get minimize to work with a vector of parameters?
+    for i in tqdm(range(data.shape[1]), disable=not verbose):
+        # Minimize the Chi^2.
+        k = minimize(lik, k0[i], (data[:, i], model[:, i]))
+        ks.append(k.x[0])
+
+    # Rescale the column normalized model.
+    ks = np.array(ks)
+    model_rescale = ks*model
+
+    return model_rescale
 
 
 def _robust_polyfit(x, y, p0):
