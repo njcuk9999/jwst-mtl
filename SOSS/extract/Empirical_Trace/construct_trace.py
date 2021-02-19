@@ -230,7 +230,7 @@ def construct_order1(clear, F277, rot_params, ycens, subarray, pad=0,
     cens = [ycens['order 1'][1][xdb], ycens['order 2'][1][xdb],
             ycens['order 3'][1][xdb]]
     Banch = reconstruct_wings(Banch, ycens=cens, contamination=True, pad=pad,
-                              verbose=verbose, smooth='all',
+                              verbose=verbose, smooth=True,
                               **{'text': 'Blue anchor'})
     # Remove the lambda/D scaling.
     Banch = _chromescale(2.1, Banch, ydb+pad)
@@ -252,7 +252,7 @@ def construct_order1(clear, F277, rot_params, ycens, subarray, pad=0,
         # Reconstruct wing structure and pad.
         cens = [ycens['order 1'][1][xdr]]
         Ranch = reconstruct_wings(Ranch, ycens=cens, contamination=False,
-                                  pad=pad, verbose=verbose, smooth='all',
+                                  pad=pad, verbose=verbose, smooth=True,
                                   **{'text': 'Red anchor'})
         Ranch = _chromescale(2.45, Ranch, ydr+pad)
         # Normalize
@@ -286,7 +286,7 @@ def construct_order1(clear, F277, rot_params, ycens, subarray, pad=0,
         Ranch = np.interp(np.arange(dimy), np.arange(dimy)-dimy/2+ydr, Ranch)
         # Reconstruct wing structure and pad.
         Ranch = reconstruct_wings(Ranch, ycens=[ydr], contamination=False,
-                                  pad=pad, verbose=verbose, smooth='all',
+                                  pad=pad, verbose=verbose, smooth=True,
                                   **{'text': 'Red anchor'})
         # Rescale to remove chromatic effects.
         Ranch = _chromescale(2.9, Ranch, ydr+pad)
@@ -523,7 +523,7 @@ def pad_spectral_axis(frame, xcens, ycens, pad=0):
 
 
 def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
-                      verbose=False, smooth='edges', **kwargs):
+                      verbose=False, smooth=True, **kwargs):
     '''Masks the second and third diffraction orders and reconstructs the
      underlying wing structure of the first order. Also adds padding in the
      spatial direction if required.
@@ -547,10 +547,8 @@ def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
         Amount to pad each end of the spartial axis (in pixels).
     verbose : bool
         If True, does diagnostic plotting.
-    smooth : str
-        Smooths over highly deviant pixels in the spatial profile. If 'edges',
-        only smooths over the extended wings. If 'all', smooths over the whole
-        profile. If 'None', no smoothing.
+    smooth : bool
+        If True, smooths over highly deviant pixels in the spatial profile.
 
     Returns
     -------
@@ -562,7 +560,6 @@ def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
     ValueError
         If centroids are not provided for all three orders when contamination
         is set to True.
-        If bad smoothing keyword parameter provided.
     '''
 
     dimy = len(profile)
@@ -572,9 +569,6 @@ def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
     if contamination is True and ycens.size != 3:
         errmsg = 'Centroids must be provided for first three orders '\
                  'if there is contamination.'
-        raise ValueError(errmsg)
-    if smooth not in ['edges', 'all', 'None']:
-        errmsg = 'Smooth parameter must be one of "edges", "all", or "None".'
         raise ValueError(errmsg)
 
     # mask negative and zero values.
@@ -595,7 +589,7 @@ def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
     for order, ycen in enumerate(ycens):
         if order == 0:
             start = 0
-            end = ycen+25
+            end = ycen+30
         elif order == 1:
             start = np.min([ycen-17, dimy-2])
             end = np.min([ycen+17, dimy-1])
@@ -668,19 +662,16 @@ def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
                                       10**np.polyval(pp_r, axis_r)[start:end],
                                       newprof[end:]])
 
-    if smooth == 'edges' or smooth == 'all':
-        # Replace highly deviant pixels with mean wing trend in wing edges.
-        newprof[inds[inds2]][10:] = 10**wing_mean[inds[inds2]][10:]
-    if smooth == 'all':
-        # Replace highly deviant pixels throughout the whole axis.
-        wing_fit = np.polyval(pp_r, axis_r[(ycens[0]+18):])
+    if smooth is True:
+        # Replace highly deviant pixels throughout the wings.
+        wing_fit = np.polyval(pp_r, axis_r[(ycens[0]+30):])
         # Calculate the standard dev of unmasked points from the wing fit.
-        stddev_f = np.sqrt(np.nanmedian((np.log10(newprof[(ycens[0]+18):])
+        stddev_f = np.sqrt(np.nanmedian((np.log10(newprof[(ycens[0]+30):])
                                          - wing_fit)**2))
         # Find all outliers that are >3-sigma deviant from the mean.
-        inds4 = np.where(np.abs(np.log10(newprof[(ycens[0]+18):]) - wing_fit)
+        inds4 = np.where(np.abs(np.log10(newprof[(ycens[0]+30):]) - wing_fit)
                          > 3*stddev_f)
-        newprof[(ycens[0]+18):][inds4] = 10**wing_fit[inds4]
+        newprof[(ycens[0]+30):][inds4] = 10**wing_fit[inds4]
 
     # Add padding - padding values are constant at the median of edge pixels.
     padval_r = np.median(newprof[-8:-3])

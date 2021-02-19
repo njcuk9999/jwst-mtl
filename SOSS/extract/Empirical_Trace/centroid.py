@@ -210,7 +210,7 @@ def _log_likelihood(theta, xmod, ymod, xdat, ydat):
     # Interpolate rotated model onto same x scale as data
     modely = np.interp(xdat, modelx, modely)
 
-    return -0.5*np.sum((ydat - modely)**2 - 0.5*np.log(2*np.pi*1))
+    return -0.5*np.sum((ydat - modely)**2 + np.log(2*np.pi*1))
 
 
 def _log_prior(theta):
