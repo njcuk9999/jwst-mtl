@@ -11,27 +11,29 @@ from SOSS.dms import soss_centroids as cen
 
 def build_mask_256(image, subarray='SUBSTRIP256', apex_order1=None,
                    verbose=False):
-
-    # Prepare a mask to restrict our analysis to a NNNx2048 section of
-    # the image, where NNN is 256 or less. That obviously applies first
-    # to FULL images. But also can apply in SUBSTRIP256 images where
-    # main trace would be offset vertically by a few tens of pixels.
+    '''Prepare a mask to restrict our analysis to a NNNx2048 section of the
+    image, where NNN is 256 or less. That obviously applies first to FULL
+    images. But also can apply in SUBSTRIP256 images where main trace would be
+    offset vertically by a few tens of pixels.
+    '''
 
     masked_value = True
 
-    if verbose is True: print('apex_order = {:}'.format(apex_order1))
+    if verbose is True:
+        print('apex_order = {:}'.format(apex_order1))
 
     if apex_order1 is None:
         # For subarray other than FULL, return an empty mask
         mask_256 = np.zeros_like(image, dtype='bool')
         if subarray == 'FULL':
-            mask_256[:1792,:] = masked_value
+            mask_256[:1792, :] = masked_value
     else:
-        # First make a mask to retain only the region around the target of interest.
-        # Make the full-frame a virtual 256 subarray
+        # First make a mask to retain only region around target of interest.
+        # Make the full-frame a virtual 256 subarray.
         mask_256 = np.zeros_like(image, dtype='bool')  # Start with all False
         dimy, dimx = np.shape(image)
-        rowmin = np.max([apex_order1 - 40, 0])  # The nominal order 1 apex is at y~40 in SUBSTRIP256
+        # The nominal order 1 apex is at y~40 in SUBSTRIP256
+        rowmin = np.max([apex_order1 - 40, 0])
         rowmax = np.min([apex_order1 + 216, dimy])
         mask_256[rowmin:rowmax, :] = masked_value
 
@@ -39,16 +41,12 @@ def build_mask_256(image, subarray='SUBSTRIP256', apex_order1=None,
 
 
 def build_mask_order2_contaminated(x_o1, y_o1, x_o3, y_o3,
-                                   subarray='SUBSTRIP256',
-                                   halfwidth_o1 = 25,
-                                   halfwidth_o3 = 15,
-                                   cut_x=150,
-                                   verbose=False):
-    '''
-    Function that creates a mask to isolate the uncontaminated part of
-    the second order. It masks out all pixels redder than red_cut_x, all
-    pixels bluer than blue_cut_x as well as pixels below of the sloped
-    line defined by pt1 and pt2.
+                                   subarray='SUBSTRIP256', halfwidth_o1=25,
+                                   halfwidth_o3=15, cut_x=150, verbose=False):
+    '''Function that creates a mask to isolate the uncontaminated part of the
+    second order. It masks out all pixels redder than red_cut_x, all pixels
+    bluer than blue_cut_x as well as pixels below of the sloped line defined by
+    pt1 and pt2.
 
     :param image: image to mask
     :param x_o1: x position of the order 1 centroid
@@ -61,16 +59,14 @@ def build_mask_order2_contaminated(x_o1, y_o1, x_o3, y_o3,
     # First, the order 1 trace needs to be masked out. Construct a mask
     # that not only covers the order 1 trace but everything redward
     # along the spatial axis.
-    mask_aper_o1 = build_trace_mask(x_o1, y_o1,
-                                    subarray=subarray,
+    mask_aper_o1 = build_trace_mask(x_o1, y_o1, subarray=subarray,
                                     halfwidth=halfwidth_o1,
                                     extend_redward=True,
                                     verbose=verbose)
 
     # Do the same to mask out order 3 - this one is fainter so make a
     # narrower mask. Also mask all pixels blueward (spatially)
-    mask_aper_o3 = build_trace_mask(x_o3, y_o3,
-                                    subarray=subarray,
+    mask_aper_o3 = build_trace_mask(x_o3, y_o3, subarray=subarray,
                                     halfwidth=halfwidth_o3,
                                     extend_blueward=True,
                                     verbose=verbose)
@@ -78,7 +74,7 @@ def build_mask_order2_contaminated(x_o1, y_o1, x_o3, y_o3,
     # Mask everything to the right of the second order trace where the
     # transmission dip makes the trace disappear.
     mask_blue = build_mask_vertical(subarray=subarray, masked_side='blue',
-                                   cut_x=cut_x)
+                                    cut_x=cut_x)
 
     # Combine masks
     mask_o2_cont = mask_aper_o1 | mask_aper_o3 | mask_blue
@@ -87,18 +83,14 @@ def build_mask_order2_contaminated(x_o1, y_o1, x_o3, y_o3,
 
 
 def build_mask_order2_uncontaminated(x_o1, y_o1, x_o3, y_o3,
-                                     subarray='SUBSTRIP256',
-                                     halfwidth_o1 = 25,
-                                     halfwidth_o3 = 15,
-                                     red_cut_x=700, blue_cut_x=1800,
-                                     pt1=[1249, 31],
-                                     pt2=[1911, 253],
-                                     verbose=False):
-    '''
-    Function that creates a mask to isolate the uncontaminated part of
-    the second order. It masks out all pixels redder than red_cut_x, all
-    pixels bluer than blue_cut_x as well as pixels below of the sloped
-    line defined by pt1 and pt2.
+                                     subarray='SUBSTRIP256', halfwidth_o1=25,
+                                     halfwidth_o3=15, red_cut_x=700,
+                                     blue_cut_x=1800, pt1=[1249, 31],
+                                     pt2=[1911, 253], verbose=False):
+    '''Function that creates a mask to isolate the uncontaminated part of the
+    second order. It masks out all pixels redder than red_cut_x, all pixels
+    bluer than blue_cut_x as well as pixels below of the sloped line defined by
+    pt1 and pt2.
 
     :param image: image to mask
     :param x_o1: x position of the order 1 centroid
@@ -111,28 +103,24 @@ def build_mask_order2_uncontaminated(x_o1, y_o1, x_o3, y_o3,
     # First, the order 1 trace needs to be masked out. Construct a mask
     # that not only covers the order 1 trace but everything redward
     # along the spatial axis.
-    mask_aper_o1 = build_trace_mask(x_o1, y_o1,
-                                    subarray=subarray,
+    mask_aper_o1 = build_trace_mask(x_o1, y_o1, subarray=subarray,
                                     halfwidth=halfwidth_o1,
-                                    extend_redward=True,
-                                    verbose=verbose)
+                                    extend_redward=True, verbose=verbose)
 
     # Do the same to mask out order 3 - this one is fainter so make a
     # narrower mask. Also mask all pixels blueward (spatially)
-    mask_aper_o3 = build_trace_mask(x_o3, y_o3,
-                                    subarray=subarray,
+    mask_aper_o3 = build_trace_mask(x_o3, y_o3, subarray=subarray,
                                     halfwidth=halfwidth_o3,
-                                    extend_blueward=True,
-                                    verbose=verbose)
+                                    extend_blueward=True, verbose=verbose)
 
     # Mask what is on the left side where orders 1 and 2 are well blended
     mask_red = build_mask_vertical(subarray=subarray, masked_side='red',
-                                  cut_x=red_cut_x)
+                                   cut_x=red_cut_x)
 
     # Mask everything to the right of where the 2nd order goes out of
     # the image
     mask_blue = build_mask_vertical(subarray=subarray, masked_side='blue',
-                                   cut_x=blue_cut_x)
+                                    cut_x=blue_cut_x)
 
     # Apply a y offset to the points determining the slope to handle
     # different subarray cases
@@ -148,21 +136,22 @@ def build_mask_order2_uncontaminated(x_o1, y_o1, x_o3, y_o3,
                                    masked_side='blue', pt1=pt1, pt2=pt2)
 
     # Combine masks
-    mask_o2_uncont = mask_aper_o1 | mask_aper_o3 | mask_red | mask_blue\
-                     | mask_slope
+    mask_o2_uncont = mask_aper_o1 | mask_aper_o3 | mask_red | mask_blue \
+        | mask_slope
 
     return mask_o2_uncont
 
 
 def build_mask_order3(subarray='SUBSTRIP256', apex_order1=40,
                       verbose=False):
-
-    ''' Builds the mask to isolate the 3rd order trace.
+    '''Builds the mask to isolate the 3rd order trace.
     '''
 
     dimy, dimx = 256, 2048
-    if subarray == 'SUBSTRIP96': dimy = 96
-    if subarray == 'FULL': dimy = 2048
+    if subarray == 'SUBSTRIP96':
+        dimy = 96
+    if subarray == 'FULL':
+        dimy = 2048
 
     # Initialize a mask
     mask = np.zeros_like(np.zeros((dimy, dimx)), dtype='bool')
@@ -174,11 +163,11 @@ def build_mask_order3(subarray='SUBSTRIP256', apex_order1=40,
     else:
         # As determined on a subarray=256, here are the line parameters to
         # constrain the region for masking.
-        # Line to mask redward of order 3: (x,y)_1=(0,132) to (x,y)_2=(1000,163)
+        # Line to mask redward of order 3: p_1=(0,132) to p_2=(1000,163)
         slope = (163 - 132) / 1000.
         if subarray == 'SUBSTRIP256':
-            yintercept = 132.0 # measured on a 256 subarray
-            apex_default = 40 # center of the order 1 trace at its lowest row value
+            yintercept = 132.0  # measured on a 256 subarray
+            apex_default = 40  # center of order 1 trace at lowest row value
         # Adapt if we are deealing with a FULLFRAME image
         if subarray == 'FULL':
             yintercept = 132.0 + 1792
@@ -186,61 +175,63 @@ def build_mask_order3(subarray='SUBSTRIP256', apex_order1=40,
         # vertical line redward of which no order 3 is detected
         maxcolumn = 700
 
-        if apex_order1 != None:
-            # Can handle a different Order 1 apex position but with limited freedom
-            row_offset = apex_order1 - apex_default # relative to the nominal order 1 position
+        if apex_order1 is not None:
+            # Can handle different Order 1 apex but with limited freedom
+            row_offset = apex_order1 - apex_default  # relative to the nominal order 1 position
             yintercept = yintercept + row_offset
-            # FALSE # maxcolumn would also move as the order 3 move up or down (scale with slope)
-            # maxcolumn = maxcolumn - row_offset / slope
-            if verbose: print('row_offset = {:}, maxcolumn = {:}'.format(row_offset, maxcolumn))
+            # FALSE # maxcolumn would also move as the order 3 move up or down
+            # (scale with slope) maxcolumn = maxcolumn - row_offset / slope
+            if verbose:
+                print('row_offset = {}, maxcolumn = {}'.format(row_offset, maxcolumn))
 
-            # Check that at least some part of an order 3 trace of width=25 (and some
-            # slack = 10 pixels) can still be seen
+            # Check that at least some part of an order 3 trace of width=25
+            # (and some slack = 10 pixels) can still be seen
             if yintercept > (dimy-25-10):
                 # Too little left. Issue warning.
-                print('warning: masking for order 3 with apex_order1={:} leaves too little of order 3 to fit position'.format(apex_order1))
+                print('warning: masking for order 3 with apex_order1={} leaves too little of order 3 to fit position'.format(apex_order1))
 
         # Column by column, mask pixels below that line
         for i in range(2048):
             y = np.int(np.round(yintercept + slope * i))
-            y = np.min([dimy,y]) # Make sure y does not go above array size
-            mask[0:y,i] = True
+            y = np.min([dimy, y])  # Make sure y does not go above array size
+            mask[0:y, i] = True
         # Mask redward (spectrally) of the vertical line
-        mask[:,maxcolumn:] = True
+        mask[:, maxcolumn:] = True
 
         return(mask)
 
 
-def build_mask_sloped(subarray='SUBSTRIP256', masked_side='blue',
-                      pt1 = [0,0], pt2 = [2048,0], verbose=False):
-    '''
-    Draw a sloped line and mask on one side of it (the side is
-    defined with respect to the spectral dispersion axis. Requires the
-    x,y position of two points that define the line. The x,y must be
-    given in native size pixels. along the x axis: 0-2047, along the
-    y-axis, it depends on the array size. For SUBSTRIP256, y=0-255,
-    for FF, y=0-2047
+def build_mask_sloped(subarray='SUBSTRIP256', masked_side='blue', pt1=[0, 0],
+                      pt2=[2048, 0], verbose=False):
+    '''Draw a sloped line and mask on one side of it (the side is defined with
+    respect to the spectral dispersion axis. Requires the x,y position of two
+    points that define the line. The x,y must be given in native size pixels.
+    Along the x axis: 0-2047, along the y-axis, it depends on the array size.
+    For SUBSTRIP256, y=0-255, for FF, y=0-2047
     '''
 
     masked_value = True
 
     dimy, dimx = 256, 2048
-    if subarray == 'SUBSTRIP96': dimy = 96
-    if subarray == 'FULL': dimy = 2048
+    if subarray == 'SUBSTRIP96':
+        dimy = 96
+    if subarray == 'FULL':
+        dimy = 2048
 
     # Simplify one's life and simply fit the two points
-    thex = np.array([pt1[0],pt2[0]])
-    they = np.array([pt1[1],pt2[1]])
+    thex = np.array([pt1[0], pt2[0]])
+    they = np.array([pt1[1], pt2[1]])
     param = np.polyfit(thex, they, 1)
 
-    if verbose is True: print('line fit param:', param)
+    if verbose is True:
+        print('line fit param:', param)
 
     # Initialize a mask
-    mask = np.zeros_like(np.zeros((dimy,dimx)), dtype='bool')
+    mask = np.zeros_like(np.zeros((dimy, dimx)), dtype='bool')
 
     # Compute the position of the line at every x position
     fitx = np.arange(dimx)
-    fity = np.polyval(param, fitx) # round it
+    fity = np.polyval(param, fitx)  # round it
     # Make sure negative values in fity get floored to zero, to be able
     # to index in array (below) without wrapping.
     fity[fity < 0] = 0
@@ -248,79 +239,85 @@ def build_mask_sloped(subarray='SUBSTRIP256', masked_side='blue',
     # Branch depending on side that needs masking and sign of the slope
     if masked_side == 'blue':
         if param[0] < 0:
-            for i in range(dimx): mask[int(fity[i]):,i] = masked_value
+            for i in range(dimx):
+                mask[int(fity[i]):, i] = masked_value
         else:
-            for i in range(dimx): mask[0:int(fity[i]), i] = masked_value
+            for i in range(dimx):
+                mask[0:int(fity[i]), i] = masked_value
     if masked_side == 'red':
         if param[0] < 0:
-            for i in range(dimx): mask[0:int(fity[i]),i] = masked_value
+            for i in range(dimx):
+                mask[0:int(fity[i]), i] = masked_value
         else:
-            for i in range(dimx): mask[int(fity[i]):, i] = masked_value
+            for i in range(dimx):
+                mask[int(fity[i]):, i] = masked_value
 
     return mask
 
 
-def build_mask_vertical(subarray='SUBSTRIP256', masked_side = 'blue',
-                        cut_x = 1700, mask_between=True,
-                        mask_outside=False, verbose=False):
-    ''' Builds a mask where there are two sides: left and right, one
-    being masked, the other not. In other words, this masks a region
-    along the spectral dispersion axis.
+def build_mask_vertical(subarray='SUBSTRIP256', masked_side='blue',
+                        cut_x=1700, mask_between=True, mask_outside=False,
+                        verbose=False):
+    '''Builds a mask where there are two sides: left and right, one being
+    masked, the other not. In other words, this masks a region along the
+    spectral dispersion axis.
     '''
 
     masked_value = True
 
-    if verbose is True: print('Going through build_mask_vertical.')
+    if verbose is True:
+        print('Going through build_mask_vertical.')
 
     dimy, dimx = 256, 2048
-    if subarray == 'SUBSTRIP96': dimy = 96
-    if subarray == 'FULL': dimy = 2048
+    if subarray == 'SUBSTRIP96':
+        dimy = 96
+    if subarray == 'FULL':
+        dimy = 2048
 
     # Initialize a mask
-    mask = np.zeros_like(np.zeros((dimy,dimx)), dtype='bool')
-
+    mask = np.zeros_like(np.zeros((dimy, dimx)), dtype='bool')
     if np.size(cut_x) == 2:
-        if mask_between == True:
-            mask[:,cut_x[0]:cut_x[1]] = masked_value
-        if mask_outside == True:
-            mask[:,0:cut_x[0]] = masked_value
-            mask[:,cut_x[1]:] = masked_value
+        if mask_between is True:
+            mask[:, cut_x[0]:cut_x[1]] = masked_value
+        if mask_outside is True:
+            mask[:, 0:cut_x[0]] = masked_value
+            mask[:, cut_x[1]:] = masked_value
     else:
         if masked_side == 'blue':
-            mask[:,cut_x:] = masked_value
+            mask[:, cut_x:] = masked_value
         if masked_side == 'red':
-            mask[:,0:cut_x] = masked_value
+            mask[:, 0:cut_x] = masked_value
 
     return mask
 
 
-def build_trace_mask(tracex, tracey, subarray='SUBSTRIP256',
-                     halfwidth=30, extend_redward=None,
-                     extend_blueward=None, verbose=False):
-
-    ''' Builds a mask of the same size as the input stack image. That
-    mask masks a band of pixels around the trace position (tracex,
-    tracey) of width = 2*halfwidth*yos pixels. Option extend_blueward
-    additionally masks all pixels above the trace. Option extend_redward
-    additionally masks all pixels below the trace.
+def build_trace_mask(tracex, tracey, subarray='SUBSTRIP256', halfwidth=30,
+                     extend_redward=None, extend_blueward=None, verbose=False):
+    '''Builds a mask of the same size as the input stack image. That mask
+    masks a band of pixels around the trace position (tracex, tracey) of width
+    = 2*halfwidth*yos pixels. Option extend_blueward additionally masks all
+    pixels above the trace. Option extend_redward additionally masks all pixels
+    below the trace.
     '''
 
     masked_value = True
 
     dimy, dimx = 256, 2048
-    if subarray == 'SUBSTRIP96': dimy = 96
-    if subarray == 'FULL': dimy = 2048
-
-
+    if subarray == 'SUBSTRIP96':
+        dimy = 96
+    if subarray == 'FULL':
+        dimy = 2048
     # Intitialize the mask array to unmasked value.
-    mask = np.zeros_like(np.zeros((dimy,dimx)), dtype='bool')
-    if verbose == True: print(np.shape(mask))
+    mask = np.zeros_like(np.zeros((dimy, dimx)), dtype='bool')
+    if verbose is True:
+        print(np.shape(mask))
 
     # Column by column, mask out pixels beyond the halfwidth of the
     # trace center
     y = np.arange(dimy)
     for i in range(dimx):
-        if verbose == True: print(i,tracex[i],tracey[i])
+        if verbose is True:
+            print(i, tracex[i], tracey[i])
         # Mask the pixels in the trace
         d = np.abs(y - tracey[i])
         ind = d < halfwidth
@@ -359,8 +356,8 @@ def soss_trace_position(image, subarray='SUBSTRIP256', apex_order1=None,
     1) The brightest order is order 1 and it is also the brightest of all order
     1 traces present on the image.
     2) Order 2 has a minimum in transmission between ~1.0 and ~1.2 microns.
-    3) Order 2 width has the same values as the order 1 width for similar wavelengths.
-    The algorithm to measure the trace positions is the 'edge trigger' function.
+    3) Order 2 widths are the same as order 1 width for the same wavelengths.
+    The algorithm to measure trace positions is the 'edge trigger' function.
     :param image: FF, SUBSTRIP96 or SUBSTRIP256 slope image. Expected
     GR700XD+CLEAR. For the GR700XD+F277W case, an optional f277w keyword is
     passed or detected by header if passed.
