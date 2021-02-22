@@ -110,7 +110,59 @@ def build_empirical_trace(clear, F277W, badpix_mask,
     return o1frame#, o2frame
 
 
-def _chromescale(wave_start, profile, ycen, wave_end=2.5, invert=False):
+import matplotlib.pyplot as plt
+def _fit_widths(clear, F277, blue_anch, red_anch, wave_coefs):
+    yax, xax = np.shape(clear)
+    wax = np.polyval(wave_coefs, np.arange(xax))
+
+    hh = []
+    for i in range(xax):
+        prof = np.interp(np.linspace(0, yax-1, yax*4), np.arange(yax), clear[:, i])
+        ss = np.argsort(prof)
+        inds = ss[-5:]
+        maxx = np.nanmedian(prof[inds])
+        aa = np.where(prof >= maxx/2)[0]
+        hh.append(len(aa)/4)
+
+    ff = []
+    for i in range(red_anch):
+        prof = np.interp(np.linspace(0, yax-1, yax*4), np.arange(yax), F277[:, i])
+        ss = np.argsort(prof)
+        inds = ss[-5:]
+        maxx = np.nanmedian(prof[inds])
+        aa = np.where(prof >= maxx/2)[0]
+        ff.append(len(aa)/4)
+
+    aa = np.concatenate([ff, hh[red_anch:]])
+    plt.plot(wax, aa)
+    end = np.where(wax < 2.1)[0][0]
+    fitw = np.concatenate([wax[:red_anch], wax[end:]])
+    fitaa = np.concatenate([aa[:red_anch], aa[end:]])
+    pp = np.polyfit(fitw, fitaa, 1)
+    plt.scatter(fitw, fitaa, c='orange', s=5)
+    pp2 = _robust_polyfit(fitw, fitaa, pp)
+    plt.plot(wax, np.polyval(pp2, wax))
+    plt.show()
+
+    return pp2
+
+
+def _chromescale(profile, wave_start, wave_end, ycen, poly_coef, conserve_flux=False):
+    xrange = len(profile)
+    a = np.polyval(poly_coef, wave_start)
+    b = np.polyval(poly_coef, wave_end)
+    xax = np.linspace(0, round(xrange*(b/a), 0) - 1, xrange)
+    offset = xax[int(round(ycen, 0))] - ycen
+    prof_rescale = np.interp(np.arange(xrange), xax - offset, profile)
+    if conserve_flux is True:
+        tt = np.sum(profile[1:-1]) + 0.5*(profile[0] + profile[-1])
+        ttr = np.sum(prof_rescale[1:-1]) + 0.5*(prof_rescale[0] + prof_rescale[-1])
+        prof_rescale /= (ttr/tt)
+
+    return prof_rescale
+
+
+def _old_chromescale(wave_start, profile, ycen, wave_end=2.5, invert=False):
     '''Remove the lambda/D chromatic PSF scaling by re-interpolating a
     monochromatic PSF function onto a rescaled axis.
 
@@ -223,6 +275,12 @@ def construct_order1(clear, F277, rot_params, ycens, subarray, pad=0,
     xdb = int(wavecal_x[i_b])
     ydb = ycens['order 1'][1][xdb]
 
+    i_r = np.where(wavecal_w >= 2.45)[0][-1]
+    xdr = int(wavecal_x[i_r])
+    ydr = ycens['order 1'][1][xdr]
+
+    wave_poly = _fit_widths(clear, F277, xdb, xdr, pp_w)
+
     # Extract the 2.1µm anchor profile from the data - take median profile of
     # neighbouring 5 columns to mitigate effects of outliers.
     Banch = np.median(clear[:, (xdb-2):(xdb+2)], axis=1)
@@ -233,7 +291,8 @@ def construct_order1(clear, F277, rot_params, ycens, subarray, pad=0,
                               verbose=verbose, smooth=True,
                               **{'text': 'Blue anchor'})
     # Remove the lambda/D scaling.
-    Banch = _chromescale(2.1, Banch, ydb+pad)
+    #Banch = _chromescale(2.1, Banch, ydb+pad)
+    Banch = _chromescale(Banch, 2.1, 2.5, ydb+pad, wave_poly)
     # Normalize
     Banch /= np.nansum(Banch)
 
@@ -254,7 +313,8 @@ def construct_order1(clear, F277, rot_params, ycens, subarray, pad=0,
         Ranch = reconstruct_wings(Ranch, ycens=cens, contamination=False,
                                   pad=pad, verbose=verbose, smooth=True,
                                   **{'text': 'Red anchor'})
-        Ranch = _chromescale(2.45, Ranch, ydr+pad)
+        #Ranch = _chromescale(2.45, Ranch, ydr+pad)
+        Ranch = _chromescale(Ranch, 2.45, 2.5, ydr+pad, wave_poly)
         # Normalize
         Ranch /= np.nansum(Ranch)
 
@@ -323,7 +383,8 @@ def construct_order1(clear, F277, rot_params, ycens, subarray, pad=0,
         # Construct the interpolated profile.
         prof_int = (wb_i * Banch_i + wr_i * Ranch_i)
         # Re-add the lambda/D scaling.
-        prof_int_cs = _chromescale(lbd, prof_int, ceny+pad, invert=True)
+        #prof_int_cs = _chromescale(lbd, prof_int, ceny+pad, invert=True)
+        prof_int_cs = _chromescale(prof_int, 2.5, lbd, ceny+pad, wave_poly)
         # Put the interpolated profile on the detector.
         map2D[:, cenx] = prof_int_cs
 
