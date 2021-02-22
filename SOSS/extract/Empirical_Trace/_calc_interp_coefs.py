@@ -184,8 +184,6 @@ def loicpsf(wavelist=None, wfe_real=None, filepath='', save_to_disk=True,
     if wavelist is None:
         # List of wavelengths to generate PSFs for
         wavelist = np.linspace(0.5, 5.2, 95) * 1e-6
-    # Dimension of the PSF in native pixels
-    pixel = pixel
 
     # Select the NIRISS instrument
     niriss = webbpsf.NIRISS()
@@ -217,5 +215,5 @@ def loicpsf(wavelist=None, wfe_real=None, filepath='', save_to_disk=True,
             outfile = '{0}SOSS_os{1}_{2}x{2}_{3}_{4}.fits'.format(filepars)
             psf.writeto(outfile, overwrite=True)
 
-        if save_to_disk is False:
-            return psf_list
+    if save_to_disk is False:
+        return psf_list
