@@ -551,7 +551,7 @@ class _BaseOverlap:
 
         return weights, weights_k_idx
 
-    def _save_w_t_wave_c(self, order, product):
+    def _save_w_t_wave_c(self, i_order, product):
         """
         Save the matrix product of the weighs (w), the throughput (t),
         the wavelength (lam) and the convolution matrix for faster computation.
@@ -568,7 +568,7 @@ class _BaseOverlap:
             self.w_t_wave_c = [[] for _ in range(n_orders)]
 
         # Assign value
-        self.w_t_wave_c[order] = product.copy()
+        self.w_t_wave_c[i_order] = product.copy()
 
         return
 
@@ -579,9 +579,9 @@ class _BaseOverlap:
         """
 
         attrs = ['wave_map', 'aperture']
-        wave_map, psf = self.get_attributes(*attrs, i_order=i_order)  # TODO inconsistent name psf.
+        wave_map, aperture = self.get_attributes(*attrs, i_order=i_order)
 
-        return _grid_from_map(wave_map, psf, out_col=True)
+        return _grid_from_map(wave_map, aperture, out_col=True)
 
     def get_adapt_grid(self, f_k=None, n_max=3, **kwargs):
         """
