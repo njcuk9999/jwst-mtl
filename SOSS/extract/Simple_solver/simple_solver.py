@@ -13,7 +13,6 @@ rotation matrix to preform the rotation transformation.
 
 import numpy as np
 from astropy.io import fits
-import re
 import warnings
 from scipy.ndimage.interpolation import rotate
 from scipy.optimize import minimize
@@ -40,7 +39,7 @@ def _chi_squared(theta, xmod, ymod, xdat, ydat, subarray):
 
 
 def _do_transform(data, rot_ang, x_shift, y_shift, pad=0, oversample=1,
-                  verbose=False):
+                  verbose=0):
     '''Do the rotation (via a rotation matrix) and offset of the reference
     files to match the data. Rotation angle and center, as well as the
     required vertical and horizontal displacements must be calculated
@@ -66,8 +65,9 @@ def _do_transform(data, rot_ang, x_shift, y_shift, pad=0, oversample=1,
         Factor by which the reference data is oversampled. The
         oversampling is assumed to be equal in both the spectral and
         spatial directions.
-    verbose : bool
-        Whether to do diagnostic plots and prints.
+    verbose : int
+        Either 0, 1, or 2. If 2, show all progress prints and diagnostic plots.
+        If 1, only show progress prints. If 0, show nothing.
 
     Returns
     -------
@@ -98,7 +98,7 @@ def _do_transform(data, rot_ang, x_shift, y_shift, pad=0, oversample=1,
     # Apply vertical and horizontal offsets.
     data_offset = np.roll(data_shiftback, (y_shift*oversample,
                           x_shift*oversample), (0, 1))
-    if verbose is True:
+    if verbose == 2:
         plotting._plot_transformation_steps(data_shift, data_rot,
                                             data_shiftback, data_offset)
     # Remove the padding.
@@ -235,7 +235,7 @@ def rot_centroids(ang, xshift, yshift, xpix, ypix, bound=True, atthesex=None,
     return rot_xpix, rot_ypix
 
 
-def simple_solver(clear, badpix=None, verbose=False, save_to_file=True):
+def simple_solver(clear, badpix=None, verbose=0, save_to_file=True):
     '''Algorithm to calculate and preform the necessary rotation and offsets to
     transform the reference traces and wavelength maps to match the science
     data.
@@ -256,8 +256,9 @@ def simple_solver(clear, badpix=None, verbose=False, save_to_file=True):
     badpix : np.ndarray (bool)
         Bad pixel mask. Array with the same shape as clear. True denotes a bad
         pixel.
-    verbose : bool
-        Whether to do diagnostic prints and plots.
+    verbose : int
+        Either 0, 1, or 2. If 2, show all progress prints and diagnostic plots.
+        If 1, only show progress prints. If 0, show nothing.
     save_to_file : bool
         If True, write the transformed wavelength map and 2D trace profiles to
         disk in two multi-extension fits files.
@@ -277,6 +278,9 @@ def simple_solver(clear, badpix=None, verbose=False, save_to_file=True):
         If shape of clear input does not match known subarrays.
     '''
 
+    if verbose in [1, 2]:
+        print('Starting the simple solver algorithm.')
+
     # Open 2D trace profile reference file.
     ref_trace_file = soss_read_refs.Ref2dProfile()
     # Open trace table reference file.
@@ -284,8 +288,8 @@ def simple_solver(clear, badpix=None, verbose=False, save_to_file=True):
     # Get first order centroids (in DMS coords).
     wavemap_file = soss_read_refs.Ref2dWave()
 
-    if verbose is True:
-        print('Reading reference files...')
+    if verbose in [1, 2]:
+        print('  Reading reference files...')
     # Determine correct subarray dimensions and offsets.
     dimy, dimx = np.shape(clear)
     if dimy == 96:
@@ -306,10 +310,10 @@ def simple_solver(clear, badpix=None, verbose=False, save_to_file=True):
     ycen_ref = ttab_file('Y', subarray=subarray)[1][inds]
 
     # Get centroids from data.
-    if verbose is True:
-        print('Getting centroids...')
-    cen_dict = ctd.get_soss_centroids(clear, badpix=badpix, subarray=subarray,
-                                      verbose=False)
+    if verbose in [1, 2]:
+        print('  Getting centroids...')
+    cen_dict = ctd.get_soss_centroids(clear*1, badpix=badpix,
+                                      subarray=subarray, verbose=False)
     xcen_dat = cen_dict['order 1']['X centroid']
     ycen_dat = cen_dict['order 1']['Y centroid']
 
@@ -322,8 +326,8 @@ def simple_solver(clear, badpix=None, verbose=False, save_to_file=True):
     y_shift = fit[2]
 
     # Transform reference files to match data.
-    if verbose is True:
-        print('Transforming reference files...')
+    if verbose in [1, 2]:
+        print('  Transforming reference files...')
     ref_trace_trans = np.ones((2, dimy, dimx))
     wave_map_trans = np.ones((2, dimy, dimx))
     for order in [1, 2]:
@@ -352,12 +356,13 @@ def simple_solver(clear, badpix=None, verbose=False, save_to_file=True):
                                                       verbose=verbose)
     # Write files to disk if requested.
     if save_to_file is True:
-        if verbose is True:
-            print('Writing to file...')
-        write_to_file(ref_trace_trans, filename='SOSS_ref_2D_profile_simplysolved')
-        write_to_file(wave_map_trans, filename='SOSS_ref_2D_wave_simplysolved')
+        if verbose in [1, 2]:
+            print('  Writing to file...')
+        write_to_file(ref_trace_trans,
+                      filename='SOSS_ref_2Dprofile_simplysolved')
+        write_to_file(wave_map_trans, filename='SOSS_ref_2Dwave_simplysolved')
 
-    if verbose is True:
+    if verbose in [1, 2]:
         print('Done.')
 
     return ref_trace_trans, wave_map_trans
