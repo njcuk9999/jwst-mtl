@@ -29,10 +29,10 @@ def _chi_squared(theta, xmod, ymod, xdat, ydat, subarray):
     to those extracted from the data.
     '''
     ang, xshift, yshift = theta
-    # Calculate rotated model
+    # Calculate rotated model.
     modelx, modely = rot_centroids(ang, xshift, yshift, xmod, ymod, bound=True,
                                    subarray=subarray)
-    # Interpolate rotated model onto same x scale as data
+    # Interpolate rotated model onto same x scale as data.
     modely = np.interp(xdat, modelx, modely)
 
     return np.nansum((ydat - modely)**2)
@@ -77,7 +77,7 @@ def _do_transform(data, rot_ang, x_shift, y_shift, pad=0, oversample=1,
     '''
 
     x_shift, y_shift = int(round(x_shift, 0)), int(round(y_shift, 0))
-    # Determine x and y center of the padded dataframe
+    # Determine x and y center of the padded dataframe.
     pad_ydim, pad_xdim = np.shape(data)
     nat_xdim = int(round(pad_xdim / oversample - 2*pad, 0))
     nat_ydim = int(round(pad_ydim / oversample - 2*pad, 0))
@@ -111,6 +111,7 @@ def _do_transform(data, rot_ang, x_shift, y_shift, pad=0, oversample=1,
         data_nat = np.ones((nat_ydim, nat_xdim))
         # Loop over the spectral direction and interpolate the oversampled
         # spatial profile to native resolution.
+        # Can likely be done in a more vectorized way.
         for i in range(nat_xdim*oversample):
             new_ax = np.arange(nat_ydim)
             oversamp_ax = np.linspace(0, nat_ydim, nat_ydim*oversample,
