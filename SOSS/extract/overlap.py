@@ -503,10 +503,10 @@ class _BaseOverlap:
 
         return self.wave_grid[index]
 
-    def get_w(self, *args):
+    def get_w(self, i_order):
         """Dummy method to be able to init this class"""
 
-        return None, None
+        return np.array([]), np.array([])
 
     def compute_weights(self):
         """
