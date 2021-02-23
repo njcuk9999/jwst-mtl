@@ -15,53 +15,28 @@ import numpy as np
 from astropy.io import fits
 import re
 import warnings
-import emcee
 from scipy.ndimage.interpolation import rotate
-from SOSS.dms import soss_centroids as ctd
+from scipy.optimize import minimize
 from SOSS.extract import soss_read_refs
 from SOSS.extract.simple_solver import plotting as plotting
+from SOSS.trace import contaminated_centroids as ctd
 
 warnings.simplefilter(action='ignore', category=RuntimeWarning)
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 
-def _do_emcee(xref, yref, xdat, ydat, subarray='SUBSTRIP256',
-              showprogress=False):
-    '''Calls the emcee package to preform an MCMC determination of the best
-    fitting rotation angle and offsets to map the reference centroids onto the
-    data for the first order.
-
-    Parameters
-    ----------
-    xref, yref : array of float
-        X and Y trace centroids respectively to be used as a reference point,
-        for example: as returned by get_om_centroids.
-    xdat, ydat : array of float
-        X and Y trace centroids determined from the data, for example: as
-        returned by get_uncontam_centroids.
-    subarray : str
-        Identifier for the correct subarray. Allowed values are "SUBSTRIP96",
-        "SUBSTRIP256", or "FULL".
-    showprogress: bool
-        If True, show the emcee progress bar.
-
-    Returns
-    -------
-    sampler : emcee EnsembleSampler object
-        MCMC fitting results.
+def _chi_squared(theta, xmod, ymod, xdat, ydat, subarray):
+    '''Definition of a modified Chi squared statistic to fit refrence centroid
+    to those extracted from the data.
     '''
+    ang, xshift, yshift = theta
+    # Calculate rotated model
+    modelx, modely = rot_centroids(ang, xshift, yshift, xmod, ymod, bound=True,
+                                   subarray=subarray)
+    # Interpolate rotated model onto same x scale as data
+    modely = np.interp(xdat, modelx, modely)
 
-    # Set up the MCMC run.
-    initial = np.array([0, 0, 0])  # Initial guess parameters
-    pos = initial + 0.5*np.random.randn(32, 3)
-    nwalkers, ndim = pos.shape
-
-    sampler = emcee.EnsembleSampler(nwalkers, ndim, _log_probability,
-                                    args=[xref, yref, xdat, ydat, subarray])
-    # Run the MCMC for 5000 steps - it has generally converged well before.
-    sampler.run_mcmc(pos, 5000, progress=showprogress)
-
-    return sampler
+    return np.nansum((ydat - modely)**2)
 
 
 def _do_transform(data, rot_ang, x_shift, y_shift, pad=0, oversample=1,
@@ -155,46 +130,6 @@ def _do_transform(data, rot_ang, x_shift, y_shift, pad=0, oversample=1,
     return data_nat
 
 
-def _log_likelihood(theta, xmod, ymod, xdat, ydat, subarray):
-    '''Definition of the log likelihood. Called by _do_emcee.
-    xmod/ymod should extend past the edges of the detector.
-    '''
-    ang, xshift, yshift = theta
-    # Calculate rotated model
-    modelx, modely = rot_centroids(ang, xshift, yshift, xmod, ymod, bound=True,
-                                   subarray=subarray)
-    # Interpolate rotated model onto same x scale as data
-    modely = np.interp(xdat, modelx, modely)
-
-    return -0.5 * np.sum((ydat - modely)**2 - 0.5 * np.log(2 * np.pi * 1))
-
-
-def _log_prior(theta):
-    '''Definition of the priors. Called by _do_emcee.
-    Angle within +/- 5 deg (one motor step is 0.15deg).
-    X-shift within +/- 100 pixels, TA shoukd be accurate to within 1 pixel.
-    Y-shift to within +/- 50 pixels.
-    Currently, very broad bounds. Can likely be refined once informed by actual
-    observations.
-    '''
-    ang, xshift, yshift = theta
-
-    if -5 <= ang < 5 and -100 <= xshift < 100 and -50 <= yshift < 50:
-        return -1
-    else:
-        return -np.inf
-
-
-def _log_probability(theta, xmod, ymod, xdat, ydat, subarray):
-    '''Definition of the final probability. Called by _do_emcee.
-    '''
-    lp = _log_prior(theta)
-    if not np.isfinite(lp):
-        return -np.inf
-
-    return lp + _log_likelihood(theta, xmod, ymod, xdat, ydat, subarray)
-
-
 def rot_centroids(ang, xshift, yshift, xpix, ypix, bound=True, atthesex=None,
                   cenx=1024, ceny=50, subarray='SUBSTRIP256'):
     '''Apply a rotation and shift to the trace centroids positions. This
@@ -267,7 +202,8 @@ def rot_centroids(ang, xshift, yshift, xpix, ypix, bound=True, atthesex=None,
         pp = np.polyfit(rot_pix[0], rot_pix[1], 5)
         # Warn user if atthesex extends beyond polynomial domain.
         if np.max(atthesex) > np.max(rot_pix[0])+25 or np.min(atthesex) < np.min(rot_pix[0])-25:
-            warnings.warn('atthesex extends beyond rot_xpix. Use results with caution.')
+            warnmsg = 'atthesex extends beyond rot_xpix. Use with caution.'
+            warnings.warn(warnmsg)
         rot_xpix = atthesex
         rot_ypix = np.polyval(pp, rot_xpix)
     else:
@@ -287,7 +223,9 @@ def rot_centroids(ang, xshift, yshift, xpix, ypix, bound=True, atthesex=None,
         elif subarray == 'FULL':
             yend = 2048
         else:
-            raise ValueError('Unknown subarray. Allowed identifiers are "SUBSTRIP96", "SUBSTRIP256", or "FULL".')
+            errmsg = 'Unknown subarray. Allowed identifiers are "SUBSTRIP96",\
+             "SUBSTRIP256", or "FULL".'
+            raise ValueError(errmsg)
         # Reject pixels which are not on the subarray.
         inds = [(rot_ypix >= 0) & (rot_ypix < yend) & (rot_xpix >= 0) &
                 (rot_xpix < 2048)]
@@ -297,7 +235,7 @@ def rot_centroids(ang, xshift, yshift, xpix, ypix, bound=True, atthesex=None,
     return rot_xpix, rot_ypix
 
 
-def simple_solver(clear, verbose=False, save_to_file=True):
+def simple_solver(clear, badpix=None, verbose=False, save_to_file=True):
     '''Algorithm to calculate and preform the necessary rotation and offsets to
     transform the reference traces and wavelength maps to match the science
     data.
@@ -315,6 +253,9 @@ def simple_solver(clear, verbose=False, save_to_file=True):
     ----------
     clear : np.ndarray
         CLEAR science exposure.
+    badpix : np.ndarray (bool)
+        Bad pixel mask. Array with the same shape as clear. True denotes a bad
+        pixel.
     verbose : bool
         Whether to do diagnostic prints and plots.
     save_to_file : bool
@@ -354,7 +295,8 @@ def simple_solver(clear, verbose=False, save_to_file=True):
     elif dimy == 2048:
         subarray = 'FULL'
     else:
-        raise ValueError('Unrecognized subarray shape: {}x{}.'.format(dimy, dimx))
+        errmsg = 'Unrecognized subarray shape: {}x{}.'.format(dimy, dimx)
+        raise ValueError(errmsg)
 
     # Get first order centroids on subarray.
     xcen_ref = ttab_file('X', subarray=subarray)[1]
@@ -366,19 +308,18 @@ def simple_solver(clear, verbose=False, save_to_file=True):
     # Get centroids from data.
     if verbose is True:
         print('Getting centroids...')
-    xcen_dat, ycen_dat, p = ctd.get_uncontam_centroids(clear, verbose=verbose)
+    cen_dict = ctd.get_soss_centroids(clear, badpix=badpix, subarray=subarray,
+                                      verbose=False)
+    xcen_dat = cen_dict['order 1']['X centroid']
+    ycen_dat = cen_dict['order 1']['Y centroid']
 
     # Fit the reference file centroids to the data.
-    fit = _do_emcee(xcen_ref, ycen_ref, xcen_dat, ycen_dat,
-                    subarray=subarray, showprogress=verbose)
-    flat_samples = fit.get_chain(discard=500, thin=15, flat=True)
-    # Get best fitting rotation angle and pixel offsets.
-    rot_ang = np.percentile(flat_samples[:, 0], 50)
-    x_shift = np.percentile(flat_samples[:, 1], 50)
-    y_shift = np.percentile(flat_samples[:, 2], 50)
-    # Plot posteriors if necessary.
-    if verbose is True:
-        plotting._plot_corner(fit)
+    guess_params = (0.15, 1, 1)
+    lik_args = (xcen_ref, ycen_ref, xcen_dat, ycen_dat, subarray)
+    fit = minimize(_chi_squared, guess_params, lik_args).x
+    rot_ang = fit[0]
+    x_shift = fit[1]
+    y_shift = fit[2]
 
     # Transform reference files to match data.
     if verbose is True:
