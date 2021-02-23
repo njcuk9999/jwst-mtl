@@ -50,7 +50,7 @@ def calibrate_tracepol():
     # Optics Model.
     param = tp.get_tracepars(filename=optmodel, disable_rotation=True)
 
-    wavelength = np.linspace(0.9, 2.8, 39)
+    wavelength = np.linspace(0.5, 2.8, 44)
 
     x_om_o1, y_om_o1, mask_om_o1 = tp.wavelength_to_pix(wavelength,
                                                param, m=1,
@@ -76,25 +76,26 @@ def calibrate_tracepol():
 
         # Figure to show the positions for all 3 orders
         plt.figure(figsize=(10, 10))
+        plt.xlim((0, 2048))
         plt.ylim((0, 256))
         plt.imshow(np.log10(im), vmin=0.7, vmax=3, origin='lower', aspect='auto')
 
         plt.plot(x_o1, y_o1, color='orange', label='Order 1')
-        plt.plot(x_o1, y_o1 - w_o1 / 2, color='orange')
-        plt.plot(x_o1, y_o1 + w_o1 / 2, color='orange')
-        plt.plot(x_om_o1, y_om_o1, color='orange')
+        #plt.plot(x_o1, y_o1 - w_o1 / 2, color='orange')
+        #plt.plot(x_o1, y_o1 + w_o1 / 2, color='orange')
+        plt.plot(x_om_o1, y_om_o1, linestyle='dashed', color='orange')
 
         if x_o2 is not None:
             plt.plot(x_o2, y_o2, color='black', label='Order 2')
-            plt.plot(x_o2, y_o2 - w_o2 / 2, color='black')
-            plt.plot(x_o2, y_o2 + w_o2 / 2, color='black')
-            plt.plot(x_om_o2, y_om_o2, color='black')
+            #plt.plot(x_o2, y_o2 - w_o2 / 2, color='black')
+            #plt.plot(x_o2, y_o2 + w_o2 / 2, color='black')
+            plt.plot(x_om_o2, y_om_o2, linestyle='dashed', color='black')
 
         if x_o3 is not None:
             plt.plot(x_o3, y_o3, color='red', label='Order 3')
-            plt.plot(x_o3, y_o3 - w_o3 / 2, color='red')
-            plt.plot(x_o3, y_o3 + w_o3 / 2, color='red')
-            plt.plot(x_om_o3, y_om_o3, color='red')
+            #plt.plot(x_o3, y_o3 - w_o3 / 2, color='red')
+            #plt.plot(x_o3, y_o3 + w_o3 / 2, color='red')
+            plt.plot(x_om_o3, y_om_o3, linestyle='dashed', color='red')
 
         plt.legend()
         plt.show()
