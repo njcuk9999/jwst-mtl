@@ -84,6 +84,21 @@ def _plot_interpmodel(waves, nw1, nw2, p1, p2):
     plt.show()
 
 
+def _plot_width_cal(wax, widths, fit_waves, fit_widths, width_poly):
+    '''Do the diagnostic plot for the trace width calibration relation.
+    '''
+
+    plt.figure(figsize=(8, 5))
+    plt.plot(wax, widths, label='Trace widths')
+    plt.scatter(fit_waves, fit_widths, c='orange', s=5, label='Fitting points')
+    plt.plot(wax, np.polyval(width_poly, wax), c='red', label='Width relation')
+
+    plt.xlabel('Wavelength [µm]', fontsize=14)
+    plt.ylabel('Trace Spatial Width [pixels]', fontsize=14)
+    plt.legend(fontsize=12)
+    plt.show()
+
+
 def _plot_wing_reconstruction(profile, ycens, axis_r, prof_r2, pp_r, newprof,
                               pad, text=None):
     '''Do diagnositic plotting for wing reconstruction.

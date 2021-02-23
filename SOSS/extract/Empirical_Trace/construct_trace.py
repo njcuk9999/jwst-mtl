@@ -110,74 +110,23 @@ def build_empirical_trace(clear, F277W, badpix_mask,
     return o1frame#, o2frame
 
 
-import matplotlib.pyplot as plt
-def _fit_widths(clear, F277, blue_anch, red_anch, wave_coefs):
-    yax, xax = np.shape(clear)
-    wax = np.polyval(wave_coefs, np.arange(xax))
-
-    hh = []
-    for i in range(xax):
-        prof = np.interp(np.linspace(0, yax-1, yax*4), np.arange(yax), clear[:, i])
-        ss = np.argsort(prof)
-        inds = ss[-5:]
-        maxx = np.nanmedian(prof[inds])
-        aa = np.where(prof >= maxx/2)[0]
-        hh.append(len(aa)/4)
-
-    ff = []
-    for i in range(red_anch):
-        prof = np.interp(np.linspace(0, yax-1, yax*4), np.arange(yax), F277[:, i])
-        ss = np.argsort(prof)
-        inds = ss[-5:]
-        maxx = np.nanmedian(prof[inds])
-        aa = np.where(prof >= maxx/2)[0]
-        ff.append(len(aa)/4)
-
-    aa = np.concatenate([ff, hh[red_anch:]])
-    plt.plot(wax, aa)
-    end = np.where(wax < 2.1)[0][0]
-    fitw = np.concatenate([wax[:red_anch], wax[end:]])
-    fitaa = np.concatenate([aa[:red_anch], aa[end:]])
-    pp = np.polyfit(fitw, fitaa, 1)
-    plt.scatter(fitw, fitaa, c='orange', s=5)
-    pp2 = _robust_polyfit(fitw, fitaa, pp)
-    plt.plot(wax, np.polyval(pp2, wax))
-    plt.show()
-
-    return pp2
-
-
-def _chromescale(profile, wave_start, wave_end, ycen, poly_coef, conserve_flux=False):
-    xrange = len(profile)
-    a = np.polyval(poly_coef, wave_start)
-    b = np.polyval(poly_coef, wave_end)
-    xax = np.linspace(0, round(xrange*(b/a), 0) - 1, xrange)
-    offset = xax[int(round(ycen, 0))] - ycen
-    prof_rescale = np.interp(np.arange(xrange), xax - offset, profile)
-    if conserve_flux is True:
-        tt = np.sum(profile[1:-1]) + 0.5*(profile[0] + profile[-1])
-        ttr = np.sum(prof_rescale[1:-1]) + 0.5*(prof_rescale[0] + prof_rescale[-1])
-        prof_rescale /= (ttr/tt)
-
-    return prof_rescale
-
-
-def _old_chromescale(wave_start, profile, ycen, wave_end=2.5, invert=False):
-    '''Remove the lambda/D chromatic PSF scaling by re-interpolating a
-    monochromatic PSF function onto a rescaled axis.
+def _chromescale(profile, wave_start, wave_end, ycen, poly_coef):
+    '''Correct chromatic variations in the PSF along the spatial direction
+    using the polynomial relationshop derived in _fit_trace_widths.
 
     Parameters
     ----------
-    wave_start : float
-        Wavelength corresponding to the input 1D PSF profile.
     profile : np.array of float
         1D PSF profile to be rescaled.
-    ycen : float
-        Y-pixel position of the order 1 trace centroid.
+    wave_start : float
+        Starting wavelength.
     wave_end : float
         Wavelength after rescaling.
-    invert : bool
-        If True, add back the lambda/D scaling instead of removing it.
+    ycen : float
+        Y-pixel position of the order 1 trace centroid.
+    poly_coef : tuple of float
+        1st order polynomial coefficients describing the variation of the trace
+        width with wavelength, e.g. as output by _fit_trace_widths.
 
     Returns
     -------
@@ -186,22 +135,21 @@ def _old_chromescale(wave_start, profile, ycen, wave_end=2.5, invert=False):
     '''
 
     xrange = len(profile)
-    # Assume that the axis corresponding to wave_end can be constructed with
-    # np.arange - this is the 'standard' axis.
-    # Construct the input profile axis by rescaling the standard axis by the
-    # ratio of wave_end/wave_start.
-    xax = np.linspace(0, round(xrange*(wave_end/wave_start), 0) - 1, xrange)
-    # Calculate the offset of the centroid y-position in the standard and
-    # rescaled axis, to ensure it remains at the same pixel position.
+    # Get the starting and ending trace widths.
+    w_start = np.polyval(poly_coef, wave_start)
+    w_end = np.polyval(poly_coef, wave_end)
+    # Create a rescaled spatial axis.
+    xax = np.linspace(0, round(xrange*(w_end/w_start), 0) - 1, xrange)
+    # Find required offset to ensure the centroid remains at the same location.
     offset = xax[int(round(ycen, 0))] - ycen
-
-    # Interpolate the profile onto the standard axis.
-    if invert is False:
-        prof_rescale = np.interp(np.arange(xrange), xax - offset, profile)
-    # Or interpolate the profile from the standard axis to re-add
-    # the lambda/D scaling.
-    else:
-        prof_rescale = np.interp(xax - offset, np.arange(xrange), profile)
+    # Rescale the PSF by interpolating onto the new axis.
+    prof_rescale = np.interp(np.arange(xrange), xax - offset, profile)
+    # Ensure the total flux remains the same
+    # Integrate the profile with a Trapezoidal method.
+    flux_i = np.sum(profile[1:-1]) + 0.5*(profile[0] + profile[-1])
+    flux_f = np.sum(prof_rescale[1:-1]) + 0.5*(prof_rescale[0] + prof_rescale[-1])
+    # Rescale the new profile so the total encompassed flux remains the same.
+    prof_rescale /= (flux_f/flux_i)
 
     return prof_rescale
 
@@ -279,7 +227,7 @@ def construct_order1(clear, F277, rot_params, ycens, subarray, pad=0,
     xdr = int(wavecal_x[i_r])
     ydr = ycens['order 1'][1][xdr]
 
-    wave_poly = _fit_widths(clear, F277, xdb, xdr, pp_w)
+    wave_poly = _fit_trace_widths(clear, pp_w, verbose=verbose)
 
     # Extract the 2.1µm anchor profile from the data - take median profile of
     # neighbouring 5 columns to mitigate effects of outliers.
@@ -291,7 +239,6 @@ def construct_order1(clear, F277, rot_params, ycens, subarray, pad=0,
                               verbose=verbose, smooth=True,
                               **{'text': 'Blue anchor'})
     # Remove the lambda/D scaling.
-    #Banch = _chromescale(2.1, Banch, ydb+pad)
     Banch = _chromescale(Banch, 2.1, 2.5, ydb+pad, wave_poly)
     # Normalize
     Banch /= np.nansum(Banch)
@@ -313,7 +260,6 @@ def construct_order1(clear, F277, rot_params, ycens, subarray, pad=0,
         Ranch = reconstruct_wings(Ranch, ycens=cens, contamination=False,
                                   pad=pad, verbose=verbose, smooth=True,
                                   **{'text': 'Red anchor'})
-        #Ranch = _chromescale(2.45, Ranch, ydr+pad)
         Ranch = _chromescale(Ranch, 2.45, 2.5, ydr+pad, wave_poly)
         # Normalize
         Ranch /= np.nansum(Ranch)
@@ -349,7 +295,7 @@ def construct_order1(clear, F277, rot_params, ycens, subarray, pad=0,
                                   pad=pad, verbose=verbose, smooth=True,
                                   **{'text': 'Red anchor'})
         # Rescale to remove chromatic effects.
-        Ranch = _chromescale(2.9, Ranch, ydr+pad)
+        Ranch = _chromescale(Ranch, 2.9, 2.5, ydr+pad, wave_poly)
         # Normalize
         Ranch /= np.nansum(Ranch)
 
@@ -383,7 +329,6 @@ def construct_order1(clear, F277, rot_params, ycens, subarray, pad=0,
         # Construct the interpolated profile.
         prof_int = (wb_i * Banch_i + wr_i * Ranch_i)
         # Re-add the lambda/D scaling.
-        #prof_int_cs = _chromescale(lbd, prof_int, ceny+pad, invert=True)
         prof_int_cs = _chromescale(prof_int, 2.5, lbd, ceny+pad, wave_poly)
         # Put the interpolated profile on the detector.
         map2D[:, cenx] = prof_int_cs
@@ -455,6 +400,67 @@ def construct_order2(clear, ref_file_args, extract_params):
     residual = clear - rebuilt
 
     return rebuilt
+
+
+def _fit_trace_widths(clear, wave_coefs, verbose=False):
+    '''Due to the defocusing of the SOSS PSF, the width in the spatial
+    direction does not behave as if it is diffraction limited. Calculate the
+    width of the spatial trace profile as a function of wavelength, and fit
+    with a linear relation to allow corrections of chromatic variations.
+
+    Parameters
+    ----------
+    clear : np.ndarray
+        CLEAR exposure dataframe
+    wave_coefs : tuple of float
+        Polynomial coefficients for the wavelength to spectral pixel
+        calibration.
+    verbose : bool
+        If True, show diagnostic plots/prints.
+
+    Returns
+    -------
+    width_fit : tuple
+        Polynomial coefficients for a first order fit to the trace widths.
+    '''
+
+    # Get subarray diemsnions and wavelength to spectral pixel transformation.
+    yax, xax = np.shape(clear)
+    wax = np.polyval(wave_coefs, np.arange(xax))
+
+    # Determine the width of the trace profile by counting the number of pixels
+    # with flux values greater than half of the maximum value in the column.
+    trace_widths = []
+    for i in range(xax):
+        # Oversample by 4 times to get better sub-pixel scale info.
+        prof = np.interp(np.linspace(0, yax-1, yax*4), np.arange(yax),
+                         clear[:, i])
+        # Sort the flux values in the profile.
+        prof_sort = np.argsort(prof)
+        # To mitigate the effects of any outliers, use the median of the 5
+        # highest flux values as the maximum.
+        inds = prof_sort[-5:]
+        maxx = np.nanmedian(prof[inds])
+        # Count how many pixels have flux greater than twice this value.
+        above_av = np.where(prof >= maxx/2)[0]
+        trace_widths.append(len(above_av)/4)
+
+    # Only fit the trace widths up to the blue anchor (2.1µm) where
+    # contamination from the second order begins to be a problem.
+    end = np.where(wax < 2.1)[0][0]
+    fit_waves = wax[end:]
+    fit_widths = trace_widths[end:]
+
+    # Robustly fit a straight line.
+    pp = np.polyfit(fit_waves, fit_widths, 1)
+    width_fit = _robust_polyfit(fit_waves, fit_widths, pp)
+
+    # Plot the width calibration fit if required.
+    if verbose is True:
+        plotting._plot_width_cal(wax, trace_widths, fit_waves, fit_widths,
+                                 width_fit)
+
+    return width_fit
 
 
 def get_extract_params():
