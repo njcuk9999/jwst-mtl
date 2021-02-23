@@ -281,220 +281,34 @@ class _BaseOverlap:
 
         return
 
-    def _get_masks(self, mask):
+    def verbose_print(self, *args, **kwargs):
+        """Print if verbose is True. Same as `print` function."""
+
+        if self.verbose:
+            print(*args, **kwargs)
+
+        return
+
+    def get_attributes(self, *args, i_order=None):
+        """Return list of attributes
+
+        Parameters
+        ----------
+        args: str
+            All attributes to return.
+        i_order: None or int, optionoal
+            Index of order to extract. If specified, it will
+            be applied to all attributes in args, so it cannot
+            be mixed with non-order dependent attributes).
         """
-        Compute a global mask on the detector and for each orders.
-        Depends on the spatial profile, the wavelength grid
-        and the user defined mask (optional). These are all specified
-        when initiating the object.
-        """
 
-        # Get needed attributes
-        thresh, n_orders = self.get_attributes('thresh', 'n_orders')
-        throughput, aperture, wave_map = self.get_attributes('throughput', 'aperture', 'wave_map')
-
-        # Mask according to the spatial profile
-        mask_p = [aperture_n < thresh for aperture_n in aperture]
-
-        # Mask pixels not covered by the wavelength grid
-        mask_wave = np.array([self.get_mask_wave(i_order) for i_order in range(n_orders)])
-
-        # Apply user's defined mask
-        if mask is None:
-            mask_ord = np.any([mask_p, mask_wave], axis=0)
+        if i_order is None:
+            out = [getattr(self, arg) for arg in args]
         else:
-            mask = [mask for _ in range(n_orders)]  # For each orders
-            mask_ord = np.any([mask_p, mask_wave, mask], axis=0)
+            out = [getattr(self, arg)[i_order] for arg in args]
 
-        # Mask pixels that are masked at each orders
-        global_mask = np.all(mask_ord, axis=0)
-
-        # Mask if mask_p not masked but mask_wave is.
-        # This means that an order is contaminated by another
-        # order, but the wavelength range does not cover this part
-        # of the spectrum. Thus, it cannot be treated correctly.
-        global_mask |= (np.any(mask_wave, axis=0)
-                        & (~np.array(mask_p)).all(axis=0))
-
-        # Apply this new global mask to each orders
-        mask_ord = (mask_wave | global_mask[None, :, :])
-
-        return global_mask, mask_ord
-
-    def update_mask(self, mask):
-        """
-        Update `mask` attribute by completing the
-        `general_mask` attribute with the input `mask`.
-        Everytime the mask is changed, the integration weights
-        need to be recomputed since the pixels change.
-        """
-
-        # Get general mask
-        general_mask = self.general_mask
-
-        # Complete with the input mask
-        new_mask = (general_mask | mask)
-
-        # Update attribute
-        self.mask = new_mask
-
-        # Correct i_bounds if it was not specified
-        # self.update_i_bnds()
-
-        # Re-compute weights
-        self.weights, self.weights_k_idx = self.compute_weights()
-
-        return
-
-    def update_i_bnds(self):
-        """
-        Update the grid limits to extract
-        Needs to be done after modification of the mask
-        """
-
-        # Get old and new boundaries
-        i_bnds_old = self.i_bounds
-        i_bnds_new = self._get_i_bnds()
-
-        for i_order in range(self.n_orders):
-
-            # Take most restrictive lower bound
-            low_bnds = [i_bnds_new[i_order][0], i_bnds_old[i_order][0]]
-            i_bnds_new[i_order][0] = np.max(low_bnds)
-
-            # Take most restrictive upper bound
-            up_bnds = [i_bnds_new[i_order][1], i_bnds_old[i_order][1]]
-            i_bnds_new[i_order][1] = np.min(up_bnds)
-
-        # Update attribute
-        self.i_bounds = i_bnds_new
-
-        return
-
-    def _get_i_bnds(self, wave_bounds=None):
-        """
-        Define wavelength boundaries for each orders using the order's mask.
-        """
-
-        wave_grid = self.wave_grid
-        i_bounds = self.i_bounds
-
-        # Check if wave_bounds given
-        if wave_bounds is None:
-            wave_bounds = []
-            for i in range(self.n_orders):
-                wave = self.wave_map[i][~self.mask_ord[i]]
-                wave_bounds.append([wave.min(), wave.max()])
-
-        # What we need is the boundary position
-        # on the wavelength grid.
-        i_bnds_new = []
-        for bounds, i_bnds in zip(wave_bounds, i_bounds):
-
-            a = np.min(np.where(wave_grid >= bounds[0])[0])
-            b = np.max(np.where(wave_grid <= bounds[1])[0]) + 1
-
-            # Take the most restrictive bound
-            a = np.maximum(a, i_bnds[0])
-            b = np.minimum(b, i_bnds[1])
-
-            # Keep value
-            i_bnds_new.append([a, b])
-
-        return i_bnds_new
-
-    def compute_weights(self):
-        """
-        Compute integration weights
-
-        The weights depend on the integration method used solve
-        the integral of the flux over a pixel and are encoded
-        in the class method `get_w()`.
-
-        Returns the lists of weights and corresponding grid indices
-        """
-
-        # Init lists
-        weights, weights_k_idx = [], []
-        for i_order in range(self.n_orders):  # For each orders
-
-            weights_n, k_idx_n = self.get_w(i_order)  # Compute weigths
-
-            # Convert to sparse matrix
-            # First get the dimension of the convolved grid
-            n_kc = np.diff(self.i_bounds[i_order]).astype(int)[0]
-
-            # Then convert to sparse
-            weights_n = sparse_k(weights_n, k_idx_n, n_kc)
-            weights.append(weights_n), weights_k_idx.append(k_idx_n)
-
-        return weights, weights_k_idx
-
-    def rebuild(self, f_wave, i_orders=None, same=False):
-        """
-        Build current model of the detector.
-
-        Parameters
-        ----------
-        f_wave: array-like or callable
-            flux as a function of wavelength if callable
-            or flux projected on the wavelength grid
-        i_orders: iterable, ooptional
-            Order index to model on detector. Default is
-            all available orders.
-        same: bool, optional
-            Do not recompute, b_n. Take the last b_n computed.
-            Useful to speed up code. Default is False.
-
-        Returns
-        ------
-        2D array-like image of the detector
-        """
-
-        # If f is callable, project on grid
-        if callable(f_wave):
-            f_wave = f_wave(self.wave_grid)
-
-        # Iterate over all orders by default
-        if i_orders is None:
-            i_orders = range(self.n_orders)
-
-        return self._rebuild(f_wave, i_orders, same)
-
-    def _rebuild(self, f_k, i_orders, same):
-        """
-        Build current model of the detector.
-
-        Parameters
-        ----------
-        f_k: array-like
-            Flux projected on the wavelength grid
-        i_orders: iterable
-            Order index to model on detector.
-        same: bool
-            Do not recompute, b_n. Take the last b_n computed.
-            Useful to speed up code.
-
-        Returns
-        ------
-        2D array-like image of the detector
-        """
-
-        # Get needed class attribute
-        mask = self.mask
-
-        # Distribute the flux on detector
-        out = np.zeros(self.data_shape)
-        for i_order in i_orders:
-
-            # Compute `b_n` at each pixels w/o `sig`
-            pixel_mapping = self.get_pixel_mapping(i_order, error=False, same=same)
-
-            # Add flux to pixels
-            out[~mask] += pixel_mapping.dot(f_k)
-
-        # nan invalid pixels
-        out[mask] = np.nan
+        if len(out) == 1:
+            out = out[0]
 
         return out
 
@@ -562,6 +376,345 @@ class _BaseOverlap:
 
         return
 
+    def get_mask_wave(self, i_order):
+        """Mask according to wavelength grid """
+
+        wave = self.wave_map[i_order]
+        a, b = self.i_bounds[i_order]
+        wave_min = self.wave_grid[a]
+        wave_max = self.wave_grid[b-1]
+
+        mask = (wave <= wave_min) | (wave >= wave_max)
+
+        return mask
+
+    def _get_masks(self, mask):
+        """
+        Compute a global mask on the detector and for each orders.
+        Depends on the spatial profile, the wavelength grid
+        and the user defined mask (optional). These are all specified
+        when initiating the object.
+        """
+
+        # Get needed attributes
+        thresh, n_orders = self.get_attributes('thresh', 'n_orders')
+        throughput, aperture, wave_map = self.get_attributes('throughput', 'aperture', 'wave_map')
+
+        # Mask according to the spatial profile
+        mask_p = [aperture_n < thresh for aperture_n in aperture]
+
+        # Mask pixels not covered by the wavelength grid
+        mask_wave = np.array([self.get_mask_wave(i_order) for i_order in range(n_orders)])
+
+        # Apply user's defined mask
+        if mask is None:
+            mask_ord = np.any([mask_p, mask_wave], axis=0)
+        else:
+            mask = [mask for _ in range(n_orders)]  # For each orders
+            mask_ord = np.any([mask_p, mask_wave, mask], axis=0)
+
+        # Mask pixels that are masked at each orders
+        global_mask = np.all(mask_ord, axis=0)
+
+        # Mask if mask_p not masked but mask_wave is.
+        # This means that an order is contaminated by another
+        # order, but the wavelength range does not cover this part
+        # of the spectrum. Thus, it cannot be treated correctly.
+        global_mask |= (np.any(mask_wave, axis=0)
+                        & (~np.array(mask_p)).all(axis=0))
+
+        # Apply this new global mask to each orders
+        mask_ord = (mask_wave | global_mask[None, :, :])
+
+        return global_mask, mask_ord
+
+    def update_mask(self, mask):
+        """
+        Update `mask` attribute by completing the
+        `general_mask` attribute with the input `mask`.
+        Everytime the mask is changed, the integration weights
+        need to be recomputed since the pixels change.
+        """
+
+        # Get general mask
+        general_mask = self.general_mask
+
+        # Complete with the input mask
+        new_mask = (general_mask | mask)
+
+        # Update attribute
+        self.mask = new_mask
+
+        # Correct i_bounds if it was not specified
+        # self.update_i_bnds()
+
+        # Re-compute weights
+        self.weights, self.weights_k_idx = self.compute_weights()
+
+        return
+
+    def _get_i_bnds(self, wave_bounds=None):
+        """
+        Define wavelength boundaries for each orders using the order's mask.
+        """
+
+        wave_grid = self.wave_grid
+        i_bounds = self.i_bounds
+
+        # Check if wave_bounds given
+        if wave_bounds is None:
+            wave_bounds = []
+            for i in range(self.n_orders):
+                wave = self.wave_map[i][~self.mask_ord[i]]
+                wave_bounds.append([wave.min(), wave.max()])
+
+        # What we need is the boundary position
+        # on the wavelength grid.
+        i_bnds_new = []
+        for bounds, i_bnds in zip(wave_bounds, i_bounds):
+
+            a = np.min(np.where(wave_grid >= bounds[0])[0])
+            b = np.max(np.where(wave_grid <= bounds[1])[0]) + 1
+
+            # Take the most restrictive bound
+            a = np.maximum(a, i_bnds[0])
+            b = np.minimum(b, i_bnds[1])
+
+            # Keep value
+            i_bnds_new.append([a, b])
+
+        return i_bnds_new
+
+    def update_i_bnds(self):
+        """
+        Update the grid limits to extract
+        Needs to be done after modification of the mask
+        """
+
+        # Get old and new boundaries
+        i_bnds_old = self.i_bounds
+        i_bnds_new = self._get_i_bnds()
+
+        for i_order in range(self.n_orders):
+
+            # Take most restrictive lower bound
+            low_bnds = [i_bnds_new[i_order][0], i_bnds_old[i_order][0]]
+            i_bnds_new[i_order][0] = np.max(low_bnds)
+
+            # Take most restrictive upper bound
+            up_bnds = [i_bnds_new[i_order][1], i_bnds_old[i_order][1]]
+            i_bnds_new[i_order][1] = np.min(up_bnds)
+
+        # Update attribute
+        self.i_bounds = i_bnds_new
+
+        return
+
+    def wave_grid_c(self, i_order):
+        """
+        Return wave_grid for the convolved flux at a given order.
+        """
+
+        index = slice(*self.i_bounds[i_order])
+
+        return self.wave_grid[index]
+
+    def get_w(self, *args):
+        """Dummy method to be able to init this class"""
+
+        return None, None
+
+    def compute_weights(self):
+        """
+        Compute integration weights
+
+        The weights depend on the integration method used solve
+        the integral of the flux over a pixel and are encoded
+        in the class method `get_w()`.
+
+        Returns the lists of weights and corresponding grid indices
+        """
+
+        # Init lists
+        weights, weights_k_idx = [], []
+        for i_order in range(self.n_orders):  # For each orders
+
+            weights_n, k_idx_n = self.get_w(i_order)  # Compute weigths
+
+            # Convert to sparse matrix
+            # First get the dimension of the convolved grid
+            n_kc = np.diff(self.i_bounds[i_order]).astype(int)[0]
+
+            # Then convert to sparse
+            weights_n = sparse_k(weights_n, k_idx_n, n_kc)
+            weights.append(weights_n), weights_k_idx.append(k_idx_n)
+
+        return weights, weights_k_idx
+
+    def _save_w_t_wave_c(self, order, product):
+        """
+        Save the matrix product of the weighs (w), the throughput (t),
+        the wavelength (lam) and the convolution matrix for faster computation.
+        """
+
+        # Get needed attributes
+        n_orders = self.n_orders
+
+        # Check if attribute exists
+        try:  # TODO Change existence check.
+            self.w_t_wave_c
+        except AttributeError:
+            # Init w_t_wave_c.
+            self.w_t_wave_c = [[] for _ in range(n_orders)]
+
+        # Assign value
+        self.w_t_wave_c[order] = product.copy()
+
+        return
+
+    def grid_from_map(self, i_order=0):
+        """
+        Return the wavelength grid and the columns associated
+        to a given order index (i_order)
+        """
+
+        attrs = ['wave_map', 'aperture']
+        wave_map, psf = self.get_attributes(*attrs, i_order=i_order)  # TODO inconsistent name psf.
+
+        return _grid_from_map(wave_map, psf, out_col=True)
+
+    def get_adapt_grid(self, f_k=None, n_max=3, **kwargs):
+        """
+        Return an irregular grid needed to reach a
+        given precision when integrating over each pixels.
+
+        Parameters (all optional)
+        ----------
+        f_k: 1D array-like
+            Input flux in the integral to be optimized.
+            f_k is the projection of the flux on self.wave_grid
+        n_max: int (n_max > 0)
+            Maximum number of nodes in each intervals of self.wave_grid.
+            Needs to be greater then zero.
+
+        kwargs (arguments passed to the function get_n_nodes)
+        ------
+        tol, rtol : float, optional
+            The desired absolute and relative tolerances. Defaults are 1.48e-4.
+        divmax : int, optional
+            Maximum order of extrapolation. Default is 10.
+
+        Returns
+        -------
+        os_grid  : 1D array
+            Oversampled grid which minimizes the integration error based on
+            Romberg's method
+        See Also
+        --------
+        utils.get_n_nodes
+        scipy.integrate.quadrature.romberg
+        References
+        ----------
+        [1] 'Romberg's method' https://en.wikipedia.org/wiki/Romberg%27s_method
+
+        """
+        # Generate f_k if not given
+        if f_k is None:
+            f_k = self.extract()
+
+        # Init output oversampled grid
+        os_grid = []
+
+        # Iterate starting with the last order
+        for i_order in range(self.n_orders - 1, -1, -1):  # TODO easier way of inverse loop?
+
+            # Grid covered by this order
+            grid_ord = self.wave_grid_c(i_order)
+
+            # Estimate the flux at this order
+            f_k_c = self.kernels[i_order].dot(f_k)
+            # Interpolate with a cubic spline
+            fct = interp1d(grid_ord, f_k_c, kind='cubic')
+
+            # Find number of nodes to reach the precision
+            n_oversample = get_n_nodes(grid_ord, fct, **kwargs)
+
+            # Make sure n_oversample is not greater than
+            # user's define `n_max`
+            n_oversample = np.clip(n_oversample, 0, n_max)
+
+            # Generate oversampled grid
+            grid_ord = oversample_grid(grid_ord, n_os=n_oversample)
+
+            # Keep only wavelength that are not already
+            # covered by os_grid.
+            if os_grid:
+                # Under or above os_grid
+                index = (grid_ord < np.min(os_grid))
+                index |= (grid_ord > np.max(os_grid))
+            else:
+                index = slice(None)
+
+            # Keep these values
+            os_grid.append(grid_ord[index])
+
+        # Convert os_grid to 1D array
+        os_grid = np.concatenate(os_grid)
+
+        # Return sorted and unique
+        return np.unique(os_grid)
+
+    def estimate_noise(self, i_order=0, data=None, error=None, mask=None):
+        """
+        Relative noise estimate over columns.
+
+        Parameters
+        ----------
+        i_order: int, optional
+            index of diffraction order. Default is 0
+        data: 2d array, optional
+            map of the detector image
+            Default is `self.data`.
+        error: 2d array, optional
+            map of the estimate of the detector noise.
+            Default is `self.sig`
+        mask: 2d array, optional
+            Bool map of the masked pixels for order `i_order`.
+            Default is `self.mask_ord[i_order]`
+
+        Returns
+        ------
+        wave_grid, noise
+        """
+
+        # Use object attributes if not given
+        if data is None:
+            data = self.data
+
+        if error is None:
+            error = self.error
+
+        if mask is None:
+            mask = self.mask_ord[i_order]
+
+        # Compute noise estimate only on the trace (mask the rest)
+        noise = np.ma.array(error, mask=mask)
+
+        # RMS over columns
+        noise = np.sqrt((noise**2).sum(axis=0))
+
+        # Relative
+        noise /= np.ma.array(data, mask=mask).sum(axis=0)
+
+        # Convert to array with nans
+        noise = noise.filled(fill_value=np.nan)
+
+        # Get associated wavelengths
+        wave_grid, i_col = self.grid_from_map(i_order)
+
+        # Return sorted according to wavelenghts
+        return wave_grid, noise[i_col]
+
     def get_pixel_mapping(self, i_order, same=False, error=True, quick=False):
         """
         Compute the matrix `b_n = (P/sig).w.T.lambda.c_n` ,
@@ -613,7 +766,7 @@ class _BaseOverlap:
 
         return pixel_mapping
 
-    def _get_pixel_mapping(self, i_order, error=True, quick=False):
+    def _get_pixel_mapping(self, i_order, error=True, quick=False):  # TODO merge with get_pixel_mapping.
         """
         Compute the matrix `b_n = (P/sig).w.T.lambda.c_n` ,
         where `P` is the spatial profile matrix (diag),
@@ -697,24 +850,13 @@ class _BaseOverlap:
 
         return pixel_mapping
 
-    def _save_w_t_wave_c(self, order, product):
-        """
-        Save the matrix product of the weighs (w), the throughput (t),
-        the wavelength (lam) and the convolution matrix for faster computation.
-        """
+    def get_i_grid(self, d):
+        """ Return the index of the grid that are well defined, so d != 0 """
 
-        # Get needed attributes
-        n_orders = self.n_orders
+        if self.i_grid is None:  # TODO Shouldn't this update even if the attribute is already set?
+            self.i_grid = np.nonzero(d)[0]
 
-        # Check if attribute exists
-        try:
-            self.w_t_wave_c
-        except AttributeError:
-            # Init w_t_wave_c.
-            self.w_t_wave_c = [[] for _ in range(n_orders)]
-
-        # Assign value
-        self.w_t_wave_c[order] = product.copy()
+        return self.i_grid
 
     def build_sys(self, data=None, error=True, mask=None, aperture=None, throughput=None):
         """
@@ -813,154 +955,6 @@ class _BaseOverlap:
 
         return matrix, result.toarray().squeeze()
 
-    def __call__(self, **kwargs):
-        """
-        Extract underlying flux on the detector by calling
-        the `extract` method.
-        All parameters are passed to `build_sys` method.
-        TIPS: To be quicker, only specify the psf (`p_list`) in kwargs.
-              There will be only one matrix multiplication:
-              (P/sig).(w.T.lambda.c_n).
-        Parameters
-        ----------
-        tikhonov : bool, optional
-            Wheter to use tikhonov extraction
-            (see regularisation.tikho_solve function).
-            Default is False.
-        tikho_kwargs : dictionnary or None, optional
-            Arguments passed to `tikho_solve`.
-        data : (N, M) array_like, optional
-            A 2-D array of real values representing the detector image.
-            Default is the object attribute `data`.
-        error : (N, M) array_like, optional
-            Estimate of the error on each pixel`
-            Same shape as `data`.
-            Default is the object attribute `sig`.
-        mask : (N, M) array_like boolean, optional
-            Additionnal mask for a given exposure. Will be added
-            to the object general mask.
-        throughput : (N_ord [, N_k]) list or array of functions, optional
-            A list or array of the throughput at each order.
-            The functions depend on the wavelength
-            Default is the object attribute `t_list`
-        aperture : (N_ord, N, M) list or array of 2-D arrays, optional
-            A list or array of the spatial profile for each order
-            on the detector. It has to have the same (N, M) as `data`.
-            Default is the object attribute `p_list`
-
-        Returns
-        -----
-        f_k: solution of the linear system
-        """
-
-        return self.extract(**kwargs)
-
-    def extract(self, tikhonov=False, tikho_kwargs=None,
-                factor=None, **kwargs):
-        """
-        Extract underlying flux on the detector.
-        All parameters are passed to `build_sys` method.
-        TIPS: To be quicker, only specify the psf (`p_list`) in kwargs.
-              There will be only one matrix multiplication:
-              (P/sig).(w.T.lambda.c_n).
-
-        Parameters
-        ----------
-        tikhonov : bool, optional
-            Wheter to use tikhonov extraction
-            (see regularisation.tikho_solve function).
-            Default is False.
-        tikho_kwargs : dictionnary or None, optional
-            Arguments passed to `tikho_solve`.
-        factor : the tikhonov factor to use of tikhonov is True
-        data : (N, M) array_like, optional
-            A 2-D array of real values representing the detector image.
-            Default is the object attribute `data`.
-        error : (N, M) array_like, optional
-            Estimate of the error on each pixel`
-            Same shape as `data`.
-            Default is the object attribute `sig`.
-        mask : (N, M) array_like boolean, optional
-            Additionnal mask for a given exposure. Will be added
-            to the object general mask.
-        aperture : (N_ord, N, M) list or array of 2-D arrays, optional
-            A list or array of the spatial profile for each order
-            on the detector. It has to have the same (N, M) as `data`.
-            Default is the object attribute `p_list`
-        throughput : (N_ord [, N_k]) list or array of functions, optional
-            A list or array of the throughput at each order.
-            The functions depend on the wavelength
-            Default is the object attribute `t_list`
-
-        Returns
-        -----
-        f_k: solution of the linear system
-        """
-
-        # Build the system to solve
-        matrix, result = self.build_sys(**kwargs)
-
-        # Get index of `wave_grid` convered by the pixel.
-        # `wave_grid` may cover more then the pixels.
-        i_grid = self.get_i_grid(result)
-
-        # Init f_k with nan
-        f_k = np.ones(result.shape[-1]) * np.nan
-
-        # Solve with the specified solver.
-        # Only solve for valid range `i_grid` (on the detector).
-        # It will be a singular matrix otherwise.
-        if tikhonov:
-
-            if factor is None:
-                raise ValueError("Please specify tikhonov `factor`.")
-
-            t_mat = self.get_tikho_matrix()
-            default_kwargs = {'grid': self.wave_grid,
-                              'index': i_grid,
-                              't_mat': t_mat,
-                              'factor': factor}
-
-            if tikho_kwargs is None:
-                tikho_kwargs = {}
-
-            tikho_kwargs = {**default_kwargs, **tikho_kwargs}
-            f_k[i_grid] = self._solve_tikho(matrix, result, **tikho_kwargs)
-
-        else:
-            f_k[i_grid] = self._solve(matrix, result, index=i_grid)
-
-        return f_k
-
-    @staticmethod
-    def _solve(matrix, result, index=slice(None)):
-        """
-        Simply pass `matrix` and `result`
-        to `scipy.spsolve` and apply index.
-        """
-
-        return spsolve(matrix[index, :][:, index], result[index])
-
-    @staticmethod
-    def _solve_tikho(matrix, result, index=slice(None), **kwargs):
-        """Solve system using Tikhonov regularisation"""
-
-        # Note that the indexing is applied inside the function
-        return tikho_solve(matrix, result, index=index, **kwargs)
-
-    def get_tikho_matrix(self, **kwargs):
-        """
-        Return the tikhonov matrix.
-        Generate it with `set_tikho_matrix` method
-        if not define yet. If so, all arguments are passed
-        to `set_tikho_matrix`. The result is saved as an attribute.
-        """
-
-        if self.tikho_mat is None:
-            self.set_tikho_matrix(**kwargs)
-
-        return self.tikho_mat
-
     def set_tikho_matrix(self, t_mat=None, t_mat_func=None,
                          fargs=None, fkwargs=None):
         """
@@ -1005,119 +999,18 @@ class _BaseOverlap:
 
         return
 
-    def get_i_grid(self, d):
-        """ Return the index of the grid that are well defined, so d != 0 """
-
-        if self.i_grid is None:
-            self.i_grid = np.nonzero(d)[0]
-
-        return self.i_grid
-
-    def get_logl(self, f_k=None, same=False):
+    def get_tikho_matrix(self, **kwargs):
         """
-        Return the log likelihood computed on each pixels.
-
-        Parameters
-        ----------
-        f_k: array-like, optional
-            Flux projected on the wavelength grid. If not specified,
-            it will be computed using `extract` method.
-        same: bool, optional
-            Do not recompute, b_n when calling `rebuild` method.
-            Take the last b_n computed.
-            Useful to speed up code. Default is False.
+        Return the tikhonov matrix.
+        Generate it with `set_tikho_matrix` method
+        if not define yet. If so, all arguments are passed
+        to `set_tikho_matrix`. The result is saved as an attribute.
         """
 
-        data = self.data
-        error = self.error
+        if self.tikho_mat is None:
+            self.set_tikho_matrix(**kwargs)
 
-        if f_k is None:
-            f_k = self.extract()
-
-        model = self.rebuild(f_k, same=same)
-
-        return -np.nansum((model - data)**2/error**2)
-
-    def get_adapt_grid(self, f_k=None, n_max=3, **kwargs):
-        """
-        Return an irregular grid needed to reach a
-        given precision when integrating over each pixels.
-
-        Parameters (all optional)
-        ----------
-        f_k: 1D array-like
-            Input flux in the integral to be optimized.
-            f_k is the projection of the flux on self.wave_grid
-        n_max: int (n_max > 0)
-            Maximum number of nodes in each intervals of self.wave_grid.
-            Needs to be greater then zero.
-
-        kwargs (arguments passed to the function get_n_nodes)
-        ------
-        tol, rtol : float, optional
-            The desired absolute and relative tolerances. Defaults are 1.48e-4.
-        divmax : int, optional
-            Maximum order of extrapolation. Default is 10.
-
-        Returns
-        -------
-        os_grid  : 1D array
-            Oversampled grid which minimizes the integration error based on
-            Romberg's method
-        See Also
-        --------
-        utils.get_n_nodes
-        scipy.integrate.quadrature.romberg
-        References
-        ----------
-        [1] 'Romberg's method' https://en.wikipedia.org/wiki/Romberg%27s_method
-
-        """
-        # Generate f_k if not given
-        if f_k is None:
-            f_k = self.extract()
-
-        # Init output oversampled grid
-        os_grid = []
-
-        # Iterate starting with the last order
-        for i_order in range(self.n_orders - 1, -1, -1):  # TODO easier way of inverse loop?
-
-            # Grid covered by this order
-            grid_ord = self.wave_grid_c(i_order)
-
-            # Estimate the flux at this order
-            f_k_c = self.kernels[i_order].dot(f_k)
-            # Interpolate with a cubic spline
-            fct = interp1d(grid_ord, f_k_c, kind='cubic')
-
-            # Find number of nodes to reach the precision
-            n_oversample = get_n_nodes(grid_ord, fct, **kwargs)
-
-            # Make sure n_oversample is not greater than
-            # user's define `n_max`
-            n_oversample = np.clip(n_oversample, 0, n_max)
-
-            # Generate oversampled grid
-            grid_ord = oversample_grid(grid_ord, n_os=n_oversample)
-
-            # Keep only wavelength that are not already
-            # covered by os_grid.
-            if os_grid:
-                # Under or above os_grid
-                index = (grid_ord < np.min(os_grid))
-                index |= (grid_ord > np.max(os_grid))
-            else:
-                index = slice(None)
-
-            # Keep these values
-            os_grid.append(grid_ord[index])
-
-        # Convert os_grid to 1D array
-        os_grid = np.concatenate(os_grid)
-
-        # Return sorted and unique
-        return np.unique(os_grid)
+        return self.tikho_mat
 
     def get_tikho_tests(self, factors, tikho=None, estimate=None,
                         tikho_kwargs=None, **kwargs):
@@ -1200,6 +1093,336 @@ class _BaseOverlap:
         tikho.test["i_grid"] = i_grid
 
         return tikho.test
+
+    def best_tikho_factor(self, tests=None, interpolate=True,
+                          interp_index=None, i_plot=False):
+        """Compute the best scale factor for Tikhonov regularisation.
+        It is determine by taking the factor giving the highest logL on
+        the detector.
+
+        Parameters
+        ----------
+        tests: dictionnary, optional
+            Results of tikhonov extraction tests
+            for different factors.
+            Must have the keys "factors" and "-logl".
+            If not specified, the tests from self.tikho.tests
+            are used.
+        interpolate: bool, optional
+            If True, use akima spline interpolation
+            to find a finer minimum. Default is true.
+        interp_index: 2 element list, optional
+            Index around the minimum value on the tested factors.
+            Will be used for the interpolation.
+            For example, if i_min is the position of
+            the minimum logL value and [i1, i2] = interp_index,
+            then the interpolation will be perform between
+            i_min + i1 and i_min + i2 - 1
+        i_plot: bool, optional
+            Plot the result of the minimization
+
+        Returns
+        -------
+        Best scale factor (float)
+        """
+
+        if interp_index is None:
+            interp_index = [-2, 4]
+
+        # Use pre-run tests if not specified
+        if tests is None:
+            tests = self.tikho.tests
+
+        # Get relevant quantities from tests
+        factors = tests["factors"]
+        logl = tests["-logl"]
+
+        # Get position of the minimum value
+        i_min = np.argmin(logl)
+
+        # Interpolate to get a finer value
+        if interpolate:
+
+            # Only around the best value
+            i_range = [i_min + d_i for d_i in interp_index]
+
+            # Make sure it's still a valid index
+            i_range[0] = np.max([i_range[0], 0])
+            i_range[-1] = np.min([i_range[-1], len(logl) - 1])
+
+            # Which index to use
+            index = np.arange(*i_range, 1)
+
+            # Akima spline in log space
+            x_val, y_val = np.log10(factors[index]), np.log10(logl[index])
+            i_sort = np.argsort(x_val)
+            x_val, y_val = x_val[i_sort], y_val[i_sort]
+            fct = Akima1DInterpolator(x_val, y_val)
+
+            # Find min
+            bounds = (x_val.min(), x_val.max())
+            opt_args = {"bounds": bounds,
+                        "method": "bounded"}
+            min_fac = minimize_scalar(fct, **opt_args).x
+
+            # Plot the fit if required
+            if i_plot:
+
+                # Original grid
+                plt.plot(np.log10(factors), np.log10(logl), ":")
+
+                # Fit sub-grid
+                plt.plot(x_val, y_val, ".")
+
+                # Show akima spline
+                x_new = np.linspace(*bounds, 100)
+                plt.plot(x_new, fct(x_new))
+
+                # Show minimum found
+                plt.plot(min_fac, fct(min_fac), "x")
+
+                # Labels
+                plt.xlabel(r"$\log_{10}$(factor)")
+                plt.ylabel(r"$\log_{10}( - \log L)$")
+                plt.tight_layout()
+
+            # Return to linear scale
+            min_fac = 10.**min_fac
+
+        # Simply return the minimum value if no interpolation required
+        else:
+            min_fac = factors[i_min]
+
+        # Return scale factor minimizing the logL
+        return min_fac
+
+    def rebuild(self, f_wave, i_orders=None, same=False):
+        """
+        Build current model of the detector.
+
+        Parameters
+        ----------
+        f_wave: array-like or callable
+            flux as a function of wavelength if callable
+            or flux projected on the wavelength grid
+        i_orders: iterable, ooptional
+            Order index to model on detector. Default is
+            all available orders.
+        same: bool, optional
+            Do not recompute, b_n. Take the last b_n computed.
+            Useful to speed up code. Default is False.
+
+        Returns
+        ------
+        2D array-like image of the detector
+        """
+
+        # If f is callable, project on grid
+        if callable(f_wave):
+            f_wave = f_wave(self.wave_grid)
+
+        # Iterate over all orders by default
+        if i_orders is None:
+            i_orders = range(self.n_orders)
+
+        return self._rebuild(f_wave, i_orders, same)
+
+    def _rebuild(self, f_k, i_orders, same):  # TODO merge with rebuild method.
+        """
+        Build current model of the detector.
+
+        Parameters
+        ----------
+        f_k: array-like
+            Flux projected on the wavelength grid
+        i_orders: iterable
+            Order index to model on detector.
+        same: bool
+            Do not recompute, b_n. Take the last b_n computed.
+            Useful to speed up code.
+
+        Returns
+        ------
+        2D array-like image of the detector
+        """
+
+        # Get needed class attribute
+        mask = self.mask
+
+        # Distribute the flux on detector
+        out = np.zeros(self.data_shape)
+        for i_order in i_orders:
+
+            # Compute `b_n` at each pixels w/o `sig`
+            pixel_mapping = self.get_pixel_mapping(i_order, error=False, same=same)
+
+            # Add flux to pixels
+            out[~mask] += pixel_mapping.dot(f_k)
+
+        # nan invalid pixels
+        out[mask] = np.nan
+
+        return out
+
+    def get_logl(self, f_k=None, same=False):
+        """
+        Return the log likelihood computed on each pixels.
+
+        Parameters
+        ----------
+        f_k: array-like, optional
+            Flux projected on the wavelength grid. If not specified,
+            it will be computed using `extract` method.
+        same: bool, optional
+            Do not recompute, b_n when calling `rebuild` method.
+            Take the last b_n computed.
+            Useful to speed up code. Default is False.
+        """
+
+        data = self.data
+        error = self.error
+
+        if f_k is None:
+            f_k = self.extract()
+
+        model = self.rebuild(f_k, same=same)
+
+        return -np.nansum((model - data)**2/error**2)
+
+    @staticmethod
+    def _solve(matrix, result, index=slice(None)):
+        """
+        Simply pass `matrix` and `result`
+        to `scipy.spsolve` and apply index.
+        """
+
+        return spsolve(matrix[index, :][:, index], result[index])
+
+    @staticmethod
+    def _solve_tikho(matrix, result, index=slice(None), **kwargs):
+        """Solve system using Tikhonov regularisation"""
+
+        # Note that the indexing is applied inside the function
+        return tikho_solve(matrix, result, index=index, **kwargs)
+
+    def extract(self, tikhonov=False, tikho_kwargs=None,  # TODO merge with __call__.
+                factor=None, **kwargs):
+        """
+        Extract underlying flux on the detector.
+        All parameters are passed to `build_sys` method.
+        TIPS: To be quicker, only specify the psf (`p_list`) in kwargs.
+              There will be only one matrix multiplication:
+              (P/sig).(w.T.lambda.c_n).
+
+        Parameters
+        ----------
+        tikhonov : bool, optional
+            Wheter to use tikhonov extraction
+            (see regularisation.tikho_solve function).
+            Default is False.
+        tikho_kwargs : dictionnary or None, optional
+            Arguments passed to `tikho_solve`.
+        factor : the tikhonov factor to use of tikhonov is True
+        data : (N, M) array_like, optional
+            A 2-D array of real values representing the detector image.
+            Default is the object attribute `data`.
+        error : (N, M) array_like, optional
+            Estimate of the error on each pixel`
+            Same shape as `data`.
+            Default is the object attribute `sig`.
+        mask : (N, M) array_like boolean, optional
+            Additionnal mask for a given exposure. Will be added
+            to the object general mask.
+        aperture : (N_ord, N, M) list or array of 2-D arrays, optional
+            A list or array of the spatial profile for each order
+            on the detector. It has to have the same (N, M) as `data`.
+            Default is the object attribute `p_list`
+        throughput : (N_ord [, N_k]) list or array of functions, optional
+            A list or array of the throughput at each order.
+            The functions depend on the wavelength
+            Default is the object attribute `t_list`
+
+        Returns
+        -----
+        f_k: solution of the linear system
+        """
+
+        # Build the system to solve
+        matrix, result = self.build_sys(**kwargs)
+
+        # Get index of `wave_grid` convered by the pixel.
+        # `wave_grid` may cover more then the pixels.
+        i_grid = self.get_i_grid(result)
+
+        # Init f_k with nan
+        f_k = np.ones(result.shape[-1]) * np.nan
+
+        # Solve with the specified solver.
+        # Only solve for valid range `i_grid` (on the detector).
+        # It will be a singular matrix otherwise.
+        if tikhonov:
+
+            if factor is None:
+                raise ValueError("Please specify tikhonov `factor`.")
+
+            t_mat = self.get_tikho_matrix()
+            default_kwargs = {'grid': self.wave_grid,
+                              'index': i_grid,
+                              't_mat': t_mat,
+                              'factor': factor}
+
+            if tikho_kwargs is None:
+                tikho_kwargs = {}
+
+            tikho_kwargs = {**default_kwargs, **tikho_kwargs}
+            f_k[i_grid] = self._solve_tikho(matrix, result, **tikho_kwargs)
+
+        else:
+            f_k[i_grid] = self._solve(matrix, result, index=i_grid)
+
+        return f_k
+
+    def __call__(self, **kwargs):
+        """
+        Extract underlying flux on the detector by calling
+        the `extract` method.
+        All parameters are passed to `build_sys` method.
+        TIPS: To be quicker, only specify the psf (`p_list`) in kwargs.
+              There will be only one matrix multiplication:
+              (P/sig).(w.T.lambda.c_n).
+        Parameters
+        ----------
+        tikhonov : bool, optional
+            Wheter to use tikhonov extraction
+            (see regularisation.tikho_solve function).
+            Default is False.
+        tikho_kwargs : dictionnary or None, optional
+            Arguments passed to `tikho_solve`.
+        data : (N, M) array_like, optional
+            A 2-D array of real values representing the detector image.
+            Default is the object attribute `data`.
+        error : (N, M) array_like, optional
+            Estimate of the error on each pixel`
+            Same shape as `data`.
+            Default is the object attribute `sig`.
+        mask : (N, M) array_like boolean, optional
+            Additionnal mask for a given exposure. Will be added
+            to the object general mask.
+        throughput : (N_ord [, N_k]) list or array of functions, optional
+            A list or array of the throughput at each order.
+            The functions depend on the wavelength
+            Default is the object attribute `t_list`
+        aperture : (N_ord, N, M) list or array of 2-D arrays, optional
+            A list or array of the spatial profile for each order
+            on the detector. It has to have the same (N, M) as `data`.
+            Default is the object attribute `p_list`
+
+        Returns
+        -----
+        f_k: solution of the linear system
+        """
+
+        return self.extract(**kwargs)
 
     def bin_to_pixel(self, i_order=0, grid_pix=None, grid_f_k=None, f_k_c=None,
                      f_k=None, bounds_error=False, throughput=None, **kwargs):
@@ -1304,170 +1527,6 @@ class _BaseOverlap:
 
         # Convert to array and return with the pixel centers.
         return pix_center, np.array(bin_val)
-
-    def grid_from_map(self, i_order=0):
-        """
-        Return the wavelength grid and the columns associated
-        to a given order index (i_order)
-        """
-
-        attrs = ['wave_map', 'aperture']
-        wave_map, psf = self.get_attributes(*attrs, i_order=i_order)  # TODO inconsistent name psf.
-
-        return _grid_from_map(wave_map, psf, out_col=True)
-
-    def estimate_noise(self, i_order=0, data=None, error=None, mask=None):
-        """
-        Relative noise estimate over columns.
-
-        Parameters
-        ----------
-        i_order: int, optional
-            index of diffraction order. Default is 0
-        data: 2d array, optional
-            map of the detector image
-            Default is `self.data`.
-        error: 2d array, optional
-            map of the estimate of the detector noise.
-            Default is `self.sig`
-        mask: 2d array, optional
-            Bool map of the masked pixels for order `i_order`.
-            Default is `self.mask_ord[i_order]`
-
-        Returns
-        ------
-        wave_grid, noise
-        """
-
-        # Use object attributes if not given
-        if data is None:
-            data = self.data
-
-        if error is None:
-            error = self.error
-
-        if mask is None:
-            mask = self.mask_ord[i_order]
-
-        # Compute noise estimate only on the trace (mask the rest)
-        noise = np.ma.array(error, mask=mask)
-
-        # RMS over columns
-        noise = np.sqrt((noise**2).sum(axis=0))
-
-        # Relative
-        noise /= np.ma.array(data, mask=mask).sum(axis=0)
-
-        # Convert to array with nans
-        noise = noise.filled(fill_value=np.nan)
-
-        # Get associated wavelengths
-        wave_grid, i_col = self.grid_from_map(i_order)
-
-        # Return sorted according to wavelenghts
-        return wave_grid, noise[i_col]
-
-    def best_tikho_factor(self, tests=None, interpolate=True,
-                          interp_index=None, i_plot=False):
-        """Compute the best scale factor for Tikhonov regularisation.
-        It is determine by taking the factor giving the highest logL on
-        the detector.
-
-        Parameters
-        ----------
-        tests: dictionnary, optional
-            Results of tikhonov extraction tests
-            for different factors.
-            Must have the keys "factors" and "-logl".
-            If not specified, the tests from self.tikho.tests
-            are used.
-        interpolate: bool, optional
-            If True, use akima spline interpolation
-            to find a finer minimum. Default is true.
-        interp_index: 2 element list, optional
-            Index around the minimum value on the tested factors.
-            Will be used for the interpolation.
-            For example, if i_min is the position of
-            the minimum logL value and [i1, i2] = interp_index,
-            then the interpolation will be perform between
-            i_min + i1 and i_min + i2 - 1
-        i_plot: bool, optional
-            Plot the result of the minimization
-
-        Returns
-        -------
-        Best scale factor (float)
-        """
-
-        if interp_index is None:
-            interp_index = [-2, 4]
-
-        # Use pre-run tests if not specified
-        if tests is None:
-            tests = self.tikho.tests
-
-        # Get relevant quantities from tests
-        factors = tests["factors"]
-        logl = tests["-logl"]
-
-        # Get position of the minimum value
-        i_min = np.argmin(logl)
-
-        # Interpolate to get a finer value
-        if interpolate:
-
-            # Only around the best value
-            i_range = [i_min + d_i for d_i in interp_index]
-
-            # Make sure it's still a valid index
-            i_range[0] = np.max([i_range[0], 0])
-            i_range[-1] = np.min([i_range[-1], len(logl) - 1])
-
-            # Which index to use
-            index = np.arange(*i_range, 1)
-
-            # Akima spline in log space
-            x_val, y_val = np.log10(factors[index]), np.log10(logl[index])
-            i_sort = np.argsort(x_val)
-            x_val, y_val = x_val[i_sort], y_val[i_sort]
-            fct = Akima1DInterpolator(x_val, y_val)
-
-            # Find min
-            bounds = (x_val.min(), x_val.max())
-            opt_args = {"bounds": bounds,
-                        "method": "bounded"}
-            min_fac = minimize_scalar(fct, **opt_args).x
-
-            # Plot the fit if required
-            if i_plot:
-
-                # Original grid
-                plt.plot(np.log10(factors), np.log10(logl), ":")
-
-                # Fit sub-grid
-                plt.plot(x_val, y_val, ".")
-
-                # Show akima spline
-                x_new = np.linspace(*bounds, 100)
-                plt.plot(x_new, fct(x_new))
-
-                # Show minimum found
-                plt.plot(min_fac, fct(min_fac), "x")
-
-                # Labels
-                plt.xlabel(r"$\log_{10}$(factor)")
-                plt.ylabel(r"$\log_{10}( - \log L)$")
-                plt.tight_layout()
-
-            # Return to linear scale
-            min_fac = 10.**min_fac
-
-        # Simply return the minimum value if no interpolation required
-        else:
-            min_fac = factors[i_min]
-
-        # Return scale factor minimizing the logL
-        return min_fac
 
     @staticmethod
     def _check_plot_inputs(fig, ax):
@@ -1612,61 +1671,6 @@ class _BaseOverlap:
         ax.set_ylabel(ylabel)
 
         return fig, ax
-
-    def get_w(self, *args):
-        """Dummy method to be able to init this class"""
-
-        return None, None
-
-    def get_mask_wave(self, i_order):
-        """Mask according to wavelength grid """
-
-        wave = self.wave_map[i_order]
-        a, b = self.i_bounds[i_order]
-        wave_min = self.wave_grid[a]
-        wave_max = self.wave_grid[b-1]
-
-        mask = (wave <= wave_min) | (wave >= wave_max)
-
-        return mask
-
-    def wave_grid_c(self, i_order):
-        """
-        Return wave_grid for the convolved flux at a given order.
-        """
-
-        index = slice(*self.i_bounds[i_order])
-
-        return self.wave_grid[index]
-
-    def get_attributes(self, *args, i_order=None):
-        """Return list of attributes
-
-        Parameters
-        ----------
-        args: str
-            All attributes to return.
-        i_order: None or int, optionoal
-            Index of order to extract. If specified, it will
-            be applied to all attributes in args, so it cannot
-            be mixed with non-order dependent attributes).
-        """
-
-        if i_order is None:
-            out = [getattr(self, arg) for arg in args]
-        else:
-            out = [getattr(self, arg)[i_order] for arg in args]
-
-        if len(out) > 1:
-            return out
-        else:
-            return out[0]
-
-    def verbose_print(self, *args, **kwargs):
-        """Print if verbose is true. Same as `print`function."""
-
-        if self.verbose:
-            print(*args, **kwargs)
 
 
 class TrpzOverlap(_BaseOverlap):
