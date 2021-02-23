@@ -349,8 +349,8 @@ def calib_lambda(x, order=1, subarray='SUBSTRIP256'):
     return lba
 
 
-def soss_trace_position(image, subarray='SUBSTRIP256', apex_order1=None,
-                        badpix=None, verbose=False, debug=False):
+def get_soss_centroids(image, subarray='SUBSTRIP256', apex_order1=None,
+                       badpix=None, verbose=False, debug=False):
     '''Function that determines the traces positions on a real image (native
     size) with as little assumptions as possible. Those assumptions are:
     1) The brightest order is order 1 and it is also the brightest of all order
@@ -378,7 +378,8 @@ def soss_trace_position(image, subarray='SUBSTRIP256', apex_order1=None,
     mask_256 = build_mask_256(image, subarray=subarray,
                               apex_order1=apex_order1, verbose=verbose)
     # Combine masks for subsection of ~256 vertical pixels
-    mask_256 = mask_256 | badpix
+    if badpix is not None:
+        mask_256 = mask_256 | badpix
 
     # Get the Order 1 position
     x_o1, y_o1, w_o1, par_o1 = cen.get_uncontam_centroids_edgetrig(
@@ -409,7 +410,8 @@ def soss_trace_position(image, subarray='SUBSTRIP256', apex_order1=None,
                                 apex_order1=apex_order1_measured,
                                 verbose=verbose)
     # Combine Order 3 mask
-    mask_o3 = mask_o3 | badpix
+    if badpix is not None:
+        mask_o3 = mask_o3 | badpix
     if debug is True:
         hdu = fits.PrimaryHDU()
         hdu.data = np.where(mask_o3, np.nan, image)
@@ -432,7 +434,8 @@ def soss_trace_position(image, subarray='SUBSTRIP256', apex_order1=None,
     mask_o2_uncont = build_mask_order2_uncontaminated(x_o1, y_o1, x_o3, y_o3,
                                                       subarray=subarray)
     # Add the bad pixel mask to it (including the reference pixels)
-    mask_o2_uncont = mask_o2_uncont | badpix
+    if badpix is not None:
+        mask_o2_uncont = mask_o2_uncont | badpix
     if debug is True:
         hdu = fits.PrimaryHDU()
         hdu.data = np.where(mask_o2_uncont, np.nan, image)
@@ -442,7 +445,8 @@ def soss_trace_position(image, subarray='SUBSTRIP256', apex_order1=None,
     mask_o2_cont = build_mask_order2_contaminated(x_o1, y_o1, x_o3, y_o3,
                                                   subarray=subarray)
     # Combine masks
-    mask_o2_cont = mask_o2_cont | badpix
+    if badpix is not None:
+        mask_o2_cont = mask_o2_cont | badpix
     if debug is True:
         hdu = fits.PrimaryHDU()
         hdu.data = np.where(mask_o2_cont, np.nan, image)
