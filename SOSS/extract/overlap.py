@@ -1196,73 +1196,46 @@ class _BaseOverlap:
         # Return scale factor minimizing the logL
         return min_fac
 
-    def rebuild(self, f_wave, i_orders=None, same=False):
-        """
-        Build current model of the detector.
+    def rebuild(self, flux, i_orders=None, same=False):
+        """Build current model image of the detector.
 
-        Parameters
-        ----------
-        f_wave: array-like or callable
-            flux as a function of wavelength if callable
-            or flux projected on the wavelength grid
-        i_orders: iterable, ooptional
-            Order index to model on detector. Default is
+        :param flux: flux as a function of wavelength if callable
+            or array of flux values corresponding to self.wave_grid.
+        :param i_orders: Indices of orders to model. Default is
             all available orders.
-        same: bool, optional
-            Do not recompute, b_n. Take the last b_n computed.
-            Useful to speed up code. Default is False.
+        :param same: If True, do not recompute the pixel_mapping matrix (b_n)
+            and instead use the most recent pixel_mapping to speed up the computation.
+            Default is False.
 
-        Returns
-        ------
-        2D array-like image of the detector
+        :type flux: callable or array-like
+        :type i_orders: List[int]
+        :type same: bool
+
+        :returns: model - the modelled detector image.
+        :rtype: array[float]
         """
 
-        # If f is callable, project on grid
-        if callable(f_wave):
-            f_wave = f_wave(self.wave_grid)
+        # If flux is callable, evaluate on the wavelength grid.
+        if callable(flux):
+            flux = flux(self.wave_grid)
 
-        # Iterate over all orders by default
+        # Iterate over all orders by default.
         if i_orders is None:
             i_orders = range(self.n_orders)
 
-        return self._rebuild(f_wave, i_orders, same)
-
-    def _rebuild(self, f_k, i_orders, same):  # TODO merge with rebuild method.
-        """
-        Build current model of the detector.
-
-        Parameters
-        ----------
-        f_k: array-like
-            Flux projected on the wavelength grid
-        i_orders: iterable
-            Order index to model on detector.
-        same: bool
-            Do not recompute, b_n. Take the last b_n computed.
-            Useful to speed up code.
-
-        Returns
-        ------
-        2D array-like image of the detector
-        """
-
-        # Get needed class attribute
+        # Get required class attribute.
         mask = self.mask
 
-        # Distribute the flux on detector
-        out = np.zeros(self.data_shape)
+        # Evaluate the detector model.
+        model = np.full(self.data_shape, fill_value=np.nan)
         for i_order in i_orders:
-
-            # Compute `b_n` at each pixels w/o `sig`
+            # Compute the pixel mapping matrix (b_n) for the current order.
             pixel_mapping = self.get_pixel_mapping(i_order, error=False, same=same)
 
-            # Add flux to pixels
-            out[~mask] += pixel_mapping.dot(f_k)
+            # Evaluate the model of the current order.
+            model[~mask] += pixel_mapping.dot(flux)
 
-        # nan invalid pixels
-        out[mask] = np.nan
-
-        return out
+        return model
 
     def get_logl(self, f_k=None, same=False):
         """
