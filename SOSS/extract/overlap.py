@@ -91,7 +91,7 @@ class _BaseOverlap:
     """
     def __init__(self, aperture, wave_map, throughput, kernels,
                  data=None, error=None, mask=None, orders=None,
-                 wave_grid=None, wave_bounds=None, i_bounds=None, n_os=2,  # TODO is i_bounds still needed.
+                 wave_grid=None, wave_bounds=None, n_os=2,
                  threshold=1e-5, c_kwargs=None,
                  verbose=False):
         """
@@ -135,8 +135,6 @@ class _BaseOverlap:
         wave_bounds : list or array-like (N_ord, 2), optional
             Boundary wavelengths covered by each orders.
             Default is the wavelength covered by `wave_map`.
-        i_bounds : list or array-like (N_ord, 2), optional
-            Index of `wave_bounds`on `wave_grid`.
         n_os  : int, optional
             if `wave_grid`is None, it will be used to generate
             a grid. Default is 2.
@@ -215,26 +213,12 @@ class _BaseOverlap:
         # Set the throughput for each order.
         self.update_throughput(throughput)
 
-        #####################################################
-        # Get index of wavelength grid covered by each orders
-        #####################################################
-
-        # Assign a first estimate of i_bounds if not specified
-        # to be able to compute mask
-        if i_bounds is None:
-            i_bounds = [[0, len(wave_grid)] for _ in range(self.n_orders)]
-        else:
-            # Make sure it is absolute index, not relative
-            # So no negative index.
-            for i_bnds in i_bounds:
-                if i_bnds[1] < 0:
-                    i_bnds[1] = len(wave_grid) + i_bnds[1]
-
-        self.i_bounds = i_bounds
-
         ###################################
         # Build detector mask
         ###################################
+
+        # Assign a first estimate of i_bounds to be able to compute mask.
+        self.i_bounds = [[0, len(wave_grid)] for _ in range(self.n_orders)]  # TODO double check how the i_bounds and mask interact.
 
         # First estimate of a global mask and masks for each orders
         self.mask, self.mask_ord = self._get_masks(mask)
@@ -1701,8 +1685,6 @@ class TrpzOverlap(_BaseOverlap):
         wave_bounds : list or array-like (N_ord, 2), optional
             Boundary wavelengths covered by each orders.
             Default is the wavelength covered by `wave_map`.
-        i_bounds : list or array-like (N_ord, 2), optional
-            Index of `wave_bounds`on `wave_grid`.
         tresh : float, optional:
             The pixels where the estimated spatial profile is less than
             this value will be masked. Default is 1e-5.
