@@ -3,7 +3,7 @@ from scipy.integrate.quadrature import AccuracyWarning, _romberg_diff
 from warnings import warn
 
 
-def get_lam_p_or_m(lam):
+def get_wave_p_or_m(lam):
     """
     Compute lambda_plus and lambda_minus of pixel map,
     given the pixel central value
