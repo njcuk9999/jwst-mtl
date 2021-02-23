@@ -372,6 +372,8 @@ def soss_trace_position(image, subarray='SUBSTRIP256', apex_order1=None,
     :return:
     '''
 
+    # Initialize output dictionary.
+    out_dict = {}
     # Build mask that restrict the analysis to 256 or fewer vertical pixels.
     mask_256 = build_mask_256(image, subarray=subarray,
                               apex_order1=apex_order1, verbose=verbose)
@@ -382,10 +384,17 @@ def soss_trace_position(image, subarray='SUBSTRIP256', apex_order1=None,
     x_o1, y_o1, w_o1, par_o1 = cen.get_uncontam_centroids_edgetrig(
             image, header=None, mask=mask_256, poly_order=11, halfwidth=2,
             mode='combined', verbose=verbose)
+    # Add parameters to output dictionary.
+    o1_dict = {}
+    o1_dict['X centroid'] = x_o1
+    o1_dict['Y centroid'] = y_o1
+    o1_dict['trace widths'] = w_o1
+    o1_dict['poly coefs'] = par_o1
+    out_dict['order 1'] = o1_dict
 
     if subarray == 'SUBSTRIP96':
         # Only order 1 can be measured. So return.
-        return (x_o1), (y_o1), (w_o1), (par_o1)
+        return out_dict
 
     # Fit the width
     mask = np.isfinite(w_o1) & np.isfinite(x_o1)
@@ -551,11 +560,20 @@ def soss_trace_position(image, subarray='SUBSTRIP256', apex_order1=None,
         plt.legend()
         plt.show()
 
-    xcens = (x_o1, x_o2, x_o3)
-    ycens = (y_o1, y_o2, y_o3)
-    wids = (w_o1, w_o2, w_o3)
-    pars = (par_o1, par_o2, par_o3)
-    return xcens, ycens, wids, pars
+    # Add parameters to output dictionary.
+    o2_dict, o3_dict = {}, {}
+    o2_dict['X centroid'] = x_o2
+    o2_dict['Y centroid'] = y_o2
+    o2_dict['trace widths'] = w_o2
+    o2_dict['poly coefs'] = par_o2
+    out_dict['order 2'] = o2_dict
+    o3_dict['X centroid'] = x_o3
+    o3_dict['Y centroid'] = y_o3
+    o3_dict['trace widths'] = w_o3
+    o3_dict['poly coefs'] = par_o3
+    out_dict['order 3'] = o3_dict
+
+    return out_dict
 
 
 # TODO - test function can be removed.
