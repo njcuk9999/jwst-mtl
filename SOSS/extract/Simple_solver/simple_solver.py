@@ -6,9 +6,7 @@ Created on Wed Dec 09 10:41 2020
 @author: MCR
 
 Functions for the 'simple solver' - calculating rotation and offset of
-reference order 1 and 2 trace profiles, as well as wavelength maps. This
-iteration incorporates offset and rotation to the transformation, and uses a
-rotation matrix to preform the rotation transformation.
+reference order 1 and 2 trace profiles, as well as wavelength maps.
 """
 
 import numpy as np
@@ -84,7 +82,7 @@ def _do_transform(data, rot_ang, x_shift, y_shift, pad=0, oversample=1,
     pad_xcen = pad_xdim // 2
     pad_ycen = pad_ydim // 2
 
-    # Rotation anchor is o1 trace centroid halfway along the spectral axis.
+    # Rotation anchor is o1 ~trace centroid halfway along the spectral axis.
     x_anch = int((1024+pad)*oversample)
     y_anch = int((50+pad)*oversample)
 
@@ -184,7 +182,6 @@ def rot_centroids(ang, xshift, yshift, xpix, ypix, bound=True, atthesex=None,
     # Rotation center set to o1 trace centroid halfway along spectral axis.
     points1 = np.array([xpix - cenx, ypix - ceny])
     rot_pix = R @ points1
-
     rot_pix[0] += cenx
     rot_pix[1] += ceny
 
@@ -192,27 +189,21 @@ def rot_centroids(ang, xshift, yshift, xpix, ypix, bound=True, atthesex=None,
     rot_pix[0] += xshift
     rot_pix[1] += yshift
 
-    if xpix.size >= 10:
-        if atthesex is None:
-            # Ensure that there are no jumps of >1 pixel.
-            min = int(round(np.min(rot_pix[0]), 0))
-            max = int(round(np.max(rot_pix[0]), 0))
-            # Same range as rotated pixels but with step of 1 pixel.
-            atthesex = np.linspace(min, max, max-min+1)
-        # Polynomial fit to ensure a centroid at each pixel in atthesex
-        pp = np.polyfit(rot_pix[0], rot_pix[1], 5)
-        # Warn user if atthesex extends beyond polynomial domain.
-        if np.max(atthesex) > np.max(rot_pix[0])+25 or np.min(atthesex) < np.min(rot_pix[0])-25:
-            warnmsg = 'atthesex extends beyond rot_xpix. Use with caution.'
-            warnings.warn(warnmsg)
-        rot_xpix = atthesex
-        rot_ypix = np.polyval(pp, rot_xpix)
-    else:
-        # If too few pixels for fitting, keep rot_pix.
-        if atthesex is not None:
-            print('Too few pixels for polynomial fitting. Ignoring atthesex.')
-        rot_xpix = rot_pix[0]
-        rot_ypix = rot_pix[1]
+    if atthesex is None:
+        # Ensure that there are no jumps of >1 pixel.
+        min = int(round(np.min(rot_pix[0]), 0))
+        max = int(round(np.max(rot_pix[0]), 0))
+        # Same range as rotated pixels but with step of 1 pixel.
+        atthesex = np.linspace(min, max, max-min+1)
+
+    # Polynomial fit to ensure a centroid at each pixel in atthesex
+    pp = np.polyfit(rot_pix[0], rot_pix[1], 5)
+    # Warn user if atthesex extends beyond polynomial domain.
+    if np.max(atthesex) > np.max(rot_pix[0])+25 or np.min(atthesex) < np.min(rot_pix[0])-25:
+        warnmsg = 'atthesex extends beyond rot_xpix. Use with caution.'
+        warnings.warn(warnmsg)
+    rot_xpix = atthesex
+    rot_ypix = np.polyval(pp, rot_xpix)
 
     # Check to ensure all points are on the subarray.
     if bound is True:
@@ -279,7 +270,7 @@ def simple_solver(clear, badpix=None, verbose=0, save_to_file=True):
         If shape of clear input does not match known subarrays.
     '''
 
-    if verbose in [1, 2]:
+    if verbose != 0:
         print('Starting the simple solver algorithm.')
 
     # Open 2D trace profile reference file.
@@ -289,8 +280,8 @@ def simple_solver(clear, badpix=None, verbose=0, save_to_file=True):
     # Get first order centroids (in DMS coords).
     wavemap_file = soss_read_refs.Ref2dWave()
 
-    if verbose in [1, 2]:
-        print('  Reading reference files...')
+    if verbose != 0:
+        print(' Reading reference files...')
     # Determine correct subarray dimensions and offsets.
     dimy, dimx = np.shape(clear)
     if dimy == 96:
@@ -311,8 +302,8 @@ def simple_solver(clear, badpix=None, verbose=0, save_to_file=True):
     ycen_ref = ttab_file('Y', subarray=subarray)[1][inds]
 
     # Get centroids from data.
-    if verbose in [1, 2]:
-        print('  Getting centroids...')
+    if verbose != 0:
+        print(' Getting centroids...')
     cen_dict = ctd.get_soss_centroids(clear*1, badpix=badpix,
                                       subarray=subarray, verbose=False)
     xcen_dat = cen_dict['order 1']['X centroid']
@@ -322,13 +313,11 @@ def simple_solver(clear, badpix=None, verbose=0, save_to_file=True):
     guess_params = (0.15, 1, 1)
     lik_args = (xcen_ref, ycen_ref, xcen_dat, ycen_dat, subarray)
     fit = minimize(_chi_squared, guess_params, lik_args).x
-    rot_ang = fit[0]
-    x_shift = fit[1]
-    y_shift = fit[2]
+    rot_ang, x_shift, y_shift = fit
 
     # Transform reference files to match data.
-    if verbose in [1, 2]:
-        print('  Transforming reference files...')
+    if verbose != 0:
+        print(' Transforming reference files...')
     ref_trace_trans = np.ones((2, dimy, dimx))
     wave_map_trans = np.ones((2, dimy, dimx))
     for order in [1, 2]:
@@ -357,13 +346,13 @@ def simple_solver(clear, badpix=None, verbose=0, save_to_file=True):
                                                       verbose=verbose)
     # Write files to disk if requested.
     if save_to_file is True:
-        if verbose in [1, 2]:
-            print('  Writing to file...')
+        if verbose != 0:
+            print(' Writing to file...')
         write_to_file(ref_trace_trans,
                       filename='SOSS_ref_2Dprofile_simplysolved')
         write_to_file(wave_map_trans, filename='SOSS_ref_2Dwave_simplysolved')
 
-    if verbose in [1, 2]:
+    if verbose != 0:
         print('Done.')
 
     return ref_trace_trans, wave_map_trans
