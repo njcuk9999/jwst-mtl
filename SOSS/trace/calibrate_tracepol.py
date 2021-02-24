@@ -364,5 +364,10 @@ def calibrate_tracepol():
         plt.legend()
         plt.show()
 
+
+    # TODO: Add a measurement of the quality of the fit. i.e. the pixel
+    # position rms deviations between rotated optics model and
+    # observations.
+
 #run
 calibrate_tracepol()
