@@ -42,11 +42,10 @@ import SOSS.specgen.spgen as spgen
 # Trace Library
 import SOSS.trace.tracepol as tp
 # Header and FITS writing function
-from write_dmsready_fits import write_dmsready_fits
 # Detector noise script
-import detector as detector
+import SOSS.detector as detector
 # normalization code
-import synthesizeMagnitude as smag
+import SOSS.specgen.synthesizeMagnitude as smag
 
 ncpu = mp.cpu_count()
 pyfftw.config.NUM_THREADS = ncpu
@@ -77,9 +76,9 @@ print(simuPars.pmodeltype[0])
 
 # Here one can manually edit the parameters but we encourage rather to change
 # the simulation parameter file directly.
-simuPars.noversample = 2  #example of changing a model parameter
-simuPars.xout = 2048#3000      #spectral axis
-simuPars.yout = 256#300       #spatial (cross-dispersed axis)
+simuPars.noversample = 1  #example of changing a model parameter
+simuPars.xout = 3000      #spectral axis
+simuPars.yout = 300       #spatial (cross-dispersed axis)
 
 
 if False:
@@ -90,7 +89,7 @@ if False:
     sys.exit()
 
 # Instrument Throughput (Response)
-throughput = spgen.readresponse(pathPars.responsefile, quiet=False)
+throughput = spgen.readresponse(pathPars.throughputfile, quiet=False)
 
 # Set up Trace (Position vs. Wavelength)
 tracePars = tp.get_tracepars(pathPars.tracefile)
@@ -137,7 +136,7 @@ expected_counts = smag.expected_flux_calibration(
                     starmodel_angstrom, starmodel_flambda,
                     simuPars.orderlist, verbose=True,
                     trace_file=pathPars.tracefile,
-                    response_file=pathPars.responsefile,
+                    response_file=pathPars.throughputfile,
                     pathfilter=pathPars.path_filtertransmission,
                     pathvega=pathPars.path_filtertransmission)
 
@@ -148,7 +147,7 @@ expected_counts = smag.expected_flux_calibration(
 # with the 3rd dimension being the number of time steps.
 data = soss.write_dmsready_fits_init(imagelist, normalization_scale, simuPars)
 # All simulations (e-/sec) are converted to up-the-ramp images.
-write_dmsready_fits(data[:,:,0:256,0:2048], os.path.join(WORKING_DIR,'test2.fits'),
+soss.write_dmsready_fits(data[:,:,0:256,0:2048], os.path.join(WORKING_DIR,'test3.fits'),
                     os=simuPars.noversample, input_frame='sim')
 
 
