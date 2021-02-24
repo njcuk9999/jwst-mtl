@@ -107,7 +107,7 @@ def trace_polynomial(trace, m=1, maxorder=15):
     return pars
 
 
-def get_tracepars(filename=None, origin=np.array([1365.1909267381,470.0979813298]), angle=1.3868425075,
+def get_tracepars(filename=None, origin=np.array([1365.1909267381, 470.0979813298]), angle=1.3868425075,
                   disable_rotation=False):
 
     """Read a file containing the trace profile and generate

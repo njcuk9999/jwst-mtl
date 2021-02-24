@@ -80,8 +80,8 @@ def get_CV3_tracepars(order=1):
 def CV3_wavelength_to_specpix(wavelength=None, order=1):
 
     '''
-    Return the pixel positions (both spectral and spatial pixels)
-    for the input wavelengths supplied, based on the CV3 solution.
+    Return the spectral pixel positions for the input wavelengths
+    supplied, based on the CV3 solution.
     :param order: 1, 2, or 3
     :param wavelength: in microns, the wavelength array for which
     positions are requested.
@@ -96,7 +96,6 @@ def CV3_wavelength_to_specpix(wavelength=None, order=1):
     # Compute the spectral pixel and spatial pixel positions based on
     # the input wavelength.
     spectralpixel = np.polyval(param_spec, wavelength)
-    #spatialpixel = np.polyval(param_spat, xfit)
 
     return spectralpixel
 
@@ -116,6 +115,29 @@ def CV3_specpix_to_wavelength(specpix, order=1):
 
     return wavelength
 
+
+def apply_calibration(param, x, y):
+    '''
+    The rotation+offset transformation when one wants to apply the
+    best fit parameters.
+    :param param: A length=3 array: angle, origin in x, origin in y
+    :param x: x position of input
+    :param y: y position of input
+    :return: x_rot, y_rot: x,y positions after rotation
+    '''
+
+    theta = param[0]
+    x0 = param[1]
+    y0 = param[2]
+    offsetx = 0  # param[3] degenerate with x0 and y0 - Do the maths - no need
+    offsety = 0  # param[4] degenerate with x0 y0 - Do the maths - no need
+
+    angle = np.deg2rad(theta)
+    dx, dy = x - x0, y - y0
+    x_rot = offsetx + np.cos(angle) * dx - np.sin(angle) * dy + x0
+    y_rot = offsety + np.sin(angle) * dx + np.cos(angle) * dy + y0
+
+    return x_rot, y_rot
 
 
 def calibrate_tracepol():
@@ -160,22 +182,28 @@ def calibrate_tracepol():
     # ORDER 1
     w_o1 = CV3_specpix_to_wavelength(x_o1, order=1)
     # Generate a transformation wavelength --> specpix
+    # based on the measured x positions and calibrated wavelengths
     f_w2x = interpolate.interp1d(w_o1, x_o1)
     # Apply it for the few selected wavelengths for later fit
     x_obs_o1 = f_w2x(wavelength_o1)
-    # Apply the specpix --> spatpix relation to a few points
-    # USING the measured trace centroids, not the CV3 lamps
-    y_obs_o1 = np.polyval(pars_o1, x_obs_o1)
+    # Generate a transformation wavelength --> spatpix
+    # based on the measured y positions and calibrated wavelengths
+    f_w2y = interpolate.interp1d(w_o1, y_o1)
+    # Apply the wavelength --> spatpix relation to a few points
+    y_obs_o1 = f_w2y(wavelength_o1)
 
     # ORDER 2
     w_o2 = CV3_specpix_to_wavelength(x_o2, order=2)
     # Generate a transformation wavelength --> specpix
+    # based on the measured x positions and calibrated wavelengths
     f_w2x = interpolate.interp1d(w_o2, x_o2)
     # Apply it for the few selected wavelengths for later fit
     x_obs_o2 = f_w2x(wavelength_o2)
-    # Apply the specpix --> spatpix relation to a few points
-    # USING the measured trace centroids, not the CV3 lamps
-    y_obs_o2 = np.polyval(pars_o2, x_obs_o2)
+    # Generate a transformation wavelength --> spatpix
+    # based on the measured y positions and calibrated wavelengths
+    f_w2y = interpolate.interp1d(w_o2, y_o2)
+    # Apply the wavelength --> spatpix relation to a few points
+    y_obs_o2 = f_w2y(wavelength_o2)
 
     # ORDER 3
     w_o3 = CV3_specpix_to_wavelength(x_o3, order=3)
@@ -183,9 +211,11 @@ def calibrate_tracepol():
     f_w2x = interpolate.interp1d(w_o3, x_o3)
     # Apply it for the few selected wavelengths for later fit
     x_obs_o3 = f_w2x(wavelength_o3)
-    # Apply the specpix --> spatpix relation to a few points
-    # USING the measured trace centroids, not the CV3 lamps
-    y_obs_o3 = np.polyval(pars_o3, x_obs_o3)
+    # Generate a transformation wavelength --> spatpix
+    # based on the measured y positions and calibrated wavelengths
+    f_w2y = interpolate.interp1d(w_o3, y_o3)
+    # Apply the wavelength --> spatpix relation to a few points
+    y_obs_o3 = f_w2y(wavelength_o3)
 
     # Call tracepol's optics model then compute rotation offsets by
     # minimizing deviations to either only order 1 or all orders
@@ -193,7 +223,7 @@ def calibrate_tracepol():
     # Call tracepol, disabling the default rotation, back to original
     # Optics Model. x/y_mod_N are realization of the model at a few
     # wavelengths.
-    param = tp.get_tracepars(filename=optmodel, disable_rotation=True)
+    param = tp.get_tracepars(filename=optmodel, disable_rotation=False)
 
     x_mod_o1, y_mod_o1, mask_mod_o1 = tp.wavelength_to_pix(wavelength_o1,
                                                param, m=1,
@@ -211,9 +241,9 @@ def calibrate_tracepol():
                                                subarray='SUBSTRIP256',
                                                oversample=1)
 
-    if True:
+    if False:
         # Check if it all makes sense
-        plt.figure(figsize=(10,10))
+        plt.figure(figsize=(10,3))
         plt.scatter(x_mod_o1, y_mod_o1)
         plt.scatter(x_mod_o2, y_mod_o2)
         plt.scatter(x_mod_o3, y_mod_o3)
@@ -221,12 +251,13 @@ def calibrate_tracepol():
         plt.scatter(x_obs_o2, y_obs_o2)
         plt.scatter(x_obs_o3, y_obs_o3)
         plt.show()
-    if False:
+
         plt.figure(figsize=(10,10))
         plt.plot(wavelength_o1, x_obs_o1)
         plt.plot(wavelength_o1, x_mod_o1)
         plt.show()
 
+    # What orders should be used for fitting for rotation?
     if True:
         # Package the Orders 1 and 2 model points and observation points
         x_mod = np.concatenate((x_mod_o1, x_mod_o2), axis=None)
@@ -236,35 +267,39 @@ def calibrate_tracepol():
         xy_obs = np.array([x_obs, y_obs])
     else:
         # Package the Orders 1 ONLY model points and observation points
-        x_mod = x_mod_o1
-        y_mod = y_mod_o2
-        x_obs = x_obs_o1
-        y_obs = y_obs_o1
+        x_mod = np.copy(x_mod_o1)
+        y_mod = np.copy(y_mod_o2)
+        x_obs = np.copy(x_obs_o1)
+        y_obs = np.copy(y_obs_o1)
         xy_obs = np.array([x_obs, y_obs])
 
+    # These 2 functions need to be there in the code because they use
+    # variables declared outside.
     def fmodel(param):
+        # That is the transformation matrix coded to perform the fit
+        # Note that the x_mod and y_mod are outside variables that
+        # need to be declared before for this to work.
 
         theta = param[0]
         x0 = param[1]
         y0 = param[2]
-        offsetx = 0  # param[3] degenerate with x0 and y0 - Do the maths - no need
-        offsety = 0  # param[4] degenerate with x0 y0 - Do the maths - no need
 
         angle = np.deg2rad(theta)
-        dx, dy = x_mod - x0, y_mod - y0
-        x_rot = offsetx + np.cos(angle) * dx - np.sin(angle) * dy + x0
-        y_rot = offsety + np.sin(angle) * dx + np.cos(angle) * dy + y0
+        dx, dy = x_mod - x0, y_mod - y0 #x_mod and y_mod are global variable
+        x_rot = np.cos(angle) * dx - np.sin(angle) * dy + x0
+        y_rot = np.sin(angle) * dx + np.cos(angle) * dy + y0
 
         return np.array([x_rot, y_rot])
 
-
     def f2minimize(param):
+        # Minimize the difference between observations and model points
         return (xy_obs - fmodel(param)).flatten()
 
     # Informed guess for origin is the CLEAR sweet spot: in DMS coords: x,y=(2048-100),(256-850)=1948,-596
-    param_guess = [-1.39, 1948, -596]# 0,0]
+    param_guess = [-1.3868425075, 1577.9020186702, -1109.1909267381]
     res2 = least_squares(f2minimize, param_guess, ftol=1e-12)
     #bounds=([-np.inf,-np.inf,-np.inf,-0.0001,-0.0001],[np.inf,np.inf,np.inf,0,0])) - no need Do the maths
+    param_bestfit = res2.x
 
     print(res2)
     print('cost = {:}'.format(res2.cost))
@@ -288,9 +323,13 @@ def calibrate_tracepol():
     print('              angle=-theta,')
     print('              disable_rotation=False):')
 
+    # Best fit obtained with prior version of this script (cv3_calibration)
+    #param_bestfit = [-1.3868425075, 1577.9020186702, -1109.1909267381]
 
     # Check that the rotated points overplot the observations
-    x_fit, y_fit = fmodel(res2.x)
+    x_fit_o1, y_fit_o1 = apply_calibration(param_bestfit, x_mod_o1, y_mod_o1)
+    x_fit_o2, y_fit_o2 = apply_calibration(param_bestfit, x_mod_o2, y_mod_o2)
+    x_fit_o3, y_fit_o3 = apply_calibration(param_bestfit, x_mod_o3, y_mod_o3)
 
 
 
@@ -305,23 +344,19 @@ def calibrate_tracepol():
         plt.ylim((0, 256))
         plt.imshow(np.log10(im), vmin=0.7, vmax=3, origin='lower', aspect='auto')
 
-        plt.plot(x_o1, y_o1, color='orange', label='Order 1')
-        #plt.plot(x_o1, y_o1 - w_o1 / 2, color='orange')
-        #plt.plot(x_o1, y_o1 + w_o1 / 2, color='orange')
-        plt.plot(x_mod_o1, y_mod_o1, linestyle='dashed', color='orange')
-        plt.scatter(x_fit, y_fit)
+        plt.plot(x_o1, y_o1, color='orange', label='Order 1 - CV3')
+        plt.plot(x_mod_o1, y_mod_o1, linestyle='dashed', color='orange', label='Order 1 - Model')
+        plt.scatter(x_fit_o1, y_fit_o1, color='orange', label='Order 1 - Model rotated')
 
         if x_o2 is not None:
-            plt.plot(x_o2, y_o2, color='black', label='Order 2')
-            #plt.plot(x_o2, y_o2 - w_o2 / 2, color='black')
-            #plt.plot(x_o2, y_o2 + w_o2 / 2, color='black')
-            plt.plot(x_mod_o2, y_mod_o2, linestyle='dashed', color='black')
+            plt.plot(x_o2, y_o2, color='black', label='Order 2 - CV3')
+            plt.plot(x_mod_o2, y_mod_o2, linestyle='dashed', color='black', label='Order 2 - Model')
+            plt.scatter(x_fit_o2, y_fit_o2, color='black', label='Order 2 - Model rotated')
 
         if x_o3 is not None:
-            plt.plot(x_o3, y_o3, color='red', label='Order 3')
-            #plt.plot(x_o3, y_o3 - w_o3 / 2, color='red')
-            #plt.plot(x_o3, y_o3 + w_o3 / 2, color='red')
-            plt.plot(x_mod_o3, y_mod_o3, linestyle='dashed', color='red')
+            plt.plot(x_o3, y_o3, color='red', label='Order 3 -CV3')
+            plt.plot(x_mod_o3, y_mod_o3, linestyle='dashed', color='red', label='Order 3 - Model')
+            plt.scatter(x_fit_o3, y_fit_o3, color='red', label='Order 3 - Model rotated')
 
         plt.legend()
         plt.show()
