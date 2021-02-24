@@ -11,7 +11,6 @@ construction and centroiding.
 
 import matplotlib.pyplot as plt
 import numpy as np
-import corner
 
 
 def _plot_centroid(clear, centroid_dict):
@@ -20,17 +19,12 @@ def _plot_centroid(clear, centroid_dict):
     '''
     plt.figure(figsize=(15, 3))
     for order in centroid_dict.keys():
-        plt.plot(centroid_dict[order][0], centroid_dict[order][1], c='black')
+        plt.plot(centroid_dict[order]['X centroid'],
+                 centroid_dict[order]['Y centroid'], c='black', ls='--')
     plt.imshow(np.log10(clear), origin='lower', cmap='jet')
-    plt.show()
 
-
-def _plot_corner(sampler):
-    '''Utility function to produce the corner plot for results of _do_emcee.
-    '''
-    labels = [r"ang", "xshift", "yshift"]
-    flat_samples = sampler.get_chain(discard=500, thin=15, flat=True)
-    fig = corner.corner(flat_samples, labels=labels)
+    plt.xlabel('Spectral Pixel', fontsize=14)
+    plt.ylabel('Spatial Pixel', fontsize=14)
     plt.show()
 
 
@@ -91,7 +85,8 @@ def _plot_width_cal(wax, widths, fit_waves, fit_widths, width_poly):
     plt.figure(figsize=(8, 5))
     plt.plot(wax, widths, label='Trace widths')
     plt.scatter(fit_waves, fit_widths, c='orange', s=5, label='Fitting points')
-    plt.plot(wax, np.polyval(width_poly, wax), c='red', label='Width relation')
+    plt.plot(wax, np.polyval(width_poly, wax), c='red', ls='--',
+             label='Width relation')
 
     plt.xlabel('Wavelength [µm]', fontsize=14)
     plt.ylabel('Trace Spatial Width [pixels]', fontsize=14)
