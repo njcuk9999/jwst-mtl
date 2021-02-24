@@ -14,15 +14,12 @@ import numpy as np
 import os
 from scipy.optimize import least_squares
 from scipy.optimize import minimize
-import warnings
 from tqdm import tqdm
+import warnings
 from SOSS.extract import soss_read_refs
 from SOSS.extract.empirical_trace import plotting
 from SOSS.extract.empirical_trace import _calc_interp_coefs
 from SOSS.trace import contaminated_centroids as ctd
-from SOSS.extract.overlap import TrpzOverlap, TrpzBox
-from SOSS.extract.throughput import ThroughputSOSS
-from SOSS.extract.convolution import WebbKer
 
 # Local path to reference files.
 path = '/Users/michaelradica/Documents/School/Ph.D./Research/SOSS/Extraction/Input_Files/'
@@ -45,8 +42,11 @@ def build_empirical_trace(clear, F277W, badpix_mask,
     pad : tuple
     oversample : int
     verbose : int
-        If 2, show both progress prints and diagnostic plots. If 1 show only
-        progress prints. If zero, show nothing.
+        Either, 3, 2, 1, or 0.
+        3 - show all of progress prints, progress bars, and diagnostic plots.
+        2 - show progress prints and bars.
+        1 - show only  progress prints.
+        0 - show nothing.
     '''
 
     if verbose != 0:
@@ -59,29 +59,29 @@ def build_empirical_trace(clear, F277W, badpix_mask,
 
     # Replace bad pixels.
     if verbose != 0:
-        print('  Replacing bad pixels...', flush=True)
+        print(' Replacing bad pixels...', flush=True)
     clear = replace_badpix(clear, badpix_mask, verbose=verbose)
     if F277W is not None:
         F277W = replace_badpix(F277W, badpix_mask, verbose=verbose)
 
     # Get the centroid positions for both orders from the data.
     if verbose != 0:
-        print('  Getting trace centroids...')
+        print(' Getting trace centroids...')
     centroids = ctd.get_soss_centroids(clear, subarray='SUBSTRIP256')
 
     # Overplot the data centroids on the CLEAR exposure if desired.
-    if verbose == 2:
+    if verbose == 3:
         plotting._plot_centroid(clear, centroids)
 
     # Construct the first order profile.
     if verbose != 0:
-        print('  Building the first order trace model...')
+        print(' Building the first order trace model...')
     o1frame = construct_order1(clear, F277W, centroids, pad=pad[0],
                                verbose=verbose, subarray='SUBSTRIP256')
     # Pad the spectral axis.
     if pad[1] != 0:
         if verbose != 0:
-            print('  Adding padding to first order spectral axis...')
+            print(' Adding padding to first order spectral axis...')
         o1frame = pad_spectral_axis(o1frame,
                                     centroids['order 1']['X centroid'],
                                     centroids['order 1']['Y centroid'],
@@ -90,20 +90,8 @@ def build_empirical_trace(clear, F277W, badpix_mask,
     # Add oversampling
     if oversample != 1:
         if verbose != 0:
-            print('  Oversampling...')
+            print(' Oversampling...')
         o1frame = oversample_frame(o1frame, oversample=oversample)
-
-    # Get the extraction parameters
-    #extract_params = get_extract_params()
-    #ref_file_args = get_ref_file_args(o1frame)
-    # Construct the second order profile.
-    #o2frame_contam = construct_order2(clear, ref_file_args, extract_params)
-    # Create a mask to remove residuals from the first order.
-    #o2frame = mask_order(o2frame_contam, x2, y2)
-    # Set any spurious negative values to zero.
-    #o2frame[o2frame < 0] = 0
-    # Normalize the profile in each column.
-    #o2frame /= np.nansum(o2frame, axis=0)
 
     # Write the trace model to disk.
     #hdu = fits.PrimaryHDU()
@@ -190,8 +178,9 @@ def construct_order1(clear, F277, ycens, subarray, pad=0, verbose=0):
     pad : int
         Number of pixels of padding to add on both ends of the spatial axis.
     verbose : int
-        If 2, show both progress prints and diagnostic plots. If 1 show only
-        progress prints. If zero, show nothing.
+        If 3, show all of progress prints, progress bars, and diagnostic plots.
+        If 2 show progress prints and bars. If 1, show only  progress prints.
+        If zero, show nothing.
 
     Returns
     -------
@@ -218,12 +207,12 @@ def construct_order1(clear, F277, ycens, subarray, pad=0, verbose=0):
     wavecal_w = np.polyval(pp_w, wavecal_x)
     # Determine how the trace width changes with wavelength.
     if verbose != 0:
-        print('    Calibrating trace widths...')
+        print('  Calibrating trace widths...')
     wave_poly = _fit_trace_widths(clear, pp_w, verbose=verbose)
 
     # ========= GET ANCHOR PROFILES =========
     if verbose != 0:
-        print('    Getting anchor profiles...')
+        print('  Getting anchor profiles...')
     # Determine the anchor profiles - blue anchor.
     # Find the pixel position of 2.1µm.
     i_b = np.where(wavecal_w >= 2.1)[0][-1]
@@ -313,7 +302,7 @@ def construct_order1(clear, F277, ycens, subarray, pad=0, verbose=0):
 
     # Create an interpolated 1D PSF at each required position.
     if verbose != 0:
-        print('    Interpolating trace...', flush=True)
+        print('  Interpolating trace...', flush=True)
     disable = _verbose_to_bool(verbose)
     for i, vals in tqdm(enumerate(zip(cenx_d, ceny_d, lmbda)),
                         total=len(lmbda), disable=disable):
@@ -341,7 +330,7 @@ def construct_order1(clear, F277, ycens, subarray, pad=0, verbose=0):
 
     # ========= RECONSTRUCT THE FIRST ORDER WINGS =========
     if verbose != 0:
-        print('    Stitching data and reconstructing wings...', flush=True)
+        print('  Stitching data and reconstructing wings...', flush=True)
     # Stitch together the interpolation and data.
     newmap = np.zeros((dimy+2*pad, dimx))
     # Insert interpolated data.
@@ -372,40 +361,6 @@ def construct_order1(clear, F277, ycens, subarray, pad=0, verbose=0):
     return newmap
 
 
-def construct_order2(clear, ref_file_args, extract_params):
-    '''Preforms an extraction and reconstructs the detector with only the
-    first order trace profile. The second order profile is then isolated
-    through the difference of the original and reconstructed detector.
-
-    Parameters
-    ----------
-    clear : np.array of float (2D)
-        CLEAR data frame.
-    ref_file_args : list
-        List of parameters of the reference files.
-    extract_params : dict
-        Dictionary of arguments required by the extraction algorithm.
-
-    Returns
-    -------
-    residual : np.array of float (2D)
-        Detector with only the order 2 trace profile.
-    '''
-
-    # Set up the extraction.
-    extra = TrpzOverlap(*ref_file_args, **extract_params, orders=[1])
-    # Preform the extraction with only the first order.
-    f_k = extra.extract(data=clear)
-    # Rebuild the detector.
-    rebuilt = extra.rebuild(f_k)
-    rebuilt[np.isnan(rebuilt)] = 0
-    # Isolate the second order by subtracting the reconstructed first
-    # order from the data
-    residual = clear - rebuilt
-
-    return rebuilt
-
-
 def _fit_trace_widths(clear, wave_coefs, verbose=0):
     '''Due to the defocusing of the SOSS PSF, the width in the spatial
     direction does not behave as if it is diffraction limited. Calculate the
@@ -420,8 +375,9 @@ def _fit_trace_widths(clear, wave_coefs, verbose=0):
         Polynomial coefficients for the wavelength to spectral pixel
         calibration.
     verbose : int
-        If 2, show both progress prints and diagnostic plots. If 1 show only
-        progress prints. If zero, show nothing.
+        If 3, show all of progress prints, progress bars, and diagnostic plots.
+        If 2 show progress prints and bars. If 1, show only  progress prints.
+        If zero, show nothing.
 
     Returns
     -------
@@ -461,56 +417,11 @@ def _fit_trace_widths(clear, wave_coefs, verbose=0):
     width_fit = _robust_polyfit(fit_waves, fit_widths, pp)
 
     # Plot the width calibration fit if required.
-    if verbose == 2:
+    if verbose == 3:
         plotting._plot_width_cal(wax, trace_widths, fit_waves, fit_widths,
                                  width_fit)
 
     return width_fit
-
-
-def get_extract_params():
-    '''
-    '''
-    params = {}
-    # Map of expected noise (sig)
-    bkgd_noise = 10.
-    # Oversampling
-    params["n_os"] = 1
-    # Threshold on the spatial profile
-    params["thresh"] = 1e-6
-
-    return params
-
-
-def get_ref_file_args(o1frame):
-    '''
-    '''
-    # List of orders to consider in the extraction
-    order_list = [1]
-
-    # Wavelength solution
-    wave_maps = []
-    wavemap_file = soss_read_refs.Ref2dWave()
-    wave_maps.append(wavemap_file(order=1, subarray='SUBSTRIP256', native=True))
-
-    # Spatial profiles
-    spat_pros = []
-    spat_pros.append(o1frame)
-
-    # Convert data from fits files to float (fits precision is 1e-8)
-    wave_maps = [wv.astype('float64') for wv in wave_maps]
-    spat_pros = [p_ord.astype('float64') for p_ord in spat_pros]
-
-    # Throughputs
-    thrpt_list = [ThroughputSOSS(order) for order in order_list]
-
-    # Convolution kernels
-    ker_list = [WebbKer(wv_map) for wv_map in wave_maps]
-
-    # Put all inputs from reference files in a list
-    ref_file_args = [spat_pros, wave_maps, thrpt_list, ker_list]
-
-    return ref_file_args
 
 
 def oversample_frame(frame, oversample=1):
@@ -620,8 +531,9 @@ def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
     pad : int
         Amount to pad each end of the spartial axis (in pixels).
     verbose : int
-        If 2, show both progress prints and diagnostic plots. If 1 show only
-        progress prints. If zero, show nothing.
+        If 3, show all of progress prints, progress bars, and diagnostic plots.
+        If 2 show progress prints and bars. If 1, show only  progress prints.
+        If zero, show nothing.
     smooth : bool
         If True, smooths over highly deviant pixels in the spatial profile.
 
@@ -649,7 +561,7 @@ def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
     # mask negative and zero values.
     profile[profile <= 0] = np.nan
 
-    # ====== Reconstruct right wing ======
+    # ======= RECONSTRUCT RIGHT WING =======
     # Mask the cores of the first three diffraction orders and fit a straight
     # line to the remaining pixels. Additionally mask any outlier pixels that
     # are >3-sigma deviant from that line. Fit a 7th order polynomial to
@@ -757,7 +669,7 @@ def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
     newprof[newprof < 0] = np.nanpercentile(newprof[newprof < 0], 1)
 
     # Do diagnostic plot if requested.
-    if verbose == 2:
+    if verbose == 3:
         plotting._plot_wing_reconstruction(profile, ycens, axis_r[inds3],
                                            prof_r2[inds3], pp_r, newprof, pad,
                                            **kwargs)
@@ -779,8 +691,9 @@ def replace_badpix(clear, badpix_mask, fill_negatives=True, verbose=0):
     fill_negatives : bool
         If True, also interpolates all negatives values in the frame.
     verbose : int
-        If 2, show both progress prints and diagnostic plots. If 1 show only
-        progress prints. If zero, show nothing.
+        If 3, show all of progress prints, progress bars, and diagnostic plots.
+        If 2 show progress prints and bars. If 1, show only  progress prints.
+        If zero, show nothing.
 
     Returns
     -------
@@ -838,8 +751,9 @@ def rescale_model(data, model, verbose=0):
     model : np.ndarray (2D)
         Column normalized trace model.
     verbose : int
-        If 2, show both progress prints and diagnostic plots. If 1 show only
-        progress prints. If zero, show nothing.
+        If 3, show all of progress prints, progress bars, and diagnostic plots.
+        If 2 show progress prints and bars. If 1, show only  progress prints.
+        If zero, show nothing.
 
     Returns
     -------
@@ -901,11 +815,10 @@ def _robust_polyfit(x, y, p0):
 
 
 def _verbose_to_bool(verbose):
-    '''Convert integer verbose to bool such that zero is True and 1 or 2 are
-    False.
+    '''Convert integer verbose to bool to disable or enable progress bars.
     '''
 
-    if verbose != 0:
+    if verbose in [2, 3]:
         verbose_bool = False
     else:
         verbose_bool = True
