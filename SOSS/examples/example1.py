@@ -6,10 +6,7 @@
 # - extract the spectra
 
 import sys
-sys.path.insert(0, '/genesis/jwst/github/jwst-mtl/SOSS/')
-sys.path.insert(0, '/genesis/jwst/github/jwst-mtl/SOSS/trace/')
-sys.path.insert(0, '/genesis/jwst/github/jwst-mtl/SOSS/specgen/')
-sys.path.insert(0, '/genesis/jwst/github/jwst-mtl/SOSS/detector/')
+sys.path.insert(0, '/genesis/jwst/github/jwst-mtl/')
 sys.path.insert(0, '/genesis/jwst/jwst-ref-soss/fortran_lib/')
 
 # TODO: Update all paths
@@ -41,9 +38,9 @@ import scipy.fft
 from matplotlib.colors import LogNorm
 
 # Python Routines for SpecGen Routines and wrappers for fast-Transit-model.
-import spgen as spgen
+import SOSS.specgen.spgen as spgen
 # Trace Library
-import tracepol as tp
+import SOSS.trace.tracepol as tp
 # Header and FITS writing function
 from write_dmsready_fits import write_dmsready_fits
 # Detector noise script
@@ -92,8 +89,8 @@ if False:
     print('Exiting the test...')
     sys.exit()
 
-# Instrument response (Throughput)
-response = spgen.readresponse(pathPars.responsefile, quiet=False)
+# Instrument Throughput (Response)
+throughput = spgen.readresponse(pathPars.responsefile, quiet=False)
 
 # Set up Trace (Position vs. Wavelength)
 tracePars = tp.get_tracepars(pathPars.tracefile)
@@ -125,7 +122,7 @@ print('norders={:} nsteps={:} dimy={:} dimx={:}'.format(norders,nsteps,dimy,dimx
 # For each time step, a cube of simulated images is written to disk
 # The cube has all spectral orders in separate slices.
 # The list of such fits cube file names is returned.
-imagelist = soss.generate_traces(pathPars, simuPars, tracePars, response,
+imagelist = soss.generate_traces(pathPars, simuPars, tracePars, throughput,
                                    starmodel_angstrom, starmodel_flambda, ld_coeff,
                                    planetmodel_angstrom, planetmodel_rprs,
                                    timesteps, tintopen)
@@ -143,6 +140,9 @@ expected_counts = smag.expected_flux_calibration(
                     response_file=pathPars.responsefile,
                     pathfilter=pathPars.path_filtertransmission,
                     pathvega=pathPars.path_filtertransmission)
+
+#simulated_counts = smag.actual_flux()
+
 
 # All simulations are normalized, all orders summed and gathered in a single array
 # with the 3rd dimension being the number of time steps.
