@@ -301,6 +301,12 @@ def calibrate_tracepol():
     #bounds=([-np.inf,-np.inf,-np.inf,-0.0001,-0.0001],[np.inf,np.inf,np.inf,0,0])) - no need Do the maths
     param_bestfit = res2.x
 
+    # OVERRIDE !!!
+    # Best fit obtained with prior version of this script (cv3_calibration)
+    param_bestfit = [-1.3868425075, 1577.9020186702, -1109.1909267381]
+    res2.x = param_bestfit
+    # TODO: Find the bug that makes the fit be wrong.
+
     print(res2)
     print('cost = {:}'.format(res2.cost))
     print('Best fit parameters (in DMS coordinates):')
@@ -319,12 +325,9 @@ def calibrate_tracepol():
     print()
     print('Once converted to native (aka ds9) pixel coordinates used by tracepol.py,')
     print('this becomes:')
-    print('get_tracepars(filename=None, origin=np.array([256 - origin_y, 2048 - origin_x]),')
-    print('              angle=-theta,')
+    print('get_tracepars(filename=None, origin=np.array([{:}, {:}]),'.format(256-res2.x[2], 2048-res2.x[1]))
+    print('              angle={:},'.format(-res2.x[0]))
     print('              disable_rotation=False):')
-
-    # Best fit obtained with prior version of this script (cv3_calibration)
-    #param_bestfit = [-1.3868425075, 1577.9020186702, -1109.1909267381]
 
     # Check that the rotated points overplot the observations
     x_fit_o1, y_fit_o1 = apply_calibration(param_bestfit, x_mod_o1, y_mod_o1)
