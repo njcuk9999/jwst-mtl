@@ -6,10 +6,7 @@
 # - extract the spectra
 
 import sys
-sys.path.insert(0, '/genesis/jwst/github/jwst-mtl/SOSS/')
-sys.path.insert(0, '/genesis/jwst/github/jwst-mtl/SOSS/trace/')
-sys.path.insert(0, '/genesis/jwst/github/jwst-mtl/SOSS/specgen/')
-sys.path.insert(0, '/genesis/jwst/github/jwst-mtl/SOSS/detector/')
+sys.path.insert(0, '/genesis/jwst/github/jwst-mtl/')
 sys.path.insert(0, '/genesis/jwst/jwst-ref-soss/fortran_lib/')
 
 # TODO: Update all paths
@@ -41,9 +38,9 @@ import scipy.fft
 from matplotlib.colors import LogNorm
 
 # Python Routines for SpecGen Routines and wrappers for fast-Transit-model.
-import spgen as spgen
+import SOSS.specgen.spgen as spgen
 # Trace Library
-import tracepol as tp
+import SOSS.trace.tracepol as tp
 # Header and FITS writing function
 from write_dmsready_fits import write_dmsready_fits
 # Detector noise script
