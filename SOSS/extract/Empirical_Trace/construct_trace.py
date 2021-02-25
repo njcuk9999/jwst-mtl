@@ -21,7 +21,8 @@ from SOSS.extract.empirical_trace import plotting
 from SOSS.extract.empirical_trace import _calc_interp_coefs
 from SOSS.trace import contaminated_centroids as ctd
 
-warnings.filterwarnings('ignore')
+warnings.simplefilter(action='ignore', category=RuntimeWarning)
+warnings.simplefilter(action='ignore', category=FutureWarning)
 
 # Local path to reference files.
 path = '/Users/michaelradica/Documents/School/Ph.D./Research/SOSS/Extraction/Input_Files/'
@@ -111,12 +112,13 @@ def build_empirical_trace(clear, F277W, badpix_mask,
 
     if verbose != 0:
         print(' Building the second order trace model...')
-    o2frame = construct_order2(clear, order1_rescale, centroids)
+    o2frame = construct_order2(clear, order1_rescale, centroids,
+                               verbose=verbose)
 
     if verbose != 0:
         print('Done.')
 
-    return o1frame, o2frame
+    return order1_rescale, o2frame
 
 
 def _chromescale(profile, wave_start, wave_end, ycen, poly_coef):
@@ -376,7 +378,7 @@ def construct_order1(clear, F277, ycens, subarray, pad=0, verbose=0):
     return newmap
 
 
-def construct_order2(clear, order1_rescale, ycens):
+def construct_order2(clear, order1_rescale, ycens, verbose=0):
     '''
     '''
 
@@ -477,6 +479,9 @@ def construct_order2(clear, order1_rescale, ycens):
 
     # Deal with notdone columns.
     pp_k = np.polyfit(pixxs, ks, 11)
+    if verbose == 3:
+        plotting._plot_scaling_coefs(pixxs, ks, pp_k)
+
     for o2pix in notdone:
         o2wave = np.polyval(pp_w2, o2pix)
         o1pix = int(round(np.polyval(pp_p, o2wave), 0))
@@ -550,17 +555,22 @@ def _fit_trace_widths(clear, wave_coefs, verbose=0):
     # Only fit the trace widths up to the blue anchor (2.1µm) where
     # contamination from the second order begins to be a problem.
     end = np.where(wax < 2.1)[0][0]
-    fit_waves = wax[end:]
-    fit_widths = trace_widths[end:]
+    fit_waves = np.array(wax[end:])
+    fit_widths = np.array(trace_widths[end:])
+
+    # Reject clear outliers (>5sigma)
+    pp = np.polyfit(fit_waves, fit_widths, 1)
+    stddev = np.median(np.sqrt((fit_widths - np.polyval(pp, fit_waves))**2))
+    inds = np.where(np.abs(fit_widths - np.polyval(pp, fit_waves)) < 5*stddev)
 
     # Robustly fit a straight line.
-    pp = np.polyfit(fit_waves, fit_widths, 1)
-    width_fit = _robust_polyfit(fit_waves, fit_widths, pp)
+    pp = np.polyfit(fit_waves[inds], fit_widths[inds], 1)
+    width_fit = _robust_polyfit(fit_waves[inds], fit_widths[inds], pp)
 
     # Plot the width calibration fit if required.
     if verbose == 3:
-        plotting._plot_width_cal(wax, trace_widths, fit_waves, fit_widths,
-                                 width_fit)
+        plotting._plot_width_cal(wax, trace_widths, fit_waves[inds],
+                                 fit_widths[inds], width_fit)
 
     return width_fit
 

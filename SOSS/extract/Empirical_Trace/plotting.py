@@ -14,17 +14,24 @@ import numpy as np
 
 
 def _plot_centroid(clear, centroid_dict):
-    '''Utility function to overplot the trace centroids extracted from
-    the data over the data itself to verify accuracy.
+    '''Overplot the trace centroids extracted from the data over the data
+    itself to verify accuracy.
     '''
+
     plt.figure(figsize=(15, 3))
     for order in centroid_dict.keys():
-        plt.plot(centroid_dict[order]['X centroid'],
-                 centroid_dict[order]['Y centroid'], c='black', ls='--')
+        if order == 'order 1':
+            plt.plot(centroid_dict[order]['X centroid'],
+                     centroid_dict[order]['Y centroid'], c='black', ls='--',
+                     label='trace centroids')
+        else:
+            plt.plot(centroid_dict[order]['X centroid'],
+                     centroid_dict[order]['Y centroid'], c='black', ls='--')
     plt.imshow(np.log10(clear), origin='lower', cmap='jet')
 
     plt.xlabel('Spectral Pixel', fontsize=14)
     plt.ylabel('Spatial Pixel', fontsize=14)
+    plt.legend(fontsize=12)
     plt.show()
 
 
@@ -78,15 +85,33 @@ def _plot_interpmodel(waves, nw1, nw2, p1, p2):
     plt.show()
 
 
+def _plot_scaling_coefs(pixels, k_coefs, pp_k):
+    '''Do diagnostic plotting for the first-to-second order flux scaling
+    relationship.
+    '''
+
+    plt.figure(figsize=(8, 5))
+    plt.scatter(pixels, k_coefs, s=4, c='blue', alpha=0.8,
+                label='calculated')
+    plt.plot(pixels, np.polyval(pp_k, pixels), ls='--', c='red', label='fit')
+
+    plt.xlabel('Spectral Pixel', fontsize=14)
+    plt.ylabel('O1-to-O2 Scaling', fontsize=14)
+    plt.legend(fontsize=12)
+    plt.show()
+
+
 def _plot_width_cal(wax, widths, fit_waves, fit_widths, width_poly):
     '''Do the diagnostic plot for the trace width calibration relation.
     '''
 
     plt.figure(figsize=(8, 5))
-    plt.plot(wax, widths, label='Trace widths')
-    plt.scatter(fit_waves, fit_widths, c='orange', s=5, label='Fitting points')
+    plt.scatter(wax[::10], widths[::10], label='trace widths', c='blue', s=12,
+                alpha=0.75)
+    plt.scatter(fit_waves[::10], fit_widths[::10], c='orange', s=7,
+                label='unmasked points')
     plt.plot(wax, np.polyval(width_poly, wax), c='red', ls='--',
-             label='Width relation')
+             label='width relation')
 
     plt.xlabel('Wavelength [µm]', fontsize=14)
     plt.ylabel('Trace Spatial Width [pixels]', fontsize=14)
