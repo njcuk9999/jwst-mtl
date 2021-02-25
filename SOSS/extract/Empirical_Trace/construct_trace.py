@@ -21,6 +21,8 @@ from SOSS.extract.empirical_trace import plotting
 from SOSS.extract.empirical_trace import _calc_interp_coefs
 from SOSS.trace import contaminated_centroids as ctd
 
+warnings.filterwarnings('ignore')
+
 # Local path to reference files.
 path = '/Users/michaelradica/Documents/School/Ph.D./Research/SOSS/Extraction/Input_Files/'
 
@@ -45,9 +47,13 @@ def build_empirical_trace(clear, F277W, badpix_mask,
         Either, 3, 2, 1, or 0.
         3 - show all of progress prints, progress bars, and diagnostic plots.
         2 - show progress prints and bars.
-        1 - show only  progress prints.
+        1 - show only progress prints.
         0 - show nothing.
     '''
+
+    # TEMAPORARY HACK
+    if pad != (0, 0) or oversample != 1:
+        raise NotImplementedError('Padding and oversampling not implemented.')
 
     if verbose != 0:
         print('Starting the Empirical Trace Construction module.')
@@ -81,7 +87,7 @@ def build_empirical_trace(clear, F277W, badpix_mask,
     # Pad the spectral axis.
     if pad[1] != 0:
         if verbose != 0:
-            print(' Adding padding to first order spectral axis...')
+            print('  Adding padding to first order spectral axis...')
         o1frame = pad_spectral_axis(o1frame,
                                     centroids['order 1']['X centroid'],
                                     centroids['order 1']['Y centroid'],
@@ -90,8 +96,13 @@ def build_empirical_trace(clear, F277W, badpix_mask,
     # Add oversampling
     if oversample != 1:
         if verbose != 0:
-            print(' Oversampling...')
+            print('  Oversampling...')
         o1frame = oversample_frame(o1frame, oversample=oversample)
+
+    # Rescale to native flux level
+    if verbose != 0:
+        print('  Rescaling first order to the native flux level...', flush=True)
+    order1_rescale = rescale_model(clear, o1frame, verbose=verbose)
 
     # Write the trace model to disk.
     #hdu = fits.PrimaryHDU()
@@ -99,9 +110,13 @@ def build_empirical_trace(clear, F277W, badpix_mask,
     #hdu.writeto(filename, overwrite=True)
 
     if verbose != 0:
+        print(' Building the second order trace model...')
+    o2frame = construct_order2(clear, order1_rescale, centroids)
+
+    if verbose != 0:
         print('Done.')
 
-    return o1frame#, o2frame
+    return o1frame, o2frame
 
 
 def _chromescale(profile, wave_start, wave_end, ycen, poly_coef):
@@ -361,6 +376,132 @@ def construct_order1(clear, F277, ycens, subarray, pad=0, verbose=0):
     return newmap
 
 
+def construct_order2(clear, order1_rescale, ycens):
+    '''
+    '''
+
+    # Get wavelength and detector pixel calibration info.
+    wavecal_o1 = fits.getdata(path+'jwst_niriss_soss-256-ord1_trace.fits', 1)
+    wavecal_o2 = fits.getdata(path+'jwst_niriss_soss-256-ord2_trace.fits', 1)
+    pp_p = np.polyfit(wavecal_o1['WAVELENGTH'][::-1], wavecal_o1['Detector_Pixels'], 1)
+    pp_w2 = np.polyfit(wavecal_o2['Detector_Pixels'], wavecal_o2['WAVELENGTH'][::-1], 1)
+
+    # Get thrroughput information for each order.
+    ttab_file = soss_read_refs.RefTraceTable()
+    thpt_o1 = ttab_file('THROUGHPUT', subarray='SUBSTRIP256', order=1)
+    thpt_o2 = ttab_file('THROUGHPUT', subarray='SUBSTRIP256', order=2)
+
+    ks = []
+    pixxs = []
+    notdone = []
+    sub = clear - order1_rescale
+    dimy, dimx = np.shape(order1_rescale)
+    o2frame = np.zeros((dimy, dimx))
+
+    def lik(k, data, model):
+        # Mulitply Chi^2 by data so wing values don't carry so much weight.
+        return np.nansum((np.sum(data) - np.sum(k*model))**2)
+
+    for o2pix in range(dimx):
+        # Get the wavelenegth for to each column in order 2.
+        o2wave = np.polyval(pp_w2, o2pix)
+        # Find the corresponding column in order 1.
+        o1pix = int(round(np.polyval(pp_p, o2wave), 0))
+
+        # For region where lambda<0.8µm, there is no profile in order 1.
+        # Treat this area seperately later.
+        if o1pix >= dimx-1:
+            ycen_o2i = int(round(ycens['order 2']['Y centroid'][o2pix], 0))
+            if ycen_o2i > dimy:
+                continue
+            ycen_o1i = int(round(ycens['order 1']['Y centroid'][o1pix_r], 0))
+            thpt_2i = np.where(thpt_o2[0] >= o2wave)[0][0]
+            k0 = thpt_2i / thpt_1i_r
+            max1, max2 = np.min([ycen_o1i+5, dimy]), np.min([ycen_o2i+5, dimy])
+            min1, min2 = np.max([ycen_o1i-5, 0]), np.max([ycen_o2i-5, 0])
+            k = minimize(lik, k0, (sub[min2:max2, o2pix],
+                         order1_rescale[min1:max1, o1pix_r])).x
+            start2 = ycen_o2i - 13
+            end2 = ycen_o2i + 13
+            end1 = ycen_o1i + 13
+            o1prof = order1_rescale[:, o1pix_r]*k
+            newprof = np.concatenate([o1prof[end1:][::-1], sub[start2:end2, o2pix], o1prof[end1:]])
+
+        else:
+            # Get throughput for orders 1 and 2 at wavelength of interest.
+            thpt_1i = np.where(thpt_o1[0] >= o2wave)[0][0]
+            thpt_2i = np.where(thpt_o2[0] >= o2wave)[0][0]
+            # Get trace centroids for each order.
+            ycen_o1i = int(round(ycens['order 1']['Y centroid'][o1pix], 0))
+            ycen_o2i = int(round(ycens['order 2']['Y centroid'][o2pix], 0))
+
+            start2 = ycen_o2i - 13
+            end2 = ycen_o2i + 13
+            start1 = ycen_o1i - 13
+            end1 = ycen_o1i + 13
+            # Find coefficient to scale order 1 to the flux level of order 2.
+            k0 = thpt_2i / thpt_1i
+            max1, max2 = np.min([ycen_o1i+5, dimy]), np.min([ycen_o2i+5, dimy])
+            min1, min2 = np.max([ycen_o1i-5, 0]), np.max([ycen_o2i-5, 0])
+            k = minimize(lik, k0, (sub[min2:max2, o2pix],
+                         order1_rescale[min1:max1, o1pix])).x
+            if k <= 0:
+                notdone.append(o2pix)
+                continue
+
+            # Rescale the first order profile to the flux level of order 2.
+            o1prof = order1_rescale[:, o1pix]*k
+            ks.append(k)
+            pixxs.append(o2pix)
+            # Replace any oversubtracted pixels in o2 with o1.
+            inds = np.isnan(np.log10(sub[start2:end2, o2pix]))
+            sub[start2:end2, o2pix][inds] = o1prof[start1:end1][inds]
+            # Stitch together o2 core with o1 wings.
+            newprof = np.concatenate([o1prof[(end1+1):][::-1],
+                                      sub[start2:end2, o2pix], o1prof[end1:]])
+            o1pix_r = o1pix
+            thpt_1i_r = thpt_1i
+
+        oldax = np.arange(len(newprof)) - len(newprof)/2 + ycens['order 2']['Y centroid'][o2pix]
+        end = np.where(oldax < dimy)[0][-1]
+        ext = 0
+        try:
+            start = np.where(oldax < 0)[0][-1]
+        except IndexError:
+            start = 0
+            ext = dimy - (end - start)
+            val = np.nanmedian(newprof[:5])
+            newprof = np.concatenate([np.tile(val, ext), newprof])
+
+        o2frame[:, o2pix] = newprof[start:(end+ext)]
+
+    # Deal with notdone columns.
+    pp_k = np.polyfit(pixxs, ks, 11)
+    for o2pix in notdone:
+        o2wave = np.polyval(pp_w2, o2pix)
+        o1pix = int(round(np.polyval(pp_p, o2wave), 0))
+        start1 = int(round(ycens['order 1']['Y centroid'][o1pix], 0)) - 13
+        end1 = int(round(ycens['order 1']['Y centroid'][o1pix], 0)) + 13
+        k = np.polyval(pp_k, o2pix)
+        o1prof = order1_rescale[:, o1pix]*k
+        newprof = np.concatenate([o1prof[(end1+1):][::-1], o1prof[start1:]])
+
+        oldax = np.arange(len(newprof)) - len(newprof)/2 + ycens['order 2']['Y centroid'][o2pix]
+        end = np.where(oldax < dimy)[0][-1]
+        ext = 0
+        try:
+            start = np.where(oldax < 0)[0][-1]
+        except IndexError:
+            start = 0
+            ext = dimy - (end - start)
+            val = np.nanmedian(newprof[:5])
+            newprof = np.concatenate([np.tile(val, ext), newprof])
+
+        o2frame[:, o2pix] = newprof[start:(end+ext)]
+
+    return o2frame
+
+
 def _fit_trace_widths(clear, wave_coefs, verbose=0):
     '''Due to the defocusing of the SOSS PSF, the width in the spatial
     direction does not behave as if it is diffraction limited. Calculate the
@@ -600,7 +741,7 @@ def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
     # Get fresh right wing profile.
     prof_r2 = np.log10(profile)
     # Mask first order core.
-    prof_r2[:(ycens[0]+18)] = np.nan
+    prof_r2[:(ycens[0]+13)] = np.nan
     # Mask second and third orders.
     if contamination is True:
         for order, ycen in enumerate(ycens):
