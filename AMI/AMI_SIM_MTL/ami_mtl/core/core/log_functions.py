@@ -51,12 +51,18 @@ class Log:
         self.logger.setLevel(self.baselevel)
         # add debug level names
         self.add_debug_levels()
+        # deal with log overwrite
+        if kwargs.get('log_override', False):
+            self.format_class = ConsoleFormatSimple
+            del kwargs['log_override']
+        else:
+            self.format_class = ConsoleFormat
         # get any custom exceptions
         self.python_exception = LogException
         # set the log format
         self.theme = kwargs.get('theme', None)
-        self.confmt = ConsoleFormat(theme=self.theme)
-        self.filefmt = ConsoleFormat(theme='OFF')
+        self.confmt = self.format_class(theme=self.theme)
+        self.filefmt = self.format_class(theme='OFF')
         # clean any handlers in logging currently
         for _ in range(len(self.logger.handlers)):
             self.logger.handlers.pop()
@@ -322,7 +328,7 @@ class Log:
         # update variable
         self.theme = theme
         # update cprint in Console Format
-        self.confmt = ConsoleFormat(theme=self.theme)
+        self.confmt = self.format_class(theme=self.theme)
         # update handler
         # loop around all handlers
         for handler in self.logger.handlers:
@@ -343,6 +349,47 @@ class Log:
         elif issubclass(exception, Exception):
             raise exception(msg)
 
+
+class ConsoleFormatSimple(logging.Formatter):
+    def __init__(self, fmt: str ="%(levelno)s: %(msg)s", theme=None):
+        # define default format
+        self.fmt = '%(message)s'
+        self.default = logging.Formatter(self.fmt)
+        # define empty format
+        self.empty_fmt = '%(message)s'
+        # define debug format
+        self.debug_fmt = self.fmt
+        # define info format
+        self.info_fmt = self.fmt
+        # define warning format
+        self.warning_fmt = self.fmt
+        # define error format
+        self.error_fmt = self.fmt
+        # define critical format
+        self.critial_fmt = self.fmt
+        # initialize parent
+        logging.Formatter.__init__(self, fmt)
+
+    def format(self, record):
+        # Save the original format configured by the user
+        # when the logger formatter was instantiated
+        format_orig = self._style._fmt
+        # Replace the original format with one customized by logging level
+        if record.levelno < logging.INFO:
+            self._style._fmt = self.debug_fmt
+        elif record.levelno == logging.INFO:
+            self._style._fmt = self.info_fmt
+        elif record.levelno == logging.WARNING:
+            self._style._fmt = self.warning_fmt
+        elif record.levelno >= logging.ERROR and record.levelno != 999:
+            self._style._fmt = self.error_fmt
+        elif record.levelno == 999:
+            self._style._fmt = self.empty_fmt
+        # Call the original formatter class to do the grunt work
+        result = logging.Formatter.format(self, record)
+        # Restore the original format configured by the user
+        self._style._fmt = format_orig
+        return result
 
 # Custom formatter
 class ConsoleFormat(logging.Formatter):
