@@ -242,7 +242,7 @@ def construct_order1(clear, F277, ycens, subarray, pad=0, verbose=0):
     cens = [ycens['order 1']['Y centroid'][xdb],
             ycens['order 2']['Y centroid'][xdb],
             ycens['order 3']['Y centroid'][xdb]]
-    Banch = reconstruct_wings(Banch, ycens=cens, contamination=True, pad=pad,
+    Banch = reconstruct_wings(Banch, ycens=cens, contamination=[2, 3], pad=pad,
                               verbose=verbose, smooth=True,
                               **{'text': 'Blue anchor'})
     # Remove the lambda/D scaling.
@@ -264,7 +264,7 @@ def construct_order1(clear, F277, ycens, subarray, pad=0, verbose=0):
         Ranch = np.median(F277[:, (xdr-2):(xdr+2)], axis=1)
         # Reconstruct wing structure and pad.
         cens = [ycens['order 1']['Y centroid'][xdr]]
-        Ranch = reconstruct_wings(Ranch, ycens=cens, contamination=False,
+        Ranch = reconstruct_wings(Ranch, ycens=cens, contamination=None,
                                   pad=pad, verbose=verbose, smooth=True,
                                   **{'text': 'Red anchor'})
         Ranch = _chromescale(Ranch, 2.45, 2.5, ydr+pad, wave_poly)
@@ -296,7 +296,7 @@ def construct_order1(clear, F277, ycens, subarray, pad=0, verbose=0):
         # Interpolate the WebbPSF generated profile to the correct location.
         Ranch = np.interp(np.arange(dimy), np.arange(dimy)-dimy/2+ydr, Ranch)
         # Reconstruct wing structure and pad.
-        Ranch = reconstruct_wings(Ranch, ycens=[ydr], contamination=False,
+        Ranch = reconstruct_wings(Ranch, ycens=[ydr], contamination=None,
                                   pad=pad, verbose=verbose, smooth=True,
                                   **{'text': 'Red anchor'})
         # Rescale to remove chromatic effects.
@@ -369,7 +369,7 @@ def construct_order1(clear, F277, ycens, subarray, pad=0, verbose=0):
             cens = [ycens['order 1']['Y centroid'][col]]
             # Reconstruct wing structure and pad.
             newmap[:, col] = reconstruct_wings(F277[:, col], ycens=cens,
-                                               contamination=False, pad=pad,
+                                               contamination=None, pad=pad,
                                                smooth=True)
 
     # Column normalize.
@@ -658,15 +658,11 @@ def pad_spectral_axis(frame, xcens, ycens, pad=0):
     return newframe
 
 
-def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
+def reconstruct_wings(profile, ycens=None, contamination=[2, 3], pad=0,
                       verbose=0, smooth=True, **kwargs):
     '''Masks the second and third diffraction orders and reconstructs the
      underlying wing structure of the first order. Also adds padding in the
      spatial direction if required.
-     Note: the algorithm struggles in the region where the first and second
-     orders completely overlap (pixels ~0-450). However, this region is either
-     interpolated or from an F277W exposure in the empirical trace model,
-     circumventing this issue.
 
     Parameters
     ----------
@@ -676,9 +672,9 @@ def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
         Y-coordinates of the trace centroids. Must include all three
         diffraction orders if contamination is True, or only the first order if
         False.
-    contamination : bool
-        If True, profile has contamination from the second and third
-        diffraction orders.
+    contamination : list
+        List of contaminating orders present on the detector (not including the
+        first order). For an uncontaminated detector, pass None.
     pad : int
         Amount to pad each end of the spartial axis (in pixels).
     verbose : int
@@ -697,14 +693,14 @@ def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
     ------
     ValueError
         If centroids are not provided for all three orders when contamination
-        is set to True.
+        is not None.
     '''
 
     dimy = len(profile)
     # Convert Y-centroid positions to indices
     ycens = np.atleast_1d(ycens)
     ycens = np.round(ycens, 0).astype(int)
-    if contamination is True and ycens.size != 3:
+    if contamination is not None and ycens.size != 3:
         errmsg = 'Centroids must be provided for first three orders '\
                  'if there is contamination.'
         raise ValueError(errmsg)
@@ -717,10 +713,8 @@ def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
     # line to the remaining pixels. Additionally mask any outlier pixels that
     # are >3-sigma deviant from that line. Fit a 7th order polynomial to
     # remaining pixels.
-    # Get the right wing of the trace profile in log space.
-    prof_r = np.log10(profile)
-    # and corresponding axis.
-    axis_r = np.arange(dimy)
+    # Get the right wing of the trace profile in log space and spatial axis.
+    prof_r, axis_r = np.log10(profile), np.arange(dimy)
 
     # === Outlier masking ===
     # Mask the cores of each order.
@@ -728,24 +722,17 @@ def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
         if order == 0:
             start = 0
             end = ycen+30
-        elif order == 1:
-            start = np.min([ycen-17, dimy-2])
-            end = np.min([ycen+17, dimy-1])
         else:
             start = np.min([ycen-17, dimy-2])
             end = np.min([ycen+17, dimy-1])
         # Set core of each order to NaN.
         prof_r[start:end] = np.nan
-
-    # Fit the unmasked part of the wing to determine the mean trend.
+    # Fit the unmasked part of the wing to determine the mean linear trend.
     inds = np.where(np.isfinite(prof_r))[0]
     pp = _robust_polyfit(axis_r[inds], prof_r[inds], (0, 0))
     wing_mean = pp[1]+pp[0]*axis_r
-
     # Calculate the standard dev of unmasked points from the mean trend.
     stddev_m = np.sqrt(np.median((prof_r[inds] - wing_mean[inds])**2))
-    # Find all outliers that are >3-sigma deviant from the mean.
-    inds2 = np.where(np.abs(prof_r[inds] - wing_mean[inds]) > 3*stddev_m)
 
     # === Wing fit ===
     # Get fresh right wing profile.
@@ -753,18 +740,18 @@ def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
     # Mask first order core.
     prof_r2[:(ycens[0]+13)] = np.nan
     # Mask second and third orders.
-    if contamination is True:
+    if contamination is not None:
         for order, ycen in enumerate(ycens):
-            if order == 1:
+            if order + 1 in contamination:
                 start = np.max([ycen-17, 0])
                 end = np.max([ycen+17, 1])
-            elif order == 2:
-                start = np.max([ycen-17, 0])
-                end = np.max([ycen+17, 1])
-            # Set core of each order to NaN.
-            prof_r2[start:end] = np.nan
+                # Set core of each order to NaN.
+                prof_r2[start:end] = np.nan
+    # Find all outliers that are >3-sigma deviant from the mean.
+    start = ycens[0]+25
+    inds2 = np.where(np.abs(prof_r2[start:] - wing_mean[start:]) > 3*stddev_m)
     # Mask outliers
-    prof_r2[inds[inds2]] = np.nan
+    prof_r2[start:][inds2] = np.nan
     # Mask edge of the detector.
     prof_r2[-3:] = np.nan
     # Indices of all unmasked points in the left wing.
@@ -787,8 +774,8 @@ def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
     # === Stitching ===
     newprof = profile*1
     # Interpolate contaminated regions.
-    if contamination is True:
-        for order in [2, 3]:
+    if contamination is not None:
+        for order in contamination:
             # Interpolate for +/- 20 pixels around the trace centroid.
             start = np.max([ycens[order-1]-20, ycens[0]+14])
             if start >= dimy-1:
@@ -799,6 +786,9 @@ def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
             newprof = np.concatenate([newprof[:start],
                                       10**np.polyval(pp_r, axis_r)[start:end],
                                       newprof[end:]])
+    # Interpolate nan pixels and negatives.
+    inds5 = np.isnan(newprof)
+    newprof[inds5] = 10**np.polyval(pp_r, axis_r)[inds5]
 
     if smooth is True:
         # Replace highly deviant pixels throughout the wings.
@@ -816,8 +806,6 @@ def reconstruct_wings(profile, ycens=None, contamination=True, pad=0,
     padval_l = np.median(newprof[3:8])
     newprof = np.concatenate([np.tile(padval_l, pad+4), newprof[4:-4],
                               np.tile(padval_r, pad+4)])
-    # Set any negatives to a floor value.
-    newprof[newprof < 0] = np.nanpercentile(newprof[newprof < 0], 1)
 
     # Do diagnostic plot if requested.
     if verbose == 3:
