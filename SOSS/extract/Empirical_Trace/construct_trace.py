@@ -53,8 +53,8 @@ def build_empirical_trace(clear, F277W, badpix_mask,
     '''
 
     # TEMAPORARY HACK
-    if pad != (0, 0) or oversample != 1:
-        raise NotImplementedError('Padding and oversampling not implemented.')
+    #if pad != (0, 0) or oversample != 1:
+    #    raise NotImplementedError('Padding and oversampling not implemented.')
 
     if verbose != 0:
         print('Starting the Empirical Trace Construction module.')
@@ -83,42 +83,79 @@ def build_empirical_trace(clear, F277W, badpix_mask,
     # Construct the first order profile.
     if verbose != 0:
         print(' Building the first order trace model...')
-    o1frame = construct_order1(clear, F277W, centroids, pad=pad[0],
+    o1frame = construct_order1(clear, F277W, centroids, pad=0,
                                verbose=verbose, subarray='SUBSTRIP256')
-    # Pad the spectral axis.
-    if pad[1] != 0:
-        if verbose != 0:
-            print('  Adding padding to first order spectral axis...')
-        o1frame = pad_spectral_axis(o1frame,
-                                    centroids['order 1']['X centroid'],
-                                    centroids['order 1']['Y centroid'],
-                                    pad=pad[1])
-
-    # Add oversampling
-    if oversample != 1:
-        if verbose != 0:
-            print('  Oversampling...')
-        o1frame = oversample_frame(o1frame, oversample=oversample)
 
     # Rescale to native flux level
     if verbose != 0:
-        print('  Rescaling first order to the native flux level...', flush=True)
+        print('  Rescaling first order to native flux level...', flush=True)
     order1_rescale = rescale_model(clear, o1frame, verbose=verbose)
-
-    # Write the trace model to disk.
-    #hdu = fits.PrimaryHDU()
-    #hdu.data = np.dstack((o1frame, o2frame))
-    #hdu.writeto(filename, overwrite=True)
 
     if verbose != 0:
         print(' Building the second order trace model...')
     o2frame = construct_order2(clear, order1_rescale, centroids,
                                verbose=verbose)
+    if verbose != 0:
+        print('First pass models complete.')
+
+    if verbose != 0:
+        print('Starting spatial profile refinement...')
+        print(' Refining the first order profile...')
+    dimy, dimx = np.shape(clear)
+    order1_uncontam_unref = clear - o2frame
+    order1_uncontam = np.zeros((dimy+2*pad[0], dimx))
+    for i in tqdm(range(dimx)):
+        ycens = [centroids['order 1']['Y centroid'][i],
+                 centroids['order 2']['Y centroid'][i],
+                 centroids['order 3']['Y centroid'][i]]
+        prof_refine = reconstruct_wings(order1_uncontam_unref[:, i], ycens,
+                                        contamination=[3], pad=pad[0])
+        order1_uncontam[:, i] = prof_refine
+
+    # Rescale to native flux level
+    if verbose != 0:
+        print('  Rescaling first order to native flux level...', flush=True)
+    order1_rescale = rescale_model(clear, order1_uncontam[pad[0]:-pad[0], :],
+                                   verbose=verbose)
+
+    if verbose != 0:
+        print(' Refining the second order trace model...', flush=True)
+    order2_uncontam = construct_order2(clear, order1_rescale, centroids,
+                                       verbose=verbose, pad=pad[0])
+
+    # Pad the spectral axis.
+    if pad[1] != 0:
+        if verbose != 0:
+            print(' Adding padding to spectral axes...')
+        order1_uncontam = pad_spectral_axis(order1_uncontam,
+                                            centroids['order 1']['X centroid'],
+                                            centroids['order 1']['Y centroid'],
+                                            pad=pad[1])
+    # Even if padding is not requested, fill in the zero valued area of the
+    # frame where the order 2 trace is off of the detector.
+    edge = np.where(np.nanmedian(order2_uncontam, axis=0) == 0)[0][0] - 5
+    order2_uncontam = pad_spectral_axis(order2_uncontam,
+                                        centroids['order 2']['X centroid'],
+                                        centroids['order 2']['Y centroid'],
+                                        pad=pad[1], ref_col=(5, edge-dimx))
+
+    # Add oversampling
+    if oversample != 1:
+        if verbose != 0:
+            print(' Oversampling...')
+        order1_uncontam = oversample_frame(order1_uncontam,
+                                           oversample=oversample)
+        order2_uncontam = oversample_frame(order2_uncontam,
+                                           oversample=oversample)
+
+    if verbose != 0:
+        print('Writing to disk...')
+    #_write_to_file(order1_uncontam, order2_uncontam, 'SOSS_2D_profile')
 
     if verbose != 0:
         print('Done.')
 
-    return order1_rescale, o2frame
+    return order1_uncontam, order2_uncontam
 
 
 def _chromescale(profile, wave_start, wave_end, ycen, poly_coef):
@@ -378,7 +415,7 @@ def construct_order1(clear, F277, ycens, subarray, pad=0, verbose=0):
     return newmap
 
 
-def construct_order2(clear, order1_rescale, ycens, verbose=0):
+def construct_order2(clear, order1_rescale, ycens, verbose=0, pad=0):
     '''
     '''
 
@@ -504,6 +541,17 @@ def construct_order2(clear, order1_rescale, ycens, verbose=0):
 
         o2frame[:, o2pix] = newprof[start:(end+ext)]
 
+    if pad != 0:
+        o2frame_pad = np.zeros((dimy+2*pad, dimx))
+        padded = np.repeat(np.nanmedian(o2frame[-5:, :, np.newaxis], axis=0),
+                           pad, axis=1).T
+        o2frame_pad[-pad:] = padded
+        padded = np.repeat(np.nanmedian(o2frame[:5, :, np.newaxis], axis=0),
+                           pad, axis=1).T
+        o2frame_pad[:pad] = padded
+        o2frame_pad[pad:-pad] = o2frame
+        o2frame = o2frame_pad
+
     return o2frame
 
 
@@ -614,7 +662,7 @@ def oversample_frame(frame, oversample=1):
     return osframe
 
 
-def pad_spectral_axis(frame, xcens, ycens, pad=0):
+def pad_spectral_axis(frame, xcens, ycens, pad=0, ref_col=(5, -5)):
     '''Add padding to the spectral axis by interpolating the corresponding
     edge profile onto a set of extrapolated centroids.
 
@@ -636,24 +684,23 @@ def pad_spectral_axis(frame, xcens, ycens, pad=0):
         Data frame with padding on the spectral axis.
     '''
 
-    ylen = int(frame.shape[0])
-    xlen = int(frame.shape[1])
+    dimy, dimx = np.shape(frame)
     pp = np.polyfit(xcens, ycens, 5)
-    xax_pad = np.arange(xlen+2*pad)-pad
+    xax_pad = np.arange(dimx+2*pad)-pad
     ycens_pad = np.polyval(pp, xax_pad)
 
-    newframe = np.zeros((ylen, xlen+2*pad))
-    newframe[:, (pad):(xlen+pad)] = frame
+    newframe = np.zeros((dimy, dimx+2*pad))
+    newframe[:, (pad):(dimx+pad)] = frame
 
     for col in range(pad):
-        yax = np.arange(ylen)
-        newframe[:, col] = np.interp(yax+ycens[5]-ycens_pad[col], yax,
-                                     frame[:, 5])
+        yax = np.arange(dimy)
+        newframe[:, col] = np.interp(yax+ycens[ref_col[0]]-ycens_pad[col], yax,
+                                     frame[:, ref_col[0]])
 
-    for col in range(xlen+pad, xlen+2*pad):
-        yax = np.arange(ylen)
-        newframe[:, col] = np.interp(yax+ycens[-10]-ycens_pad[col], yax,
-                                     frame[:, -10])
+    for col in range(dimx+ref_col[1]+pad, dimx+2*pad):
+        yax = np.arange(dimy)
+        newframe[:, col] = np.interp(yax+ycens[ref_col[1]]-ycens_pad[col], yax,
+                                     frame[:, ref_col[1]])
 
     return newframe
 
@@ -963,3 +1010,12 @@ def _verbose_to_bool(verbose):
         verbose_bool = True
 
     return verbose_bool
+
+
+def _write_to_file(o1frame, o2frame, filename):
+    '''
+    '''
+
+    hdu = fits.PrimaryHDU()
+    hdu.data = np.dstack((o1frame, o2frame))
+    hdu.writeto('{}.fits'.format(filename), overwrite=True)
