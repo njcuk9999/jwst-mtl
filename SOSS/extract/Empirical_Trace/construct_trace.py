@@ -89,18 +89,18 @@ def build_empirical_trace(clear, F277W, badpix_mask,
     # Rescale to native flux level
     if verbose != 0:
         print('  Rescaling first order to native flux level...', flush=True)
-    order1_rescale = rescale_model(clear, o1frame, verbose=verbose)
+    order1_rescale1 = rescale_model(clear, o1frame, centroids, verbose=verbose)
 
     if verbose != 0:
         print(' Building the second order trace model...')
-    o2frame = construct_order2(clear, order1_rescale, centroids,
+    o2frame = construct_order2(clear, order1_rescale1, centroids,
                                verbose=verbose)
     if verbose != 0:
         print('First pass models complete.')
 
     if verbose != 0:
         print('Starting spatial profile refinement...')
-        print(' Refining the first order profile...')
+        print(' Refining the first order profile...', flush=True)
     dimy, dimx = np.shape(clear)
     order1_uncontam_unref = clear - o2frame
     order1_uncontam = np.zeros((dimy+2*pad[0], dimx))
@@ -112,16 +112,15 @@ def build_empirical_trace(clear, F277W, badpix_mask,
                                         contamination=[3], pad=pad[0])
         order1_uncontam[:, i] = prof_refine
 
-    # Rescale to native flux level
-    if verbose != 0:
-        print('  Rescaling first order to native flux level...', flush=True)
-    order1_rescale = rescale_model(clear, order1_uncontam[pad[0]:-pad[0], :],
-                                   verbose=verbose)
-
     if verbose != 0:
         print(' Refining the second order trace model...', flush=True)
-    order2_uncontam = construct_order2(clear, order1_rescale, centroids,
+    order2_uncontam = construct_order2(clear, order1_uncontam[pad[0]:(dimy+pad[0])], centroids,
                                        verbose=verbose, pad=pad[0])
+
+    if verbose == 3:
+        o1_unpad = order1_uncontam[pad[0]:(dimy+pad[0]), :]
+        o2_unpad = order2_uncontam[pad[0]:(dimy+pad[0]), :]
+        plotting._plot_trace_residuals(clear, o1_unpad, o2_unpad)
 
     # Pad the spectral axis.
     if pad[1] != 0:
@@ -425,7 +424,7 @@ def construct_order2(clear, order1_rescale, ycens, verbose=0, pad=0):
     pp_p = np.polyfit(wavecal_o1['WAVELENGTH'][::-1], wavecal_o1['Detector_Pixels'], 1)
     pp_w2 = np.polyfit(wavecal_o2['Detector_Pixels'], wavecal_o2['WAVELENGTH'][::-1], 1)
 
-    # Get thrroughput information for each order.
+    # Get throughput information for each order.
     ttab_file = soss_read_refs.RefTraceTable()
     thpt_o1 = ttab_file('THROUGHPUT', subarray='SUBSTRIP256', order=1)
     thpt_o2 = ttab_file('THROUGHPUT', subarray='SUBSTRIP256', order=2)
@@ -485,6 +484,7 @@ def construct_order2(clear, order1_rescale, ycens, verbose=0, pad=0):
             k = minimize(lik, k0, (sub[min2:max2, o2pix],
                          order1_rescale[min1:max1, o1pix])).x
             if k <= 0:
+                #print(o1pix)
                 notdone.append(o2pix)
                 continue
 
@@ -924,7 +924,7 @@ def replace_badpix(clear, badpix_mask, fill_negatives=True, verbose=0):
     return clear_r
 
 
-def rescale_model(data, model, verbose=0):
+def rescale_model(data, model, centroids, verbose=0):
     '''Rescale a column normalized trace model to the flux level of an actual
     observation. A multiplicative coefficient is determined via Chi^2
     minimization independantly for each column, such that the rescaled model
@@ -959,8 +959,12 @@ def rescale_model(data, model, verbose=0):
     # whenever I try to minimize all of k at once I get nonsensical results?
     disable = _verbose_to_bool(verbose)
     for i in tqdm(range(data.shape[1]), disable=disable):
+        # Get region around centroid
+        ycen = int(round(centroids['order 1']['Y centroid'][i], 0))
+        start = ycen - 13
+        end = ycen + 13
         # Minimize the Chi^2.
-        k = minimize(lik, k0[i], (data[:, i], model[:, i]))
+        k = minimize(lik, k0[i], (data[start:end, i], model[start:end, i]))
         ks.append(k.x[0])
 
     # Rescale the column normalized model.
@@ -1013,7 +1017,7 @@ def _verbose_to_bool(verbose):
 
 
 def _write_to_file(o1frame, o2frame, filename):
-    '''
+    '''Write 2D trace spatial profiles to disk.
     '''
 
     hdu = fits.PrimaryHDU()

@@ -101,6 +101,21 @@ def _plot_scaling_coefs(pixels, k_coefs, pp_k):
     plt.show()
 
 
+def _plot_trace_residuals(clear, order1, order2):
+    '''Plot the residuals after subtracting the first and second order spatial
+    profile models from the original CLEAR dataframe.
+    '''
+
+    plt.figure(figsize=(15, 3))
+    plt.imshow((clear - (order1 + order2))/np.nansum(clear, axis=0),
+               origin='lower', vmin=1e-7, vmax=1e-5)
+
+    plt.xlabel('Spectral Pixel', fontsize=14)
+    plt.ylabel('Spatial Pixel', fontsize=14)
+    plt.colorbar()
+    plt.show()
+
+
 def _plot_width_cal(wax, widths, fit_waves, fit_widths, width_poly):
     '''Do the diagnostic plot for the trace width calibration relation.
     '''
