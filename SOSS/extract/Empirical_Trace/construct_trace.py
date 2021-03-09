@@ -52,10 +52,6 @@ def build_empirical_trace(clear, F277W, badpix_mask,
         0 - show nothing.
     '''
 
-    # TEMAPORARY HACK
-    #if pad != (0, 0) or oversample != 1:
-    #    raise NotImplementedError('Padding and oversampling not implemented.')
-
     if verbose != 0:
         print('Starting the Empirical Trace Construction module.')
     # Print overwrite warning if output file already exists.
@@ -446,26 +442,8 @@ def construct_order2(clear, order1_rescale, ycens, verbose=0, pad=0):
         # Find the corresponding column in order 1.
         o1pix = int(round(np.polyval(pp_p, o2wave), 0))
 
-        # For region where lambda<0.8µm, there is no profile in order 1.
-        # Treat this area seperately later.
-        if o1pix >= dimx-1:
-            ycen_o2i = int(round(ycens['order 2']['Y centroid'][o2pix], 0))
-            if ycen_o2i > dimy:
-                continue
-            ycen_o1i = int(round(ycens['order 1']['Y centroid'][o1pix_r], 0))
-            thpt_2i = np.where(thpt_o2[0] >= o2wave)[0][0]
-            k0 = thpt_2i / thpt_1i_r
-            max1, max2 = np.min([ycen_o1i+5, dimy]), np.min([ycen_o2i+5, dimy])
-            min1, min2 = np.max([ycen_o1i-5, 0]), np.max([ycen_o2i-5, 0])
-            k = minimize(lik, k0, (sub[min2:max2, o2pix],
-                         order1_rescale[min1:max1, o1pix_r])).x
-            start2 = ycen_o2i - 13
-            end2 = ycen_o2i + 13
-            end1 = ycen_o1i + 13
-            o1prof = order1_rescale[:, o1pix_r]*k
-            newprof = np.concatenate([o1prof[end1:][::-1], sub[start2:end2, o2pix], o1prof[end1:]])
-
-        else:
+        # Region where wavelengths in order 1 and order 2 overlap.
+        if o1pix < dimx - 1:
             # Get throughput for orders 1 and 2 at wavelength of interest.
             thpt_1i = np.where(thpt_o1[0] >= o2wave)[0][0]
             thpt_2i = np.where(thpt_o2[0] >= o2wave)[0][0]
@@ -484,7 +462,6 @@ def construct_order2(clear, order1_rescale, ycens, verbose=0, pad=0):
             k = minimize(lik, k0, (sub[min2:max2, o2pix],
                          order1_rescale[min1:max1, o1pix])).x
             if k <= 0:
-                #print(o1pix)
                 notdone.append(o2pix)
                 continue
 
@@ -500,6 +477,24 @@ def construct_order2(clear, order1_rescale, ycens, verbose=0, pad=0):
                                       sub[start2:end2, o2pix], o1prof[end1:]])
             o1pix_r = o1pix
             thpt_1i_r = thpt_1i
+        # For region where lambda<0.8µm, there is no profile in order 1.
+        # Treat this area seperately later.
+        else:
+            ycen_o2i = int(round(ycens['order 2']['Y centroid'][o2pix], 0))
+            if ycen_o2i > dimy:
+                continue
+            ycen_o1i = int(round(ycens['order 1']['Y centroid'][o1pix_r], 0))
+            thpt_2i = np.where(thpt_o2[0] >= o2wave)[0][0]
+            k0 = thpt_2i / thpt_1i_r
+            max1, max2 = np.min([ycen_o1i+5, dimy]), np.min([ycen_o2i+5, dimy])
+            min1, min2 = np.max([ycen_o1i-5, 0]), np.max([ycen_o2i-5, 0])
+            k = minimize(lik, k0, (sub[min2:max2, o2pix],
+                         order1_rescale[min1:max1, o1pix_r])).x
+            start2 = ycen_o2i - 13
+            end2 = ycen_o2i + 13
+            end1 = ycen_o1i + 13
+            o1prof = order1_rescale[:, o1pix_r]*k
+            newprof = np.concatenate([o1prof[end1:][::-1], sub[start2:end2, o2pix], o1prof[end1:]])
 
         oldax = np.arange(len(newprof)) - len(newprof)/2 + ycens['order 2']['Y centroid'][o2pix]
         end = np.where(oldax < dimy)[0][-1]
