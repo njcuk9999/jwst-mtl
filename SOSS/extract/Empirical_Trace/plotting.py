@@ -108,7 +108,7 @@ def _plot_trace_residuals(clear, order1, order2):
 
     plt.figure(figsize=(15, 3))
     plt.imshow((clear - (order1 + order2))/np.nansum(clear, axis=0),
-               origin='lower', vmin=1e-7, vmax=1e-5)
+               origin='lower', vmin=1e-7, vmax=1e-4)
 
     plt.xlabel('Spectral Pixel', fontsize=14)
     plt.ylabel('Spatial Pixel', fontsize=14)
@@ -116,17 +116,17 @@ def _plot_trace_residuals(clear, order1, order2):
     plt.show()
 
 
-def _plot_width_cal(wax, widths, fit_waves, fit_widths, width_poly):
+def _plot_width_cal(wax, widths, fit_waves, width_poly):
     '''Do the diagnostic plot for the trace width calibration relation.
     '''
 
     plt.figure(figsize=(8, 5))
     plt.scatter(wax[::10], widths[::10], label='trace widths', c='blue', s=12,
                 alpha=0.75)
-    plt.scatter(fit_waves[::10], fit_widths[::10], c='orange', s=7,
-                label='unmasked points')
-    plt.plot(wax, np.polyval(width_poly, wax), c='red', ls='--',
-             label='width relation')
+    plt.plot(fit_waves[0], np.polyval(width_poly[0], fit_waves[0]), c='red',
+             ls='--', label='width relation')
+    plt.plot(fit_waves[1], np.polyval(width_poly[1], fit_waves[1]), c='red',
+             ls='--')
 
     plt.xlabel('Wavelength [µm]', fontsize=14)
     plt.ylabel('Trace Spatial Width [pixels]', fontsize=14)

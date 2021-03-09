@@ -113,11 +113,6 @@ def build_empirical_trace(clear, F277W, badpix_mask,
     order2_uncontam = construct_order2(clear, order1_uncontam[pad[0]:(dimy+pad[0])], centroids,
                                        verbose=verbose, pad=pad[0])
 
-    if verbose == 3:
-        o1_unpad = order1_uncontam[pad[0]:(dimy+pad[0]), :]
-        o2_unpad = order2_uncontam[pad[0]:(dimy+pad[0]), :]
-        plotting._plot_trace_residuals(clear, o1_unpad, o2_unpad)
-
     # Pad the spectral axis.
     if pad[1] != 0:
         if verbose != 0:
@@ -133,6 +128,11 @@ def build_empirical_trace(clear, F277W, badpix_mask,
                                         centroids['order 2']['X centroid'],
                                         centroids['order 2']['Y centroid'],
                                         pad=pad[1], ref_col=(5, edge-dimx))
+
+    if verbose == 3:
+        o1_unpad = order1_uncontam[pad[0]:(dimy+pad[0]), :]
+        o2_unpad = order2_uncontam[pad[0]:(dimy+pad[0]), :]
+        plotting._plot_trace_residuals(clear, o1_unpad, o2_unpad)
 
     # Add oversampling
     if oversample != 1:
@@ -179,8 +179,16 @@ def _chromescale(profile, wave_start, wave_end, ycen, poly_coef):
 
     xrange = len(profile)
     # Get the starting and ending trace widths.
-    w_start = np.polyval(poly_coef, wave_start)
-    w_end = np.polyval(poly_coef, wave_end)
+    if wave_start < 2.1:
+        poly_coef_s = poly_coef[1]
+    else:
+        poly_coef_s = poly_coef[0]
+    if wave_end < 2.1:
+        poly_coef_e = poly_coef[1]
+    else:
+        poly_coef_e = poly_coef[0]
+    w_start = np.polyval(poly_coef_s, wave_start)
+    w_end = np.polyval(poly_coef_e, wave_end)
     # Create a rescaled spatial axis.
     xax = np.linspace(0, round(xrange*(w_end/w_start), 0) - 1, xrange)
     # Find required offset to ensure the centroid remains at the same location.
@@ -257,7 +265,7 @@ def construct_order1(clear, F277, ycens, subarray, pad=0, verbose=0):
     # Determine how the trace width changes with wavelength.
     if verbose != 0:
         print('  Calibrating trace widths...')
-    wave_poly = _fit_trace_widths(clear, pp_w, verbose=verbose)
+    wave_polys = _fit_trace_widths(clear, pp_w, verbose=verbose)
 
     # ========= GET ANCHOR PROFILES =========
     if verbose != 0:
@@ -278,7 +286,7 @@ def construct_order1(clear, F277, ycens, subarray, pad=0, verbose=0):
                               verbose=verbose, smooth=True,
                               **{'text': 'Blue anchor'})
     # Remove the lambda/D scaling.
-    Banch = _chromescale(Banch, 2.1, 2.5, ydb+pad, wave_poly)
+    Banch = _chromescale(Banch, 2.1, 2.5, ydb+pad, wave_polys)
     # Normalize
     Banch /= np.nansum(Banch)
 
@@ -299,7 +307,7 @@ def construct_order1(clear, F277, ycens, subarray, pad=0, verbose=0):
         Ranch = reconstruct_wings(Ranch, ycens=cens, contamination=None,
                                   pad=pad, verbose=verbose, smooth=True,
                                   **{'text': 'Red anchor'})
-        Ranch = _chromescale(Ranch, 2.45, 2.5, ydr+pad, wave_poly)
+        Ranch = _chromescale(Ranch, 2.45, 2.5, ydr+pad, wave_polys)
         # Normalize
         Ranch /= np.nansum(Ranch)
 
@@ -332,7 +340,7 @@ def construct_order1(clear, F277, ycens, subarray, pad=0, verbose=0):
                                   pad=pad, verbose=verbose, smooth=True,
                                   **{'text': 'Red anchor'})
         # Rescale to remove chromatic effects.
-        Ranch = _chromescale(Ranch, 2.9, 2.5, ydr+pad, wave_poly)
+        Ranch = _chromescale(Ranch, 2.9, 2.5, ydr+pad, wave_polys)
         # Normalize
         Ranch /= np.nansum(Ranch)
         # Interpolation polynomial coeffs, calculated via calc_interp_coefs
@@ -367,7 +375,7 @@ def construct_order1(clear, F277, ycens, subarray, pad=0, verbose=0):
         # Construct the interpolated profile.
         prof_int = (wb_i * Banch_i + wr_i * Ranch_i)
         # Re-add the lambda/D scaling.
-        prof_int_cs = _chromescale(prof_int, 2.5, lbd, ceny+pad, wave_poly)
+        prof_int_cs = _chromescale(prof_int, 2.5, lbd, ceny+pad, wave_polys)
         # Put the interpolated profile on the detector.
         map2D[:, cenx] = prof_int_cs
 
@@ -598,24 +606,33 @@ def _fit_trace_widths(clear, wave_coefs, verbose=0):
     # Only fit the trace widths up to the blue anchor (2.1µm) where
     # contamination from the second order begins to be a problem.
     end = np.where(wax < 2.1)[0][0]
-    fit_waves = np.array(wax[end:])
-    fit_widths = np.array(trace_widths[end:])
-
+    fit_waves_b = np.array(wax[end:])
+    fit_widths_b = np.array(trace_widths[end:])
     # Reject clear outliers (>5sigma)
-    pp = np.polyfit(fit_waves, fit_widths, 1)
-    stddev = np.median(np.sqrt((fit_widths - np.polyval(pp, fit_waves))**2))
-    inds = np.where(np.abs(fit_widths - np.polyval(pp, fit_waves)) < 5*stddev)
-
+    pp_b = np.polyfit(fit_waves_b, fit_widths_b, 1)
+    stddev = np.median(np.sqrt((fit_widths_b - np.polyval(pp_b, fit_waves_b))**2))
+    inds = np.where(np.abs(fit_widths_b - np.polyval(pp_b, fit_waves_b)) < 5*stddev)
     # Robustly fit a straight line.
-    pp = np.polyfit(fit_waves[inds], fit_widths[inds], 1)
-    width_fit = _robust_polyfit(fit_waves[inds], fit_widths[inds], pp)
+    pp_b = np.polyfit(fit_waves_b[inds], fit_widths_b[inds], 1)
+    width_fit_b = _robust_polyfit(fit_waves_b[inds], fit_widths_b[inds], pp_b)
+
+    # Seperate fit to contaminated region.
+    fit_waves_r = np.array(wax[:(end+10)])
+    fit_widths_r = np.array(trace_widths[:(end+10)])
+    # Reject clear outliers (>5sigma)
+    pp_r = np.polyfit(fit_waves_r, fit_widths_r, 1)
+    stddev = np.median(np.sqrt((fit_widths_r - np.polyval(pp_r, fit_waves_r))**2))
+    inds = np.where(np.abs(fit_widths_r - np.polyval(pp_r, fit_waves_r)) < 5*stddev)
+    # Robustly fit a straight line.
+    pp_r = np.polyfit(fit_waves_r[inds], fit_widths_r[inds], 1)
+    width_fit_r = _robust_polyfit(fit_waves_r[inds], fit_widths_r[inds], pp_r)
 
     # Plot the width calibration fit if required.
     if verbose == 3:
-        plotting._plot_width_cal(wax, trace_widths, fit_waves[inds],
-                                 fit_widths[inds], width_fit)
+        plotting._plot_width_cal(wax, trace_widths, (fit_waves_b, fit_waves_r),
+                                 (width_fit_b, width_fit_r))
 
-    return width_fit
+    return width_fit_r, width_fit_b
 
 
 def oversample_frame(frame, oversample=1):
