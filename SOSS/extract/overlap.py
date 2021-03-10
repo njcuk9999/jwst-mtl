@@ -1226,30 +1226,39 @@ class _BaseOverlap:
 
         return model
 
-    def get_logl(self, f_k=None, same=False):
-        """
-        Return the log likelihood computed on each pixels.
+    def compute_likelihood(self, flux=None, same=False):
+        """Return the log likelihood asssociated with a particular spectrum.
 
-        Parameters
-        ----------
-        f_k: array-like, optional
-            Flux projected on the wavelength grid. If not specified,
-            it will be computed using `extract` method.
-        same: bool, optional
-            Do not recompute, b_n when calling `rebuild` method.
-            Take the last b_n computed.
-            Useful to speed up code. Default is False.
+        :param flux: flux as a function of wavelength if callable
+            or array of flux values corresponding to self.wave_grid.
+            If not given it will be computed by calling self.extract().
+        :param same: If True, do not recompute the pixel_mapping matrix (b_n)
+            and instead use the most recent pixel_mapping to speed up the computation.
+            Default is False.
+
+        :type flux: array-like
+        :type same: bool
+
+        :return: logl - The log-likelihood of the spectrum.
+        :rtype: array[float]
+
         """
 
+        # If no spectrum given compute it.
+        if flux is None:
+            flux = self.extract()
+
+        # Evaluate the model image for the spectrum.
+        model = self.rebuild(flux, same=same)
+
+        # Get data and error attributes.
         data = self.data
         error = self.error
 
-        if f_k is None:
-            f_k = self.extract()
+        # Compute the log-likelihood for the spectrum.
+        logl = -np.nansum((model - data)**2/error**2)
 
-        model = self.rebuild(f_k, same=same)
-
-        return -np.nansum((model - data)**2/error**2)
+        return logl
 
     @staticmethod
     def _solve(matrix, result, index=slice(None)):
