@@ -2005,7 +2005,7 @@ class TrpzBox(TrpzOverlap):
         # Init
         super().__init__([aperture], [wave_map], [throughput], [kernel],
                          mask=mask, orders=[order],
-                         wave_grid=wave_grid, thresh=0., **kwargs)
+                         wave_grid=wave_grid, threshold=0., **kwargs)
 
     @staticmethod
     def get_trace_center(aperture):
