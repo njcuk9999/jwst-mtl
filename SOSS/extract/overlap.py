@@ -566,7 +566,9 @@ class _BaseOverlap:
         attrs = ['wave_map', 'aperture']
         wave_map, aperture = self.get_attributes(*attrs, i_order=i_order)
 
-        return _grid_from_map(wave_map, aperture, out_col=True)
+        wave_grid, icol = _grid_from_map(wave_map, aperture, out_col=True)
+
+        return wave_grid, icol
 
     def get_adapt_grid(self, f_k=None, n_max=3, **kwargs):
         """
@@ -646,8 +648,10 @@ class _BaseOverlap:
         # Convert os_grid to 1D array
         os_grid = np.concatenate(os_grid)
 
-        # Return sorted and unique
-        return np.unique(os_grid)
+        # Return sorted and unique.
+        wave_grid = np.unique(os_grid)
+
+        return wave_grid
 
     def estimate_noise(self, i_order=0, data=None, error=None, mask=None):
         """
