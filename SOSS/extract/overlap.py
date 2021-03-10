@@ -155,48 +155,36 @@ class _BaseOverlap:
         # Save basic parameters
         ###########################
 
-        self.i_grid = None
-        self.tikho = None
-        self.tikho_mat = None
-
-        # Number of orders
-        self.n_orders = len(wave_map)
-
-        # Orders
-        self.orders = orders
-
-        # Raise error if the number of orders is not consitent
-        if self.n_orders != len(orders):
-            raise ValueError(" Please specify `orders` argument.")
-
-        # Shape of the detector used
-        # (the wavelength map should have the same shape)
+        # Spectral orders and number of orders.
         self.data_shape = wave_map[0].shape
-
-        # Threshold to build mask
-        self.thresh = threshold
-
-        # Verbose option
+        self.orders = orders
+        self.n_orders = len(orders)
+        self.threshold = threshold
         self.verbose = verbose
 
-        # Error map of each pixels
-        if error is None:
-            # Ones with the detector shape
-            self.error = np.ones(self.data_shape)
-        else:
-            self.error = error.copy()
+        # Raise error if the number of orders is not consistent.
+        if self.n_orders != len(wave_map):
+            msg = ("The number of orders specified {} and the number of "
+                   "wavelength maps provided {} do not match.")
+            raise ValueError(msg.format(self.n_orders, len(wave_map)))
 
-        # Save PSF for each orders
-        self.aperture = None
+        # Detector image.
+        self.data = np.full(self.data_shape, fill_value=np.nan)
+
+        # Error map of each pixels.
+        self.error = np.ones(self.data_shape)
+
+        # Set all reference file quantities to None.
         self.wave_map = None
+        self.aperture = None
         self.throughput = None
         self.kernels = None
+
+        # Set the wavelength map and aperture for each order.
+        self.update_wave_map(wave_map)
         self.update_aperture(aperture)
 
-        # Save pixel wavelength for each orders.
-        self.update_wave_map(wave_map)
-
-        # Generate wave_grid if not given
+        # Generate a wavelength grid if none was provided. TODO Requires self.aperture self.wave_map
         if wave_grid is None:
 
             if self.n_orders == 2:  # TODO should this be mandatory input.
@@ -209,7 +197,7 @@ class _BaseOverlap:
         self.n_wavepoints = len(wave_grid)
 
         # Set the throughput for each order.
-        self.update_throughput(throughput)
+        self.update_throughput(throughput)  # TODO requires self.wave_grid
 
         ###################################
         # Build detector mask
@@ -234,7 +222,7 @@ class _BaseOverlap:
         ####################################
         # Build convolution matrix
         ####################################
-        self.update_kernels(kernels, c_kwargs)
+        self.update_kernels(kernels, c_kwargs)  # TODO requires self.wave_grid self.i_bounds
 
         #############################
         # Compute integration weights
@@ -251,8 +239,12 @@ class _BaseOverlap:
         # Set masked values to zero. TODO may not be necessary.
         self.data[self.mask] = 0
 
-        # Init the pixel mapping transformation. A matrix that transforms the 1D spectrum to a the image pixels.
+        # Init the pixel mapping (b_n) matrices. Matrices that transforms the 1D spectrum to a the image pixels.
         self.pixel_mapping = [None for _ in range(self.n_orders)]
+        self.i_grid = None
+        self.tikho = None
+        self.tikho_mat = None
+        self.w_t_wave_c = [[] for _ in range(self.n_orders)]  # TODO make dict with order number as key.
 
         return
 
@@ -525,21 +517,11 @@ class _BaseOverlap:
 
         return weights, weights_k_idx
 
-    def _save_w_t_wave_c(self, i_order, product):
+    def _set_w_t_wave_c(self, i_order, product):  # TODO better name? prod_mat tmp_mat, intermediate_mat?
         """
         Save the matrix product of the weighs (w), the throughput (t),
         the wavelength (lam) and the convolution matrix for faster computation.
         """
-
-        # Get needed attributes
-        n_orders = self.n_orders
-
-        # Check if attribute exists
-        try:  # TODO Change existence check.
-            self.w_t_wave_c
-        except AttributeError:
-            # Init w_t_wave_c.
-            self.w_t_wave_c = [[] for _ in range(n_orders)]
 
         # Assign value
         self.w_t_wave_c[i_order] = product.copy()
@@ -821,7 +803,7 @@ class _BaseOverlap:
             product = weights_n.dot(product)
 
             # Save this product for quick mode
-            self._save_w_t_wave_c(i_order, product)
+            self._set_w_t_wave_c(i_order, product)
 
             # Then spatial profile
             pixel_mapping = diags(aperture_n).dot(product)
