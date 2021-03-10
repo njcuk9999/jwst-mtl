@@ -1,7 +1,8 @@
 import numpy as np
+# TODO Merge all this into utils.py?
 
 
-def is_sorted(x, no_dup=True):
+def is_sorted(x, no_dup=True):  # TODO unused, remove?
     """
     Check if x is sorted and has noo duplicates (if no_dup is True).
     Returns True of False.
@@ -12,7 +13,7 @@ def is_sorted(x, no_dup=True):
         return (np.diff(x) >= 0).all()
 
 
-def fill_list(x, fill_value=np.nan, **kwargs):
+def fill_list(x, fill_value=np.nan, **kwargs):  # TODO unused, remove?
     """
     Fill a list `x` (N, non-constant M)
     to make an array (N, M) with it.
@@ -29,7 +30,7 @@ def fill_list(x, fill_value=np.nan, **kwargs):
     return out
 
 
-def first_change(cond, axis=None):
+def first_change(cond, axis=None):  # TODO unused, remove?
     """
     Returns the position before the first change
     in array value, along axis. If no change is found,
@@ -41,7 +42,7 @@ def first_change(cond, axis=None):
     return np.where(cond)
 
 
-def vrange(*args, return_where=False, dtype=None):
+def vrange(*args, return_where=False, dtype=None):  # TODO remove use of args...
     """
     Create concatenated ranges of integers for multiple start/stop
 
@@ -89,7 +90,7 @@ def vrange(*args, return_where=False, dtype=None):
         return _vrange(starts, stops, dtype)
 
 
-def _vrange(starts, stops, dtype=None):
+def _vrange(starts, stops, dtype=None):  # TODO Merge with vrange?
     """
     Taken from a forum.
     Create concatenated ranges of integers for multiple start/stop
@@ -111,13 +112,13 @@ def _vrange(starts, stops, dtype=None):
     """
     if (dtype == int) or (dtype is None):
         stops = np.asarray(stops, dtype=dtype)
-        l = (stops - starts).astype(int)  # Lengths of each range.
-        return np.repeat(stops - l.cumsum(), l) + np.arange(l.sum())
+        lengths = (stops - starts).astype(int)  # Lengths of each range.
+        return np.repeat(stops - lengths.cumsum(), lengths) + np.arange(lengths.sum())
     else:
         return NotImplemented
 
 
-def arange_2d(*args, dtype=None, return_mask=False):
+def arange_2d(*args, dtype=None, return_mask=False):  # TODO remove use of args...
     """
     Equivalent of numpy.arange, but in 2d.
 
