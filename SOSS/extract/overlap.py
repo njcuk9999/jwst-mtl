@@ -316,7 +316,7 @@ class _BaseOverlap:
         """Update the throughput values."""
 
         # Update the throughput values.
-        throughput_new = []  # TODO TODO make dict with order number as key.
+        throughput_new = []  # TODO make dict with order number as key.
         for throughput_n in throughput:  # Loop over orders.
 
             if callable(throughput_n):
@@ -366,9 +366,9 @@ class _BaseOverlap:
         """Mask according to wavelength grid """
 
         wave = self.wave_map[i_order]
-        a, b = self.i_bounds[i_order]
-        wave_min = self.wave_grid[a]
-        wave_max = self.wave_grid[b-1]
+        imin, imax = self.i_bounds[i_order]
+        wave_min = self.wave_grid[imin]
+        wave_max = self.wave_grid[imax - 1]  # TODO chnage so -1 not needed?
 
         mask = (wave <= wave_min) | (wave >= wave_max)
 
