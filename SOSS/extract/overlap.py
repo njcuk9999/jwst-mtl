@@ -1042,7 +1042,7 @@ class _BaseOverlap:
             # Init f_k with nan, so it has the adequate shape
             f_k = np.ones(result.shape[-1]) * np.nan
             f_k[i_grid] = sln  # Assign valid values
-            logl_list.append(self.get_logl(f_k, same=same))  # log_l
+            logl_list.append(self.compute_likelihood(f_k, same=same))  # log_l
             same = True
 
         # Save in tikho's tests
