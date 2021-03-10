@@ -92,7 +92,7 @@ class _BaseOverlap:
     These depends of the type of interpolation used.
     """
     def __init__(self, aperture, wave_map, throughput, kernels,
-                 data=None, error=None, mask=None, orders=None,
+                 orders=None, global_mask=None,
                  wave_grid=None, wave_bounds=None, n_os=2,
                  threshold=1e-5, c_kwargs=None,
                  verbose=False):
@@ -122,12 +122,8 @@ class _BaseOverlap:
             If sparse, the shape has to be (N_k_c, N_k) and it will
             be used directly. N_ker is the length of the effective kernel
             and N_k_c is the length of f_k convolved.
-        data : (N, M) array_like, optional
-            A 2-D array of real values representing the detector image.
-        error : (N, M) array_like, optional
-            Estimate of the error on each pixel. Default is one everywhere.
-        mask : (N, M) array_like boolean, optional
-            Boolean Mask of the bad pixels on the detector.
+        global_mask : (N, M) array_like boolean, optional
+            Boolean Mask of the detector pixels to mask for every extraction.
         orders: list, optional:
             List of orders considered. Default is orders = [1, 2]
         wave_grid : (N_k) array_like, optional
@@ -223,13 +219,13 @@ class _BaseOverlap:
         self.i_bounds = [[0, len(wave_grid)] for _ in range(self.n_orders)]  # TODO double check how the i_bounds and mask interact.
 
         # First estimate of a global mask and masks for each orders
-        self.mask, self.mask_ord = self._get_masks(mask)
+        self.mask, self.mask_ord = self._get_masks(global_mask)
 
         # Correct i_bounds if it was not specified
         self.i_bounds = self._get_i_bnds(wave_bounds)
 
         # Re-build global mask and masks for each orders
-        self.mask, self.mask_ord = self._get_masks(mask)
+        self.mask, self.mask_ord = self._get_masks(global_mask)
 
         # Save mask here as the general mask,
         # since `mask` attribute can be changed.
@@ -251,13 +247,6 @@ class _BaseOverlap:
         #########################
         # Save remaining inputs
         #########################
-
-        # Detector image
-        if data is None:
-            # Create a dummy detector image.
-            self.data = np.full(self.data_shape, fill_value=np.nan)
-        else:
-            self.data = data.copy()
 
         # Set masked values to zero. TODO may not be necessary.
         self.data[self.mask] = 0
