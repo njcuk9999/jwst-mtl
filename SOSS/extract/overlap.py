@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-
+# TODO rename to soss_extract.py or soss_engine.py?
 # General imports
 import numpy as np
 from scipy.sparse import find, issparse, csr_matrix, diags
@@ -19,7 +19,7 @@ from .regularisation import Tikhonov, tikho_solve, get_nyquist_matrix
 import matplotlib.pyplot as plt
 
 
-def sparse_k(val, k, n_k):
+def sparse_k(val, k, n_k):  # TODO Move to utils.py
     """
     Transform a 2D array `val` to a sparse matrix.
     `k` is use for the position in the second axis
@@ -44,7 +44,7 @@ def sparse_k(val, k, n_k):
     return mat
 
 
-def unsparse(matrix, fill_value=np.nan):
+def unsparse(matrix, fill_value=np.nan):  # TODO Move to utils.py
     """
     Convert a sparse matrix to a 2D array of values and a 2D array of position.
 
@@ -76,7 +76,7 @@ def unsparse(matrix, fill_value=np.nan):
     return out, col_out
 
 
-class _BaseOverlap:
+class _BaseOverlap:  # TODO Merge with TrpzOverlap?
     """
     Base class for overlaping extraction of the form:
     (B_T * B) * f = (data/sig)_T * B
@@ -111,7 +111,7 @@ class _BaseOverlap:
             If callable, the functions depend on the wavelength.
             If array, projected on `wave_grid`.
         kernels : array, callable or sparse matrix
-            Convolution kernel to be applied on f_k for each orders.
+            Convolution kernel to be applied on the spectrum (f_k) for each orders.
             Can be array of the shape (N_ker, N_k_c).
             Can be a callable with the form f(x, x0) where x0 is
             the position of the center of the kernel. In this case, it must
@@ -121,7 +121,7 @@ class _BaseOverlap:
             and the `c_kwargs` can be passed to this function.
             If sparse, the shape has to be (N_k_c, N_k) and it will
             be used directly. N_ker is the length of the effective kernel
-            and N_k_c is the length of f_k convolved.
+            and N_k_c is the length of the spectrum (f_k) convolved.
         global_mask : (N, M) array_like boolean, optional
             Boolean Mask of the detector pixels to mask for every extraction.
         orders: list, optional:
@@ -541,14 +541,14 @@ class _BaseOverlap:
 
         return wave_grid, icol
 
-    def get_adapt_grid(self, f_k=None, n_max=3, **kwargs):
+    def get_adapt_grid(self, spectrum=None, n_max=3, **kwargs):
         """
         Return an irregular grid needed to reach a
         given precision when integrating over each pixels.
 
         Parameters (all optional)
         ----------
-        f_k: 1D array-like
+        spectrum (f_k): 1D array-like
             Input flux in the integral to be optimized.
             f_k is the projection of the flux on self.wave_grid
         n_max: int (n_max > 0)
@@ -576,9 +576,9 @@ class _BaseOverlap:
         [1] 'Romberg's method' https://en.wikipedia.org/wiki/Romberg%27s_method
 
         """
-        # Generate f_k if not given
-        if f_k is None:
-            f_k = self.extract()
+        # Generate the spectrum (f_k) if not given.
+        if spectrum is None:
+            spectrum = self.extract()
 
         # Init output oversampled grid
         os_grid = []
@@ -590,9 +590,9 @@ class _BaseOverlap:
             grid_ord = self.wave_grid_c(i_order)
 
             # Estimate the flux at this order
-            f_k_c = self.kernels[i_order].dot(f_k)
+            convolved_spectrum = self.kernels[i_order].dot(spectrum)
             # Interpolate with a cubic spline
-            fct = interp1d(grid_ord, f_k_c, kind='cubic')
+            fct = interp1d(grid_ord, convolved_spectrum, kind='cubic')
 
             # Find number of nodes to reach the precision
             n_oversample = get_n_nodes(grid_ord, fct, **kwargs)
@@ -1039,10 +1039,10 @@ class _BaseOverlap:
         same = False
         for sln in tests['solution']:
 
-            # Init f_k with nan, so it has the adequate shape
-            f_k = np.ones(result.shape[-1]) * np.nan
-            f_k[i_grid] = sln  # Assign valid values
-            logl_list.append(self.compute_likelihood(f_k, same=same))  # log_l
+            # Init the spectrum (f_k) with nan, so it has the adequate shape
+            spectrum = np.ones(result.shape[-1]) * np.nan
+            spectrum[i_grid] = sln  # Assign valid values
+            logl_list.append(self.compute_likelihood(spectrum, same=same))  # log_l
             same = True
 
         # Save in tikho's tests
@@ -1156,10 +1156,10 @@ class _BaseOverlap:
         # Return scale factor minimizing the logL
         return min_fac
 
-    def rebuild(self, flux, i_orders=None, same=False):
+    def rebuild(self, spectrum=None, i_orders=None, same=False):  # TODO make flux optional? Call extract if None.
         """Build current model image of the detector.
 
-        :param flux: flux as a function of wavelength if callable
+        :param spectrum: flux as a function of wavelength if callable
             or array of flux values corresponding to self.wave_grid.
         :param i_orders: Indices of orders to model. Default is
             all available orders.
@@ -1167,7 +1167,7 @@ class _BaseOverlap:
             and instead use the most recent pixel_mapping to speed up the computation.
             Default is False.
 
-        :type flux: callable or array-like
+        :type spectrum: callable or array-like
         :type i_orders: List[int]
         :type same: bool
 
@@ -1175,9 +1175,13 @@ class _BaseOverlap:
         :rtype: array[float]
         """
 
+        # If no spectrum given compute it.
+        if spectrum is None:
+            spectrum = self.extract()
+
         # If flux is callable, evaluate on the wavelength grid.
-        if callable(flux):
-            flux = flux(self.wave_grid)
+        if callable(spectrum):
+            spectrum = spectrum(self.wave_grid)
 
         # Iterate over all orders by default.
         if i_orders is None:
@@ -1189,25 +1193,26 @@ class _BaseOverlap:
         # Evaluate the detector model.
         model = np.full(self.data_shape, fill_value=np.nan)
         for i_order in i_orders:
+
             # Compute the pixel mapping matrix (b_n) for the current order.
             pixel_mapping = self.get_pixel_mapping(i_order, error=False, same=same)
 
             # Evaluate the model of the current order.
-            model[~mask] += pixel_mapping.dot(flux)
+            model[~mask] += pixel_mapping.dot(spectrum)
 
         return model
 
-    def compute_likelihood(self, flux=None, same=False):
+    def compute_likelihood(self, spectrum=None, same=False):
         """Return the log likelihood asssociated with a particular spectrum.
 
-        :param flux: flux as a function of wavelength if callable
+        :param spectrum: flux as a function of wavelength if callable
             or array of flux values corresponding to self.wave_grid.
             If not given it will be computed by calling self.extract().
         :param same: If True, do not recompute the pixel_mapping matrix (b_n)
             and instead use the most recent pixel_mapping to speed up the computation.
             Default is False.
 
-        :type flux: array-like
+        :type spectrum: array-like
         :type same: bool
 
         :return: logl - The log-likelihood of the spectrum.
@@ -1216,11 +1221,11 @@ class _BaseOverlap:
         """
 
         # If no spectrum given compute it.
-        if flux is None:
-            flux = self.extract()
+        if spectrum is None:
+            spectrum = self.extract()
 
         # Evaluate the model image for the spectrum.
-        model = self.rebuild(flux, same=same)
+        model = self.rebuild(spectrum, same=same)
 
         # Get data and error attributes.
         data = self.data
@@ -1286,7 +1291,7 @@ class _BaseOverlap:
 
         Returns
         -----
-        f_k: solution of the linear system
+        spectrum (f_k): solution of the linear system
         """
 
         # Build the system to solve
@@ -1296,8 +1301,8 @@ class _BaseOverlap:
         # `wave_grid` may cover more then the pixels.
         i_grid = self.get_i_grid(result)
 
-        # Init f_k with nan
-        f_k = np.ones(result.shape[-1]) * np.nan
+        # Init spectrum with NaNs.
+        spectrum = np.ones(result.shape[-1]) * np.nan
 
         # Solve with the specified solver.
         # Only solve for valid range `i_grid` (on the detector).
@@ -1317,12 +1322,12 @@ class _BaseOverlap:
                 tikho_kwargs = {}
 
             tikho_kwargs = {**default_kwargs, **tikho_kwargs}
-            f_k[i_grid] = self._solve_tikho(matrix, result, **tikho_kwargs)
+            spectrum[i_grid] = self._solve_tikho(matrix, result, **tikho_kwargs)
 
         else:
-            f_k[i_grid] = self._solve(matrix, result, index=i_grid)
+            spectrum[i_grid] = self._solve(matrix, result, index=i_grid)
 
-        return f_k
+        return spectrum
 
     def __call__(self, **kwargs):
         """
@@ -1361,16 +1366,16 @@ class _BaseOverlap:
 
         Returns
         -----
-        f_k: solution of the linear system
+        spectrum (f_k): solution of the linear system
         """
 
         return self.extract(**kwargs)
 
-    def bin_to_pixel(self, i_order=0, grid_pix=None, grid_f_k=None, f_k_c=None,
-                     f_k=None, bounds_error=False, throughput=None, **kwargs):
+    def bin_to_pixel(self, i_order=0, grid_pix=None, grid_f_k=None, convolved_spectrum=None,
+                     spectrum=None, bounds_error=False, throughput=None, **kwargs):
         """
-        Integrate f_k_c over a pixel grid using the trapezoidal rule.
-        f_k_c is interpolated using scipy.interpolate.interp1d and the
+        Integrate the convolved_spectrum (f_k_c) over a pixel grid using the trapezoidal rule.
+        The concoled spectrum (f_k_c) is interpolated using scipy.interpolate.interp1d and the
         kwargs and bounds_error are passed to interp1d.
         i_order: int, optional
             index of the order to be integrated, default is 0, so
@@ -1383,14 +1388,14 @@ class _BaseOverlap:
         grid_f_k: 1d array, optional
             grid on which the convolved flux is projected.
             Default is the wavelength grid for `i_order`.
-        f_k_c: 1d array, optional
-            Convolved flux to be integrated. If not given, `f_k`
+        convolved_spectrum (f_k_c): 1d array, optional
+            Convolved flux to be integrated. If not given, `spectrum`
             will be used (and convolved to `i_order` resolution)
-        f_k: 1d array, optional
+        spectrum (f_k): 1d array, optional
             non-convolved flux (result of the `extract` method).
-            Not used if `f_k_c` is specified.
+            Not used if `convolved_spectrum` is specified.
         bounds_error and kwargs:
-            passed to interp1d function to interpolate f_k_c.
+            passed to interp1d function to interpolate the convolved_spectrum.
         throughput: callable, optional
             Spectral throughput for a given order (ì_ord).
             Default is given by the list of throughput saved as
@@ -1403,13 +1408,13 @@ class _BaseOverlap:
             grid_f_k = self.wave_grid_c(i_order)
 
         # ... for the convolved flux ...
-        if f_k_c is None:
-            # Use f_k if f_k_c not given
-            if f_k is None:
-                raise ValueError("`f_k` or `f_k_c` must be specified.")
+        if convolved_spectrum is None:
+            # Use the spectrum (f_k) if the convolved_spectrum (f_k_c) not given.
+            if spectrum is None:
+                raise ValueError("`spectrum` or `convolved_spectrum` must be specified.")
             else:
-                # Convolve f_k
-                f_k_c = self.kernels[i_order].dot(f_k)
+                # Convolve the spectrum (f_k).
+                convolved_spectrum = self.kernels[i_order].dot(spectrum)
 
         # ... and for the pixel bins
         if grid_pix is None:
@@ -1446,11 +1451,11 @@ class _BaseOverlap:
             throughput = interp1d(x, y)
 
         # Apply throughput on flux
-        f_k_c = f_k_c * throughput(grid_f_k)
+        convolved_spectrum = convolved_spectrum * throughput(grid_f_k)
 
         # Interpolate
         kwargs['bounds_error'] = bounds_error
-        fct_f_k = interp1d(grid_f_k, f_k_c, **kwargs)
+        fct_f_k = interp1d(grid_f_k, convolved_spectrum, **kwargs)
 
         # Intergrate over each bins
         bin_val = []
@@ -1510,13 +1515,13 @@ class _BaseOverlap:
 
         return fig, ax
 
-    def plot_sln(self, f_k, fig=None, ax=None, i_order=0,
+    def plot_sln(self, spectrum, fig=None, ax=None, i_order=0,
                  ylabel='Flux', xlabel=r'Wavelength [$\mu$m]', **kwargs):
         """Plot extracted spectrum
 
         Parameters
         ----------
-        f_k: array-like
+        spectrum (f_k): array-like
             Flux projected on the wavelength grid
         fig: matplotlib figure, optional
             Figure to use for plot
@@ -1543,7 +1548,7 @@ class _BaseOverlap:
 
         # Set values to plot
         x = self.wave_grid_c(i_order)
-        y = self.kernels[i_order].dot(f_k)
+        y = self.kernels[i_order].dot(spectrum)
 
         # Plot
         ax.plot(x, y, **kwargs)
@@ -1552,14 +1557,14 @@ class _BaseOverlap:
 
         return fig, ax
 
-    def plot_err(self, f_k, f_th_ord, fig=None, ax=None,
+    def plot_err(self, spectrum, f_th_ord, fig=None, ax=None,
                  i_order=0, error='relative', ylabel='Error',
                  xlabel=r'Wavelength [$\mu$m]', **kwargs):
         """Plot error on extracted spectrum
 
         Parameters
         ----------
-        f_k: array-like
+        spectrum (f_k): array-like
             Flux projected on the wavelength grid
         f_th_ord: array-like
             Injected flux projected on the wavelength grid
@@ -1593,14 +1598,14 @@ class _BaseOverlap:
 
         # Set values to plot
         x = self.wave_grid_c(i_order)
-        f_k_c = self.kernels[i_order].dot(f_k)
+        convolved_spectrum = self.kernels[i_order].dot(spectrum)
 
         if error == 'relative':
-            y = (f_k_c - f_th_ord) / f_th_ord
+            y = (convolved_spectrum - f_th_ord) / f_th_ord
         elif error == 'absolute':
-            y = f_k_c - f_th_ord
+            y = convolved_spectrum - f_th_ord
         elif error == 'to_noise':
-            y = (f_k_c - f_th_ord) / np.sqrt(f_th_ord)
+            y = (convolved_spectrum - f_th_ord) / np.sqrt(f_th_ord)
         else:
             raise ValueError('`error` argument is not valid.')
 
@@ -1615,7 +1620,7 @@ class _BaseOverlap:
         return fig, ax
 
 
-class TrpzOverlap(_BaseOverlap):
+class TrpzOverlap(_BaseOverlap):  # TODO Merge with _BaseOverlap, rename SOSSExtract or SOSSEngine?
     """
     Version of overlaping extraction with oversampled trapezoidal integration
     overlaping extraction solve the equation of the form:
@@ -1645,7 +1650,7 @@ class TrpzOverlap(_BaseOverlap):
             If callable, the functions depend on the wavelength.
             If array, projected on `wave_grid`.
         kernels : array, callable or sparse matrix
-            Convolution kernel to be applied on f_k for each orders.
+            Convolution kernel to be applied on spectrum (f_k) for each orders.
             Can be array of the shape (N_ker, N_k_c).
             Can be a callable with the form f(x, x0) where x0 is
             the position of the center of the kernel. In this case, it must
@@ -1655,7 +1660,7 @@ class TrpzOverlap(_BaseOverlap):
             and the `c_kwargs` can be passed to this function.
             If sparse, the shape has to be (N_k_c, N_k) and it will
             be used directly. N_ker is the length of the effective kernel
-            and N_k_c is the length of f_k convolved.
+            and N_k_c is the length of the spectrum (f_k) convolved.
         data : (N, M) array_like, optional
             A 2-D array of real values representing the detector image.
         error : (N, M) array_like, optional
