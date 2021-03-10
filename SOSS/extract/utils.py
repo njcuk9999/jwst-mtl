@@ -1,6 +1,15 @@
 import numpy as np
-from scipy.integrate.quadrature import AccuracyWarning, _romberg_diff
+from scipy.integrate.quadrature import AccuracyWarning
 from warnings import warn
+
+
+def _romberg_diff(b, c, k):
+    """
+    Compute the differences for the Romberg quadrature corrections.
+    See Forman Acton's "Real Computing Made Real," p 143.
+    """
+    tmp = 4.0**k
+    return (tmp * c - b)/(tmp - 1.0)
 
 
 def get_wave_p_or_m(lam):
