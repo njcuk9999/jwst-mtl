@@ -39,7 +39,9 @@ def sparse_k(val, k, n_k):
     col = k[k >= 0]
     data = val[k >= 0]
 
-    return csr_matrix((data, (row, col)), shape=(n_i, n_k))
+    mat = csr_matrix((data, (row, col)), shape=(n_i, n_k))
+
+    return mat
 
 
 def unsparse(matrix, fill_value=np.nan):
