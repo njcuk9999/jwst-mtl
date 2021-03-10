@@ -472,26 +472,25 @@ class _BaseOverlap:
         return i_bnds_new
 
     def update_i_bnds(self):
-        """
-        Update the grid limits to extract
+        """Update the grid limits for the extraction.
         Needs to be done after modification of the mask
         """
 
-        # Get old and new boundaries
+        # Get old and new boundaries.
         i_bnds_old = self.i_bounds
         i_bnds_new = self._get_i_bnds()
 
         for i_order in range(self.n_orders):
 
-            # Take most restrictive lower bound
+            # Take most restrictive lower bound.
             low_bnds = [i_bnds_new[i_order][0], i_bnds_old[i_order][0]]
             i_bnds_new[i_order][0] = np.max(low_bnds)
 
-            # Take most restrictive upper bound
+            # Take most restrictive upper bound.
             up_bnds = [i_bnds_new[i_order][1], i_bnds_old[i_order][1]]
             i_bnds_new[i_order][1] = np.min(up_bnds)
 
-        # Update attribute
+        # Update attribute.
         self.i_bounds = i_bnds_new
 
         return
