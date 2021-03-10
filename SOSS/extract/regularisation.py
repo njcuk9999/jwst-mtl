@@ -1,10 +1,17 @@
-import matplotlib.pyplot as plt
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+# General imports.
 import numpy as np
 from scipy.sparse import diags, identity
 from scipy.sparse.linalg import spsolve
-# Local imports
-from .utils import grid_from_map, oversample_grid
+
+# Local imports.
+from .utils import grid_from_map
 from .convolution import get_c_matrix, WebbKer, NyquistKer
+
+# Plotting.
+import matplotlib.pyplot as plt
 
 
 def finite_diff(x):
@@ -39,6 +46,7 @@ def finite_second_d(grid):
         f" = second_d.dot(f), where f is a function
         projected on `grid`.
     """
+
     # Finite difference operator
     d_matrix = finite_diff(grid)
 
@@ -50,6 +58,7 @@ def finite_second_d(grid):
 
     # Second derivative operator
     second_d = finite_diff(grid[:-1]).dot(first_d)
+
     # don't forget the delta labda
     second_d = diags(1./d_grid[:-1]).dot(second_d)
 
@@ -70,6 +79,7 @@ def finite_first_d(grid):
         f' = first_d.dot(f), where f is a function
         projected on `grid`.
     """
+
     # Finite difference operator
     d_matrix = finite_diff(grid)
 
@@ -187,9 +197,11 @@ class TikhoConvMatrix:
         # of wv_map (generally order 2).
         wv_range = [grid.min(), grid.max()]
         wv_map = grid_from_map(wv_map, psf, wv_range=wv_range, n_os=n_os)
+
         # Build convolution matrix
         conv_ord2 = get_c_matrix(WebbKer(wv_map[None, :]),
                                  grid, thresh=thresh)
+
         # Build tikhonov matrix
         t_mat = conv_ord2 - identity(conv_ord2.shape[0])
 
@@ -238,7 +250,7 @@ def tikho_solve(a_mat, b_vec, t_mat=None, grid=None,
     index: indexable, optional
         index of the valid row of the b_vec.
 
-    Output
+    Returns
     ------
     Solution of the system (1d array)
     """
@@ -280,19 +292,16 @@ class Tikhonov:
         index: indexable, optional
             index of the valid row of the b_vec.
         """
-        # Take the identity matrix as default (zeroth derivative)
-        if t_mat is None:
-            t_mat = 'zeroth'
 
         # b_vec will be passed to default_mat functions
         # if grid not given.
-        if grid is None and t_mat is 'zeroth':
+        if grid is None and t_mat is None:
             grid = b_vec
 
         # If string, search in the default Tikhonov matrix
-        if isinstance(t_mat, str):
-            self.type = t_mat
-            t_mat = self.default_mat[t_mat](grid)
+        if t_mat is None:
+            self.type = 'zeroth'
+            t_mat = self.default_mat['zeroth'](grid)
         elif callable(t_mat):
             t_mat = t_mat(grid)
             self.type = 'custom'
@@ -308,6 +317,17 @@ class Tikhonov:
         self.t_mat = t_mat[index, :][:, index]
         self.index = index
         self.verbose = verbose
+        self.test = None
+
+        return
+
+    def verbose_print(self, *args, **kwargs):
+        """Print if verbose is True. Same as `print` function."""
+
+        if self.verbose:
+            print(*args, **kwargs)
+
+        return
 
     def solve(self, factor=1.0, estimate=None):
         """
@@ -322,14 +342,13 @@ class Tikhonov:
         estimate: vector-like object (1d)
             Estimate oof the solution of the system.
 
-        Output
+        Returns
         ------
         Solution of the system (1d array)
         """
         # Get needed attributes
         a_mat = self.a_mat
         b_vec = self.b_vec
-        t_mat = self.t_mat
         index = self.index
 
         # Matrix gamma (with scale factor)
@@ -339,6 +358,7 @@ class Tikhonov:
         gamma_2 = (gamma.T).dot(gamma)  # Gamma square
         matrix = a_mat.T.dot(a_mat) + gamma_2
         result = (a_mat.T).dot(b_vec.T)
+
         # Include solution estimate if given
         if estimate is not None:
             result += gamma_2.dot(estimate[index].T)
@@ -357,12 +377,12 @@ class Tikhonov:
         estimate: array like
             estimate of the solution
 
-        Output
+        Returns
         ------
         dictionnary of test results
         """
 
-        self.v_print('Testing factors...')
+        self.verbose_print('Testing factors...')
 
         # Get relevant attributes
         b_vec = self.b_vec
@@ -371,19 +391,27 @@ class Tikhonov:
 
         # Init outputs
         sln, err, reg = [], [], []
+
         # Test all factors
         for i_fac, factor in enumerate(factors):
+
             # Save solution
             sln.append(self.solve(factor, estimate))
+
             # Save error A.x - b
             err.append(a_mat.dot(sln[-1]) - b_vec)
+
             # Save regulatisation term
             reg.append(t_mat.dot(sln[-1]))
+
             # Print
             message = '{}/{}'.format(i_fac, len(factors))
-            self.v_print(message, end='\r')
+            self.verbose_print(message, end='\r')
+
         # Final print
-        self.v_print('{}/{}'.format(i_fac + 1, i_fac + 1))
+        message = '{}/{}'.format(i_fac + 1, len(factors))
+        self.verbose_print(message)
+
         # Convert to arrays
         sln = np.array(sln)
         err = np.array(err)
@@ -401,6 +429,7 @@ class Tikhonov:
         """
         Method to manage inputs for plots methods.
         """
+
         # Use ax or fig if given. Else, init the figure
         if (fig is None) and (ax is None):
             fig, ax = plt.subplots(1, 1, sharex=True)
@@ -412,13 +441,12 @@ class Tikhonov:
             label = self.type
 
         if test is None:
-            # Run tests with `factors` if not done already
-            try:
-                self.test
-            except AttributeError:
+
+            # Run tests with `factors` if not done already.
+            if self.test is None:
                 self.test_factors(factors)
-            finally:
-                test = self.test
+
+            test = self.test
 
         return fig, ax, label, test
 
@@ -445,7 +473,8 @@ class Tikhonov:
             the euclidian norm of the 'error' key will be used.
         y_val: array-like, optional
             y values to plot. Same length as factors.
-        Output
+
+        Returns
         ------
         fig, ax
         """
@@ -456,8 +485,10 @@ class Tikhonov:
 
         # What y value do we plot?
         if y_val is None:
+
             # Use tests to plot y_val
             if test_key is None:
+
                 # Default is euclidian norm of error.
                 # Similar to the chi^2.
                 y_val = (test['error']**2).sum(axis=-1)
@@ -505,10 +536,12 @@ class Tikhonov:
             dictionnary of tests (output of Tikhonov.test_factors)
         text_label: bool, optional
             Add label of the factor value to each points in the plot.
-        Output
+
+        Returns
         ------
         fig, ax
         """
+
         # Manage method's inputs
         args = (fig, ax, label, factors, test)
         fig, ax, label, test = self._check_plot_inputs(*args)
@@ -542,8 +575,3 @@ class Tikhonov:
         ax.set_ylabel(ylabel)
 
         return fig, ax
-
-    def v_print(self, *args, **kwargs):
-        """ Print if verbose """
-        if self.verbose:
-            print(*args, **kwargs)

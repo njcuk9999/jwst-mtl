@@ -1,21 +1,18 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # TODO rename to soss_extract.py or soss_engine.py?
-# General imports
+
+# General imports.
 import numpy as np
 from scipy.sparse import find, issparse, csr_matrix, diags
 from scipy.sparse.linalg import spsolve
 from scipy.interpolate import interp1d, Akima1DInterpolator
 from scipy.optimize import minimize_scalar
 
-# Local imports
-from .custom_numpy import arange_2d
-from .convolution import get_c_matrix
-from .utils import (get_wave_p_or_m, get_n_nodes, grid_from_map,
-                    oversample_grid, _grid_from_map, get_soss_grid)
-from .regularisation import Tikhonov, tikho_solve, get_nyquist_matrix
+# Local imports.
+from . import utils, custom_numpy, convolution, regularisation
 
-# Plotting
+# Plotting.
 import matplotlib.pyplot as plt
 
 
@@ -188,7 +185,7 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
         if wave_grid is None:
 
             if self.n_orders == 2:  # TODO should this be mandatory input.
-                wave_grid = get_soss_grid(aperture, wave_map, n_os=n_os)  # TODO check difference between get_soss_grid and grid_from_map
+                wave_grid = utils.get_soss_grid(aperture, wave_map, n_os=n_os)  # TODO check difference between get_soss_grid and grid_from_map
             else:
                 wave_grid, _ = self.grid_from_map()
 
@@ -333,9 +330,9 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
         for i_order, kernel_n in enumerate(kernels):
 
             if not issparse(kernel_n):
-                kernel_n = get_c_matrix(kernel_n, self.wave_grid,
-                                        i_bounds=self.i_bounds[i_order],
-                                        **c_kwargs[i_order])
+                kernel_n = convolution.get_c_matrix(kernel_n, self.wave_grid,
+                                                    i_bounds=self.i_bounds[i_order],
+                                                    **c_kwargs[i_order])
 
             kernels_new.append(kernel_n)
 
@@ -537,7 +534,7 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
         attrs = ['wave_map', 'aperture']
         wave_map, aperture = self.get_attributes(*attrs, i_order=i_order)
 
-        wave_grid, icol = _grid_from_map(wave_map, aperture, out_col=True)
+        wave_grid, icol = utils._grid_from_map(wave_map, aperture, out_col=True)
 
         return wave_grid, icol
 
@@ -595,14 +592,14 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
             fct = interp1d(grid_ord, convolved_spectrum, kind='cubic')
 
             # Find number of nodes to reach the precision
-            n_oversample = get_n_nodes(grid_ord, fct, **kwargs)
+            n_oversample = utils.get_n_nodes(grid_ord, fct, **kwargs)
 
             # Make sure n_oversample is not greater than
             # user's define `n_max`
             n_oversample = np.clip(n_oversample, 0, n_max)
 
             # Generate oversampled grid
-            grid_ord = oversample_grid(grid_ord, n_os=n_oversample)
+            grid_ord = utils.oversample_grid(grid_ord, n_os=n_oversample)
 
             # Keep only wavelength that are not already
             # covered by os_grid.
@@ -943,7 +940,7 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
             if t_mat_func is None:
 
                 # Use the nyquist sampled gaussian kernel
-                t_mat_func = get_nyquist_matrix
+                t_mat_func = regularisation.get_nyquist_matrix
 
             # Default args
             if fargs is None:
@@ -1025,7 +1022,7 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
             if tikho_kwargs is None:
                 tikho_kwargs = {}
             tikho_kwargs = {**default_kwargs, **tikho_kwargs}
-            tikho = Tikhonov(matrix, result, **tikho_kwargs)
+            tikho = regularisation.Tikhonov(matrix, result, **tikho_kwargs)
             self.tikho = tikho
 
         # Test all factors
@@ -1250,7 +1247,7 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
         """Solve system using Tikhonov regularisation"""
 
         # Note that the indexing is applied inside the function
-        return tikho_solve(matrix, result, index=index, **kwargs)
+        return regularisation.tikho_solve(matrix, result, index=index, **kwargs)
 
     def extract(self, tikhonov=False, tikho_kwargs=None,  # TODO merge with __call__.
                 factor=None, **kwargs):
@@ -1421,7 +1418,7 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
             pix_center, _ = self.grid_from_map(i_order)
 
             # Get pixels borders (plus and minus)
-            pix_p, pix_m = get_wave_p_or_m(pix_center)
+            pix_p, pix_m = utils.get_wave_p_or_m(pix_center)
 
         else:  # Else, unpack grid_pix
 
@@ -1440,7 +1437,7 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
                 pix_center = grid_pix
 
                 # Need to compute the borders
-                pix_p, pix_m = get_wave_p_or_m(pix_center)
+                pix_p, pix_m = utils.get_wave_p_or_m(pix_center)
 
         # Set the throughput to object attribute
         # if not given
@@ -1690,7 +1687,7 @@ class TrpzOverlap(_BaseOverlap):  # TODO Merge with _BaseOverlap, rename SOSSExt
         # TODO? Could also be an input??
         wave_p, wave_m = [], []
         for wave in wave_map:  # For each order
-            lp, lm = get_wave_p_or_m(wave)  # Lambda plus or minus
+            lp, lm = utils.get_wave_p_or_m(wave)  # Lambda plus or minus
             wave_p.append(lp), wave_m.append(lm)
 
         self.wave_p, self.wave_m = wave_p, wave_m  # Save values
@@ -1825,7 +1822,7 @@ class TrpzOverlap(_BaseOverlap):  # TODO Merge with _BaseOverlap, rename SOSSExt
         k_last[~cond & ~ma] = hi[~cond & ~ma] + 1
 
         # Generate array of all k_i. Set to -1 if not valid
-        k_n, bad = arange_2d(k_first, k_last+1, dtype=int, return_mask=True)
+        k_n, bad = custom_numpy.arange_2d(k_first, k_last+1, dtype=int, return_mask=True)
         k_n[bad] = -1
 
         # Number of valid k per pixel
@@ -1979,7 +1976,7 @@ class TrpzBox(TrpzOverlap):
         if wave_grid is None:
 
             # Use native sampling of the detector
-            wave_grid = grid_from_map(wave_map, aperture, n_os=1)
+            wave_grid = utils.grid_from_map(wave_map, aperture, n_os=1)
 
         # Set throughput to identity (no throughput).
         throughput = np.ones_like

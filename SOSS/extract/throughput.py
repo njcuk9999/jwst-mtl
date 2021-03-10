@@ -1,4 +1,11 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# TODO merge with utils.py?
+
+# General imports.
 from scipy.interpolate import interp1d
+
+# Astronoomy imports.
 from astropy.io import fits
 
 ###############################################

@@ -1,6 +1,11 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# TODO rename to extraction_utils.py?
+
+# General imports.
 import numpy as np
-from scipy.integrate.quadrature import AccuracyWarning
 from warnings import warn
+from scipy.integrate.quadrature import AccuracyWarning
 
 
 def _romberg_diff(b, c, k):

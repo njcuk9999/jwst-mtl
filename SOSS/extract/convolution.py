@@ -1,7 +1,15 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+# General imports.
 import numpy as np
 from scipy.sparse import diags
 from scipy.interpolate import RectBivariateSpline, interp1d
+
+# Astronomy imports.
 from astropy.io import fits
+
+# Plotting.
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm  # for better display
 
@@ -16,9 +24,9 @@ def get_module_path(file):
     dir_path = dirname(dir_path) + '/'
 
     return dir_path
-###############################################
 
 # Sepcify some default reference files (used in WebbKer)
+# TODO replace this with better system and the new reference files.
 DEF_PATH = get_module_path(__file__) + "Ref_files/spectral_kernel_matrix/"
 DEF_FILE_FRAME = "spectral_kernel_matrix_os_{}_width_{}pixels.fits"
 
@@ -94,7 +102,7 @@ def get_c_matrix(kernel, grid, bounds=None, i_bounds=None, norm=True,
     if callable(kernel):
         kernel = fct_to_array(kernel, grid, [a, b], **kwargs)
     elif kernel.ndim == 1:
-        kernel = to_2d(kernel, grid, [a, b], **kwargs)
+        kernel = to_2d(kernel, grid, [a, b])
 
     # Kernel should now be a 2-D array (N_kernel x N_kc)
 
@@ -131,7 +139,8 @@ def cut_ker(ker, n_out=None, thresh=None):
     thresh: float
         threshold used to determine the boundaries cut.
         If n_out is specified, this has no effect.
-    Output
+
+    Returns
     ------
     the same kernel matrix has the input ker, but with the cut applied.
     """
@@ -221,7 +230,7 @@ def sparse_c(ker, n_k, i_zero=0):
     return diags(diag_val, offset, shape=(n_k_c, n_k), format="csr")
 
 
-def to_2d(kernel, grid, grid_range):
+def to_2d(kernel, grid, grid_range):  # TODO parameter grid unused, better name kernel_2d?
     """ Build a 2d kernel array with a constant 1D kernel (input) """
 
     # Assign range where the convolution is defined on the grid
@@ -418,7 +427,7 @@ def trpz_weight(grid, length, shape, i_a, i_b):
     return out
 
 
-class WebbKer():
+class WebbKer:
     """
     Class to load Webb convolution kernel. Once instanciated,
     the object act as a callable (function)
@@ -634,7 +643,7 @@ class WebbKer():
         # Labels and others
         plt.colorbar(label="Kernel")
         plt.ylabel("Position relative to center [pixel]")
-        plt.xlabel("Center wavelength [$\mu m$]")
+        plt.xlabel(r"Center wavelength [$\mu m$]")
         plt.tight_layout()
 
         # 1D figure of all kernels
@@ -642,7 +651,7 @@ class WebbKer():
         plt.plot(self.wv_ker, self.ker)
         # Labels and others
         plt.ylabel("Kernel")
-        plt.xlabel("Wavelength [$\mu m$]")
+        plt.xlabel(r"Wavelength [$\mu m$]")
         plt.tight_layout()
 
         return fig1, fig2
@@ -709,7 +718,7 @@ class NyquistKer:
         return gaussians(x, x0, sig)
 
 
-def gaussians(x, x0, sig, amp=None):
+def gaussians(x, x0, sig, amp=None):  # TODO Move to top of file, move to utils.py?
     """
     Gaussian function
     """
@@ -721,7 +730,7 @@ def gaussians(x, x0, sig, amp=None):
     return amp * np.exp(-0.5*((x - x0) / sig)**2)
 
 
-def fwhm2sigma(fwhm):
+def fwhm2sigma(fwhm):  # TODO Move to top of file, move to utils.py?
     """
     Convert a full width half max to a standard deviation, assuming a gaussian
     """

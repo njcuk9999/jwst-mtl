@@ -1,5 +1,9 @@
-import numpy as np
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 # TODO Merge all this into utils.py?
+
+# General imports.
+import numpy as np
 
 
 def is_sorted(x, no_dup=True):  # TODO unused, remove?
