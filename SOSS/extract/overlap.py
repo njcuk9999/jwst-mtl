@@ -383,33 +383,33 @@ class _BaseOverlap:
         """
 
         # Get needed attributes
-        thresh, n_orders = self.get_attributes('thresh', 'n_orders')
+        threshold, n_orders = self.get_attributes('threshold', 'n_orders')
         throughput, aperture, wave_map = self.get_attributes('throughput', 'aperture', 'wave_map')
 
-        # Mask according to the spatial profile
-        mask_p = [aperture_n < thresh for aperture_n in aperture]
+        # Mask according to the spatial profile.
+        mask_aperture = np.array([aperture_n < threshold for aperture_n in aperture])
 
-        # Mask pixels not covered by the wavelength grid
+        # Mask pixels not covered by the wavelength grid.
         mask_wave = np.array([self.get_mask_wave(i_order) for i_order in range(n_orders)])
 
-        # Apply user's defined mask
+        # Apply user defined mask.
         if mask is None:
-            mask_ord = np.any([mask_p, mask_wave], axis=0)
+            mask_ord = np.any([mask_aperture, mask_wave], axis=0)
         else:
             mask = [mask for _ in range(n_orders)]  # For each orders
-            mask_ord = np.any([mask_p, mask_wave, mask], axis=0)
+            mask_ord = np.any([mask_aperture, mask_wave, mask], axis=0)
 
-        # Mask pixels that are masked at each orders
+        # Find pixels that are masked in each order.
         global_mask = np.all(mask_ord, axis=0)
 
-        # Mask if mask_p not masked but mask_wave is.
+        # Mask pixels if mask_aperture not masked but mask_wave is.
         # This means that an order is contaminated by another
         # order, but the wavelength range does not cover this part
         # of the spectrum. Thus, it cannot be treated correctly.
         global_mask |= (np.any(mask_wave, axis=0)
-                        & (~np.array(mask_p)).all(axis=0))
+                        & np.all(~mask_aperture, axis=0))
 
-        # Apply this new global mask to each orders
+        # Apply this new global mask to each orders.
         mask_ord = (mask_wave | global_mask[None, :, :])
 
         return global_mask, mask_ord
