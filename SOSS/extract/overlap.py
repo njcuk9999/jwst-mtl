@@ -241,7 +241,7 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
         self.i_grid = None
         self.tikho = None
         self.tikho_mat = None
-        self.w_t_wave_c = [[] for _ in range(self.n_orders)]  # TODO make dict with order number as key.
+        self.w_t_wave_c = None
 
         return
 
@@ -519,6 +519,9 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
         Save the matrix product of the weighs (w), the throughput (t),
         the wavelength (lam) and the convolution matrix for faster computation.
         """
+
+        if self.w_t_wave_c is None:
+            self.w_t_wave_c = [[] for _ in range(self.n_orders)]  # TODO make dict with order number as key.
 
         # Assign value
         self.w_t_wave_c[i_order] = product.copy()
@@ -856,7 +859,7 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
 
         # and if mask doesn't change
         quick &= (mask is None)
-        quick &= hasattr(self, 'w_t_wave_c')  # Pre-computed
+        quick &= (self.w_t_wave_c is not None)  # Pre-computed
         if quick:
             self.verbose_print('Quick mode is on!')
 
@@ -1188,7 +1191,7 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
         mask = self.mask
 
         # Evaluate the detector model.
-        model = np.full(self.data_shape, fill_value=np.nan)
+        model = np.zeros(self.data_shape)
         for i_order in i_orders:
 
             # Compute the pixel mapping matrix (b_n) for the current order.
@@ -1196,6 +1199,9 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
 
             # Evaluate the model of the current order.
             model[~mask] += pixel_mapping.dot(spectrum)
+
+        # Set masked values to NaN.
+        model[mask] = np.nan
 
         return model
 
