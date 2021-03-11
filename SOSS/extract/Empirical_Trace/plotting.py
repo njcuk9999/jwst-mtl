@@ -35,6 +35,27 @@ def _plot_centroid(clear, centroid_dict):
     plt.show()
 
 
+def _plot_flux_deviations(dev_init, dev_fin, iter):
+    '''Plot the diagnostic results of the order 2 smoothing iterations. The
+    upper plot shows the initial columnwise flux deviations from the local
+    mean, and the lower plot shows the same variations after the smoothing has
+    been completed.
+    '''
+
+    f, ax = plt.subplots(2, figsize=(15, 6), sharex=True)
+    ax[0].plot(dev_init)
+    ax[0].axhline(0.1, ls='--', c='black')
+    ax[1].plot(dev_fin)
+    ax[1].axhline(0.1, ls='--', c='black')
+
+    max = np.max([len(dev_init), 2048])
+    ax[1].set_xlim(0, max)
+    ax[1].set_xlabel('Spectral Pixel', fontsize=14)
+    ax[0].set_ylabel('Flux Variations (i=0)', fontsize=14)
+    ax[1].set_ylabel('Flux Variations (i={})'.format(iter-1), fontsize=14)
+    plt.show()
+
+
 def _plot_interpmodel(waves, nw1, nw2, p1, p2):
     '''Plot the diagnostic results of the derive_model function. Four plots
     are generated, showing the normalized interpolation coefficients for the

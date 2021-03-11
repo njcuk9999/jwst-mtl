@@ -440,10 +440,6 @@ def construct_order2(clear, order1_rescale, ycens, verbose=0, pad=0):
     dimy, dimx = np.shape(order1_rescale)
     o2frame = np.zeros((dimy, dimx))
 
-    def lik(k, data, model):
-        # Mulitply Chi^2 by data so wing values don't carry so much weight.
-        return np.nansum((np.sum(data) - np.sum(k*model))**2)
-
     for o2pix in range(dimx):
         # Get the wavelenegth for to each column in order 2.
         o2wave = np.polyval(pp_w2, o2pix)
@@ -467,7 +463,7 @@ def construct_order2(clear, order1_rescale, ycens, verbose=0, pad=0):
             k0 = thpt_2i / thpt_1i
             max1, max2 = np.min([ycen_o1i+5, dimy]), np.min([ycen_o2i+5, dimy])
             min1, min2 = np.max([ycen_o1i-5, 0]), np.max([ycen_o2i-5, 0])
-            k = minimize(lik, k0, (sub[min2:max2, o2pix],
+            k = minimize(_lik, k0, (sub[min2:max2, o2pix],
                          order1_rescale[min1:max1, o1pix])).x
             if k <= 0:
                 notdone.append(o2pix)
@@ -496,7 +492,14 @@ def construct_order2(clear, order1_rescale, ycens, verbose=0, pad=0):
             k0 = thpt_2i / thpt_1i_r
             max1, max2 = np.min([ycen_o1i+5, dimy]), np.min([ycen_o2i+5, dimy])
             min1, min2 = np.max([ycen_o1i-5, 0]), np.max([ycen_o2i-5, 0])
-            k = minimize(lik, k0, (sub[min2:max2, o2pix],
+            # Ensure that the order 1 and order 2 arrays are the same size
+            if max1 - ycen_o1i != max2 - ycen_o2i:
+                mindif = np.min([max1 - ycen_o1i, max2 - ycen_o2i])
+                max1, max2 = ycen_o1i + mindif, ycen_o2i + mindif
+            if ycen_o1i - min1 != ycen_o2i - min2:
+                mindif = np.min([ycen_o1i - min1, ycen_o2i - min2])
+                min1, min2 = ycen_o1i - mindif, ycen_o2i - mindif
+            k = minimize(_lik, k0, (sub[min2:max2, o2pix],
                          order1_rescale[min1:max1, o1pix_r])).x
             start2 = ycen_o2i - 13
             end2 = ycen_o2i + 13
@@ -543,6 +546,52 @@ def construct_order2(clear, order1_rescale, ycens, verbose=0, pad=0):
             newprof = np.concatenate([np.tile(val, ext), newprof])
 
         o2frame[:, o2pix] = newprof[start:(end+ext)]
+
+    # Smooth over streaks (especially in the contaminated region).
+    # If the mean flux value of a column is >10% deviant from that of the
+    # surrounding columns, replace it with the median of its neighbours.
+    # Get mean flux values for each column.
+    col_mean = np.nanmean(o2frame, axis=0)
+    # Find where order 2 ends.
+    end = np.where(col_mean == 0)[0][0] - 5
+    # For each column, find the local mean of the surrounding 6 columns.
+    mns = []
+    for i in range(-3, 3):
+        if i == 0:
+            continue
+        mns.append(np.roll(col_mean, i))
+    loc_mean = np.mean(mns, axis=0)
+    # Calculate the deviation of each column from the local mean.
+    dev_0 = np.abs((col_mean[3:end] - loc_mean[3:end])/loc_mean[3:end])
+
+    # Replace all columns whose mean value is >10% deviant from the local mean
+    # with median of its neighbours.
+    dev, iter = dev_0, 0
+    # Iterate until no columns are >10% deviant, or 10 iterations have run.
+    while np.any(dev > 0.1) and iter < 10:
+        # Get all >10% deviant columns.
+        inds = np.where(dev >= 0.1)[0]
+        for i in inds:
+            i += 3
+            # For each column, calculate the median of the 'local region'.
+            # Expand the region by one pixel each iteration.
+            local = np.concatenate([o2frame[:, (i-2-iter):i],
+                                    o2frame[:, (i+1):(i+3+iter)]], axis=1)
+            o2frame[:, i] = np.nanmedian(local, axis=1)
+
+        # Recalculate the flux deviations as before.
+        col_mean = np.nanmean(o2frame, axis=0)
+        mns = []
+        for i in range(-3, 3):
+            mns.append(np.roll(col_mean, i))
+        loc_mean = np.mean(mns, axis=0)
+        dev = np.abs((col_mean[3:end] - loc_mean[3:end])/loc_mean[3:end])
+        # Increment iteration.
+        iter += 1
+
+    if verbose == 3:
+        # Plot the change in flux deviations after all iterations are complete.
+        plotting._plot_flux_deviations(dev_0, dev, iter)
 
     if pad != 0:
         o2frame_pad = np.zeros((dimy+2*pad, dimx))
@@ -633,6 +682,13 @@ def _fit_trace_widths(clear, wave_coefs, verbose=0):
                                  (width_fit_b, width_fit_r))
 
     return width_fit_r, width_fit_b
+
+
+def _lik(k, data, model):
+    '''Utility likelihood function for flux rescaling. Esssentially a Chi^2
+    multiplied by the data such that wing values don't carry too much weight.
+    '''
+    return np.nansum((data - k*model)**2)
 
 
 def oversample_frame(frame, oversample=1):
@@ -959,11 +1015,6 @@ def rescale_model(data, model, centroids, verbose=0):
         Trace model after rescaling.
     '''
 
-    # Define function to minimize - Chi^2.
-    def lik(k, data, model):
-        # Mulitply Chi^2 by data so wing values don't carry so much weight.
-        return np.nansum((data - k*model)**2)
-
     # Determine first guess coefficients.
     k0 = np.nanmax(data, axis=0)
     ks = []
@@ -976,7 +1027,7 @@ def rescale_model(data, model, centroids, verbose=0):
         start = ycen - 13
         end = ycen + 13
         # Minimize the Chi^2.
-        k = minimize(lik, k0[i], (data[start:end, i], model[start:end, i]))
+        k = minimize(_lik, k0[i], (data[start:end, i], model[start:end, i]))
         ks.append(k.x[0])
 
     # Rescale the column normalized model.
