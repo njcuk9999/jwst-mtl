@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # TODO rename to soss_extract.py or soss_engine.py?
-
+# TODO remove use of args and kwargs as much as possible for clearer code.
 # General imports.
 import numpy as np
 from scipy.sparse import find, issparse, csr_matrix, diags
@@ -325,7 +325,7 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
         elif isinstance(c_kwargs, dict):
             c_kwargs = [c_kwargs for _ in range(self.n_orders)]
 
-        # Define convolution sparse matrix. TODO TODO make dict with order number as key.
+        # Define convolution sparse matrix. TODO make dict with order number as key.
         kernels_new = []
         for i_order, kernel_n in enumerate(kernels):
 
@@ -346,7 +346,7 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
         wave = self.wave_map[i_order]
         imin, imax = self.i_bounds[i_order]
         wave_min = self.wave_grid[imin]
-        wave_max = self.wave_grid[imax - 1]  # TODO chnage so -1 not needed?
+        wave_max = self.wave_grid[imax - 1]  # TODO change so -1 not needed?
 
         mask = (wave <= wave_min) | (wave >= wave_max)
 
@@ -726,7 +726,7 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
 
         return pixel_mapping
 
-    def _get_pixel_mapping(self, i_order, error=True, quick=False):  # TODO merge with get_pixel_mapping.
+    def _get_pixel_mapping(self, i_order, error=True, quick=False):  # TODO merge with get_pixel_mapping?
         """
         Compute the matrix `b_n = (P/sig).w.T.lambda.c_n` ,
         where `P` is the spatial profile matrix (diag),
@@ -1156,7 +1156,7 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
         # Return scale factor minimizing the logL
         return min_fac
 
-    def rebuild(self, spectrum=None, i_orders=None, same=False):  # TODO make flux optional? Call extract if None.
+    def rebuild(self, spectrum=None, i_orders=None, same=False):
         """Build current model image of the detector.
 
         :param spectrum: flux as a function of wavelength if callable
@@ -1690,7 +1690,7 @@ class TrpzOverlap(_BaseOverlap):  # TODO Merge with _BaseOverlap, rename SOSSExt
         """
 
         # Get wavelength at the boundary of each pixel
-        # TODO? Could also be an input??
+        # TODO Could also be an input??
         wave_p, wave_m = [], []
         for wave in wave_map:  # For each order
             lp, lm = utils.get_wave_p_or_m(wave)  # Lambda plus or minus
@@ -2071,7 +2071,7 @@ class TrpzBox(TrpzOverlap):
         # Normalize
         weights /= weights.sum(axis=0)
 
-        # TODO: apply mask here. (bad pixel)
+        # TODO apply mask here. (bad pixel)
         # How do you normalize the weights?
         # - Sum over non-masked pixels?
         # - Simply set to zero without re-normalization?
