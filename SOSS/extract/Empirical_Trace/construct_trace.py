@@ -53,40 +53,46 @@ def build_empirical_trace(clear, F277W, badpix_mask,
     '''
 
     if verbose != 0:
-        print('Starting the Empirical Trace Construction module.')
+        print('Starting the Empirical Trace Construction module.\n')
+
+    # ========= INITIAL SETUP =========
     # Print overwrite warning if output file already exists.
     if os.path.exists(filename):
         msg = 'Output file {} already exists.'\
               ' It will be overwritten'.format(filename)
         warnings.warn(msg)
 
-    # Replace bad pixels.
+    # Replace bad pixels using the median of pixels in the surrounding 5x5 box.
     if verbose != 0:
         print(' Replacing bad pixels...', flush=True)
     clear = replace_badpix(clear, badpix_mask, verbose=verbose)
     if F277W is not None:
         F277W = replace_badpix(F277W, badpix_mask, verbose=verbose)
 
-    # Get the centroid positions for both orders from the data.
+    # Get the centroid positions for both orders from the data using the
+    # edgetrig method.
     if verbose != 0:
         print(' Getting trace centroids...')
     centroids = ctd.get_soss_centroids(clear, subarray='SUBSTRIP256')
-
     # Overplot the data centroids on the CLEAR exposure if desired.
     if verbose == 3:
         plotting._plot_centroid(clear, centroids)
 
+    # ========= CONSTRUCT FIRST PASS MODELS =========
+    # Build a first estimate of the first and second order spatial profiles
+    # through an interpolation model in the conatminated region, and
+    # wing reconstruction for each order.
     # Construct the first order profile.
     if verbose != 0:
         print(' Building the first order trace model...')
     o1frame = construct_order1(clear, F277W, centroids, pad=0,
                                verbose=verbose, subarray='SUBSTRIP256')
-
-    # Rescale to native flux level
+    # Rescale the first order profile to the native flux level.
     if verbose != 0:
         print('  Rescaling first order to native flux level...', flush=True)
     order1_rescale1 = rescale_model(clear, o1frame, centroids, verbose=verbose)
 
+    # Construct the second order profile.
     if verbose != 0:
         print(' Building the second order trace model...')
     o2frame = construct_order2(clear, order1_rescale1, centroids,
@@ -94,25 +100,26 @@ def build_empirical_trace(clear, F277W, badpix_mask,
     if verbose != 0:
         print('First pass models complete.')
 
+    # ========= REFINE FIRST PASS MODELS =========
+    # Iterate with first estimate solutions to refine the cores of each order.
+    # Subtract the second order model use the residuals to get a better
+    # estimate of the first order core in the contaminated region, and
+    # vice-versa for the second order.
     if verbose != 0:
         print('Starting spatial profile refinement...')
         print(' Refining the first order profile...', flush=True)
-    dimy, dimx = np.shape(clear)
-    order1_uncontam_unref = clear - o2frame
-    order1_uncontam = np.zeros((dimy+2*pad[0], dimx))
-    for i in tqdm(range(dimx)):
-        ycens = [centroids['order 1']['Y centroid'][i],
-                 centroids['order 2']['Y centroid'][i],
-                 centroids['order 3']['Y centroid'][i]]
-        prof_refine = reconstruct_wings(order1_uncontam_unref[:, i], ycens,
-                                        contamination=[3], pad=pad[0])
-        order1_uncontam[:, i] = prof_refine
+    # Refine the first order.
+    order1_uncontam = refine_order1(clear, o2frame, centroids, pad[0])
 
+    # Refine the second order.
     if verbose != 0:
-        print(' Refining the second order trace model...', flush=True)
-    order2_uncontam = construct_order2(clear, order1_uncontam[pad[0]:(dimy+pad[0])], centroids,
-                                       verbose=verbose, pad=pad[0])
+        print(' Refining the second order trace model...')
+    dimy, dimx = np.shape(clear)
+    order2_uncontam = construct_order2(clear,
+                                       order1_uncontam[pad[0]:(dimy+pad[0])],
+                                       centroids, verbose=verbose, pad=pad[0])
 
+    # ========= FINAL TUNING =========
     # Pad the spectral axis.
     if pad[1] != 0:
         if verbose != 0:
@@ -129,12 +136,13 @@ def build_empirical_trace(clear, F277W, badpix_mask,
                                         centroids['order 2']['Y centroid'],
                                         pad=pad[1], ref_col=(5, edge-dimx))
 
+    # Plot a map of the residuals.
     if verbose == 3:
         o1_unpad = order1_uncontam[pad[0]:(dimy+pad[0]), :]
         o2_unpad = order2_uncontam[pad[0]:(dimy+pad[0]), :]
         plotting._plot_trace_residuals(clear, o1_unpad, o2_unpad)
 
-    # Add oversampling
+    # Add oversampling.
     if oversample != 1:
         if verbose != 0:
             print(' Oversampling...')
@@ -148,7 +156,7 @@ def build_empirical_trace(clear, F277W, badpix_mask,
     #utils._write_to_file(order1_uncontam, order2_uncontam, 'SOSS_2D_profile')
 
     if verbose != 0:
-        print('Done.')
+        print('\nDone.')
 
     return order1_uncontam, order2_uncontam
 
@@ -235,9 +243,7 @@ def construct_order1(clear, F277, ycens, subarray, pad=0, verbose=0):
     pad : int
         Number of pixels of padding to add on both ends of the spatial axis.
     verbose : int
-        If 3, show all of progress prints, progress bars, and diagnostic plots.
-        If 2 show progress prints and bars. If 1, show only  progress prints.
-        If zero, show nothing.
+        Level of verbosity.
 
     Returns
     -------
@@ -254,7 +260,7 @@ def construct_order1(clear, F277, ycens, subarray, pad=0, verbose=0):
     elif subarray == 'FULL':
         dimy = 2048
 
-    # ========= INITIAL CALIBRATIONS =========
+    # ========= INITIAL SETUP =========
     # Open wavelength calibration file.
     wavecal = fits.getdata(path+'jwst_niriss_soss-256-ord1_trace.fits', 1)
     # Get wavelength and detector pixel calibration info.
@@ -424,7 +430,9 @@ def construct_order2(clear, order1_rescale, ycens, pad=0, verbose=0):
     the oversubtracted second order wings. For wavelengths where there is no
     overlap between the orders, use the wings of the closest neighbouring first
     order wavelength. In cases where the second order core is also
-    oversubtracted, use the first order core to correct this as well.
+    oversubtracted, use the first order core to correct this as well. This
+    method implicitly assumes that the spatial profile is determined solely by
+    the optics, and is the same for all orders at a given wavelength.
 
     Parameters
     ----------
@@ -438,9 +446,7 @@ def construct_order2(clear, order1_rescale, ycens, pad=0, verbose=0):
     pad : int
         Number of pixels of padding to add on both ends of the spatial axis.
     verbose : int
-        If 3, show all of progress prints, progress bars, and diagnostic plots.
-        If 2 show progress prints and bars. If 1, show only  progress prints.
-        If zero, show nothing.
+        Level of verbosity.
 
     Returns
     -------
@@ -448,6 +454,7 @@ def construct_order2(clear, order1_rescale, ycens, pad=0, verbose=0):
         Uncontaminated second order trace profile at the native flux level.
     '''
 
+    # ========= INITIAL SETUP =========
     # Get wavelength and detector pixel calibration info.
     wavecal_o1 = fits.getdata(path+'jwst_niriss_soss-256-ord1_trace.fits', 1)
     wavecal_o2 = fits.getdata(path+'jwst_niriss_soss-256-ord2_trace.fits', 1)
@@ -461,8 +468,7 @@ def construct_order2(clear, order1_rescale, ycens, pad=0, verbose=0):
     thpt_o2 = ttab_file('THROUGHPUT', subarray='SUBSTRIP256', order=2)
 
     # Useful storage arrays
-    ks = []
-    pixxs = []
+    ks, pixs = [], []
     notdone = []
     # First estimate of second order is the residuals from subtraction of
     # first order model from original data.
@@ -470,6 +476,7 @@ def construct_order2(clear, order1_rescale, ycens, pad=0, verbose=0):
     dimy, dimx = np.shape(order1_rescale)
     o2frame = np.zeros((dimy, dimx))
 
+    # ========= RECONSTRUCT SECOND ORDER WINGS =========
     # Determine a coeficient to rescale the first order profile to the flux
     # level of the second order at the same wavelength. Since the
     # wavelengths are the same, we can assume that the spatial profiles are
@@ -484,6 +491,7 @@ def construct_order2(clear, order1_rescale, ycens, pad=0, verbose=0):
         # Find the corresponding column in order 1.
         o1pix = int(round(np.polyval(pp_p, o2wave), 0))
 
+        # === FIND CORRECT COLUMNS ===
         if o1pix < dimx - 1:
             # Region where wavelengths in order 1 and order 2 overlap.
             # Get throughput for order 1.
@@ -504,7 +512,6 @@ def construct_order2(clear, order1_rescale, ycens, pad=0, verbose=0):
             o1pix = o1pix_r
             ycen_o1i = int(round(ycens['order 1']['Y centroid'][o1pix_r], 0))
             marker = False
-
         # Get trace centroid and throughput for the second order.
         thpt_2i = np.where(thpt_o2[0] >= o2wave)[0][0]
         ycen_o2i = int(round(ycens['order 2']['Y centroid'][o2pix], 0))
@@ -512,6 +519,7 @@ def construct_order2(clear, order1_rescale, ycens, pad=0, verbose=0):
         if ycen_o2i > dimy:
             continue
 
+        # === DETERMINE O1->O2 SCALING ===
         # Find coefficient to scale order 1 to the flux level of order 2.
         # Initial guess for scaling coefficient is ratio of throughputs.
         # Won't be exactly correct due to different spectral resolutions.
@@ -536,8 +544,9 @@ def construct_order2(clear, order1_rescale, ycens, pad=0, verbose=0):
         o1prof = order1_rescale[:, o1pix]*k
         if marker is True:
             ks.append(k)
-            pixxs.append(o2pix)
+            pixs.append(o2pix)
 
+        # === RECONSTRUCT SPATIAL PROFILE ===
         # Replace any oversubtracted pixels in o2 with o1.
         inds = np.isnan(np.log10(sub[min2:max2, o2pix]))
         sub[min2:max2, o2pix][inds] = o1prof[min1:max1][inds]
@@ -547,7 +556,8 @@ def construct_order2(clear, order1_rescale, ycens, pad=0, verbose=0):
 
         # Put the spatial profile on the detector. The order 2 profile is
         # already at the detector scale.
-        oldax = np.arange(len(newprof)) - len(newprof)/2 + ycens['order 2']['Y centroid'][o2pix]
+        o2_ycen = ycens['order 2']['Y centroid'][o2pix]
+        oldax = np.arange(len(newprof)) - len(newprof)/2 + o2_ycen
         # Find position where 'right' wing is off the detector.
         end = np.where(oldax < dimy)[0][-1]
         ext = 0
@@ -563,14 +573,15 @@ def construct_order2(clear, order1_rescale, ycens, pad=0, verbose=0):
         # Put the profile on the detector.
         o2frame[:, o2pix] = newprof[start:(end+ext)]
 
+    # ========= CORRECT OVERSUBTRACTED COLUMNS =========
     # Deal with notdone columns: columns who's scaling coef was <= 0 due to
     # oversubtraction of the first order.
     # Fit a polynomial to all positive scaling coefficients, and use the fit to
     # interpolate the correct scaling for notdone columns.
-    pp_k = np.polyfit(pixxs, ks, 11)
+    pp_k = np.polyfit(pixs, ks, 11)
     # Plot the results if necessary.
     if verbose == 3:
-        plotting._plot_scaling_coefs(pixxs, ks, pp_k)
+        plotting._plot_scaling_coefs(pixs, ks, pp_k)
 
     if verbose != 0 and len(notdone) != 0:
         print('  Dealing with oversubtracted columns...')
@@ -583,14 +594,16 @@ def construct_order2(clear, order1_rescale, ycens, pad=0, verbose=0):
         # Rescale the order 1 profile to the flux level of order 2.
         o1prof = order1_rescale[:, o1pix]*k
         # Get bounds of the order 1 trace core.
-        min1 = np.max([int(round(ycens['order 1']['Y centroid'][o1pix], 0)) - 13, 0])
-        max1 = np.min([int(round(ycens['order 1']['Y centroid'][o1pix], 0)) + 14, dimy])
+        o1_ycen = ycens['order 1']['Y centroid'][o1pix]
+        min1 = np.max([int(round(o1_ycen, 0)) - 13, 0])
+        max1 = np.min([int(round(o1_ycen, 0)) + 14, dimy])
         # Use the first order core as well as the wings to reconstruct a first
         # guess of the second order profile.
         newprof = np.concatenate([o1prof[max1:][::-1], o1prof[min1:]])
 
         # Put the spatial profile on the detector as before.
-        oldax = np.arange(len(newprof)) - len(newprof)/2 + ycens['order 2']['Y centroid'][o2pix]
+        o2_ycen = ycens['order 2']['Y centroid'][o2pix]
+        oldax = np.arange(len(newprof)) - len(newprof)/2 + o2_ycen
         end = np.where(oldax < dimy)[0][-1]
         ext = 0
         try:
@@ -602,6 +615,7 @@ def construct_order2(clear, order1_rescale, ycens, pad=0, verbose=0):
             newprof = np.concatenate([np.tile(val, ext), newprof])
         o2frame[:, o2pix] = newprof[start:(end+ext)]
 
+    # ========= SMOOTH DISCONTINUITIES =========
     # Smooth over streaks (especially in the contaminated region).
     # If the mean flux value of a column is >10% deviant from that of the
     # surrounding columns, replace it with the median of its neighbours.
@@ -670,14 +684,16 @@ def _fit_trace_widths(clear, wave_coefs, verbose=0):
         Polynomial coefficients for the wavelength to spectral pixel
         calibration.
     verbose : int
-        If 3, show all of progress prints, progress bars, and diagnostic plots.
-        If 2 show progress prints and bars. If 1, show only  progress prints.
-        If zero, show nothing.
+        Level of verbosity.
 
     Returns
     -------
-    width_fit : tuple
-        Polynomial coefficients for a first order fit to the trace widths.
+    wfit_b : tuple
+        Polynomial coefficients for a first order fit to the uncontaminated
+        trace widths.
+    wfit_r : tuple
+        Polynomial coefficients for a first order fit to the contaminated trace
+        widths.
     '''
 
     # Get subarray diemsnions and wavelength to spectral pixel transformation.
@@ -708,29 +724,31 @@ def _fit_trace_widths(clear, wave_coefs, verbose=0):
     fit_widths_b = np.array(trace_widths[end:])
     # Reject clear outliers (>5sigma)
     pp_b = np.polyfit(fit_waves_b, fit_widths_b, 1)
-    stddev = np.median(np.sqrt((fit_widths_b - np.polyval(pp_b, fit_waves_b))**2))
-    inds = np.where(np.abs(fit_widths_b - np.polyval(pp_b, fit_waves_b)) < 5*stddev)
+    mod_widths = np.polyval(pp_b, fit_waves_b)
+    stddev = np.median(np.sqrt((fit_widths_b - mod_widths)**2))
+    inds = np.where(np.abs(fit_widths_b - mod_widths) < 5*stddev)
     # Robustly fit a straight line.
     pp_b = np.polyfit(fit_waves_b[inds], fit_widths_b[inds], 1)
-    width_fit_b = utils._robust_polyfit(fit_waves_b[inds], fit_widths_b[inds], pp_b)
+    wfit_b = utils._robust_polyfit(fit_waves_b[inds], fit_widths_b[inds], pp_b)
 
     # Seperate fit to contaminated region.
     fit_waves_r = np.array(wax[:(end+10)])
     fit_widths_r = np.array(trace_widths[:(end+10)])
     # Reject clear outliers (>5sigma)
     pp_r = np.polyfit(fit_waves_r, fit_widths_r, 1)
-    stddev = np.median(np.sqrt((fit_widths_r - np.polyval(pp_r, fit_waves_r))**2))
-    inds = np.where(np.abs(fit_widths_r - np.polyval(pp_r, fit_waves_r)) < 5*stddev)
+    mod_widths = np.polyval(pp_r, fit_waves_r)
+    stddev = np.median(np.sqrt((fit_widths_r - mod_widths)**2))
+    inds = np.where(np.abs(fit_widths_r - mod_widths) < 5*stddev)
     # Robustly fit a straight line.
     pp_r = np.polyfit(fit_waves_r[inds], fit_widths_r[inds], 1)
-    width_fit_r = utils._robust_polyfit(fit_waves_r[inds], fit_widths_r[inds], pp_r)
+    wfit_r = utils._robust_polyfit(fit_waves_r[inds], fit_widths_r[inds], pp_r)
 
     # Plot the width calibration fit if required.
     if verbose == 3:
         plotting._plot_width_cal(wax, trace_widths, (fit_waves_b, fit_waves_r),
-                                 (width_fit_b, width_fit_r))
+                                 (wfit_b, wfit_r))
 
-    return width_fit_r, width_fit_b
+    return wfit_r, wfit_b
 
 
 def oversample_frame(frame, oversample=1):
@@ -835,9 +853,7 @@ def reconstruct_wings(profile, ycens=None, contamination=[2, 3], pad=0,
     pad : int
         Amount to pad each end of the spartial axis (in pixels).
     verbose : int
-        If 3, show all of progress prints, progress bars, and diagnostic plots.
-        If 2 show progress prints and bars. If 1, show only  progress prints.
-        If zero, show nothing.
+        Level of verbosity.
     smooth : bool
         If True, smooths over highly deviant pixels in the spatial profile.
 
@@ -973,6 +989,48 @@ def reconstruct_wings(profile, ycens=None, contamination=[2, 3], pad=0,
     return newprof
 
 
+def refine_order1(clear, o2frame, centroids, pad, verbose=0):
+    '''Refine the first order trace model using a clear exposure with the
+    second order subtracted.
+
+    Parameters
+    ----------
+    clear : np.ndarray (2D)
+        CLEAR data frame.
+    o2frame : np.ndarray (2D)
+        Model of the second order spatial profile.
+    centroids : dict
+        Centroid dictionary.
+    pad : int
+        padding to add to the spatial axis.
+    verbose : int
+        Verbose level.
+
+    Returns
+    -------
+    order1_uncontam : np.ndarray (2D)
+        First order trace model.
+    '''
+
+    dimy, dimx = np.shape(clear)
+    # Create an uncontaminated frame by subtracting the second order model from
+    # the CLEAR exposure.
+    order1_uncontam_unref = clear - o2frame
+    order1_uncontam = np.zeros((dimy+2*pad, dimx))
+
+    # Reconstruct first order wings.
+    disable = utils._verbose_to_bool(verbose)
+    for i in tqdm(range(dimx), disable=disable):
+        ycens = [centroids['order 1']['Y centroid'][i],
+                 centroids['order 2']['Y centroid'][i],
+                 centroids['order 3']['Y centroid'][i]]
+        prof_refine = reconstruct_wings(order1_uncontam_unref[:, i], ycens,
+                                        contamination=[3], pad=pad)
+        order1_uncontam[:, i] = prof_refine
+
+    return order1_uncontam
+
+
 def replace_badpix(clear, badpix_mask, fill_negatives=True, verbose=0):
     '''Replace all bad pixels with the median of the pixels values of a 5x5 box
     centered on the bad pixel.
@@ -987,9 +1045,7 @@ def replace_badpix(clear, badpix_mask, fill_negatives=True, verbose=0):
     fill_negatives : bool
         If True, also interpolates all negatives values in the frame.
     verbose : int
-        If 3, show all of progress prints, progress bars, and diagnostic plots.
-        If 2 show progress prints and bars. If 1, show only  progress prints.
-        If zero, show nothing.
+        Level of verbosity.
 
     Returns
     -------
@@ -1014,18 +1070,18 @@ def replace_badpix(clear, badpix_mask, fill_negatives=True, verbose=0):
     for y, x in tqdm(zip(ys, xs), total=len(ys), disable=disable):
         # Get coordinates of pixels in the 5x5 box.
         starty = np.max([(y-2), 0])
-        endy = np.min([(y+2), dimy])
+        endy = np.min([(y+3), dimy])
         startx = np.max([0, (x-2)])
-        endx = np.min([dimx, (x+2)])
+        endx = np.min([dimx, (x+3)])
         # calculate replacement value to be median of surround pixels.
         rep_val = np.nanmedian(clear[starty:endy, startx:endx])
         i = 1
         # if the median value is still bad, widen the surrounding region
         while np.isnan(rep_val) or rep_val <= 0:
             starty = np.max([(y-2-i), 0])
-            endy = np.min([(y+2+i), dimy])
+            endy = np.min([(y+3+i), dimy])
             startx = np.max([0, (x-2-i)])
-            endx = np.min([dimx, (x+2-i)])
+            endx = np.min([dimx, (x+3-i)])
             rep_val = np.nanmedian(clear[starty:endy, startx:endx])
             i += 1
         # Replace bad pixel with the new value.
@@ -1047,9 +1103,7 @@ def rescale_model(data, model, centroids, verbose=0):
     model : np.ndarray (2D)
         Column normalized trace model.
     verbose : int
-        If 3, show all of progress prints, progress bars, and diagnostic plots.
-        If 2 show progress prints and bars. If 1, show only  progress prints.
-        If zero, show nothing.
+        Level of verbosity.
 
     Returns
     -------
@@ -1067,7 +1121,7 @@ def rescale_model(data, model, centroids, verbose=0):
         # Get region around centroid
         ycen = int(round(centroids['order 1']['Y centroid'][i], 0))
         start = ycen - 13
-        end = ycen + 13
+        end = ycen + 14
         # Minimize the Chi^2.
         k = minimize(utils._lik, k0[i], (data[start:end, i], model[start:end, i]))
         ks.append(k.x[0])
