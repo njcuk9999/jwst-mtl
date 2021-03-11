@@ -427,85 +427,92 @@ def construct_order2(clear, order1_rescale, ycens, verbose=0, pad=0):
     wavecal_o2 = fits.getdata(path+'jwst_niriss_soss-256-ord2_trace.fits', 1)
     pp_p = np.polyfit(wavecal_o1['WAVELENGTH'][::-1], wavecal_o1['Detector_Pixels'], 1)
     pp_w2 = np.polyfit(wavecal_o2['Detector_Pixels'], wavecal_o2['WAVELENGTH'][::-1], 1)
-
     # Get throughput information for each order.
     ttab_file = soss_read_refs.RefTraceTable()
     thpt_o1 = ttab_file('THROUGHPUT', subarray='SUBSTRIP256', order=1)
     thpt_o2 = ttab_file('THROUGHPUT', subarray='SUBSTRIP256', order=2)
 
+    # Useful storage arrays
     ks = []
     pixxs = []
     notdone = []
+    # First estimate of second order is the residuals from subtraction of
+    # first order model from original data.
     sub = clear - order1_rescale
     dimy, dimx = np.shape(order1_rescale)
     o2frame = np.zeros((dimy, dimx))
 
+    # Determine a coeficient to rescale the first order profile to the flux
+    # level of the second order at the same wavelength. Since the
+    # wavelengths are the same, we can assume that the spatial profiles are
+    # also the same. Thus, use the first order wings to reconstruct the
+    # second order wings.
     for o2pix in range(dimx):
         # Get the wavelenegth for to each column in order 2.
         o2wave = np.polyval(pp_w2, o2pix)
         # Find the corresponding column in order 1.
         o1pix = int(round(np.polyval(pp_p, o2wave), 0))
 
-        # Region where wavelengths in order 1 and order 2 overlap.
         if o1pix < dimx - 1:
-            # Get throughput for orders 1 and 2 at wavelength of interest.
+            # Region where wavelengths in order 1 and order 2 overlap.
+            # Get throughput for order 1.
             thpt_1i = np.where(thpt_o1[0] >= o2wave)[0][0]
-            thpt_2i = np.where(thpt_o2[0] >= o2wave)[0][0]
-            # Get trace centroids for each order.
             ycen_o1i = int(round(ycens['order 1']['Y centroid'][o1pix], 0))
-            ycen_o2i = int(round(ycens['order 2']['Y centroid'][o2pix], 0))
-
-            start2 = ycen_o2i - 13
-            end2 = ycen_o2i + 13
-            start1 = ycen_o1i - 13
-            end1 = ycen_o1i + 13
-            # Find coefficient to scale order 1 to the flux level of order 2.
-            k0 = thpt_2i / thpt_1i
-            max1, max2 = np.min([ycen_o1i+5, dimy]), np.min([ycen_o2i+5, dimy])
-            min1, min2 = np.max([ycen_o1i-5, 0]), np.max([ycen_o2i-5, 0])
-            k = minimize(_lik, k0, (sub[min2:max2, o2pix],
-                         order1_rescale[min1:max1, o1pix])).x
-            if k <= 0:
-                notdone.append(o2pix)
-                continue
-
-            # Rescale the first order profile to the flux level of order 2.
-            o1prof = order1_rescale[:, o1pix]*k
-            ks.append(k)
-            pixxs.append(o2pix)
-            # Replace any oversubtracted pixels in o2 with o1.
-            inds = np.isnan(np.log10(sub[start2:end2, o2pix]))
-            sub[start2:end2, o2pix][inds] = o1prof[start1:end1][inds]
-            # Stitch together o2 core with o1 wings.
-            newprof = np.concatenate([o1prof[(end1+1):][::-1],
-                                      sub[start2:end2, o2pix], o1prof[end1:]])
+            # Save current order 1 info for special cases below.
+            # Since increasing pixel position moves from red to blue, always
+            # save the bluest order 1 profile to reuse when lambda<0.8µm.
             o1pix_r = o1pix
             thpt_1i_r = thpt_1i
-        # For region where lambda<0.8µm, there is no profile in order 1.
-        # Treat this area seperately later.
+            marker = True
         else:
-            ycen_o2i = int(round(ycens['order 2']['Y centroid'][o2pix], 0))
-            if ycen_o2i > dimy:
-                continue
+            # For region where lambda<0.8µm, there is no profile in order 1.
+            # We will reuse the 'bluest' order 1 profile from the above for
+            # this region, assuming that the spatial profile does not vary too
+            # drastically with wavelength.
+            thpt_1i = thpt_1i_r
+            o1pix = o1pix_r
             ycen_o1i = int(round(ycens['order 1']['Y centroid'][o1pix_r], 0))
-            thpt_2i = np.where(thpt_o2[0] >= o2wave)[0][0]
-            k0 = thpt_2i / thpt_1i_r
-            max1, max2 = np.min([ycen_o1i+5, dimy]), np.min([ycen_o2i+5, dimy])
-            min1, min2 = np.max([ycen_o1i-5, 0]), np.max([ycen_o2i-5, 0])
-            # Ensure that the order 1 and order 2 arrays are the same size
-            if max1 - ycen_o1i != max2 - ycen_o2i:
-                mindif = np.min([max1 - ycen_o1i, max2 - ycen_o2i])
-                max1, max2 = ycen_o1i + mindif, ycen_o2i + mindif
-            if ycen_o1i - min1 != ycen_o2i - min2:
-                mindif = np.min([ycen_o1i - min1, ycen_o2i - min2])
-                min1, min2 = ycen_o1i - mindif, ycen_o2i - mindif
-            k = minimize(_lik, k0, (sub[min2:max2, o2pix],
-                         order1_rescale[min1:max1, o1pix_r])).x
-            start2 = ycen_o2i - 13
-            end2 = ycen_o2i + 13
-            end1 = ycen_o1i + 13
-            o1prof = order1_rescale[:, o1pix_r]*k
-            newprof = np.concatenate([o1prof[end1:][::-1], sub[start2:end2, o2pix], o1prof[end1:]])
+            marker = False
+
+        # Get trace centroid and throughput for the second order.
+        thpt_2i = np.where(thpt_o2[0] >= o2wave)[0][0]
+        ycen_o2i = int(round(ycens['order 2']['Y centroid'][o2pix], 0))
+        # If the centroid is off of the detector, skip the column.
+        if ycen_o2i > dimy:
+            continue
+
+        # Find coefficient to scale order 1 to the flux level of order 2.
+        # Initial guess for scaling coefficient is ratio of throughputs.
+        # Won't be exactly correct due to different spectral resolutions.
+        k0 = thpt_2i / thpt_1i
+        # Use region +/- 13 pixels around centroid to calculate scaling.
+        max1, max2 = np.min([ycen_o1i+13, dimy]), np.min([ycen_o2i+13, dimy])
+        min1, min2 = np.max([ycen_o1i-13, 0]), np.max([ycen_o2i-13, 0])
+        # Ensure that the order 1 and order 2 arrays are the same size
+        if max1 - ycen_o1i != max2 - ycen_o2i:
+            mindif = np.min([max1 - ycen_o1i, max2 - ycen_o2i])
+            max1, max2 = ycen_o1i + mindif, ycen_o2i + mindif
+        if ycen_o1i - min1 != ycen_o2i - min2:
+            mindif = np.min([ycen_o1i - min1, ycen_o2i - min2])
+            min1, min2 = ycen_o1i - mindif, ycen_o2i - mindif
+        # Determine optimal scaling coefficient.
+        k = minimize(_lik, k0, (sub[min2:max2, o2pix],
+                     order1_rescale[min1:max1, o1pix])).x
+        if k <= 0:
+            notdone.append(o2pix)
+            continue
+        # Rescale the first order profile to the flux level of order 2.
+        o1prof = order1_rescale[:, o1pix]*k
+        if marker is True:
+            ks.append(k)
+            pixxs.append(o2pix)
+
+        # Replace any oversubtracted pixels in o2 with o1.
+        inds = np.isnan(np.log10(sub[min2:max2, o2pix]))
+        sub[min2:max2, o2pix][inds] = o1prof[min1:max1][inds]
+        # Stitch together o2 core with o1 wings.
+        newprof = np.concatenate([o1prof[(max1+1):][::-1],
+                                  sub[min2:max2, o2pix], o1prof[max1:]])
 
         oldax = np.arange(len(newprof)) - len(newprof)/2 + ycens['order 2']['Y centroid'][o2pix]
         end = np.where(oldax < dimy)[0][-1]
