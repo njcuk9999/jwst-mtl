@@ -28,11 +28,15 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 path = '/Users/michaelradica/Documents/School/Ph.D./Research/SOSS/Extraction/Input_Files/'
 
 
-def build_empirical_trace(clear, F277W, badpix_mask,
-                          filename='spatial_profile.fits', pad=(0, 0),
-                          oversample=1, verbose=0):
-    ''' Procedural function to wrap around construct orders 1 and 2.
-    Will do centroiding and call the functions to construct the models.
+def build_empirical_trace(clear, F277W, badpix_mask, pad=(0, 0), oversample=1,
+                          normalize=True, save_to_file=False, verbose=0):
+    '''Main procedural function for the empirical trace construction module.
+    Calling this function will initialize and run all the requred subroutines
+    to produce an uncontaminated spatial profile for the first and second
+    orders. The spatial profiles generated can include oversampling as well as
+    padding in both the spatial and spectral directions.
+    It is advisable to include an F277W exposure in addition to the standard
+    CLEAR to improve the accuracy of both orders in the overlap region.
 
     ***Will eventually want clear and F277W to be the full fits with headers
     to get parameters from***
@@ -40,27 +44,59 @@ def build_empirical_trace(clear, F277W, badpix_mask,
     Parameters
     ----------
     clear : np.array of float (2D) - eventually path
+        SOSS CLEAR exposure data frame.
     F277W : np.array of float (2D) - eventually path
-    filename : str
+        SOSS exposure data frame using the F277W filter. Pass None if no F277W
+        exposure is available.
     pad : tuple
+        Amount of padding to include (in native pixels) in the spatia and
+        spectral directions respectively.
     oversample : int
+        Oversampling factor. Oversampling will be equal in the spectral and
+        spatial directions.
+    normalize : bool
+        Whether to column normalize the final spatial profiles such that the
+        flux in each column sums to one.
+    save_to_file : bool
+        If True, save the spatial profiles to a fits file.
     verbose : int
-        Either, 3, 2, 1, or 0.
-        3 - show all of progress prints, progress bars, and diagnostic plots.
-        2 - show progress prints and bars.
-        1 - show only progress prints.
-        0 - show nothing.
+        Level of verbosity: either 3, 2, 1, or 0.
+         3 - show all of progress prints, progress bars, and diagnostic plots.
+         2 - show progress prints and bars.
+         1 - show only progress prints.
+         0 - show nothing.
+
+    Returns
+    -------
+    order1_uncontam : np.ndarray (2D)
+        Uncontaminated spatial profile for the first order.
+    order2_uncontam : np.ndarray(2D)
+        Uncontaminated spatial profile for the second order.
+
+    Raises
+    ------
+    ValueError
+        When the clear dimensions do not match a known subarray.
+        If the bad pixel mask is not the same shape as the clear frame.
     '''
 
     if verbose != 0:
         print('Starting the Empirical Trace Construction module.\n')
 
     # ========= INITIAL SETUP =========
-    # Print overwrite warning if output file already exists.
-    if os.path.exists(filename):
-        msg = 'Output file {} already exists.'\
-              ' It will be overwritten'.format(filename)
-        warnings.warn(msg)
+    # Determine correct subarray dimensions.
+    dimy, dimx = np.shape(clear)
+    if dimy == 96:
+        subarray = 'SUBSTRIP96'
+    elif dimy == 256:
+        subarray = 'SUBSTRIP256'
+    elif dimy == 2048:
+        subarray = 'FULL'
+    else:
+        raise ValueError('Unrecognized subarray: {}x{}.'.format(dimy, dimx))
+
+    if np.shape(clear) != np.shape(badpix_mask):
+        raise ValueError('Bad pixel mask must be the same shape as the data.')
 
     # Replace bad pixels using the median of pixels in the surrounding 5x5 box.
     if verbose != 0:
@@ -73,7 +109,7 @@ def build_empirical_trace(clear, F277W, badpix_mask,
     # edgetrig method.
     if verbose != 0:
         print(' Getting trace centroids...')
-    centroids = ctd.get_soss_centroids(clear, subarray='SUBSTRIP256')
+    centroids = ctd.get_soss_centroids(clear, subarray=subarray)
     # Overplot the data centroids on the CLEAR exposure if desired.
     if verbose == 3:
         plotting._plot_centroid(clear, centroids)
@@ -85,18 +121,19 @@ def build_empirical_trace(clear, F277W, badpix_mask,
     # Construct the first order profile.
     if verbose != 0:
         print(' Building the first order trace model...')
-    o1frame = construct_order1(clear, F277W, centroids, pad=0,
-                               verbose=verbose, subarray='SUBSTRIP256')
+    order1_1 = construct_order1(clear, F277W, centroids, pad=0,
+                                verbose=verbose, subarray=subarray)
     # Rescale the first order profile to the native flux level.
     if verbose != 0:
         print('  Rescaling first order to native flux level...', flush=True)
-    order1_rescale1 = rescale_model(clear, o1frame, centroids, verbose=verbose)
+    order1_rescale_1 = rescale_model(clear, order1_1, centroids,
+                                     verbose=verbose)
 
     # Construct the second order profile.
     if verbose != 0:
         print(' Building the second order trace model...')
-    o2frame = construct_order2(clear, order1_rescale1, centroids,
-                               verbose=verbose)
+    order2_1 = construct_order2(clear, order1_rescale_1, centroids,
+                                verbose=verbose)
     if verbose != 0:
         print('First pass models complete.')
 
@@ -109,12 +146,12 @@ def build_empirical_trace(clear, F277W, badpix_mask,
         print('Starting spatial profile refinement...')
         print(' Refining the first order profile...', flush=True)
     # Refine the first order.
-    order1_uncontam = refine_order1(clear, o2frame, centroids, pad[0])
+    order1_uncontam = refine_order1(clear, order2_1, centroids, pad[0],
+                                    verbose=verbose)
 
     # Refine the second order.
     if verbose != 0:
         print(' Refining the second order trace model...')
-    dimy, dimx = np.shape(clear)
     order2_uncontam = construct_order2(clear,
                                        order1_uncontam[pad[0]:(dimy+pad[0])],
                                        centroids, verbose=verbose, pad=pad[0])
@@ -151,9 +188,22 @@ def build_empirical_trace(clear, F277W, badpix_mask,
         order2_uncontam = oversample_frame(order2_uncontam,
                                            oversample=oversample)
 
-    if verbose != 0:
-        print('Writing to disk...')
-    #utils._write_to_file(order1_uncontam, order2_uncontam, 'SOSS_2D_profile')
+    # Column normalize.
+    if normalize is True:
+        order1_uncontam /= np.nansum(order1_uncontam, axis=0)
+        order2_uncontam /= np.nansum(order2_uncontam, axis=0)
+
+    # Write the spatial profiles to a file.
+    if save_to_file is True:
+        if verbose != 0:
+            print('Writing to disk...')
+        filename = 'SOSS_2D_profile_{}.fits'.format(subarray)
+        # Print overwrite warning if output file already exists.
+        if os.path.exists(filename):
+            msg = 'Output file {} already exists.'\
+                  ' It will be overwritten'.format(filename)
+            warnings.warn(msg)
+    utils._write_to_file(order1_uncontam, order2_uncontam, filename)
 
     if verbose != 0:
         print('\nDone.')
@@ -247,7 +297,7 @@ def construct_order1(clear, F277, ycens, subarray, pad=0, verbose=0):
 
     Returns
     -------
-    newmap : np.array of float (2D)
+    o1frame : np.array of float (2D)
         Interpolated order 1 trace model with padding.
     '''
 
@@ -395,9 +445,9 @@ def construct_order1(clear, F277, ycens, subarray, pad=0, verbose=0):
     if verbose != 0:
         print('  Stitching data and reconstructing wings...', flush=True)
     # Stitch together the interpolation and data.
-    newmap = np.zeros((dimy+2*pad, dimx))
+    o1frame = np.zeros((dimy+2*pad, dimx))
     # Insert interpolated data.
-    newmap[:, rend:bend] = map2D[:, rend:bend]
+    o1frame[:, rend:bend] = map2D[:, rend:bend]
     # Bluer region is known from the CLEAR exposure.
     disable = utils._verbose_to_bool(verbose)
     for col in tqdm(range(bend, dimx), disable=disable):
@@ -406,22 +456,23 @@ def construct_order1(clear, F277, ycens, subarray, pad=0, verbose=0):
                 ycens['order 3']['Y centroid'][col]]
         # Mask contamination from second and third orders, reconstruct wings
         # and add padding.
-        newmap[:, col] = reconstruct_wings(clear[:, col], ycens=cens, pad=pad,
-                                           smooth=True)
+        o1frame[:, col] = reconstruct_wings(clear[:, col], ycens=cens, pad=pad,
+                                            smooth=True)
     if F277 is not None:
         # Add on the F277W frame to the red of the model.
         disable = utils._verbose_to_bool(verbose)
         for col in tqdm(range(rend), disable=disable):
             cens = [ycens['order 1']['Y centroid'][col]]
             # Reconstruct wing structure and pad.
-            newmap[:, col] = reconstruct_wings(F277[:, col], ycens=cens,
-                                               contamination=None, pad=pad,
-                                               smooth=True)
+            o1frame[:, col] = reconstruct_wings(F277[:, col], ycens=cens,
+                                                contamination=None, pad=pad,
+                                                smooth=True)
 
-    # Column normalize.
-    newmap /= np.nansum(newmap, axis=0)
+    # Column normalize - necessary for uniformity as anchor profiles are
+    # normalized whereas stitched data is not.
+    o1frame /= np.nansum(o1frame, axis=0)
 
-    return newmap
+    return o1frame
 
 
 def construct_order2(clear, order1_rescale, ycens, pad=0, verbose=0):
@@ -1123,7 +1174,8 @@ def rescale_model(data, model, centroids, verbose=0):
         start = ycen - 13
         end = ycen + 14
         # Minimize the Chi^2.
-        k = minimize(utils._lik, k0[i], (data[start:end, i], model[start:end, i]))
+        lik_args = (data[start:end, i], model[start:end, i])
+        k = minimize(utils._lik, k0[i], lik_args)
         ks.append(k.x[0])
 
     # Rescale the column normalized model.

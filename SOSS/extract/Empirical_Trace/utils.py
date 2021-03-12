@@ -81,4 +81,4 @@ def _write_to_file(o1frame, o2frame, filename):
 
     hdu = fits.PrimaryHDU()
     hdu.data = np.dstack((o1frame, o2frame))
-    hdu.writeto('{}.fits'.format(filename), overwrite=True)
+    hdu.writeto(filename, overwrite=True)
