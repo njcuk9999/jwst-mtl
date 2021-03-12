@@ -108,3 +108,6 @@ venv.bak/
 AMI/NRM_simulator/save_etc.txt
 AMI/NRM_simulator/Simulated_data/
 AMI/NRM_simulator/SCENES/
+
+# Reference files
+SOSS/extract/Ref_files/SOSS_Ref_Files/
