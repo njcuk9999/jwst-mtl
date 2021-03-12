@@ -352,9 +352,9 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
 
         return mask
 
-    def _get_masks(self, mask):
+    def _get_masks(self, global_mask):
         """
-        Compute a global mask on the detector and for each orders.
+        Compute a general mask on the detector and for each orders.
         Depends on the spatial profile, the wavelength grid
         and the user defined mask (optional). These are all specified
         when initiating the object.
@@ -371,26 +371,26 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
         mask_wave = np.array([self.get_mask_wave(i_order) for i_order in range(n_orders)])
 
         # Apply user defined mask.
-        if mask is None:
+        if global_mask is None:
             mask_ord = np.any([mask_aperture, mask_wave], axis=0)
         else:
-            mask = [mask for _ in range(n_orders)]  # For each orders
+            mask = [global_mask for _ in range(n_orders)]  # For each orders
             mask_ord = np.any([mask_aperture, mask_wave, mask], axis=0)
 
         # Find pixels that are masked in each order.
-        global_mask = np.all(mask_ord, axis=0)
+        general_mask = np.all(mask_ord, axis=0)
 
         # Mask pixels if mask_aperture not masked but mask_wave is.
         # This means that an order is contaminated by another
         # order, but the wavelength range does not cover this part
         # of the spectrum. Thus, it cannot be treated correctly.
-        global_mask |= (np.any(mask_wave, axis=0)
-                        & np.all(~mask_aperture, axis=0))
+        general_mask |= (np.any(mask_wave, axis=0)
+                         & np.all(~mask_aperture, axis=0))
 
-        # Apply this new global mask to each orders.
-        mask_ord = (mask_wave | global_mask[None, :, :])
+        # Apply this new general mask to each orders.
+        mask_ord = (mask_wave | general_mask[None, :, :])
 
-        return global_mask, mask_ord
+        return general_mask, mask_ord
 
     def update_mask(self, mask):
         """
