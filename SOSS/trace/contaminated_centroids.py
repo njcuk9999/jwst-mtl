@@ -10,24 +10,34 @@ from SOSS.dms import soss_centroids as cen
 import matplotlib.pyplot as plt
 
 
-def calib_lambda(x, order=1, subarray='SUBSTRIP256'):
-    """Use the trace table reference file to find the wavelengths
-    corresponding to an array of x-positions.
+def wavelength_calibration(xpos, order=1, subarray='SUBSTRIP256'):
+    """Find the wavelengths corresponding to a set of x-positions using the
+    trace table reference file.
 
-    :param x:
-    :param order:
-    :param subarray:
+    :param xpos: the array of x-positions to calibrate.
+    :param order: the trace order the x-positions correspond to.
+    :param subarray: the subarray the x-positions correspond to.
+
+    :type xpos: array[float]
+    :type order: int
+    :type subarray: str
+
+    :returns: wavelengths - an array of wavelengths corresponding to xpos.
+    :rtype: array[float]
     """
 
+    # Read the wavelength vs x-position relation from the reference file.
     ref = soss_read_refs.RefTraceTable()
-    ref_lba, ref_x = ref('X', subarray=subarray, order=order)
+    ref_wavelengths, ref_xpos = ref('X', subarray=subarray, order=order)
 
-    # Sort and interpolate
-    ind = np.argsort(ref_x)
-    ref_x, ref_lba = ref_x[ind], ref_lba[ind]
-    lba = np.interp(x, ref_x, ref_lba)
+    # Sort so the reference positions are in ascending order.
+    args = np.argsort(ref_xpos)
+    ref_xpos, ref_wavelengths = ref_xpos[args], ref_wavelengths[args]
 
-    return lba
+    # Find the wavelengths corresponding to the input array by interpolating.
+    wavelengths = np.interp(xpos, ref_xpos, ref_wavelengths)
+
+    return wavelengths
 
 
 def build_mask_256(image, subarray='SUBSTRIP256', apex_order1=None,
@@ -555,9 +565,9 @@ def get_soss_centroids(image, subarray='SUBSTRIP256', apex_order1=None,
     w_o2_uncont_fit = np.polyval(param_o2, x_o2_uncont)
 
     # CALIBRATE pixels-->wavelength TO COMPARE TRACE WIDTH BETWEEN ORDERS
-    lba_o1 = calib_lambda(x_o1, order=1, subarray=subarray)
-    lba_o2_uncont = calib_lambda(x_o2_uncont, order=2, subarray=subarray)
-    lba_o3 = calib_lambda(x_o3, order=3, subarray=subarray)
+    lba_o1 = wavelength_calibration(x_o1, order=1, subarray=subarray)
+    lba_o2_uncont = wavelength_calibration(x_o2_uncont, order=2, subarray=subarray)
+    lba_o3 = wavelength_calibration(x_o3, order=3, subarray=subarray)
 
     calibrate_width = False
     if calibrate_width is True:
@@ -620,7 +630,7 @@ def get_soss_centroids(image, subarray='SUBSTRIP256', apex_order1=None,
     x_o2_top, y_o2_top, w_o2_top, par_o2_top = out
 
     # Calibrate the wavelength
-    lba_o2_top = calib_lambda(x_o2_top, order=2, subarray=subarray)
+    lba_o2_top = wavelength_calibration(x_o2_top, order=2, subarray=subarray)
 
     # Calibrate the trace width at those wavelengths
     w_o2_cont = W0 * lba_o2_top**m
