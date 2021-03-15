@@ -3,19 +3,20 @@
 
 import numpy as np
 from astropy.io import fits
-import matplotlib.pylab as plt
-import os
+
 from SOSS.extract import soss_read_refs
 from SOSS.dms import soss_centroids as cen
+
+import matplotlib.pyplot as plt
 
 
 def build_mask_256(image, subarray='SUBSTRIP256', apex_order1=None,
                    verbose=False):
-    '''Prepare a mask to restrict our analysis to a NNNx2048 section of the
+    """Prepare a mask to restrict our analysis to a NNNx2048 section of the
     image, where NNN is 256 or less. That obviously applies first to FULL
     images. But also can apply in SUBSTRIP256 images where main trace would be
     offset vertically by a few tens of pixels.
-    '''
+    """
 
     masked_value = True
 
@@ -23,15 +24,20 @@ def build_mask_256(image, subarray='SUBSTRIP256', apex_order1=None,
         print('apex_order = {:}'.format(apex_order1))
 
     if apex_order1 is None:
+
         # For subarray other than FULL, return an empty mask
         mask_256 = np.zeros_like(image, dtype='bool')
+
         if subarray == 'FULL':
             mask_256[:1792, :] = masked_value
+
     else:
+
         # First make a mask to retain only region around target of interest.
         # Make the full-frame a virtual 256 subarray.
         mask_256 = np.zeros_like(image, dtype='bool')  # Start with all False
         dimy, dimx = np.shape(image)
+
         # The nominal order 1 apex is at y~40 in SUBSTRIP256
         rowmin = np.max([apex_order1 - 40, 0])
         rowmax = np.min([apex_order1 + 216, dimy])
@@ -43,18 +49,21 @@ def build_mask_256(image, subarray='SUBSTRIP256', apex_order1=None,
 def build_mask_order2_contaminated(x_o1, y_o1, x_o3, y_o3,
                                    subarray='SUBSTRIP256', halfwidth_o1=25,
                                    halfwidth_o3=15, cut_x=150, verbose=False):
-    '''Function that creates a mask to isolate the uncontaminated part of the
+    """Function that creates a mask to isolate the uncontaminated part of the
     second order. It masks out all pixels redder than red_cut_x, all pixels
     bluer than blue_cut_x as well as pixels below of the sloped line defined by
     pt1 and pt2.
 
-    :param image: image to mask
     :param x_o1: x position of the order 1 centroid
     :param y_o1: y position of the order 1 centroid
     :param x_o3: x position of the order 3 centroid
     :param y_o3: y position of the order 3 centroid
     :param subarray: 'FULL', 'SUBSTRIP96' or 'SUBSTRIP256'
-    '''
+    :param halfwidth_o1:
+    :param halfwidth_o3:
+    :param cut_x:
+    :param verbose:
+    """
 
     # First, the order 1 trace needs to be masked out. Construct a mask
     # that not only covers the order 1 trace but everything redward
@@ -85,20 +94,32 @@ def build_mask_order2_contaminated(x_o1, y_o1, x_o3, y_o3,
 def build_mask_order2_uncontaminated(x_o1, y_o1, x_o3, y_o3,
                                      subarray='SUBSTRIP256', halfwidth_o1=25,
                                      halfwidth_o3=15, red_cut_x=700,
-                                     blue_cut_x=1800, pt1=[1249, 31],
-                                     pt2=[1911, 253], verbose=False):
-    '''Function that creates a mask to isolate the uncontaminated part of the
+                                     blue_cut_x=1800, pt1=None,
+                                     pt2=None, verbose=False):
+    """Function that creates a mask to isolate the uncontaminated part of the
     second order. It masks out all pixels redder than red_cut_x, all pixels
     bluer than blue_cut_x as well as pixels below of the sloped line defined by
     pt1 and pt2.
 
-    :param image: image to mask
     :param x_o1: x position of the order 1 centroid
     :param y_o1: y position of the order 1 centroid
     :param x_o3: x position of the order 3 centroid
     :param y_o3: y position of the order 3 centroid
     :param subarray: 'FULL', 'SUBSTRIP96' or 'SUBSTRIP256'
-    '''
+    :param halfwidth_o1:
+    :param halfwidth_o3:
+    :param red_cut_x:
+    :param blue_cut_x:
+    :param pt1:
+    :param pt2:
+    :param verbose:
+    """
+
+    if pt1 is None:
+        pt1 = [1249, 31]
+
+    if pt2 is None:
+        pt2 = [1911, 253]
 
     # First, the order 1 trace needs to be masked out. Construct a mask
     # that not only covers the order 1 trace but everything redward
@@ -127,6 +148,7 @@ def build_mask_order2_uncontaminated(x_o1, y_o1, x_o3, y_o3,
     if subarray == 'FULL':
         pt1[1] = pt1[1] + 1792
         pt2[1] = pt2[1] + 1792
+
     if subarray == 'SUBSTRIP96':
         pt1[1] = pt1[1] - 150
         pt2[1] = pt2[1] - 150
@@ -144,8 +166,12 @@ def build_mask_order2_uncontaminated(x_o1, y_o1, x_o3, y_o3,
 
 def build_mask_order3(subarray='SUBSTRIP256', apex_order1=40,
                       verbose=False):
-    '''Builds the mask to isolate the 3rd order trace.
-    '''
+    """Builds the mask to isolate the 3rd order trace.
+
+    :param subarray:
+    :param apex_order1:
+    :param verbose:
+    """
 
     dimy, dimx = 256, 2048
     if subarray == 'SUBSTRIP96':
@@ -157,28 +183,36 @@ def build_mask_order3(subarray='SUBSTRIP256', apex_order1=40,
     mask = np.zeros_like(np.zeros((dimy, dimx)), dtype='bool')
 
     if subarray == 'SUBSTRIP96':
+
         # Nothing to be done because order 3 can not be present.
         print('warning. No mask produced for order 3 when subarray=SUBSTRIP96')
         return mask
+
     else:
+
         # As determined on a subarray=256, here are the line parameters to
         # constrain the region for masking.
         # Line to mask redward of order 3: p_1=(0,132) to p_2=(1000,163)
         slope = (163 - 132) / 1000.
+
         if subarray == 'SUBSTRIP256':
             yintercept = 132.0  # measured on a 256 subarray
             apex_default = 40  # center of order 1 trace at lowest row value
+
         # Adapt if we are deealing with a FULLFRAME image
         if subarray == 'FULL':
             yintercept = 132.0 + 1792
             apex_default = 40 + 1792
+
         # vertical line redward of which no order 3 is detected
         maxcolumn = 700
 
         if apex_order1 is not None:
+
             # Can handle different Order 1 apex but with limited freedom
             row_offset = apex_order1 - apex_default  # relative to the nominal order 1 position
             yintercept = yintercept + row_offset
+
             # FALSE # maxcolumn would also move as the order 3 move up or down
             # (scale with slope) maxcolumn = maxcolumn - row_offset / slope
             if verbose:
@@ -188,27 +222,41 @@ def build_mask_order3(subarray='SUBSTRIP256', apex_order1=40,
             # (and some slack = 10 pixels) can still be seen
             if yintercept > (dimy-25-10):
                 # Too little left. Issue warning.
-                print('warning: masking for order 3 with apex_order1={} leaves too little of order 3 to fit position'.format(apex_order1))
+                msg = 'warning: masking for order 3 with apex_order1={} leaves too little of order 3 to fit position'
+                print(msg.format(apex_order1))
 
         # Column by column, mask pixels below that line
         for i in range(2048):
             y = np.int(np.round(yintercept + slope * i))
             y = np.min([dimy, y])  # Make sure y does not go above array size
             mask[0:y, i] = True
+
         # Mask redward (spectrally) of the vertical line
         mask[:, maxcolumn:] = True
 
-        return(mask)
+        return mask
 
 
-def build_mask_sloped(subarray='SUBSTRIP256', masked_side='blue', pt1=[0, 0],
-                      pt2=[2048, 0], verbose=False):
-    '''Draw a sloped line and mask on one side of it (the side is defined with
+def build_mask_sloped(subarray='SUBSTRIP256', masked_side='blue', pt1=None,
+                      pt2=None, verbose=False):
+    """Draw a sloped line and mask on one side of it (the side is defined with
     respect to the spectral dispersion axis. Requires the x,y position of two
     points that define the line. The x,y must be given in native size pixels.
     Along the x axis: 0-2047, along the y-axis, it depends on the array size.
     For SUBSTRIP256, y=0-255, for FF, y=0-2047
-    '''
+
+    :param subarray:
+    :param masked_side:
+    :param pt1:
+    :param pt2:
+    :param verbose:
+    """
+
+    if pt1 is None:
+        pt1 = [0, 0]
+
+    if pt2 is None:
+        pt2 = [2048, 0]
 
     masked_value = True
 
@@ -232,6 +280,7 @@ def build_mask_sloped(subarray='SUBSTRIP256', masked_side='blue', pt1=[0, 0],
     # Compute the position of the line at every x position
     fitx = np.arange(dimx)
     fity = np.polyval(param, fitx)  # round it
+
     # Make sure negative values in fity get floored to zero, to be able
     # to index in array (below) without wrapping.
     fity[fity < 0] = 0
@@ -244,6 +293,7 @@ def build_mask_sloped(subarray='SUBSTRIP256', masked_side='blue', pt1=[0, 0],
         else:
             for i in range(dimx):
                 mask[0:int(fity[i]), i] = masked_value
+
     if masked_side == 'red':
         if param[0] < 0:
             for i in range(dimx):
@@ -258,10 +308,17 @@ def build_mask_sloped(subarray='SUBSTRIP256', masked_side='blue', pt1=[0, 0],
 def build_mask_vertical(subarray='SUBSTRIP256', masked_side='blue',
                         cut_x=1700, mask_between=True, mask_outside=False,
                         verbose=False):
-    '''Builds a mask where there are two sides: left and right, one being
+    """Builds a mask where there are two sides: left and right, one being
     masked, the other not. In other words, this masks a region along the
     spectral dispersion axis.
-    '''
+
+    :param subarray:
+    :param masked_side:
+    :param cut_x:
+    :param mask_between:
+    :param mask_outside:
+    :param verbose:
+    """
 
     masked_value = True
 
@@ -293,12 +350,20 @@ def build_mask_vertical(subarray='SUBSTRIP256', masked_side='blue',
 
 def build_trace_mask(tracex, tracey, subarray='SUBSTRIP256', halfwidth=30,
                      extend_redward=None, extend_blueward=None, verbose=False):
-    '''Builds a mask of the same size as the input stack image. That mask
+    """Builds a mask of the same size as the input stack image. That mask
     masks a band of pixels around the trace position (tracex, tracey) of width
     = 2*halfwidth*yos pixels. Option extend_blueward additionally masks all
     pixels above the trace. Option extend_redward additionally masks all pixels
     below the trace.
-    '''
+
+    :param tracex:
+    :param tracey:
+    :param subarray:
+    :param halfwidth:
+    :param extend_redward:
+    :param extend_blueward:
+    :param verbose:
+    """
 
     masked_value = True
 
@@ -307,6 +372,7 @@ def build_trace_mask(tracex, tracey, subarray='SUBSTRIP256', halfwidth=30,
         dimy = 96
     if subarray == 'FULL':
         dimy = 2048
+
     # Intitialize the mask array to unmasked value.
     mask = np.zeros_like(np.zeros((dimy, dimx)), dtype='bool')
     if verbose is True:
@@ -316,18 +382,22 @@ def build_trace_mask(tracex, tracey, subarray='SUBSTRIP256', halfwidth=30,
     # trace center
     y = np.arange(dimy)
     for i in range(dimx):
+
         if verbose is True:
             print(i, tracex[i], tracey[i])
+
         # Mask the pixels in the trace
         d = np.abs(y - tracey[i])
         ind = d < halfwidth
         mask[ind, i] = masked_value
+
         # If extend_redward is set then mask pixels redward (in the
         # spatial axis) of the trace (so not only mask the trace but
         # all pixels redward of that along the spatial axis).
         if extend_redward:
             ind = (y - tracey[i]) < 0
             mask[ind, i] = masked_value
+
         # If extend_blueward is set then mask pixels blueward along
         # the spatial axis
         if extend_blueward:
@@ -338,9 +408,17 @@ def build_trace_mask(tracex, tracey, subarray='SUBSTRIP256', halfwidth=30,
 
 
 def calib_lambda(x, order=1, subarray='SUBSTRIP256'):
+    """Use the trace table reference file to find the wavelengths
+    corresponding to an array of x-positions.
+
+    :param x:
+    :param order:
+    :param subarray:
+    """
 
     ref = soss_read_refs.RefTraceTable()
     ref_lba, ref_x = ref('X', subarray=subarray, order=order)
+
     # Sort and interpolate
     ind = np.argsort(ref_x)
     ref_x, ref_lba = ref_x[ind], ref_lba[ind]
@@ -351,7 +429,7 @@ def calib_lambda(x, order=1, subarray='SUBSTRIP256'):
 
 def get_soss_centroids(image, subarray='SUBSTRIP256', apex_order1=None,
                        badpix=None, verbose=False, debug=False):
-    '''Function that determines the traces positions on a real image (native
+    """Function that determines the traces positions on a real image (native
     size) with as little assumptions as possible. Those assumptions are:
     1) The brightest order is order 1 and it is also the brightest of all order
     1 traces present on the image.
@@ -361,32 +439,39 @@ def get_soss_centroids(image, subarray='SUBSTRIP256', apex_order1=None,
     :param image: FF, SUBSTRIP96 or SUBSTRIP256 slope image. Expected
     GR700XD+CLEAR. For the GR700XD+F277W case, an optional f277w keyword is
     passed or detected by header if passed.
-    :param header:
-    :param badpix:
+
+    :param image:
+    :param subarray:
     :param apex_order1: The y position of the apex of the order 1 trace on the
     image. The apex is the row at the center of the trace where the trace
     reaches a minimum on the detector (near 1.3 microns). A rough estimate is
     sufficient as that is only used to mask out rows on a Full-Frame image to
     ensure that the target of interest is detected instead of a field target.
+    :param badpix:
     :param verbose:
+    :param debug:
+
     :return:
-    '''
+    """
 
     # Initialize output dictionary.
-    out_dict = {}
+    out_dict = dict()
+
     # Build mask that restrict the analysis to 256 or fewer vertical pixels.
     mask_256 = build_mask_256(image, subarray=subarray,
                               apex_order1=apex_order1, verbose=verbose)
+
     # Combine masks for subsection of ~256 vertical pixels
     if badpix is not None:
         mask_256 = mask_256 | badpix
 
     # Get the Order 1 position
     x_o1, y_o1, w_o1, par_o1 = cen.get_uncontam_centroids_edgetrig(
-            image, header=None, mask=mask_256, poly_order=11, halfwidth=2,
+            image, mask=mask_256, poly_order=11, halfwidth=2,
             mode='combined', verbose=verbose)
+
     # Add parameters to output dictionary.
-    o1_dict = {}
+    o1_dict = dict()
     o1_dict['X centroid'] = x_o1
     o1_dict['Y centroid'] = y_o1
     o1_dict['trace widths'] = w_o1
@@ -409,6 +494,7 @@ def get_soss_centroids(image, subarray='SUBSTRIP256', apex_order1=None,
     mask_o3 = build_mask_order3(subarray=subarray,
                                 apex_order1=apex_order1_measured,
                                 verbose=verbose)
+
     # Combine Order 3 mask
     if badpix is not None:
         mask_o3 = mask_o3 | badpix
@@ -418,10 +504,11 @@ def get_soss_centroids(image, subarray='SUBSTRIP256', apex_order1=None,
         hdu.writeto('mask_o3.fits', overwrite=True)
 
     # Get the centroid position by locking on trace edges and returning mean.
-    out = cen.get_uncontam_centroids_edgetrig(image, header=None, mask=mask_o3,
+    out = cen.get_uncontam_centroids_edgetrig(image, mask=mask_o3,
                                               poly_order=3, halfwidth=2,
                                               mode='combined', verbose=verbose)
     x_o3, y_o3, w_o3, par_o3 = out
+
     # Fit the width
     mask = np.isfinite(w_o3) & np.isfinite(x_o3)
     param_o3 = cen.robust_polyfit(x_o3[mask], w_o3[mask], 1)
@@ -433,6 +520,7 @@ def get_soss_centroids(image, subarray='SUBSTRIP256', apex_order1=None,
     # Build the mask to isolate the uncontaminated part of order 2
     mask_o2_uncont = build_mask_order2_uncontaminated(x_o1, y_o1, x_o3, y_o3,
                                                       subarray=subarray)
+
     # Add the bad pixel mask to it (including the reference pixels)
     if badpix is not None:
         mask_o2_uncont = mask_o2_uncont | badpix
@@ -444,6 +532,7 @@ def get_soss_centroids(image, subarray='SUBSTRIP256', apex_order1=None,
     # Build the mask to isolate the contaminated part order 2
     mask_o2_cont = build_mask_order2_contaminated(x_o1, y_o1, x_o3, y_o3,
                                                   subarray=subarray)
+
     # Combine masks
     if badpix is not None:
         mask_o2_cont = mask_o2_cont | badpix
@@ -454,11 +543,12 @@ def get_soss_centroids(image, subarray='SUBSTRIP256', apex_order1=None,
 
     # For uncontaminated blue part, make the position measurement with the
     # default 'combined' edge method.
-    out = cen.get_uncontam_centroids_edgetrig(image, header=None,
+    out = cen.get_uncontam_centroids_edgetrig(image,
                                               mask=mask_o2_uncont,
                                               poly_order=4, halfwidth=2,
                                               mode='combined', verbose=verbose)
     x_o2_uncont, y_o2_uncont, w_o2_uncont, par_o2_uncont = out
+
     # Fit the width
     mask = np.isfinite(w_o2_uncont) & np.isfinite(x_o2_uncont)
     param_o2 = cen.robust_polyfit(x_o2_uncont[mask], w_o2_uncont[mask], 1)
@@ -471,20 +561,25 @@ def get_soss_centroids(image, subarray='SUBSTRIP256', apex_order1=None,
 
     calibrate_width = False
     if calibrate_width is True:
+
         # TRACE WIDTH PLOT RELATION
         # Group together data for orders 1 and 2
         w_all = np.concatenate((w_o1, w_o2_uncont), axis=None)
         lba_all = np.concatenate((lba_o1, lba_o2_uncont), axis=None)
         ind = np.argsort(lba_all)
         lba_all, w_all = lba_all[ind], w_all[ind]
+
         # Fit the width vs wavelength for orders 1 and 2
         fitlog = True
         mask = np.isfinite(w_all) & np.isfinite(lba_all)
         if fitlog is False:
+
             # Make a linear fit
             param_all = cen.robust_polyfit(lba_all[mask], w_all[mask], 1)
             w_all_fit = np.polyval(param_all, lba_all)
+
         else:
+
             # Make a linear fit in the log-log plot - DEFAULT
             param_all = cen.robust_polyfit(np.log(lba_all[mask]),
                                            np.log(w_all[mask]), 1)
@@ -494,6 +589,7 @@ def get_soss_centroids(image, subarray='SUBSTRIP256', apex_order1=None,
 
         # Make a figure of the trace width versus the wavelength
         if debug is True:
+
             plt.figure(figsize=(6, 6))
             plt.scatter(lba_o1, w_o1, marker=',', s=1, color='red',
                         label='Order 1')
@@ -502,7 +598,7 @@ def get_soss_centroids(image, subarray='SUBSTRIP256', apex_order1=None,
             plt.scatter(lba_o3, w_o3+0.15, marker=',', s=1, color='navy',
                         label='Order 3')
             plt.plot(lba_all, w_all_fit, color='black',  linewidth=5,
-                     label='Order 1 and 2 - Fit:\nwidth = {:6.2F} $\lambda**({:6.4F})$'.format(np.exp(W0), m))
+                     label=r'Order 1 and 2 - Fit:\nwidth = {:6.2F} $\lambda**({:6.4F})$'.format(np.exp(W0), m))
             plt.xlabel('Wavelength (microns)')
             plt.ylabel('Trace Width (pixels)')
             plt.legend()
@@ -517,7 +613,7 @@ def get_soss_centroids(image, subarray='SUBSTRIP256', apex_order1=None,
 
     # Apply the width relation on the contaminated second order trace 'top
     # edge' positions to retrieve the trace center.
-    out = cen.get_uncontam_centroids_edgetrig(image, header=None,
+    out = cen.get_uncontam_centroids_edgetrig(image,
                                               mask=mask_o2_cont,
                                               poly_order=None, halfwidth=2,
                                               mode='minedge', verbose=verbose)
@@ -525,17 +621,20 @@ def get_soss_centroids(image, subarray='SUBSTRIP256', apex_order1=None,
 
     # Calibrate the wavelength
     lba_o2_top = calib_lambda(x_o2_top, order=2, subarray=subarray)
+
     # Calibrate the trace width at those wavelengths
     w_o2_cont = W0 * lba_o2_top**m
+
     # But make sure that unmeasured regions remain so
     w_o2_cont[~np.isfinite(y_o2_top)] = np.nan
+
     # Retrieve the position of the center of the trace
     y_o2_cont = y_o2_top - w_o2_cont/2.
     x_o2_cont = np.copy(x_o2_top)
 
     # For the uncontaminated part of second order, make measurements again but
     # return raw measurements rather than the fit.
-    out = cen.get_uncontam_centroids_edgetrig(image, header=None,
+    out = cen.get_uncontam_centroids_edgetrig(image,
                                               mask=mask_o2_uncont,
                                               poly_order=None, halfwidth=2,
                                               mode='combined', verbose=verbose)
@@ -609,29 +708,42 @@ def test_soss_trace_position(im, bad):
         dimy = 2048
 
     # Example for the call
-    lotastuff = soss_trace_position(im, subarray=subarray, apex_order1=None,
-                                    badpix=badpix, verbose=False)
-    x_o1, y_o1, w_o1, par_o1, x_o2, y_o2, w_o2, par_o2, x_o3, y_o3, w_o3,\
-        par_o3 = lotastuff
+    centroids = get_soss_centroids(im, subarray=subarray, apex_order1=None,
+                                   badpix=badpix, verbose=False)
 
     # Figure to show the positions for all 3 orders
     plt.figure(figsize=(10, 10))
     plt.ylim((0, dimy))
     plt.imshow(np.log10(im), vmin=0.7, vmax=3, origin='lower', aspect='auto')
 
-    plt.plot(x_o1, y_o1, color='orange', label='Order 1')
-    plt.plot(x_o1, y_o1 - w_o1 / 2, color='orange')
-    plt.plot(x_o1, y_o1 + w_o1 / 2, color='orange')
+    tmp = centroids['order 1']
+    plt.plot(tmp['X centroid'], tmp['Y centroid'], color='orange', label='Order 1')
+    plt.plot(tmp['X centroid'], tmp['Y centroid'] - tmp['trace widths'] / 2, color='orange')
+    plt.plot(tmp['X centroid'], tmp['Y centroid'] + tmp['trace widths'] / 2, color='orange')
 
-    if x_o2 is not None:
-        plt.plot(x_o2, y_o2, color='black', label='Order 2')
-        plt.plot(x_o2, y_o2 - w_o2 / 2, color='black')
-        plt.plot(x_o2, y_o2 + w_o2 / 2, color='black')
+    if centroids['order 2']:
+        tmp = centroids['order 2']
+        plt.plot(tmp['X centroid'], tmp['Y centroid'], color='black', label='Order 2')
+        plt.plot(tmp['X centroid'], tmp['Y centroid'] - tmp['trace widths'] / 2, color='black')
+        plt.plot(tmp['X centroid'], tmp['Y centroid'] + tmp['trace widths'] / 2, color='black')
 
-    if x_o3 is not None:
-        plt.plot(x_o3, y_o3, color='red', label='Order 3')
-        plt.plot(x_o3, y_o3 - w_o3 / 2, color='red')
-        plt.plot(x_o3, y_o3 + w_o3 / 2, color='red')
+    if centroids['order 3']:
+        tmp = centroids['order 3']
+        plt.plot(tmp['X centroid'], tmp['Y centroid'], color='red', label='Order 3')
+        plt.plot(tmp['X centroid'], tmp['Y centroid'] - tmp['trace widths'] / 2, color='red')
+        plt.plot(tmp['X centroid'], tmp['Y centroid'] + tmp['trace widths'] / 2, color='red')
 
     plt.legend()
     plt.show()
+
+    return
+
+
+def main():
+    """Placeholder for potential multiprocessing."""
+
+    return
+
+
+if __name__ == '__main__':
+    main()
