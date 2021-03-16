@@ -40,34 +40,39 @@ def wavelength_calibration(xpos, order=1, subarray='SUBSTRIP256'):
     return wavelengths
 
 
-def build_mask_256(image, subarray='SUBSTRIP256', apex_order1=None,
-                   verbose=False):
+def build_mask_256(subarray='SUBSTRIP256', apex_order1=None):
     """Restrict the analysis to a (N, 2048) section of the image, where N is 256 or less.
     Normally this only applies to the FULL subarray, masking everything but the SUBSTRIP256 region.
     When apex_order1 is given rows from apex_order1 - 40 to apex_order1 + 216 are kept instead.
 
-    :param image: The image for which to build the mask.
     :param subarray: The subarray value corresponding to the image.
-    :param apex_order1: The y-position of the order1 apex at 1.3 microns.
-    :param verbose: If True some diagnostic messages and plots will be produced.
+    :param apex_order1: The y-position of the order1 apex at 1.3 microns, in the given subarray.
 
-    :type image: array[float]
     :type subarray: str
     :type apex_order1: float
-    :type verbose: bool
 
     :returns: mask_256 - A mask that removes any area not related to the trace of the target.
     :rtype: array[bool]
     """
 
-    dimy, dimx = np.shape(image)
+    dimx = 2048
+
+    # Check the subarray value and set dimy accordingly.
+    if subarray == 'FULL':
+        dimy = 2048
+    elif subarray == 'SUBSTRIP96':
+        dimy = 96
+    elif subarray == 'SUBSTRIP256':
+        dimy = 256
+    else:
+        msg = 'Unknown subarray: {}'
+        raise ValueError(msg.format(subarray))
+
+    # Round the apex value to the nearest integer.
     apex_order1 = int(apex_order1)
 
-    if verbose:  # TODO I don't see a good reason to keep this verbosity.
-        print('apex_order = {:}'.format(apex_order1))
-
     # Prepare the mask array.
-    mask_256 = np.ones_like(image, dtype='bool')
+    mask_256 = np.ones((dimy, dimx), dtype='bool')
 
     if apex_order1 is None:
 
@@ -89,7 +94,7 @@ def build_mask_256(image, subarray='SUBSTRIP256', apex_order1=None,
     return mask_256
 
 
-def build_trace_mask(ytrace, subarray='SUBSTRIP256', halfwidth=30,
+def build_mask_trace(ytrace, subarray='SUBSTRIP256', halfwidth=30,
                      extend_below=False, extend_above=False):
     """Mask out the trace in a given subarray based on the y-positions provided.
     A band of pixels around the trace position of width = 2*halfwidth will be masked.
@@ -287,13 +292,13 @@ def build_mask_order2_contaminated(x_o1, y_o1, x_o3, y_o3,
 
     # First, the order 1 trace needs to be masked out. Construct a mask
     # that not only covers the order 1 trace but everything below the trace.
-    mask_aper_o1 = build_trace_mask(y_o1, subarray=subarray,
+    mask_aper_o1 = build_mask_trace(y_o1, subarray=subarray,
                                     halfwidth=halfwidth_o1,
                                     extend_below=True)
 
     # Do the same to mask out order 3 - this one is fainter so make a
     # narrower mask. Also mask all pixels above the trace.
-    mask_aper_o3 = build_trace_mask(y_o3, subarray=subarray,
+    mask_aper_o3 = build_mask_trace(y_o3, subarray=subarray,
                                     halfwidth=halfwidth_o3,
                                     extend_above=True)
 
@@ -340,13 +345,13 @@ def build_mask_order2_uncontaminated(x_o1, y_o1, x_o3, y_o3,
 
     # First, the order 1 trace needs to be masked out. Construct a mask
     # that not only covers the order 1 trace but everything below.
-    mask_aper_o1 = build_trace_mask(y_o1, subarray=subarray,
+    mask_aper_o1 = build_mask_trace(y_o1, subarray=subarray,
                                     halfwidth=halfwidth_o1,
                                     extend_below=True)
 
     # Do the same to mask out order 3 - this one is fainter so make a
     # narrower mask. Also mask all pixels above (spatially).
-    mask_aper_o3 = build_trace_mask(y_o3, subarray=subarray,
+    mask_aper_o3 = build_mask_trace(y_o3, subarray=subarray,
                                     halfwidth=halfwidth_o3,
                                     extend_above=True)
 
@@ -484,8 +489,7 @@ def get_soss_centroids(image, subarray='SUBSTRIP256', apex_order1=None,
     out_dict = dict()
 
     # Build mask that restrict the analysis to 256 or fewer vertical pixels.
-    mask_256 = build_mask_256(image, subarray=subarray,
-                              apex_order1=apex_order1, verbose=verbose)
+    mask_256 = build_mask_256(subarray=subarray, apex_order1=apex_order1)
 
     # Combine masks for subsection of ~256 vertical pixels
     if badpix is not None:
