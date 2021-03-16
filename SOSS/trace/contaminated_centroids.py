@@ -42,36 +42,49 @@ def wavelength_calibration(xpos, order=1, subarray='SUBSTRIP256'):
 
 def build_mask_256(image, subarray='SUBSTRIP256', apex_order1=None,
                    verbose=False):
-    """Prepare a mask to restrict our analysis to a NNNx2048 section of the
-    image, where NNN is 256 or less. That obviously applies first to FULL
-    images. But also can apply in SUBSTRIP256 images where main trace would be
-    offset vertically by a few tens of pixels.
+    """Restrict the analysis to a (N, 2048) section of the image, where N is 256 or less.
+    Normally this only applies to the FULL subarray, masking everything but the SUBSTRIP256 region.
+    When apex_order1 is given rows from apex_order1 - 40 to apex_order1 + 216 are kept instead.
+
+    :param image: The image for which to build the mask.
+    :param subarray: The subarray value corresponding to the image.
+    :param apex_order1: The y-position of the order1 apex at 1.3 microns.
+    :param verbose: If set True some diagnostic messages and plots will be produced.
+
+    :type image: array[float]
+    :type subarray: str
+    :type apex_order1: float
+    :type verbose: bool
+
+    :returns: mask_256 - A mask centered on the trace of the primary target.
+    :rtype: array[bool]
     """
 
-    masked_value = True
+    dimy, dimx = np.shape(image)
+    apex_order1 = int(apex_order1)
 
-    if verbose is True:
+    if verbose:
         print('apex_order = {:}'.format(apex_order1))
+
+    # Prepare the mask array.
+    mask_256 = np.ones_like(image, dtype='bool')
 
     if apex_order1 is None:
 
-        # For subarray other than FULL, return an empty mask
-        mask_256 = np.zeros_like(image, dtype='bool')
-
         if subarray == 'FULL':
-            mask_256[:1792, :] = masked_value
+            # If subarray is FULL keep only the SUBSTRIP256 region.
+            mask_256[1792:, :] = False
+        else:
+            # For all other subarrays keep the entire subarray.
+            pass
 
     else:
 
-        # First make a mask to retain only region around target of interest.
-        # Make the full-frame a virtual 256 subarray.
-        mask_256 = np.zeros_like(image, dtype='bool')  # Start with all False
-        dimy, dimx = np.shape(image)
-
-        # The nominal order 1 apex is at y~40 in SUBSTRIP256
-        rowmin = np.max([apex_order1 - 40, 0])
-        rowmax = np.min([apex_order1 + 216, dimy])
-        mask_256[rowmin:rowmax, :] = masked_value
+        # Keep only the 256 region around the apex_order1 value.
+        # In SUBSTRIP256 the apex would be at y ~ 40.
+        rowmin = np.maximum(apex_order1 - 40, 0)
+        rowmax = np.minimum(apex_order1 + 216, dimy)
+        mask_256[rowmin:rowmax, :] = False
 
     return mask_256
 
