@@ -45,7 +45,7 @@ def build_mask_256(subarray='SUBSTRIP256', apex_order1=None):
     Normally this only applies to the FULL subarray, masking everything but the SUBSTRIP256 region.
     When apex_order1 is given rows from apex_order1 - 40 to apex_order1 + 216 are kept instead.
 
-    :param subarray: The subarray value corresponding to the image.
+    :param subarray: the subarray for which to build a mask.
     :param apex_order1: The y-position of the order1 apex at 1.3 microns, in the given subarray.
 
     :type subarray: str
@@ -102,7 +102,7 @@ def build_mask_trace(ytrace, subarray='SUBSTRIP256', halfwidth=30,
     or below the trace.
 
     :param ytrace: the trace y-position at each column, must have shape = (2048,).
-    :param subarray: the subarray corresponding the the provided positions.
+    :param subarray: the subarray for which to build a mask.
     :param halfwidth: the size of the window to mask around the trace.
     :param extend_below: if True mask all pixels above the trace.
     :param extend_above: if True mask all pixels below the trace.
@@ -160,45 +160,71 @@ def build_mask_trace(ytrace, subarray='SUBSTRIP256', halfwidth=30,
     return mask_trace
 
 
-def build_mask_vertical(subarray='SUBSTRIP256', masked_side='blue',
-                        cut_x=1700, mask_between=True, mask_outside=False,
-                        verbose=False):
-    """Builds a mask where there are two sides: left and right, one being
-    masked, the other not. In other words, this masks a region along the
-    spectral dispersion axis.
+def build_mask_vertical(subarray='SUBSTRIP256', xlims=None,
+                        mask_blue=True, mask_between=True):
+    """Mask along the vertical(s) given by xlims.
+    If xlims contains 1 element masks pixels blue-wards or red-wards according
+    to the value of mask_blue (and mask_between is ignored).
+    If xlims contains 2 elements masks pixels between or outside these values
+    according to the value of mask_between (and mask_blue is ignored).
 
-    :param subarray:
-    :param masked_side:
-    :param cut_x:
-    :param mask_between:
-    :param mask_outside:
-    :param verbose:
+    :param subarray: the subarray for which to build a mask.
+    :param xlims: the column indices to use as the limits of the masked area.
+    :param mask_blue: if True mask pixels blue-wards of xlims, otherwise mask red-wards.
+    :param mask_between: if True mask pixels between xlims, otherwise mask outside.
+
+    :type subarray: str
+    :type xlims: list[int]
+    :type mask_blue: bool
+    :type mask_between: bool
+
+    :returns: mask - A mask the removes a vertical region according to xlims.
+    :rtype: array[bool]
     """
 
-    masked_value = True
+    dimx = 2048
 
-    if verbose is True:
-        print('Going through build_mask_vertical.')
-
-    dimy, dimx = 256, 2048
-    if subarray == 'SUBSTRIP96':
-        dimy = 96
+    # Check the subarray value and set dimy accordingly.
     if subarray == 'FULL':
         dimy = 2048
-
-    # Initialize a mask
-    mask = np.zeros_like(np.zeros((dimy, dimx)), dtype='bool')
-    if np.size(cut_x) == 2:
-        if mask_between is True:
-            mask[:, cut_x[0]:cut_x[1]] = masked_value
-        if mask_outside is True:
-            mask[:, 0:cut_x[0]] = masked_value
-            mask[:, cut_x[1]:] = masked_value
+    elif subarray == 'SUBSTRIP96':
+        dimy = 96
+    elif subarray == 'SUBSTRIP256':
+        dimy = 256
     else:
-        if masked_side == 'blue':
-            mask[:, cut_x:] = masked_value
-        if masked_side == 'red':
-            mask[:, 0:cut_x] = masked_value
+        msg = 'Unknown subarray: {}'
+        raise ValueError(msg.format(subarray))
+
+    # TODO better checking of xlims input.
+    if xlims is None:
+        xlims = [1700]
+    else:
+        # TODO check if integers.
+        pass
+
+    # Prepare the mask array.
+    mask = np.zeros((dimy, dimx), dtype='bool')
+
+    if np.size(xlims) == 1:
+
+        # Mask blue-wards or red-wards of a single value.
+        if mask_blue:
+            mask[:, xlims[0]:] = True
+        else:
+            mask[:, :xlims[0]] = True
+
+    elif np.size(xlims) == 2:
+
+        # Mask between or exterior to two values.
+        if mask_between:
+            mask[:, xlims[0]:xlims[1]] = True
+        else:
+            mask[:, :xlims[0]] = True
+            mask[:, xlims[1]:] = True
+
+    else:
+        msg = 'xlims must be a list or array of up to 2 indices.'
+        raise ValueError(msg)
 
     return mask
 
@@ -304,8 +330,8 @@ def build_mask_order2_contaminated(x_o1, y_o1, x_o3, y_o3,
 
     # Mask everything to the right of the second order trace where the
     # transmission dip makes the trace disappear.
-    mask_blue = build_mask_vertical(subarray=subarray, masked_side='blue',
-                                    cut_x=cut_x)
+    mask_blue = build_mask_vertical(subarray=subarray, xlims=[cut_x],
+                                    mask_blue=True)
 
     # Combine masks
     mask_o2_cont = mask_aper_o1 | mask_aper_o3 | mask_blue
@@ -356,13 +382,13 @@ def build_mask_order2_uncontaminated(x_o1, y_o1, x_o3, y_o3,
                                     extend_above=True)
 
     # Mask what is on the left side where orders 1 and 2 are well blended
-    mask_red = build_mask_vertical(subarray=subarray, masked_side='red',
-                                   cut_x=red_cut_x)
+    mask_red = build_mask_vertical(subarray=subarray, xlims=[red_cut_x],
+                                   mask_blue=False)
 
     # Mask everything to the right of where the 2nd order goes out of
     # the image
-    mask_blue = build_mask_vertical(subarray=subarray, masked_side='blue',
-                                    cut_x=blue_cut_x)
+    mask_blue = build_mask_vertical(subarray=subarray, xlims=[blue_cut_x],
+                                    mask_blue=True)
 
     # Apply a y offset to the points determining the slope to handle
     # different subarray cases
