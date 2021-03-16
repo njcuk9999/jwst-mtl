@@ -49,21 +49,21 @@ def build_mask_256(image, subarray='SUBSTRIP256', apex_order1=None,
     :param image: The image for which to build the mask.
     :param subarray: The subarray value corresponding to the image.
     :param apex_order1: The y-position of the order1 apex at 1.3 microns.
-    :param verbose: If set True some diagnostic messages and plots will be produced.
+    :param verbose: If True some diagnostic messages and plots will be produced.
 
     :type image: array[float]
     :type subarray: str
     :type apex_order1: float
     :type verbose: bool
 
-    :returns: mask_256 - A mask centered on the trace of the primary target.
+    :returns: mask_256 - A mask that removes any area not related to the trace of the target.
     :rtype: array[bool]
     """
 
     dimy, dimx = np.shape(image)
     apex_order1 = int(apex_order1)
 
-    if verbose:
+    if verbose:  # TODO I don't see a good reason to keep this verbosity.
         print('apex_order = {:}'.format(apex_order1))
 
     # Prepare the mask array.
@@ -89,63 +89,70 @@ def build_mask_256(image, subarray='SUBSTRIP256', apex_order1=None,
     return mask_256
 
 
-def build_trace_mask(tracex, tracey, subarray='SUBSTRIP256', halfwidth=30,
-                     extend_redward=None, extend_blueward=None, verbose=False):
-    """Builds a mask of the same size as the input stack image. That mask
-    masks a band of pixels around the trace position (tracex, tracey) of width
-    = 2*halfwidth*yos pixels. Option extend_blueward additionally masks all
-    pixels above the trace. Option extend_redward additionally masks all pixels
-    below the trace.
+def build_trace_mask(ytrace, subarray='SUBSTRIP256', halfwidth=30,
+                     extend_below=False, extend_above=False):
+    """Mask out the trace in a given subarray based on the y-positions provided.
+    A band of pixels around the trace position of width = 2*halfwidth will be masked.
+    Optionally extend_above and extend_below can be used to mask all pixels above
+    or below the trace.
 
-    :param tracex:
-    :param tracey:
-    :param subarray:
-    :param halfwidth:
-    :param extend_redward:
-    :param extend_blueward:
-    :param verbose:
+    :param ytrace: the trace y-position at each column, must have shape = (2048,).
+    :param subarray: the subarray corresponding the the provided positions.
+    :param halfwidth: the size of the window to mask around the trace.
+    :param extend_below: if True mask all pixels above the trace.
+    :param extend_above: if True mask all pixels below the trace.
+
+    :type ytrace: array[float]
+    :type subarray: str
+    :type halfwidth: float
+    :type extend_below: bool
+    :type extend_above: bool
+
+    :returns: mask_trace - A mask that removes an area centered on the given trace positions.
+    :rtype: array[bool]
     """
 
-    masked_value = True
+    dimx = 2048
 
-    dimy, dimx = 256, 2048
-    if subarray == 'SUBSTRIP96':
-        dimy = 96
+    # Check the shape of the y-positions.
+    if np.shape(ytrace) != (dimx,):
+        msg = 'ytrace must have shape (2048,)'
+        raise ValueError(msg)
+
+    # Check the subarray value and set dimy accordingly.
     if subarray == 'FULL':
         dimy = 2048
+    elif subarray == 'SUBSTRIP96':
+        dimy = 96
+    elif subarray == 'SUBSTRIP256':
+        dimy = 256
+    else:
+        msg = 'Unknown subarray: {}'
+        raise ValueError(msg.format(subarray))
 
-    # Intitialize the mask array to unmasked value.
-    mask = np.zeros_like(np.zeros((dimy, dimx)), dtype='bool')
-    if verbose is True:
-        print(np.shape(mask))
+    # Cannot both be True, that would mask everything.
+    if extend_below and extend_above:
+        msg = 'Only one of extend_below, extend_above should be used.'
+        raise ValueError(msg)
 
-    # Column by column, mask out pixels beyond the halfwidth of the
-    # trace center
+    x = np.arange(dimx)
     y = np.arange(dimy)
-    for i in range(dimx):
+    _, ygrid = np.meshgrid(x, y)
 
-        if verbose is True:
-            print(i, tracex[i], tracey[i])
+    # Mask the pixels within a halfwidth of the trace center.
+    mask_trace = np.abs(ygrid - ytrace) < halfwidth
 
-        # Mask the pixels in the trace
-        d = np.abs(y - tracey[i])
-        ind = d < halfwidth
-        mask[ind, i] = masked_value
+    # If True mask all pixels below the trace center.
+    if extend_below:
+        mask_below = (ygrid - ytrace) < 0
+        mask_trace = mask_trace | mask_below
 
-        # If extend_redward is set then mask pixels redward (in the
-        # spatial axis) of the trace (so not only mask the trace but
-        # all pixels redward of that along the spatial axis).
-        if extend_redward:
-            ind = (y - tracey[i]) < 0
-            mask[ind, i] = masked_value
+    # If True mask all pixels above the trace center.
+    if extend_above:
+        mask_above = (ygrid - ytrace) > 0
+        mask_trace = mask_trace | mask_above
 
-        # If extend_blueward is set then mask pixels blueward along
-        # the spatial axis
-        if extend_blueward:
-            ind = (y - tracey[i]) > 0
-            mask[ind, i] = masked_value
-
-    return mask
+    return mask_trace
 
 
 def build_mask_vertical(subarray='SUBSTRIP256', masked_side='blue',
@@ -279,19 +286,16 @@ def build_mask_order2_contaminated(x_o1, y_o1, x_o3, y_o3,
     """
 
     # First, the order 1 trace needs to be masked out. Construct a mask
-    # that not only covers the order 1 trace but everything redward
-    # along the spatial axis.
-    mask_aper_o1 = build_trace_mask(x_o1, y_o1, subarray=subarray,
+    # that not only covers the order 1 trace but everything below the trace.
+    mask_aper_o1 = build_trace_mask(y_o1, subarray=subarray,
                                     halfwidth=halfwidth_o1,
-                                    extend_redward=True,
-                                    verbose=verbose)
+                                    extend_below=True)
 
     # Do the same to mask out order 3 - this one is fainter so make a
-    # narrower mask. Also mask all pixels blueward (spatially)
-    mask_aper_o3 = build_trace_mask(x_o3, y_o3, subarray=subarray,
+    # narrower mask. Also mask all pixels above the trace.
+    mask_aper_o3 = build_trace_mask(y_o3, subarray=subarray,
                                     halfwidth=halfwidth_o3,
-                                    extend_blueward=True,
-                                    verbose=verbose)
+                                    extend_above=True)
 
     # Mask everything to the right of the second order trace where the
     # transmission dip makes the trace disappear.
@@ -335,17 +339,16 @@ def build_mask_order2_uncontaminated(x_o1, y_o1, x_o3, y_o3,
         pt2 = [1911, 253]
 
     # First, the order 1 trace needs to be masked out. Construct a mask
-    # that not only covers the order 1 trace but everything redward
-    # along the spatial axis.
-    mask_aper_o1 = build_trace_mask(x_o1, y_o1, subarray=subarray,
+    # that not only covers the order 1 trace but everything below.
+    mask_aper_o1 = build_trace_mask(y_o1, subarray=subarray,
                                     halfwidth=halfwidth_o1,
-                                    extend_redward=True, verbose=verbose)
+                                    extend_below=True)
 
     # Do the same to mask out order 3 - this one is fainter so make a
-    # narrower mask. Also mask all pixels blueward (spatially)
-    mask_aper_o3 = build_trace_mask(x_o3, y_o3, subarray=subarray,
+    # narrower mask. Also mask all pixels above (spatially).
+    mask_aper_o3 = build_trace_mask(y_o3, subarray=subarray,
                                     halfwidth=halfwidth_o3,
-                                    extend_blueward=True, verbose=verbose)
+                                    extend_above=True)
 
     # Mask what is on the left side where orders 1 and 2 are well blended
     mask_red = build_mask_vertical(subarray=subarray, masked_side='red',
