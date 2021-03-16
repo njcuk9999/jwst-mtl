@@ -86,12 +86,24 @@ def build_empirical_trace(clear, F277W, badpix_mask, pad=(0, 0), oversample=1,
     # ========= INITIAL SETUP =========
     # Determine correct subarray dimensions.
     dimy, dimx = np.shape(clear)
+    # Initialize trim variable to False unless the subarray is FULL.
+    trim = False
     if dimy == 96:
         subarray = 'SUBSTRIP96'
     elif dimy == 256:
         subarray = 'SUBSTRIP256'
     elif dimy == 2048:
         subarray = 'FULL'
+        # If subarray is FULL - trim down to SUBSTRIP256 and work with that.
+        # The rest if the frame is zeros anyways.
+        clear = clear[-256:, :]
+        F277W = F277W[-256:, :]
+        badpix_mask = badpix_mask[-256:, :]
+        # Reset all variable to appropriate SUSTRIP256 values.
+        subarray = 'SUBSTRIP256'
+        dimy, dimx = np.shape(clear)
+        # Note that the detector was trimmed.
+        trim = True
     else:
         raise ValueError('Unrecognized subarray: {}x{}.'.format(dimy, dimx))
 
@@ -194,6 +206,21 @@ def build_empirical_trace(clear, F277W, badpix_mask, pad=(0, 0), oversample=1,
     if normalize is True:
         order1_uncontam /= np.nansum(order1_uncontam, axis=0)
         order2_uncontam /= np.nansum(order2_uncontam, axis=0)
+
+    # If the original subarray was FULL - add back the rest of the frame
+    if trim is True:
+        subarray = 'FULL'
+        # Create the FULL frame including oversampling and padding.
+        order1_full = np.zeros(((2048+2*pad[0])*oversample,
+                                (2048+2*pad[1])*oversample))
+        order2_full = np.zeros(((2048+2*pad[0])*oversample,
+                                (2048+2*pad[1])*oversample))
+        # Put the uncontaminated SUBSTRIP256 frames on the FULL detector.
+        dimy = np.shape(order1_uncontam)[0]
+        order1_full[-dimy:, :] = order1_uncontam
+        order2_full[-dimy:, :] = order2_uncontam
+        order1_uncontam = order1_full
+        order2_uncontam = order2_full
 
     # Write the spatial profiles to a file.
     if save_to_file is True:
