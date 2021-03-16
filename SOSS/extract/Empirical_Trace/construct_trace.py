@@ -28,7 +28,7 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 path = '/Users/michaelradica/Documents/School/Ph.D./Research/SOSS/Extraction/Input_Files/'
 
 
-def build_empirical_trace(clear, F277W, badpix_mask, pad=(0, 0), oversample=1,
+def build_empirical_trace(clear, F277W, badpix_mask, pad=0, oversample=1,
                           normalize=True, save_to_file=True, verbose=0):
     '''Main procedural function for the empirical trace construction module.
     Calling this function will initialize and run all the requred subroutines
@@ -48,9 +48,9 @@ def build_empirical_trace(clear, F277W, badpix_mask, pad=(0, 0), oversample=1,
     F277W : np.array of float (2D) - eventually path
         SOSS exposure data frame using the F277W filter. Pass None if no F277W
         exposure is available.
-    pad : tuple
-        Amount of padding to include (in native pixels) in the spatial and
-        spectral directions respectively.
+    pad : int
+        Amount of padding to include (in native pixels). Padding will be equal
+        in the spatial and spectral directions.
     oversample : int
         Oversampling factor. Oversampling will be equal in the spectral and
         spatial directions.
@@ -89,7 +89,8 @@ def build_empirical_trace(clear, F277W, badpix_mask, pad=(0, 0), oversample=1,
     # Initialize trim variable to False unless the subarray is FULL.
     trim = False
     if dimy == 96:
-        subarray = 'SUBSTRIP96'
+        errmsg = 'SUBSTRIP96 is currently not supported.'
+        raise NotImplementedError(errmsg)
     elif dimy == 256:
         subarray = 'SUBSTRIP256'
     elif dimy == 2048:
@@ -160,37 +161,37 @@ def build_empirical_trace(clear, F277W, badpix_mask, pad=(0, 0), oversample=1,
         print(' \nStarting spatial profile refinement...')
         print('  Refining the first order...', flush=True)
     # Refine the first order.
-    order1_uncontam = refine_order1(clear, order2_1, centroids, pad[0],
+    order1_uncontam = refine_order1(clear, order2_1, centroids, pad,
                                     verbose=verbose)
 
     # Refine the second order.
     if verbose != 0:
         print('  Refining the second order...')
     order2_uncontam = construct_order2(clear,
-                                       order1_uncontam[pad[0]:(dimy+pad[0])],
-                                       centroids, verbose=verbose, pad=pad[0])
+                                       order1_uncontam[pad:(dimy+pad)],
+                                       centroids, verbose=verbose, pad=pad)
 
     # ========= FINAL TUNING =========
     # Pad the spectral axis.
-    if pad[1] != 0:
+    if pad != 0:
         if verbose != 0:
             print(' Adding padding to the spectral axis...')
         order1_uncontam = pad_spectral_axis(order1_uncontam,
                                             centroids['order 1']['X centroid'],
                                             centroids['order 1']['Y centroid'],
-                                            pad=pad[1])
+                                            pad=pad)
     # Even if padding is not requested, fill in the zero valued area of the
     # frame where the order 2 trace is off of the detector.
     edge = np.where(np.nanmedian(order2_uncontam, axis=0) == 0)[0][0] - 5
     order2_uncontam = pad_spectral_axis(order2_uncontam,
                                         centroids['order 2']['X centroid'],
                                         centroids['order 2']['Y centroid'],
-                                        pad=pad[1], ref_col=(5, edge-dimx))
+                                        pad=pad, ref_col=(5, edge-dimx))
 
     # Plot a map of the residuals.
     if verbose == 3:
-        o1_unpad = order1_uncontam[pad[0]:(dimy+pad[0]), :]
-        o2_unpad = order2_uncontam[pad[0]:(dimy+pad[0]), :]
+        o1_unpad = order1_uncontam[pad:(dimy+pad), :]
+        o2_unpad = order2_uncontam[pad:(dimy+pad), :]
         plotting._plot_trace_residuals(clear, o1_unpad, o2_unpad)
 
     # Add oversampling.
@@ -211,10 +212,10 @@ def build_empirical_trace(clear, F277W, badpix_mask, pad=(0, 0), oversample=1,
     if trim is True:
         subarray = 'FULL'
         # Create the FULL frame including oversampling and padding.
-        order1_full = np.zeros(((2048+2*pad[0])*oversample,
-                                (2048+2*pad[1])*oversample))
-        order2_full = np.zeros(((2048+2*pad[0])*oversample,
-                                (2048+2*pad[1])*oversample))
+        order1_full = np.zeros(((2048+2*pad)*oversample,
+                                (2048+2*pad)*oversample))
+        order2_full = np.zeros(((2048+2*pad)*oversample,
+                                (2048+2*pad)*oversample))
         # Put the uncontaminated SUBSTRIP256 frames on the FULL detector.
         dimy = np.shape(order1_uncontam)[0]
         order1_full[-dimy:, :] = order1_uncontam
@@ -234,7 +235,8 @@ def build_empirical_trace(clear, F277W, badpix_mask, pad=(0, 0), oversample=1,
                   ' It will be overwritten'.format(filename)
             warnings.warn(msg)
 
-        utils._write_to_file(order1_uncontam, order2_uncontam, filename)
+        utils._write_to_file(order1_uncontam, order2_uncontam, subarray,
+                             filename, pad, oversample)
 
     if verbose != 0:
         print('\nDone.')
