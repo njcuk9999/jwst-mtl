@@ -140,6 +140,7 @@ def build_mask_trace(ytrace, subarray='SUBSTRIP256', halfwidth=30,
         msg = 'Only one of extend_below, extend_above should be used.'
         raise ValueError(msg)
 
+    # Create a coordinate grid.
     x = np.arange(dimx)
     y = np.arange(dimy)
     _, ygrid = np.meshgrid(x, y)
@@ -154,7 +155,7 @@ def build_mask_trace(ytrace, subarray='SUBSTRIP256', halfwidth=30,
 
     # If True mask all pixels above the trace center.
     if extend_above:
-        mask_above = (ygrid - ytrace) > 0
+        mask_above = (ygrid - ytrace) >= 0
         mask_trace = mask_trace | mask_above
 
     return mask_trace
@@ -229,70 +230,72 @@ def build_mask_vertical(subarray='SUBSTRIP256', xlims=None,
     return mask
 
 
-def build_mask_sloped(subarray='SUBSTRIP256', masked_side='blue', pt1=None,
-                      pt2=None, verbose=False):
+def build_mask_sloped(subarray='SUBSTRIP256', point1=None, point2=None,
+                      mask_above=True, verbose=False):
     """Draw a sloped line and mask on one side of it (the side is defined with
     respect to the spectral dispersion axis. Requires the x,y position of two
     points that define the line. The x,y must be given in native size pixels.
     Along the x axis: 0-2047, along the y-axis, it depends on the array size.
     For SUBSTRIP256, y=0-255, for FF, y=0-2047
 
-    :param subarray:
-    :param masked_side:
-    :param pt1:
-    :param pt2:
-    :param verbose:
+    :param subarray: the subarray for which to build a mask.
+    :param point1: the first x, y pair defining the boundary line.
+    :param point2: the second x, y pair defining the boundary line.
+    :param mask_above: if True mask pixels above the boundary line, else mask below.
+    :param verbose: if True be verbose.
+
+    :type subarray: str
+    :type point1: list[float]
+    :type point2: list[float]
+    :type mask_above: bool
+    :type verbose: bool
+
+    :returns: mask - A mask the removes a diagonal region along the slope defined by point1 and point2.
+    :rtype: array[bool]
     """
 
-    if pt1 is None:
-        pt1 = [0, 0]
+    dimx = 2048
 
-    if pt2 is None:
-        pt2 = [2048, 0]
-
-    masked_value = True
-
-    dimy, dimx = 256, 2048
-    if subarray == 'SUBSTRIP96':
-        dimy = 96
+    # Check the subarray value and set dimy accordingly.
     if subarray == 'FULL':
         dimy = 2048
+    elif subarray == 'SUBSTRIP96':
+        dimy = 96
+    elif subarray == 'SUBSTRIP256':
+        dimy = 256
+    else:
+        msg = 'Unknown subarray: {}'
+        raise ValueError(msg.format(subarray))
 
-    # Simplify one's life and simply fit the two points
-    thex = np.array([pt1[0], pt2[0]])
-    they = np.array([pt1[1], pt2[1]])
-    param = np.polyfit(thex, they, 1)
+    # If no points are given use a horizontal line along the bottom of the subarray.
+    if point1 is None:
+        point1 = [0, 0]
+
+    if point2 is None:
+        point2 = [2048, 0]
+
+    # Obtain the parameters of the line by fitting the point.
+    xvals = np.array([point1[0], point2[0]])
+    yvals = np.array([point1[1], point2[1]])
+    param = np.polyfit(xvals, yvals, 1)
+
+    # Compute the position of the line at every x position.
+    xline = np.arange(dimx)
+    yline = np.polyval(param, xline)
 
     if verbose is True:
         print('line fit param:', param)
 
-    # Initialize a mask
-    mask = np.zeros_like(np.zeros((dimy, dimx)), dtype='bool')
+    # Create a coordinate grid.
+    x = np.arange(dimx)
+    y = np.arange(dimy)
+    _, ygrid = np.meshgrid(x, y)
 
-    # Compute the position of the line at every x position
-    fitx = np.arange(dimx)
-    fity = np.polyval(param, fitx)  # round it
-
-    # Make sure negative values in fity get floored to zero, to be able
-    # to index in array (below) without wrapping.
-    fity[fity < 0] = 0
-
-    # Branch depending on side that needs masking and sign of the slope
-    if masked_side == 'blue':
-        if param[0] < 0:
-            for i in range(dimx):
-                mask[int(fity[i]):, i] = masked_value
-        else:
-            for i in range(dimx):
-                mask[0:int(fity[i]), i] = masked_value
-
-    if masked_side == 'red':
-        if param[0] < 0:
-            for i in range(dimx):
-                mask[0:int(fity[i]), i] = masked_value
-        else:
-            for i in range(dimx):
-                mask[int(fity[i]):, i] = masked_value
+    # Mask pixels above or below the boundary line.
+    if mask_above:
+        mask = (ygrid - yline) >= 0
+    else:
+        mask = (ygrid - yline) < 0
 
     return mask
 
@@ -401,8 +404,8 @@ def build_mask_order2_uncontaminated(x_o1, y_o1, x_o3, y_o3,
         pt2[1] = pt2[1] - 150
 
     # Mask a slope below the order 2 to remove the wings of order 1
-    mask_slope = build_mask_sloped(subarray=subarray,
-                                   masked_side='blue', pt1=pt1, pt2=pt2)
+    mask_slope = build_mask_sloped(subarray=subarray, point1=pt1, point2=pt2,
+                                   mask_above=False)
 
     # Combine masks
     mask_o2_uncont = mask_aper_o1 | mask_aper_o3 | mask_red | mask_blue \
