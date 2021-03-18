@@ -19,6 +19,7 @@ from SOSS.extract import soss_read_refs
 from SOSS.extract.empirical_trace import plotting
 from SOSS.extract.empirical_trace import _calc_interp_coefs
 from SOSS.extract.empirical_trace import utils
+from SOSS.extract.simple_solver import simple_solver as ss
 from SOSS.trace import contaminated_centroids as ctd
 
 warnings.simplefilter(action='ignore', category=RuntimeWarning)
@@ -91,6 +92,7 @@ def build_empirical_trace(clear, F277W, badpix_mask, pad=0, oversample=1,
     if dimy == 96:
         errmsg = 'SUBSTRIP96 is currently not supported.'
         raise NotImplementedError(errmsg)
+        subarray = 'SUBSTRIP96'
     elif dimy == 256:
         subarray = 'SUBSTRIP256'
     elif dimy == 2048:
@@ -124,6 +126,10 @@ def build_empirical_trace(clear, F277W, badpix_mask, pad=0, oversample=1,
     if verbose != 0:
         print('  Getting trace centroids...')
     centroids = ctd.get_soss_centroids(clear, subarray=subarray)
+    # For SUBSTRIP96, the edgetrig method cannot find the second and third
+    # order centroids. Use the simple solver method instead.
+    if subarray == 'SUBSTRIP96':
+        centroids = get_substrip96_centroids(centroids)
     # Overplot the data centroids on the CLEAR exposure if desired.
     if verbose == 3:
         plotting._plot_centroid(clear, centroids)
@@ -833,6 +839,67 @@ def _fit_trace_widths(clear, wave_coefs, verbose=0):
                                  (wfit_b, wfit_r))
 
     return wfit_r, wfit_b
+
+
+def get_substrip96_centroids(centroids):
+    '''For the SUBSTRIP96 subarray, the edgetrig centroiding method cannot
+    locate the centroids for orders 2 and 3 as they are not on the detector.
+    This function estimates the centroid positions for these orders by
+    comparing the edgetrig first order centroids to the centroids in the trace
+    table reference file. Analagous to the simple solver, the necessary
+    rotation and x/y offsets are calculated to transform the reference first
+    order centroids to match the data. All orders are assumed to transform
+    rigidly, such that applying the transformation to the reference second, or
+    third order centroids gives an estimate of the data centroids.
+
+    Parameters
+    ----------
+    centroids : dict
+        Centroids dictionary, as returned by get_soss_centroids, containing
+        only information for the first order.
+
+    Returns
+    -------
+    centroids : dict
+        Centroids dictionary, with second and third order centroids appended.
+    '''
+
+    # Get first order centroids from the data.
+    xcen_dat = centroids['order 1']['X centroid']
+    ycen_dat = centroids['order 1']['Y centroid']
+    # Get first order centroids in the trace table reference file.
+    ttab_file = soss_read_refs.RefTraceTable()
+    xcen_ref = ttab_file('X', subarray='SUBSTRIP96')[1]
+    # Extend centroids beyond edges of the subarray for more accurate fitting.
+    inds = np.where((xcen_ref >= -50) & (xcen_ref < 2098))
+    xcen_ref = xcen_ref[inds]
+    ycen_ref = ttab_file('Y', subarray='SUBSTRIP96')[1][inds]
+
+    # Fit reference file centroids to the data to determine necessary rotation
+    # and offsets.
+    guess_params = (0.15, 1, 1)
+    lik_args = (xcen_ref, ycen_ref, xcen_dat, ycen_dat, 'SUBSTRIP96')
+    fit = minimize(ss._chi_squared, guess_params, lik_args).x
+    rot_ang, x_shift, y_shift = fit
+
+    # Transform centroids to detector frame for orders 2 and 3.
+    for order in [2, 3]:
+        # Get centroids from the reference file.
+        xcen_ref = ttab_file('X', subarray='SUBSTRIP96', order=order)[1]
+        # Extend centroids beyond edges of the subarray for more accurate
+        # fitting.
+        inds = np.where((xcen_ref >= -50) & (xcen_ref < 2098))
+        xcen_ref = xcen_ref[inds]
+        ycen_ref = ttab_file('Y', subarray='SUBSTRIP96', order=2)[1][inds]
+        # Transform reference centroids to the data frame.
+        rot_x, rot_y = ss.rot_centroids(rot_ang, x_shift, y_shift, xcen_ref,
+                                        ycen_ref, bound=True)
+        # Add the transformed centroids to the centroid dict.
+        tmp = {}
+        tmp['X centroid'], tmp['Y centroid'] = rot_x, rot_y
+        centroids['order {}'.format(order)] = tmp
+
+    return centroids
 
 
 def oversample_frame(frame, oversample=1):
