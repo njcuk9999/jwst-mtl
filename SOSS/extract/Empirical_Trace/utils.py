@@ -16,6 +16,22 @@ from scipy.optimize import least_squares
 
 def _gen_ImageHDU_header(hdu, order, pad, oversample):
     '''Generate the appropriate fits header for reference file image HDUs.
+
+    Parameters
+    ----------
+    hdu : HDU object
+        Image HDU object.
+    order : int
+        Diffraction order.
+    pad : int
+        Amount of padding in native pixels.
+    oversample : int
+        Oversampling factor.
+
+    Returns
+    -------
+    hdu : HDU object
+        Image HDU object with appropriate header added.
     '''
 
     hdu.header['ORDER'] = order
@@ -32,6 +48,20 @@ def _gen_ImageHDU_header(hdu, order, pad, oversample):
 
 def _gen_PrimaryHDU_header(hdu, subarray, filename):
     '''Generate the appropriate header for the reference file primary HDU.
+
+    Parameters
+    ----------
+    hdu : HDU object
+        Primary HDU object.
+    subarray : str
+        Subarray identifier.
+    filname : str
+        Output filename.
+
+    Returns
+    -------
+    hdu : HDU object
+        Primary HDU object with appropriate header added.
     '''
 
     hdu.header['DATE'] = str(datetime.utcnow())
@@ -62,6 +92,22 @@ def _gen_PrimaryHDU_header(hdu, subarray, filename):
     return hdu
 
 
+# TODO : Add functioanlity to recalculate.
+def _get_interp_coefs(noF277=False):
+    '''
+    '''
+
+    # read these from a file instead so they can be overwritten in the case of rerunning.
+    if noF277 is False:
+        coef_b = [1.51850915, -9.76581613, 14.80720191]
+        coef_r = [-1.51850915,  9.76581613, -13.80720191]
+    else:
+        coef_b = [0.80175603, -5.27434345, 8.54474316]
+        coef_r = [-0.80175603, 5.27434345, -7.54474316]
+
+    return coef_b, coef_r
+
+
 def _lik(k, data, model):
     '''Utility likelihood function for flux rescaling. Esssentially a Chi^2
     multiplied by the data such that wing values don't carry too much weight.
@@ -80,6 +126,12 @@ def _local_mean(array, step):
     loc_mean = np.mean(running_means, axis=0)
 
     return loc_mean
+
+
+def _poly_res(p, x, y):
+    '''Residuals from a polynomial.
+    '''
+    return np.polyval(p, x) - y
 
 
 def _robust_polyfit(x, y, p0):
@@ -103,12 +155,8 @@ def _robust_polyfit(x, y, p0):
         Best fitting parameters of the desired polynomial order.
     '''
 
-    def poly_res(p, x, y):
-        '''Residuals from a polynomial'''
-        return np.polyval(p, x) - y
-
     # Preform outlier resistant fitting.
-    res = least_squares(poly_res, p0, loss='huber', f_scale=0.1, args=(x, y))
+    res = least_squares(_poly_res, p0, loss='huber', f_scale=0.1, args=(x, y))
     return res.x
 
 
@@ -133,7 +181,8 @@ def _write_to_file(order1, order2, subarray, filename, pad, oversample):
     order1 : np.ndarray (2D)
         Uncontaminated first order data frame.
     order2 : np.ndarray (2D)
-        Uncontaminated first order data frame.
+        Uncontaminated first order data frame. Pass None to only write the
+        first order profile to file.
     subarray : str
         Subarray used.
     filename : str
@@ -153,9 +202,10 @@ def _write_to_file(order1, order2, subarray, filename, pad, oversample):
     hdu_1 = _gen_ImageHDU_header(hdu_1, 1, pad, oversample)
     hdulist.append(hdu_1)
     # Generate an ImageHDU for the second order profile.
-    hdu_2 = fits.ImageHDU(data=order2)
-    hdu_2 = _gen_ImageHDU_header(hdu_2, 2, pad, oversample)
-    hdulist.append(hdu_2)
+    if order2 is not None:
+        hdu_2 = fits.ImageHDU(data=order2)
+        hdu_2 = _gen_ImageHDU_header(hdu_2, 2, pad, oversample)
+        hdulist.append(hdu_2)
 
     # Write the file to disk.
     hdu = fits.HDUList(hdulist)

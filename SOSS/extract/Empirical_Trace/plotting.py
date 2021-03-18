@@ -181,3 +181,22 @@ def _plot_wing_reconstruction(profile, ycens, axis_r, prof_r2, pp_r, newprof,
     plt.xlim(int(ax_tot[0]), int(ax_tot[-1]))
     plt.legend(fontsize=12)
     plt.show()
+
+
+def _plot_wing_reconstruction96(profile, newprof, goodwing, text=None):
+    '''Do diagnostic plotting for the SUBSTRIP96 wing reconstruction.
+    '''
+
+    plt.figure(figsize=(8, 5))
+    plt.plot(np.arange(len(profile)), np.log10(profile), ls=':', c='black',
+             label='original profile')
+    add = len(newprof) - len(profile)
+    plt.plot(np.arange(len(newprof))-add/2, np.log10(newprof), c='blue',
+             label='reconstructed profile')
+    if text is not None:
+        plt.text(np.arange(len(newprof))[10], np.min(np.log10(newprof)), text,
+                 fontsize=14)
+
+    plt.xlabel('Spatial Pixel', fontsize=12)
+    plt.legend(fontsize=12)
+    plt.show()
