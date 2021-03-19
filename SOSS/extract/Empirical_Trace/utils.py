@@ -13,6 +13,7 @@ from datetime import datetime
 import numpy as np
 import pandas as pd
 from scipy.optimize import least_squares
+import warnings
 from SOSS.extract.empirical_trace import _calc_interp_coefs
 
 # Local path to reference files.
@@ -190,6 +191,64 @@ def _robust_polyfit(x, y, p0):
     # Preform outlier resistant fitting.
     res = least_squares(_poly_res, p0, loss='huber', f_scale=0.1, args=(x, y))
     return res.x
+
+
+def _validate_inputs(etrace):
+    '''Validate the input parameters for the empirical trace construction
+    module, and determine the correct subarray for the data.
+
+    Parameters
+    ----------
+    etrace : Empirical_Trace instance
+        Instance of an Empirical_Trace object.
+
+    Returns
+    -------
+    subarray : str
+        The correct NIRISS/SOSS subarray identifier corresponding to the CLEAR
+        dataframe.
+    '''
+
+    # Ensure F277W and CLEAR have the same dimensions.
+    if etrace.F277W is not None:
+        if np.shape(etrace.F277W) != np.shape(etrace.CLEAR):
+            msg = 'F277W and CLEAR dataframes must be the same shape.'
+            raise ValueError(msg)
+    # Ensure bad pixel mask and clear have the same dimensions.
+    if np.shape(etrace.CLEAR) != np.shape(etrace.badpix_mask):
+        raise ValueError('Bad pixel mask must be the same shape as the data.')
+    # Ensure padding and oversampling are integers.
+    if type(etrace.pad) != int:
+        raise ValueError('Padding value must be an integer.')
+    if type(etrace.oversample) != int:
+        raise ValueError('Oversampling factor must be an integer.')
+    # Ensure verbose is the correct format.
+    if etrace.verbose not in [0, 1, 2, 3]:
+        raise ValueError('Verbose argument must be in the range 0 to 3.')
+
+    # Determine correct subarray dimensions.
+    dimy, dimx = np.shape(etrace.CLEAR)
+    if dimy == 96:
+        subarray = 'SUBSTRIP96'
+        # Fail if user wants to create reference files with a SUBSTRIP96
+        # exposure. Use a SUBSTRIP256 for this.
+        if etrace.oversample != 1 or etrace.pad != 0:
+            errmsg = 'The creation of reference files is not supported for \
+SUBSTRIP96. Please use a SUBSTRIP256 observation instead.'
+            raise NotImplementedError(errmsg)
+        # Warn the user that only the first pass, first order profile can be
+        # generated for SUBSTRIP96 data.
+        warnmsg = 'Only a first order 2D profile can be generated for \
+SUBSTRIP96.\nPlease use a reference file for the second order.'
+        warnings.warn(warnmsg)
+    elif dimy == 256:
+        subarray = 'SUBSTRIP256'
+    elif dimy == 2048:
+        subarray = 'FULL'
+    else:
+        raise ValueError('Unrecognized subarray: {}x{}.'.format(dimy, dimx))
+
+    return subarray
 
 
 def _verbose_to_bool(verbose):

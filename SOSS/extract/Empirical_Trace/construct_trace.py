@@ -5,8 +5,8 @@ Created on Mon Jul 20 9:35 2020
 
 @author: MCR
 
-File containing the necessary functions to create an empirical interpolated
-trace model in the overlap region for SOSS order 1.
+File containing the main functions for the creation of 2D trace profiles for
+the first and second diffraction orders of NIRISS/SOSS observations.
 """
 
 from astropy.io import fits
@@ -30,8 +30,8 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 path = '/Users/michaelradica/Documents/School/Ph.D./Research/SOSS/Extraction/Input_Files/'
 
 
-def build_empirical_trace(clear, F277W, badpix_mask, pad=0, oversample=1,
-                          normalize=True, save_to_file=True, verbose=0):
+def build_empirical_trace(clear, F277W, badpix_mask, subarray, pad, oversample,
+                          normalize, save_to_file, verbose):
     '''Main procedural function for the empirical trace construction module.
     Calling this function will initialize and run all the requred subroutines
     to produce an uncontaminated spatial profile for the first and second
@@ -45,11 +45,17 @@ def build_empirical_trace(clear, F277W, badpix_mask, pad=0, oversample=1,
 
     Parameters
     ----------
-    clear : np.array of float (2D) - eventually path
+    clear : np.array of float (2D)
         SOSS CLEAR exposure data frame.
-    F277W : np.array of float (2D) - eventually path
+    F277W : np.array of float (2D)
         SOSS exposure data frame using the F277W filter. Pass None if no F277W
         exposure is available.
+    badpix_mask : np.ndarray (2D) of bool
+        Bad pixel mask, values of True represent bad pixels. Must be the same
+        shape as the CLEAR dataframe.
+    subarray : str
+        NIRISS SOSS subarray identifier. One of 'SUBSTRIP96', 'SUBSTRIP256', or
+        'FULL'.
     pad : int
         Amount of padding to include (in native pixels). Padding will be equal
         in the spatial and spectral directions.
@@ -90,19 +96,7 @@ def build_empirical_trace(clear, F277W, badpix_mask, pad=0, oversample=1,
     dimy, dimx = np.shape(clear)
     # Initialize trim variable to False unless the subarray is FULL.
     trim = False
-    if dimy == 96:
-        subarray = 'SUBSTRIP96'
-        if oversample != 1 or pad != 0:
-            errmsg = 'The creation of reference files is not supported for \
-SUBSTRIP96. Please use a SUBSTRIP256 observation instead.'
-            raise NotImplementedError(errmsg)
-        warnmsg = 'Only a first order 2D profile can be generated for \
-SUBSTRIP96.\nPlease use a reference file for the second order.'
-        warnings.warn(warnmsg)
-    elif dimy == 256:
-        subarray = 'SUBSTRIP256'
-    elif dimy == 2048:
-        subarray = 'FULL'
+    if subarray == 'FULL':
         # If subarray is FULL - trim down to SUBSTRIP256 and work with that.
         # The rest if the frame is zeros anyways.
         clear = clear[-256:, :]
@@ -113,11 +107,6 @@ SUBSTRIP96.\nPlease use a reference file for the second order.'
         dimy, dimx = np.shape(clear)
         # Note that the detector was trimmed.
         trim = True
-    else:
-        raise ValueError('Unrecognized subarray: {}x{}.'.format(dimy, dimx))
-
-    if np.shape(clear) != np.shape(badpix_mask):
-        raise ValueError('Bad pixel mask must be the same shape as the data.')
 
     # Replace bad pixels using the median of pixels in the surrounding 5x5 box.
     if verbose != 0:
