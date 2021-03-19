@@ -381,17 +381,17 @@ def construct_order1(clear, F277, ycens, subarray, pad=0, verbose=0):
     # neighbouring 5 columns to mitigate effects of outliers.
     Banch = np.median(clear[:, (xdb-2):(xdb+2)], axis=1)
     if subarray == 'SUBSTRIP96':
-        Banch = reconstruct_wings_s96(Banch, ydb, goodwing=goodwing,
-                                      verbose=verbose, contamination=True,
-                                      pad=pad, **{'text': 'Blue anchor'})
+        Banch = reconstruct_wings96(Banch, ydb, goodwing=goodwing,
+                                    verbose=verbose, contamination=True,
+                                    pad=pad, **{'text': 'Blue anchor'})
     else:
         # Mask second and third order, reconstruct wing structure and pad.
         cens = [ycens['order 1']['Y centroid'][xdb],
                 ycens['order 2']['Y centroid'][xdb],
                 ycens['order 3']['Y centroid'][xdb]]
-        Banch = reconstruct_wings_s256(Banch, ycens=cens, contamination=[2, 3],
-                                       pad=pad, verbose=verbose, smooth=True,
-                                       **{'text': 'Blue anchor'})
+        Banch = reconstruct_wings256(Banch, ycens=cens, contamination=[2, 3],
+                                     pad=pad, verbose=verbose, smooth=True,
+                                     **{'text': 'Blue anchor'})
     # Remove the lambda/D scaling.
     Banch = _chromescale(Banch, 2.1, 2.5, ydb+pad, wave_polys)
     # Normalize
@@ -411,14 +411,14 @@ def construct_order1(clear, F277, ycens, subarray, pad=0, verbose=0):
         Ranch = np.median(F277[:, (xdr-2):(xdr+2)], axis=1)
         # Reconstruct wing structure and pad.
         if subarray == 'SUBSTRIP96':
-            Ranch = reconstruct_wings_s96(Ranch, ydr, verbose=verbose, pad=pad,
-                                          **{'text': 'Red anchor'})
+            Ranch = reconstruct_wings96(Ranch, ydr, verbose=verbose, pad=pad,
+                                        **{'text': 'Red anchor'})
         else:
             cens = [ycens['order 1']['Y centroid'][xdr]]
-            Ranch = reconstruct_wings_s256(Ranch, ycens=cens,
-                                           contamination=None, pad=pad,
-                                           verbose=verbose, smooth=True,
-                                           **{'text': 'Red anchor'})
+            Ranch = reconstruct_wings256(Ranch, ycens=cens,
+                                         contamination=None, pad=pad,
+                                         verbose=verbose, smooth=True,
+                                         **{'text': 'Red anchor'})
         Ranch = _chromescale(Ranch, 2.45, 2.5, ydr+pad, wave_polys)
         # Normalize
         Ranch /= np.nansum(Ranch)
@@ -447,10 +447,10 @@ def construct_order1(clear, F277, ycens, subarray, pad=0, verbose=0):
         # Interpolate the WebbPSF generated profile to the correct location.
         Ranch = np.interp(np.arange(256), np.arange(256)-128+ydr, Ranch)
         # Reconstruct wing structure and pad.
-        Ranch = reconstruct_wings_s256(Ranch, ycens=[ydr],
-                                       contamination=None, pad=pad,
-                                       verbose=verbose, smooth=True,
-                                       **{'text': 'Red anchor'})
+        Ranch = reconstruct_wings256(Ranch, ycens=[ydr],
+                                     contamination=None, pad=pad,
+                                     verbose=verbose, smooth=True,
+                                     **{'text': 'Red anchor'})
         # Rescale to remove chromatic effects.
         Ranch = _chromescale(Ranch, 2.9, 2.5, ydr+pad, wave_polys)
         # Normalize
@@ -518,10 +518,10 @@ def construct_order1(clear, F277, ycens, subarray, pad=0, verbose=0):
             except IndexError:
                 goodwing_loc = None
                 contamination = False
-            o1frame[:, col] = reconstruct_wings_s96(clear[:, col], ycen=cen,
-                                                    contamination=contamination,
-                                                    goodwing=goodwing_loc,
-                                                    pad=pad)
+            o1frame[:, col] = reconstruct_wings96(clear[:, col], ycen=cen,
+                                                  contamination=contamination,
+                                                  goodwing=goodwing_loc,
+                                                  pad=pad)
 
         else:
             cens = [ycens['order 1']['Y centroid'][col],
@@ -529,8 +529,8 @@ def construct_order1(clear, F277, ycens, subarray, pad=0, verbose=0):
                     ycens['order 3']['Y centroid'][col]]
             # Mask contamination from second and third orders, reconstruct
             # wings and add padding.
-            o1frame[:, col] = reconstruct_wings_s256(clear[:, col], ycens=cens,
-                                                     pad=pad, smooth=True)
+            o1frame[:, col] = reconstruct_wings256(clear[:, col], ycens=cens,
+                                                   pad=pad, smooth=True)
     if F277 is not None:
         # Add on the F277W frame to the red of the model.
         disable = utils._verbose_to_bool(verbose)
@@ -538,14 +538,14 @@ def construct_order1(clear, F277, ycens, subarray, pad=0, verbose=0):
             # Reconstruct wing structure and pad.
             if subarray == 'SUBSTRIP96':
                 cen = ycens['order 1']['Y centroid'][col]
-                o1frame[:, col] = reconstruct_wings_s96(F277[:, col],
-                                                        ycen=cen, pad=pad)
+                o1frame[:, col] = reconstruct_wings96(F277[:, col],
+                                                      ycen=cen, pad=pad)
             else:
                 cens = [ycens['order 1']['Y centroid'][col]]
-                o1frame[:, col] = reconstruct_wings_s256(F277[:, col],
-                                                         ycens=cens,
-                                                         contamination=None,
-                                                         pad=pad, smooth=True)
+                o1frame[:, col] = reconstruct_wings256(F277[:, col],
+                                                       ycens=cens,
+                                                       contamination=None,
+                                                       pad=pad, smooth=True)
 
     # Column normalize - necessary for uniformity as anchor profiles are
     # normalized whereas stitched data is not.
@@ -1041,8 +1041,8 @@ def pad_spectral_axis(frame, xcens, ycens, pad=0, ref_col=(5, -5)):
     return newframe
 
 
-def reconstruct_wings_s256(profile, ycens=None, contamination=[2, 3], pad=0,
-                           verbose=0, smooth=True, **kwargs):
+def reconstruct_wings256(profile, ycens=None, contamination=[2, 3], pad=0,
+                         verbose=0, smooth=True, **kwargs):
     '''Masks the second and third diffraction orders and reconstructs the
      underlying wing structure of the first order. Also adds padding in the
      spatial direction if required.
@@ -1197,8 +1197,8 @@ def reconstruct_wings_s256(profile, ycens=None, contamination=[2, 3], pad=0,
     return newprof
 
 
-def reconstruct_wings_s96(profile, ycen, goodwing=None, contamination=False,
-                          pad=0, verbose=0, **kwargs):
+def reconstruct_wings96(profile, ycen, goodwing=None, contamination=False,
+                        pad=0, verbose=0, **kwargs):
     '''
 
     Parameters
@@ -1285,8 +1285,8 @@ def refine_order1(clear, o2frame, centroids, pad, verbose=0):
         ycens = [centroids['order 1']['Y centroid'][i],
                  centroids['order 2']['Y centroid'][i],
                  centroids['order 3']['Y centroid'][i]]
-        prof_refine = reconstruct_wings_s256(order1_uncontam_unref[:, i],
-                                             ycens, contamination=[3], pad=pad)
+        prof_refine = reconstruct_wings256(order1_uncontam_unref[:, i],
+                                           ycens, contamination=[3], pad=pad)
         order1_uncontam[:, i] = prof_refine
 
     return order1_uncontam

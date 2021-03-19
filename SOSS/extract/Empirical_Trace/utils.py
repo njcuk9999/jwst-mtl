@@ -73,7 +73,7 @@ def _gen_PrimaryHDU_header(hdu, subarray, filename):
     hdu.header['DATE'] = str(datetime.utcnow())
     hdu.header.comments['DATE'] = 'Date this file was created (UTC)'
     hdu.header['ORIGIN'] = 'SOSS Team MTL'
-    hdu.header.comments['ORIGIN'] = 'Orginazation responsible for creating file'
+    hdu.header.comments['ORIGIN'] = 'Orginization responsible for creating file'
     hdu.header['TELESCOP'] = 'JWST    '
     hdu.header.comments['TELESCOP'] = 'Telescope used to acquire the data'
     hdu.header['INSTRUME'] = 'NIRISS  '

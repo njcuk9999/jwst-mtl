@@ -233,8 +233,8 @@ def loicpsf(wavelist=None, wfe_real=None, save_to_disk=True, oversampling=10,
         if save_to_disk is True:
             # Save psf realization to disk
             text = '{0:5f}'.format(wave*1e+6)
-            filepars = [oversampling, pixel, text, wfe_real]
-            outfile = filepath+'SOSS_os{0}_{1}x{1}_{2}_{3}.fits'.format(*filepars)
+            fpars = [oversampling, pixel, text, wfe_real]
+            outfile = filepath+'SOSS_os{0}_{1}x{1}_{2}_{3}.fits'.format(*fpars)
             psf.writeto(outfile, overwrite=True)
 
     if save_to_disk is False:
