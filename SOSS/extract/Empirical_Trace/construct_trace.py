@@ -435,7 +435,7 @@ def construct_order1(clear, F277, ycens, subarray, pad=0, verbose=0):
         Ranch /= np.nansum(Ranch)
 
         # Interpolation polynomial coeffs, calculated via calc_interp_coefs
-        coef_b, coef_r = utils._get_interp_coefs()
+        coef_b, coef_r = utils._read_interp_coefs(F277W=True, verbose=verbose)
     else:
         # If no F277W exposure is provided, interpolate out to 2.9µm.
         # Generate a simulated 2.9µm PSF.
@@ -467,7 +467,7 @@ def construct_order1(clear, F277, ycens, subarray, pad=0, verbose=0):
         # Normalize
         Ranch /= np.nansum(Ranch)
         # Interpolation polynomial coeffs, calculated via calc_interp_coefs
-        coef_b, coef_r = utils._get_interp_coefs(noF277=True)
+        coef_b, coef_r = utils._read_interp_coefs(F277W=False, verbose=verbose)
         # Pixel coords at which to start the interpolation.
         xdr = 0
 

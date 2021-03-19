@@ -11,7 +11,12 @@ Miscellaneous utility functions for the empirical trace construction.
 from astropy.io import fits
 from datetime import datetime
 import numpy as np
+import pandas as pd
 from scipy.optimize import least_squares
+from SOSS.extract.empirical_trace import _calc_interp_coefs
+
+# Local path to reference files.
+path = '/Users/michaelradica/Documents/GitHub/jwst-mtl/SOSS/extract/empirical_trace/'
 
 
 def _gen_ImageHDU_header(hdu, order, pad, oversample):
@@ -92,18 +97,45 @@ def _gen_PrimaryHDU_header(hdu, subarray, filename):
     return hdu
 
 
-# TODO : Add functioanlity to recalculate.
-def _get_interp_coefs(noF277=False):
-    '''
+def _read_interp_coefs(F277W=True, verbose=0):
+    '''Read the interpolation coefficients from the appropriate reference file.
+    If the reference file does not exist, or the correct coefficients cannot be
+    found, they will be reclaculated.
+
+    Parameters
+    ----------
+    F277W : bool
+        If True, selects the coefficients with a 2.45µm red anchor.
+    verbose : int
+        Level of verbosity.
+
+    Returns
+    -------
+    coef_b : np.ndarray
+        Blue anchor coefficients.
+    coef_r : np.ndarray
+        Red anchor coefficients.
     '''
 
-    # read these from a file instead so they can be overwritten in the case of rerunning.
-    if noF277 is False:
-        coef_b = [1.51850915, -9.76581613, 14.80720191]
-        coef_r = [-1.51850915,  9.76581613, -13.80720191]
-    else:
-        coef_b = [0.80175603, -5.27434345, 8.54474316]
-        coef_r = [-0.80175603, 5.27434345, -7.54474316]
+    # Attemot to read interpolation coefficients from reference file.
+    try:
+        df = pd.read_csv(path+'Ref_files/interpolation_coefficients.csv')
+        # If there is an F277W exposure, get the coefficients to 2.45µm.
+        if F277W is True:
+            coef_b = np.array(df['F_blue'])
+            coef_r = np.array(df['F_red'])
+        # For no F277W exposure, get the coefficients out to 2.9µm.
+        else:
+            coef_b = np.array(df['NF_blue'])
+            coef_r = np.array(df['NF_red'])
+    # If the reference file does not exists, or the appropriate coefficients
+    # have not yet been generated, call the _calc_interp_coefs function to
+    #  calculate them.
+    except (FileNotFoundError, KeyError):
+        print('No interpolation coefficients found. \
+They will be calculated now.')
+        coef_b, coef_r = _calc_interp_coefs.calc_interp_coefs(F277W=F277W,
+                                                              verbose=verbose)
 
     return coef_b, coef_r
 

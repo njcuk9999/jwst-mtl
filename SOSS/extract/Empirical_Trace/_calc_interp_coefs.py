@@ -5,17 +5,22 @@ Created on Wed Feb 3 11:31 2021
 
 @author: MCR
 
-Function to calculate the interpolation coefficients for the empirical trace
-construction. This shouldn't need to called by the end user.
+Functions to calculate the interpolation coefficients for the empirical trace
+construction.
 """
 
-import numpy as np
 from astropy.io import fits
+import numpy as np
+import os
+import pandas as pd
 import webbpsf
 from SOSS.extract.empirical_trace import plotting
 
+# Local path to reference files.
+path = '/Users/michaelradica/Documents/GitHub/jwst-mtl/SOSS/extract/empirical_trace/Ref_files/'
 
-def calc_interp_coefs(make_psfs=False, doplot=True, F277W=True, filepath=''):
+
+def calc_interp_coefs(F277W=True, verbose=0):
     '''Function to calculate the interpolation coefficients necessary to
     construct a monochromatic PSF profile at any wavelength between
     the two 1D PSF anchor profiles. Linear combinations of the blue and red
@@ -28,18 +33,11 @@ def calc_interp_coefs(make_psfs=False, doplot=True, F277W=True, filepath=''):
 
     Parameters
     ----------
-    make_psfs : bool
-        Whether or not WebbPSF will have to generate the monochromatic
-        PSFs used for the fitting.
-    doplot : bool
-        Whether to show the diagnostic plots for the model derivation.
     F277W : bool
         Set to False if no F277W exposure is available for the observation.
         Finds coefficients for the entire 2.1 - 2.9µm region in this case.
-    filepath : str
-        Path to directory containing the WebbPSF monochromatic PSF fits
-        files, or the directory to which they will be stored when made.
-        Defaults to the current directory.
+    verbose : int
+        Level of verbosity.
 
     Returns
     -------
@@ -51,10 +49,12 @@ def calc_interp_coefs(make_psfs=False, doplot=True, F277W=True, filepath=''):
         red anchor.
     '''
 
-    # Red anchor is 2.8µm without an F277W exposure.
+    if verbose != 0:
+        print('Calculating interpolation coefficients.')
+    # Red anchor is 2.9µm without an F277W exposure.
     if F277W is False:
         wave_range = np.linspace(2.1, 2.9, 7)
-    # Red anchor is 2.5µm with F277W exposure.
+    # Red anchor is 2.45µm with F277W exposure.
     else:
         wave_range = np.linspace(2.1, 2.45, 7)
 
@@ -63,27 +63,24 @@ def calc_interp_coefs(make_psfs=False, doplot=True, F277W=True, filepath=''):
     # Loop over all 10 available WFE realizations.
     for i in range(10):
         psf_run = []
-        # Create the PSF if user has indicated to.
-        if make_psfs is True:
-            loicpsf(wavelist=wave_range*1e-6, wfe_real=i)
-        # If user already has PSFs generated.
+        # Import the PSFs,
         for w in wave_range:
+            # If the user already has the PSFs generated, import them.
             try:
-                infile = '{0:s}SOSS_os10_128x128_{1:.6f}_{2:.0f}.fits'\
-                         .format(filepath, w, i)
+                infile = path+'{0:s}SOSS_os10_128x128_{1:.6f}_{2:.0f}.fits'\
+                         .format('SOSS_PSFs/', w, i)
                 psf_run.append(fits.open(infile)[0].data)
             # Generate missing PSFs if necessary.
             except FileNotFoundError:
-                errmsg = 'No monochromatic PSF found for {0:.2f}µm and WFE'\
-                         'realization {1:.0f}.'.format(w, i)
+                errmsg = ' No monochromatic PSF found for {0:.2f}µm and WFE '\
+                         'realization {1:.0f}. Creating it now.'.format(w, i)
                 print(errmsg)
-                loicpsf(wavelist=[w*1e-6], wfe_real=i, filepath=filepath)
+                loicpsf(wavelist=[w*1e-6], wfe_real=i, verbose=False)
                 psf_run.append(fits.open(infile)[0].data)
         PSFs.append(psf_run)
 
     # Determine specific interpolation coefficients for all WFEs
     wb, wr = [], []
-
     for E in range(10):
         # Generate the blue wavelength anchor.
         # The width of the 1D PSF has lambda/D dependence, so rescale all
@@ -143,14 +140,33 @@ def calc_interp_coefs(make_psfs=False, doplot=True, F277W=True, filepath=''):
     pr = np.polyfit(wave_range, np.mean(wr, axis=0), 2)
 
     # Show the diagnostic plot if necessary.
-    if doplot is True:
+    if verbose == 3:
         plotting._plot_interpmodel(wave_range, wb, wr, pb, pr)
 
-    return pb, pr, wb, wr
+    # Save the coefficients to disk so that they can be accessed by the
+    # empirical trace construction module.
+    try:
+        df = pd.read_csv(path+'interpolation_coefficients.csv')
+    except FileNotFoundError:
+        # If the interpolation coefficients file does not already exist, create
+        # a new dictionary.
+        df = {}
+    # Replace the data for F277W or no F277W depending on which was run.
+    if F277W is True:
+        df['F_red'] = pr
+        df['F_blue'] = pb
+    else:
+        df['NF_red'] = pr
+        df['NF_blue'] = pb
+    # Write to file.
+    df = pd.DataFrame(data=df)
+    df.to_csv(path+'interpolation_coefficients.csv', index=False)
+
+    return pb, pr
 
 
-def loicpsf(wavelist=None, wfe_real=None, filepath='', save_to_disk=True,
-            oversampling=10, pixel=128, verbose=True):
+def loicpsf(wavelist=None, wfe_real=None, save_to_disk=True, oversampling=10,
+            pixel=128, verbose=True):
     '''Calls the WebbPSF package to create monochromatic PSFs for NIRISS
     SOSS observations and save them to disk.
 
@@ -161,9 +177,6 @@ def loicpsf(wavelist=None, wfe_real=None, filepath='', save_to_disk=True,
     wfe_real : int
         Index of wavefront realization to use for the PSF (if non-default
         WFE realization is desired).
-    filepath : str
-        Path to the directory to which the PSFs will be written.
-        Defaults to the current directory.
     save_to_disk : bool
         Whether to save PSFs to disk, or return them from the function.
     oversampling : int
@@ -179,7 +192,16 @@ def loicpsf(wavelist=None, wfe_real=None, filepath='', save_to_disk=True,
         If save_to_disk is False, a list of the generated PSFs.
     '''
 
+    # Create PSF storage array.
     psf_list = []
+    # PSFs will be saved to a SOSS_PSFs directory. If it does not already
+    # exist, create it.
+    if save_to_disk is True:
+        filepath = path + 'SOSS_PSFs/'
+        if os.path.exists(filepath):
+            pass
+        else:
+            os.mkdir(filepath)
 
     if wavelist is None:
         # List of wavelengths to generate PSFs for
@@ -211,8 +233,8 @@ def loicpsf(wavelist=None, wfe_real=None, filepath='', save_to_disk=True,
         if save_to_disk is True:
             # Save psf realization to disk
             text = '{0:5f}'.format(wave*1e+6)
-            filepars = [filepath, oversampling, pixel, text, wfe_real]
-            outfile = '{0}SOSS_os{1}_{2}x{2}_{3}_{4}.fits'.format(filepars)
+            filepars = [oversampling, pixel, text, wfe_real]
+            outfile = filepath+'SOSS_os{0}_{1}x{1}_{2}_{3}.fits'.format(*filepars)
             psf.writeto(outfile, overwrite=True)
 
     if save_to_disk is False:
