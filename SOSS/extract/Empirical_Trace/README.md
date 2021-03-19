@@ -1,6 +1,6 @@
 ## Code for the Empirical Trace Construction&trade; Module
 
-The *empirical trace construction* module builds uncontaminated spatial trace profiles for the first and second diffraction orders for a NIRISS/SOSS
+The *empirical trace construction* module builds uncontaminated 2D trace profiles for the first and second diffraction orders for a NIRISS/SOSS
 GR700XD/CLEAR observation. The uncontaminated profiles are entirely data driven, only employing models where absolutely necessary (e.g. in the overlap region on the detector), and as such retain a high level of fidelity to the original observations.
 
 The uncontaminated profiles are intended to be used directly as input for the *extraction* module. However, the *empirical trace construction* module can also add an arbitrary amount of padding and oversampling to both the spatial and spectral axes, such that the reconstructed profiles can be used as reference file inputs to the *simple solver* module.
@@ -25,5 +25,4 @@ An outline of the major procedural steps are as follows:
 6. If the results are to be used as reference files, add padding and oversampling to both axes.
 7. Save the results to a fits file.
 
-
-These steps are carried out by calling the `build_empirical_trace()` procedural function. Examples can be found in this [notebook](https://github.com/njcuk9999/jwst-mtl/blob/master/SOSS/extract/empirical_trace/empirical_trace.ipynb).
+These steps are carried out by initializing an Empirical_Trace object and calling its `build_empirical_trace()` method. Examples can be found in this [notebook](https://github.com/njcuk9999/jwst-mtl/blob/master/SOSS/extract/empirical_trace/empirical_trace.ipynb).
