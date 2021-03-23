@@ -7,6 +7,7 @@ from astropy.io import fits
 from SOSS.extract import soss_read_refs
 from SOSS.dms import soss_centroids as cen
 
+from matplotlib import colors
 import matplotlib.pyplot as plt
 
 
@@ -407,7 +408,7 @@ def build_mask_order2_uncontaminated(ytrace_o1, ytrace_o3, subarray='SUBSTRIP256
                                         mask_between=False)
 
     # Mask the corner below the order 2 trace to remove the wings of the order 1 trace.
-    mask_sloped = build_mask_sloped(subarray=subarray, point1=point1, point2=point2,  # TODO Add apex_order1 shift.
+    mask_sloped = build_mask_sloped(subarray=subarray, point1=point1, point2=point2,
                                     mask_above=False)
 
     # Combine the masks.
@@ -498,47 +499,120 @@ def build_mask_order3(subarray='SUBSTRIP256', xlim=700, point1=None, point2=None
     return mask
 
 
-def get_soss_centroids(image, subarray='SUBSTRIP256', apex_order1=None,
-                       badpix=None, verbose=False, debug=False):
-    """Function that determines the traces positions on a real image (native
-    size) with as little assumptions as possible. Those assumptions are:
-    1) The brightest order is order 1 and it is also the brightest of all order
-    1 traces present on the image.
+def calibrate_widths(width_o1, width_o2_uncont, width_o3, subarray='SUBSTRIP256', debug=False):
+    """Fit an exponential function to the wavelength-width relation, for use obtaining the
+    contaminated order 2 trace positions.
+    # TODO make order 2 and 3 widths optional use those provided?
+    :param width_o1: The order 1 trace width at each column, must have shape = (2048,).
+    :param width_o2_uncont: The order 2 trace width at each column, must have shape = (2048,).
+    :param width_o3: The order 3 trace width at each column, must have shape = (2048,). # TODO Order 3 basically unused.
+    :param subarray: The subarray for which to build a mask. TODO basically has no effect?
+    :param debug: If set True some diagnostic plots will be made.
+
+    :type width_o1: array[float]
+    :type width_o2_uncont: array[float]
+    :type width_o3: array[float]
+    :type subarray: str
+    :type debug: bool
+
+    :returns: pars_width - a list containing the best-fit parameters for the wavelength-width relation.
+    :rtype list[float]
+    """
+
+    x = np.arange(2048)
+
+    # Convert pixel positions to wavelengths for each order.
+    lba_o1 = wavelength_calibration(x, order=1, subarray=subarray)
+    lba_o2_uncont = wavelength_calibration(x, order=2, subarray=subarray)
+    lba_o3 = wavelength_calibration(x, order=3, subarray=subarray)
+
+    # Join data from orders 1 and 2.
+    lba_all = np.concatenate((lba_o1, lba_o2_uncont), axis=None)
+    width_all = np.concatenate((width_o1, width_o2_uncont), axis=None)
+
+    # Fit the wavelength vs width of order 1 and 2 using an exponential model.
+    mask = np.isfinite(width_all) & np.isfinite(lba_all)
+    pars_width = cen.robust_polyfit(np.log(lba_all[mask]), np.log(width_all[mask]), 1)
+
+    # Make a figure of the trace width versus the wavelength
+    if debug:
+
+        # Evalaute the best-fit model.
+        lba_fit = np.linspace(np.nanmin(lba_all), np.nanmax(lba_all), 101)
+        w0, m = np.exp(pars_width[1]), pars_width[0]  # w = w0 * lba^m
+        width_fit = w0 * lba_fit ** m
+
+        # Make the figure.
+        plt.figure(figsize=(8, 5))
+
+        plt.scatter(lba_o1, width_o1, marker=',', s=1, color='red',
+                    label='Order 1')
+        plt.scatter(lba_o2_uncont, width_o2_uncont + 0.05, marker=',', s=1,
+                    color='orange', label='Order 2 - Uncontaminated')
+        plt.scatter(lba_o3, width_o3 + 0.10, marker=',', s=1, color='navy',
+                    label='Order 3')
+
+        plt.plot(lba_fit, width_fit, color='black', linewidth=5,
+                 label='Order 1 and 2 - Fit:\n width = {:6.2F} $\lambda**({:6.4F})$'.format(w0, m))
+
+        plt.xlabel('Wavelength (microns)', fontsize=12)
+        plt.ylabel('Trace Width (pixels)', fontsize=12)
+        plt.legend(fontsize=12)
+
+        plt.tight_layout()
+
+        plt.show()
+        plt.close()
+
+    return pars_width
+
+
+def get_soss_centroids(image, mask=None, subarray='SUBSTRIP256', apex_order1=None,
+                       calibrate=False, verbose=False, debug=False):  # TODO hardcoded parameters.
+    """Determine the traces positions on a real image (native size) with as few
+    assumptions as possible using the 'edge trigger' method.
+
+    The algorithm assumes:
+    1) The brightest order is order 1 and the target order 1 is the brightest
+        of all order 1 traces present.
     2) Order 2 has a minimum in transmission between ~1.0 and ~1.2 microns.
     3) Order 2 widths are the same as order 1 width for the same wavelengths.
-    The algorithm to measure trace positions is the 'edge trigger' function.
-    :param image: FF, SUBSTRIP96 or SUBSTRIP256 slope image. Expected
-    GR700XD+CLEAR. For the GR700XD+F277W case, an optional f277w keyword is
-    passed or detected by header if passed.
 
-    :param image:
-    :param subarray:
-    :param apex_order1: The y position of the apex of the order 1 trace on the
-    image. The apex is the row at the center of the trace where the trace
-    reaches a minimum on the detector (near 1.3 microns). A rough estimate is
-    sufficient as that is only used to mask out rows on a Full-Frame image to
-    ensure that the target of interest is detected instead of a field target.
-    :param badpix:
-    :param verbose:
-    :param debug:
+    :param image: A 2D image of the detector.
+    :param mask: A boolean array of the same shape as image. Pixels corresponding to True values will be masked.
+    :param subarray: the subarray for which to build a mask.
+    :param apex_order1: The y-position of the order1 apex at 1.3 microns, in the given subarray.
+        A rough estimate is sufficient as it is only used to mask rows when subarray='FULL' to
+        ensure that the target of interest is detected instead of a field target.
+    :param calibrate: If True model the wavelength trace width relation. Default is False. TODO default to True?
+    :param verbose: TODO remove? Use verbose of debug in rest of centroids code?
+    :param debug: If set True some diagnostic plots will be made.
 
-    :return:
+    :returns: trace_dict - A dictionary containing the trace x, y, width and polynomial fit parameters for each order.
+    :rtype: dict
     """
 
     # Initialize output dictionary.
-    out_dict = dict()
+    trace_dict = dict()
 
-    # Build mask that restrict the analysis to 256 or fewer vertical pixels.
+    # Build a mask that restricts the analysis to a SUBSTRIP256-like region centered on the target trace.
     mask_256 = build_mask_256(subarray=subarray, apex_order1=apex_order1)
 
-    # Combine masks for subsection of ~256 vertical pixels
-    if badpix is not None:
-        mask_256 = mask_256 | badpix
+    # Combine the subsection mask with the user specified mask.
+    if mask is not None:
+        mask_256 = mask_256 | mask
 
-    # Get the Order 1 position
-    x_o1, y_o1, w_o1, par_o1 = cen.get_uncontam_centroids_edgetrig(
+    if debug:
+        hdu = fits.PrimaryHDU()
+        hdu.data = np.where(mask_256, np.nan, image)
+        hdu.writeto('mask_256.fits', overwrite=True)
+
+    # Get the order 1 trace position.
+    result = cen.get_uncontam_centroids_edgetrig(
             image, mask=mask_256, poly_order=11, halfwidth=2,
             mode='combined', verbose=verbose)
+
+    x_o1, y_o1, w_o1, par_o1 = result
 
     # Add parameters to output dictionary.
     o1_dict = dict()
@@ -546,205 +620,161 @@ def get_soss_centroids(image, subarray='SUBSTRIP256', apex_order1=None,
     o1_dict['Y centroid'] = y_o1
     o1_dict['trace widths'] = w_o1
     o1_dict['poly coefs'] = par_o1
-    out_dict['order 1'] = o1_dict
+    trace_dict['order 1'] = o1_dict
 
+    # For SUBSTRIP96 only the order 1 can be measured.
     if subarray == 'SUBSTRIP96':
-        # Only order 1 can be measured. So return.
-        return out_dict
-
-    # Fit the width
-    mask = np.isfinite(w_o1) & np.isfinite(x_o1)
-    param_o1 = cen.robust_polyfit(x_o1[mask], w_o1[mask], 1)
-    w_o1_fit = np.polyval(param_o1, x_o1)
+        return trace_dict
 
     # Now, one can re-evaluate what the apex of order 1 truly is
     apex_order1_measured = np.round(np.min(y_o1))
 
-    # Make a mask to isolate the 3rd order trace
+    # Make a mask to isolate the order 3 trace and combine it with the user-specified mask.
     mask_o3 = build_mask_order3(apex_order1=apex_order1_measured, subarray=subarray)
 
-    # Combine Order 3 mask
-    if badpix is not None:
-        mask_o3 = mask_o3 | badpix
-    if debug is True:
+    if mask is not None:
+        mask_o3 = mask_o3 | mask
+
+    if debug:
         hdu = fits.PrimaryHDU()
         hdu.data = np.where(mask_o3, np.nan, image)
         hdu.writeto('mask_o3.fits', overwrite=True)
 
-    # Get the centroid position by locking on trace edges and returning mean.
-    out = cen.get_uncontam_centroids_edgetrig(image, mask=mask_o3,
-                                              poly_order=3, halfwidth=2,
-                                              mode='combined', verbose=verbose)
-    x_o3, y_o3, w_o3, par_o3 = out
+    # Get the order 3 trace position.
+    result = cen.get_uncontam_centroids_edgetrig(image, mask=mask_o3,
+                                                 poly_order=3, halfwidth=2,
+                                                 mode='combined', verbose=verbose)
+    x_o3, y_o3, w_o3, par_o3 = result
 
-    # Fit the width
-    mask = np.isfinite(w_o3) & np.isfinite(x_o3)
-    param_o3 = cen.robust_polyfit(x_o3[mask], w_o3[mask], 1)
-    w_o3_fit = np.polyval(param_o3, x_o3)
+    # Add parameters to output dictionary.
+    o3_dict = dict()
+    o3_dict['X centroid'] = x_o3
+    o3_dict['Y centroid'] = y_o3
+    o3_dict['trace widths'] = w_o3
+    o3_dict['poly coefs'] = par_o3
+    trace_dict['order 3'] = o3_dict
 
-    # Making masks for the second order - split in two measurements:
-    # A) Uncontaminated region 700<x<1800 - fit both edges combined (default)
-    # B) Contaminated region (x=0-200) - fit only the top edge
-    # Build the mask to isolate the uncontaminated part of order 2
+    # Make masks for the second order trace - split in two segments:
+    # A) Uncontaminated region 700 < x < 1800 - fit both edges combined (default).
+    # B) Contaminated region (x = 0-200) - fit only the top edge.
+
+    # Make a mask to isolate the uncontaminated order 2 trace and combine it with the user-specified mask.
     mask_o2_uncont = build_mask_order2_uncontaminated(y_o1, y_o3,
                                                       subarray=subarray)
 
-    # Add the bad pixel mask to it (including the reference pixels)
-    if badpix is not None:
-        mask_o2_uncont = mask_o2_uncont | badpix
-    if debug is True:
+    if mask is not None:
+        mask_o2_uncont = mask_o2_uncont | mask
+
+    if debug:
         hdu = fits.PrimaryHDU()
         hdu.data = np.where(mask_o2_uncont, np.nan, image)
         hdu.writeto('mask_o2_uncont.fits', overwrite=True)
 
-    # Build the mask to isolate the contaminated part order 2
-    mask_o2_cont = build_mask_order2_contaminated(y_o1, y_o3,
-                                                  subarray=subarray)
+    # Get the raw trace positions for the uncontaminated part of the order 2 trace.
+    result = cen.get_uncontam_centroids_edgetrig(image,
+                                                 mask=mask_o2_uncont,
+                                                 poly_order=None, halfwidth=2,
+                                                 mode='combined', verbose=verbose)
 
-    # Combine masks
-    if badpix is not None:
-        mask_o2_cont = mask_o2_cont | badpix
-    if debug is True:
-        hdu = fits.PrimaryHDU()
-        hdu.data = np.where(mask_o2_cont, np.nan, image)
-        hdu.writeto('mask_o2_cont.fits', overwrite=True)
+    x_o2_uncont, y_o2_uncont, w_o2_uncont, par_o2_uncont = result
 
-    # For uncontaminated blue part, make the position measurement with the
-    # default 'combined' edge method.
-    out = cen.get_uncontam_centroids_edgetrig(image,
-                                              mask=mask_o2_uncont,
-                                              poly_order=4, halfwidth=2,
-                                              mode='combined', verbose=verbose)
-    x_o2_uncont, y_o2_uncont, w_o2_uncont, par_o2_uncont = out
+    if calibrate:
 
-    # Fit the width
-    mask = np.isfinite(w_o2_uncont) & np.isfinite(x_o2_uncont)
-    param_o2 = cen.robust_polyfit(x_o2_uncont[mask], w_o2_uncont[mask], 1)
-    w_o2_uncont_fit = np.polyval(param_o2, x_o2_uncont)
+        pars_width = calibrate_widths(w_o1, w_o2_uncont, w_o3, subarray=subarray, debug=debug)
 
-    # CALIBRATE pixels-->wavelength TO COMPARE TRACE WIDTH BETWEEN ORDERS
-    lba_o1 = wavelength_calibration(x_o1, order=1, subarray=subarray)
-    lba_o2_uncont = wavelength_calibration(x_o2_uncont, order=2, subarray=subarray)
-    lba_o3 = wavelength_calibration(x_o3, order=3, subarray=subarray)
-
-    calibrate_width = False
-    if calibrate_width is True:
-
-        # TRACE WIDTH PLOT RELATION
-        # Group together data for orders 1 and 2
-        w_all = np.concatenate((w_o1, w_o2_uncont), axis=None)
-        lba_all = np.concatenate((lba_o1, lba_o2_uncont), axis=None)
-        ind = np.argsort(lba_all)
-        lba_all, w_all = lba_all[ind], w_all[ind]
-
-        # Fit the width vs wavelength for orders 1 and 2
-        fitlog = True
-        mask = np.isfinite(w_all) & np.isfinite(lba_all)
-        if fitlog is False:
-
-            # Make a linear fit
-            param_all = cen.robust_polyfit(lba_all[mask], w_all[mask], 1)
-            w_all_fit = np.polyval(param_all, lba_all)
-
-        else:
-
-            # Make a linear fit in the log-log plot - DEFAULT
-            param_all = cen.robust_polyfit(np.log(lba_all[mask]),
-                                           np.log(w_all[mask]), 1)
-            W0, m = param_all[1], param_all[0]  # w = W0 * lba^m
-            w_all_fit = np.polyval(param_all, np.log(lba_all))
-            w_all_fit = np.exp(w_all_fit)
-
-        # Make a figure of the trace width versus the wavelength
-        if debug is True:
-
-            plt.figure(figsize=(6, 6))
-            plt.scatter(lba_o1, w_o1, marker=',', s=1, color='red',
-                        label='Order 1')
-            plt.scatter(lba_o2_uncont, w_o2_uncont+0.05, marker=',', s=1,
-                        color='orange', label='Order 2 - Uncontaminated')
-            plt.scatter(lba_o3, w_o3+0.15, marker=',', s=1, color='navy',
-                        label='Order 3')
-            plt.plot(lba_all, w_all_fit, color='black',  linewidth=5,
-                     label=r'Order 1 and 2 - Fit:\nwidth = {:6.2F} $\lambda**({:6.4F})$'.format(np.exp(W0), m))
-            plt.xlabel('Wavelength (microns)')
-            plt.ylabel('Trace Width (pixels)')
-            plt.legend()
-            plt.show()
     else:
         # Adopt the already computed width relation. The best fit parameters
         # were obtained on the CV3 stack, using halfwidth=2 in the call to
         # get_uncontam_centroids_edgetrig. One should revisit the fit if using
         # a different halfwidth, or different data set.
-        param_all = [-0.20711659, 3.16387517]
-        W0, m = np.exp(param_all[1]), param_all[0]  # w = W0 * lba^m
+        pars_width = [-0.20711659, 3.16387517]
 
-    # Apply the width relation on the contaminated second order trace 'top
-    # edge' positions to retrieve the trace center.
-    out = cen.get_uncontam_centroids_edgetrig(image,
-                                              mask=mask_o2_cont,
-                                              poly_order=None, halfwidth=2,
-                                              mode='minedge', verbose=verbose)
-    x_o2_top, y_o2_top, w_o2_top, par_o2_top = out
+    w0, m = np.exp(pars_width[1]), pars_width[0]  # w = w0 * lba^m
 
-    # Calibrate the wavelength
+    # Make a mask to isolate the contaminated order 2 trace and combine it with the user-specified mask.
+    mask_o2_cont = build_mask_order2_contaminated(y_o1, y_o3,
+                                                  subarray=subarray)
+
+    if mask is not None:
+        mask_o2_cont = mask_o2_cont | mask
+
+    if debug:
+        hdu = fits.PrimaryHDU()
+        hdu.data = np.where(mask_o2_cont, np.nan, image)
+        hdu.writeto('mask_o2_cont.fits', overwrite=True)
+
+    # Get the raw top-edge poistions of the contaminated order 2 trace. TODO rename minedge etc. in get_uncontam_centroids_edgetrig?
+    result = cen.get_uncontam_centroids_edgetrig(image,
+                                                 mask=mask_o2_cont,
+                                                 poly_order=None, halfwidth=2,
+                                                 mode='minedge', verbose=verbose)
+
+    x_o2_top, y_o2_top, w_o2_top, par_o2_top = result
+
+    # Convert pixel positions to wavelengths for order 2.
     lba_o2_top = wavelength_calibration(x_o2_top, order=2, subarray=subarray)
 
-    # Calibrate the trace width at those wavelengths
-    w_o2_cont = W0 * lba_o2_top**m
+    # Use the wavelength width relation to obtain the order 2 trace width.
+    w_o2_cont = np.where(np.isfinite(w_o2_top), w0 * lba_o2_top**m, np.nan)
 
-    # But make sure that unmeasured regions remain so
-    w_o2_cont[~np.isfinite(y_o2_top)] = np.nan
-
-    # Retrieve the position of the center of the trace
-    y_o2_cont = y_o2_top - w_o2_cont/2.
+    # Finally combine the top-edge positions and the width to get an estimate of the trace center.
     x_o2_cont = np.copy(x_o2_top)
+    y_o2_cont = y_o2_top - w_o2_cont/2.
 
-    # For the uncontaminated part of second order, make measurements again but
-    # return raw measurements rather than the fit.
-    out = cen.get_uncontam_centroids_edgetrig(image,
-                                              mask=mask_o2_uncont,
-                                              poly_order=None, halfwidth=2,
-                                              mode='combined', verbose=verbose)
-    x_o2_uncont, y_o2_uncont, w_o2_uncont, par_o2_uncont = out
+    # Combine the trace positions from the uncontaminated and contaminated sections.
+    mask_comb = np.isfinite(y_o2_uncont)
+    x_o2 = np.where(mask_comb, x_o2_uncont, x_o2_cont)
+    y_o2 = np.where(mask_comb, y_o2_uncont, y_o2_cont)
+    w_o2 = np.where(mask_comb, w_o2_uncont, w_o2_cont)
 
-    # For the final order 2 solution, merge the contaminated and the
-    # uncontaminated measurements
-    y_o2 = np.nanmean([y_o2_uncont, y_o2_cont], axis=0)
-    x_o2 = np.nanmean([x_o2_uncont, x_o2_cont], axis=0)
-    w_o2 = np.nanmean([w_o2_uncont, w_o2_cont], axis=0)
-
-    # Fit the width
-    mask = np.isfinite(x_o2) & np.isfinite(y_o2)
-    par_o2 = cen.robust_polyfit(x_o2[mask], y_o2[mask], 5)
+    # Fit the combined order 2 trace position with a polynomial.
+    mask_fit = np.isfinite(x_o2) & np.isfinite(y_o2)
+    par_o2 = cen.robust_polyfit(x_o2[mask_fit], y_o2[mask_fit], 5)
     y_o2 = np.polyval(par_o2, x_o2)
 
-    if debug is True:
-        plt.figure(figsize=(8, 8))
-        plt.ylim((0, 256))
-        plt.imshow(np.log10(image), vmin=0.7, vmax=3, origin='lower',
-                   aspect='auto')
-        plt.plot(x_o2_cont, y_o2_cont, color='red', label='Contaminated')
-        plt.plot(x_o2_uncont, y_o2_uncont, color='navy',
-                 label='Uncontaminated')
-        plt.plot(x_o2, y_o2, color='black', label='Merged')
-        plt.legend()
-        plt.show()
-
     # Add parameters to output dictionary.
-    o2_dict, o3_dict = {}, {}
+    o2_dict = dict()
     o2_dict['X centroid'] = x_o2
     o2_dict['Y centroid'] = y_o2
     o2_dict['trace widths'] = w_o2
     o2_dict['poly coefs'] = par_o2
-    out_dict['order 2'] = o2_dict
-    o3_dict['X centroid'] = x_o3
-    o3_dict['Y centroid'] = y_o3
-    o3_dict['trace widths'] = w_o3
-    o3_dict['poly coefs'] = par_o3
-    out_dict['order 3'] = o3_dict
+    trace_dict['order 2'] = o2_dict
 
-    return out_dict
+    if debug:
+
+        nrows, ncols = image.shape
+
+        if subarray == 'FULL':
+            aspect = 1
+            figsize = ncols/64, nrows/64
+        else:
+            aspect = 2
+            figsize = ncols/64, nrows/32
+
+        plt.figure(figsize=figsize)
+
+        plt.title('Order 2 Trace Positions')
+
+        tmp = np.ma.masked_array(image, mask=mask)
+        plt.imshow(tmp, origin='lower', cmap='inferno', norm=colors.LogNorm(), aspect=aspect)
+
+        plt.plot(x_o2_cont, y_o2_cont, color='red', label='Contaminated')
+        plt.plot(x_o2_uncont, y_o2_uncont, color='navy', label='Uncontaminated')
+        plt.plot(x_o2, y_o2, color='black', label='Polynomial Fit')
+
+        plt.xlabel('Spectral Pixel', fontsize=14)
+        plt.ylabel('Spatial Pixel', fontsize=14)
+        plt.legend(fontsize=12)
+
+        plt.xlim(-0.5, ncols - 0.5)
+        plt.ylim(-0.5, nrows - 0.5)
+
+        plt.tight_layout()
+
+        plt.show()
+        plt.close()
+
+    return trace_dict
 
 
 # TODO - test function can be removed.
