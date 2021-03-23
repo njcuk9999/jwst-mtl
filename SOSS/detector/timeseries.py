@@ -19,7 +19,8 @@ import numpy.random as rdm
 from astropy.io import fits
 
 # Home-brew and intra module imports.
-import hxrg
+from . import hxrg
+#import hxrg
 
 # Plotting.
 import matplotlib.pyplot as plt

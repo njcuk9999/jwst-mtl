@@ -6,7 +6,6 @@
 # - extract the spectra
 
 import sys
-#sys.path.insert(0, '/genesis/jwst/github/jwst-mtl/')
 sys.path.insert(0, '/genesis/jwst/jwst-ref-soss/fortran_lib/')
 
 # TODO: Update all paths
@@ -43,7 +42,8 @@ import specgen.spgen as spgen
 import trace.tracepol as tp
 # Header and FITS writing function
 # Detector noise script
-import detector
+from detector import detector
+#import detector as toto
 
 # normalization code
 import specgen.synthesizeMagnitude as smag
@@ -84,10 +84,14 @@ simuPars.xout = 4000      #spectral axis
 simuPars.yout = 300       #spatial (cross-dispersed axis)
 
 
-if False:
+if True:
+    detector.add_noise([os.path.join(WORKING_DIR, 'test.fits')],
+                       outputfilename=os.path.join(WORKING_DIR, 'test_noisy.fits'))
+    result = Detector1Pipeline.call(os.path.join(WORKING_DIR, 'test_noisy.fits'))
+
     #detector.add_noise(os.path.join(WORKING_DIR, 'test.fits')
-    from jwst.pipeline import Detector1Pipeline
-    result = Detector1Pipeline.call(os.path.join(WORKING_DIR, 'test_mod_poisson_noise_zodibackg_flat_dark_nonlin_bias_detector.fits'))
+    #from jwst.pipeline import Detector1Pipeline
+    #result = Detector1Pipeline.call(os.path.join(WORKING_DIR, 'test_mod_poisson_noise_zodibackg_flat_dark_nonlin_bias_detector.fits'))
     print('Exiting the test...')
     sys.exit()
 
@@ -154,6 +158,5 @@ soss.write_dmsready_fits(data[:,:,0:256,0:2048], os.path.join(WORKING_DIR,'test.
                     os=simuPars.noversample, input_frame='sim')
 
 detector.add_noise(os.path.join(WORKING_DIR,'test.fits'), outputfilename=os.path.join(WORKING_DIR, 'test_noisy.fits'))
-
 result = Detector1Pipeline.call(os.path.join(WORKING_DIR, 'test_noisy.fits'))
 

@@ -8,7 +8,8 @@ Introduce the detector response in the simulated images
 
 import argparse
 
-import timeseries
+#import timeseries
+from . import timeseries
 
 
 def add_noise(filelist, normalize=False, zodibackg=True, flatfield=True, darkframe=True, nonlinearity=True,
