@@ -11,6 +11,7 @@ from astropy.io import ascii
 import numpy as np
 import matplotlib.pyplot as plt
 from astropy.io import fits
+import sys
 
 
 
@@ -218,14 +219,14 @@ def expected_flux_calibration(filtername, magnitude, model_angstrom, model_flux,
 
 def read_throughput(order, throughput_file=None):
     if throughput_file is None:
-        throughput_file = './tables/NIRISS_Throughput_STScI.fits'
+        throughput_file = './tables/NIRISS_Throughput_20210318.fits'
     a = fits.open(throughput_file)
-    lba = np.array(a[1].data['LAMBDA'][0]) # in nanometers
+    lba = np.array(a[1].data['LAMBDA']) # in nanometers
     lba_um = lba / 1000.0
-    order0 = np.array(a[1].data['SOSS_ORDER0'][0])
-    order1 = np.array(a[1].data['SOSS_ORDER1'][0])
-    order2 = np.array(a[1].data['SOSS_ORDER2'][0])
-    order3 = np.array(a[1].data['SOSS_ORDER3'][0])
+    order0 = np.array(a[1].data['SOSS_ORDER0'])
+    order1 = np.array(a[1].data['SOSS_ORDER1'])
+    order2 = np.array(a[1].data['SOSS_ORDER2'])
+    order3 = np.array(a[1].data['SOSS_ORDER3'])
     
     if order == 0:
         return(lba_um, order0)
@@ -235,17 +236,20 @@ def read_throughput(order, throughput_file=None):
         return(lba_um, order2)    
     elif order == 3:
         return(lba_um, order3)
+    elif order == -1:
+        # not known, assum 10% of order=1
+        return(lba_um, 0.1 * order1)
     else:
-        print('The reference throughput file only accepts order 0 to 3.')
-        stop
+        print('The reference throughput file only accepts order -1 to 3. For order -1, assume 10% of order 1.')
+        sys.exit()
 
 def read_quantumyield(throughput_file=None):
     if throughput_file is None:
-        throughput_file = './tables/NIRISS_Throughput_STScI.fits'
+        throughput_file = './tables/NIRISS_Throughput_20210318.fits'
     a = fits.open(throughput_file)
-    lba = np.array(a[1].data['LAMBDA'][0]) # in nanometers
+    lba = np.array(a[1].data['LAMBDA']) # in nanometers
     lba_um = lba / 1000.0
-    quantum_yield = np.array(a[1].data['YIELD'][0])
+    quantum_yield = np.array(a[1].data['YIELD'])
     
     return(lba_um, quantum_yield)
 

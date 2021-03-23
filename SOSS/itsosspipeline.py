@@ -24,8 +24,8 @@ from astropy.io import fits
 from tqdm.notebook import tqdm as tqdm_notebook
 
 import sys
-sys.path.insert(0, '/genesis/jwst/github/jwst-mtl/')
-import SOSS.specgen.spgen as spgen
+#sys.path.insert(0, '/genesis/jwst/github/jwst-mtl/')
+import specgen.spgen as spgen
 
 class paths():
     # PATHS
@@ -161,6 +161,7 @@ def generate_timesteps(simuPars):
 
     return(tintopen, frametime, nint, timesteps)
 
+
 def generate_traces(pathPars, simuPars, tracePars, throughput,
                     star_angstrom, star_flux, ld_coeff,
                     planet_angstrom, planet_rprs,
@@ -168,7 +169,6 @@ def generate_traces(pathPars, simuPars, tracePars, throughput,
 
     # output is a cube (1 slice per spectral order) at the requested
     # pixel oversampling.
-
 
     # Resample star and planet models to common uniform in wavelength grid.
     print('Resampling star and planet model')

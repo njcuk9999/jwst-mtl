@@ -6,7 +6,7 @@
 # - extract the spectra
 
 import sys
-sys.path.insert(0, '/genesis/jwst/github/jwst-mtl/')
+#sys.path.insert(0, '/genesis/jwst/github/jwst-mtl/')
 sys.path.insert(0, '/genesis/jwst/jwst-ref-soss/fortran_lib/')
 
 # TODO: Update all paths
@@ -38,14 +38,15 @@ import scipy.fft
 from matplotlib.colors import LogNorm
 
 # Python Routines for SpecGen Routines and wrappers for fast-Transit-model.
-import SOSS.specgen.spgen as spgen
+import specgen.spgen as spgen
 # Trace Library
-import SOSS.trace.tracepol as tp
+import trace.tracepol as tp
 # Header and FITS writing function
 # Detector noise script
-import SOSS.detector as detector
+import detector
+
 # normalization code
-import SOSS.specgen.synthesizeMagnitude as smag
+import specgen.synthesizeMagnitude as smag
 
 ncpu = mp.cpu_count()
 pyfftw.config.NUM_THREADS = ncpu
@@ -53,6 +54,8 @@ pyfftw.config.NUM_THREADS = ncpu
 import itsosspipeline as soss
 
 from jwst.pipeline import Detector1Pipeline
+
+verbose = True
 
 ###############################################################################
 # Start of the flow
@@ -77,7 +80,7 @@ print(simuPars.pmodeltype[0])
 # Here one can manually edit the parameters but we encourage rather to change
 # the simulation parameter file directly.
 simuPars.noversample = 1  #example of changing a model parameter
-simuPars.xout = 3000      #spectral axis
+simuPars.xout = 4000      #spectral axis
 simuPars.yout = 300       #spatial (cross-dispersed axis)
 
 
@@ -89,7 +92,7 @@ if False:
     sys.exit()
 
 # Instrument Throughput (Response)
-throughput = spgen.readresponse(pathPars.throughputfile, quiet=False)
+throughput = spgen.read_response(pathPars.throughputfile, verbose=verbose)
 
 # Set up Trace (Position vs. Wavelength)
 tracePars = tp.get_tracepars(pathPars.tracefile)
@@ -147,11 +150,10 @@ expected_counts = smag.expected_flux_calibration(
 # with the 3rd dimension being the number of time steps.
 data = soss.write_dmsready_fits_init(imagelist, normalization_scale, simuPars)
 # All simulations (e-/sec) are converted to up-the-ramp images.
-soss.write_dmsready_fits(data[:,:,0:256,0:2048], os.path.join(WORKING_DIR,'test3.fits'),
+soss.write_dmsready_fits(data[:,:,0:256,0:2048], os.path.join(WORKING_DIR,'test.fits'),
                     os=simuPars.noversample, input_frame='sim')
 
+detector.add_noise(os.path.join(WORKING_DIR,'test.fits'), outputfilename=os.path.join(WORKING_DIR, 'test_noisy.fits'))
 
-#detector.add_noise(os.path.join(WORKING_DIR,'test.fits'),outputfilename=os.path.join(WORKING_DIR,'test_noisy.fits'))
-
-#result = Detector1Pipeline.call(os.path.join(WORKING_DIR, 'test_noisy.fits'))
+result = Detector1Pipeline.call(os.path.join(WORKING_DIR, 'test_noisy.fits'))
 

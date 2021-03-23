@@ -2,7 +2,11 @@ from mirage.apt import read_apt_xml
 
 import numpy as np
 
-import generate_catalog_list as neil
+import sys
+
+sys.path.insert(0, '/genesis/jwst/github/jwst-mtl/AMI/')
+
+import mirage_tools.generate_catalog_list as neil
 
 import os.path
 

@@ -51,7 +51,7 @@ class ModelPars:
     enumos = 1 #exposure number for oversampling
     detectorname = 'NISRAPID' #confirm this 
     prodtype='cal'
-    orderlist = np.array([1,2,3],dtype=np.int) # the spectral orders to simulate
+    orderlist = np.array([-1,0,1,2,3],dtype=np.int) # the spectral orders to simulate
     frametime = np.nan # not selectable in the config file. Will be filled in the code.
     nint = np.nan # not selectable in the config file. Will be filled in the code.
     magnitude = 10.0
@@ -282,12 +282,61 @@ def read_pars(filename,pars):
     
     return pars;
 
-class response_class:
+class instrument_response_class:
     def __init__(self):
         self.wv=[]  #initialize arrays
         self.response=[]
         self.response_order=[]
         self.quantum_yield=[]
+
+def read_response(throughput_file, verbose=True):
+    """ Usage: response = read_response(throughput_file)
+    throughput_file : FITS file for the instrument throughput.
+
+    outputs:
+
+     response_class
+       wv(npt) : wavelength
+       response(norder,npt) : response
+       response_order(norder) : order index
+       quantum_yield(npt) : quantum yield
+    """
+    if verbose: print('Reading throughput file {:}'.format(throughput_file))
+
+    # Initialize class that contains the response for all orders and the quantum yield
+    response = instrument_response_class()
+
+    # Read the binary fits table containing, order 0 to 3, quantum
+    # yield and wavelength in nanometers.
+    a = fits.open(throughput_file)
+
+    # The wavelengths in angstrom
+    response.wv = np.array(a[1].data['LAMBDA']) * 10.0  # in nanometers
+
+    # The quantum yield (e- produced per photon)
+    response.quantum_yield = a[1].data['YIELD']
+
+    # Store each order's response in an array
+    # Order -1 is not given in throughput file, use order * 10%
+    response.response.append(0.10 * np.array(a[1].data['SOSS_ORDER1']))
+    response.response_order.append(-1)
+    # Order 0
+    response.response.append(np.array(a[1].data['SOSS_ORDER0']))
+    response.response_order.append(0)
+    # Order 1
+    response.response.append(np.array(a[1].data['SOSS_ORDER1']))
+    response.response_order.append(1)
+    # Order 2
+    response.response.append(np.array(a[1].data['SOSS_ORDER2']))
+    response.response_order.append(2)
+    # Order 3
+    response.response.append(np.array(a[1].data['SOSS_ORDER3']))
+    response.response_order.append(3)
+
+    # Close FITS file
+    a.close()
+
+    return response
 
 def readresponse(response_file, quiet=False):
     """Usage: response=readresponse(response_file)
@@ -308,11 +357,14 @@ def readresponse(response_file, quiet=False):
     hdulist = fits.open(response_file)
     tbdata = hdulist[1].data                   #fetch table data for HUD=1
 
-    response.wv=tbdata.field(0)[0]*10.0         #Wavelength (A)
+    #response.wv=tbdata.field(0)[0]*10.0         #Wavelength (A)
+    response.wv=tbdata['LAMBDA']*10.0
     for i in range(4):
-        response.response.append(tbdata.field('SOSS_order'+str(i))[0]) #n=i response
+        response.response.append(tbdata['SOSS_order'+str(i)])
+        #response.response.append(tbdata.field('SOSS_order'+str(i))[0]) #n=i response
         response.response_order.append(i) #store order
-    response.quantum_yield=tbdata.field('yield')[0] #quantum yield
+    #response.quantum_yield=tbdata.field('yield')[0] #quantum yield
+    response.quantum_yield=tbdata['YIELD'] #quantum yield
 
     hdulist.close()                            #Close FITS file
 
@@ -919,9 +971,32 @@ def readkernels(psfdir, wls=0.5, wle=5.2, dwl=0.05, os=1):
         wl+=dwl
         
     return kernels,kernels_wv
-    
+
+
 def gen_unconv_image(pars,response,bin_starmodel_wv,bin_starmodel_flux,bin_ld_coeff,\
-    bin_planetmodel_rprs,time,itime,solin,norder,tracePars):
+    bin_planetmodel_rprs,time,itime,solin, spectral_order,tracePars):
+
+    '''
+
+    :param pars:
+    :param response: a class containing:
+        wv (array of wavelength in angstroms)
+        spectral_order (a short list of spectral orders -1, 0, 1, 2, 3),
+        response (a list of arrays of throughput for each spectral order)
+        quantum_yield (an array of wavelength-dependent quantum yield
+        applicable to all orders)
+    :param bin_starmodel_wv:
+    :param bin_starmodel_flux:
+    :param bin_ld_coeff:
+    :param bin_planetmodel_rprs:
+    :param time:
+    :param itime:
+    :param solin:
+    :param spectral_order: The spectral order to simulate. The list
+    of accepted spectral_order is one of -1,0,1,2,3.
+    :param tracePars:
+    :return:
+    '''
 
     #array to hold synthetic image
     xmax=pars.xout*pars.noversample
@@ -929,9 +1004,13 @@ def gen_unconv_image(pars,response,bin_starmodel_wv,bin_starmodel_flux,bin_ld_co
 
     pixels=np.zeros((xmax,ymax))
 
-    #interpolate over response and quantum yield
-    response_spl = interpolate.splrep(response.wv, response.response[norder], s=0)
+    # Index of the spectral order of interest in the response class.
+    # (response_order is of type 'list')
+    order_index = np.where(np.array(response.response_order) == spectral_order)[0][0]
+    # Interpolate over response and quantum yield
+    response_spl = interpolate.splrep(response.wv, response.response[order_index], s=0)
     quantum_yield_spl  = interpolate.splrep(response.wv, response.quantum_yield, s=0)
+    # Maximum and minimum wavelengths present in the response class
     rmax=np.max(response.wv)
     rmin=np.min(response.wv)
 
@@ -948,8 +1027,8 @@ def gen_unconv_image(pars,response,bin_starmodel_wv,bin_starmodel_flux,bin_ld_co
     for k in range(bin_starmodel_wv.shape[0]):
 
         w=bin_starmodel_wv[k]
-        i=w2p(tracePars,w,pars.noversample,norder)
-        j=ptrace(tracePars,i,pars.noversample,norder)
+        i=w2p(tracePars,w,pars.noversample,spectral_order)
+        j=ptrace(tracePars,i,pars.noversample,spectral_order)
 
         if (i<=xmax+1) & (i>=0) & (j<=ymax+1) & (j>=0): #check if pixel is on grid
 
@@ -963,6 +1042,7 @@ def gen_unconv_image(pars,response,bin_starmodel_wv,bin_starmodel_flux,bin_ld_co
             pixels=addflux2pix(i,j,pixels,flux)
             
     return pixels
+
 
 def convolve_1wv(pixels_t,kernel_resize,kernels_wv,wv_idx,pars,norder,tracePars,dwl=0.05):
     

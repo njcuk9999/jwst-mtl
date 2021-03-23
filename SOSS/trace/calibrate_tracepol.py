@@ -56,16 +56,19 @@ def get_CV3_tracepars(order=1):
     if order == 3:
         # Measured positions of the laser light sources at CV3
         # (measured in the native pixel coordinates).
-        ### WARNING - only one LED was actually observed.
-        ### A point at 50,2000 is artificially inserted here
-        ### just for the sake of having any solution at all.
-        ### The wavelength is less than 1.06 because that LED
-        ### was not detected for order 3 (falls outside detector)
-        spatpix = 256 - np.array([30,50])
-        specpix = 2048 - np.array([1040,2000])
-        w = np.array([0.6412, 0.9])   # microns
-        # Fit the specpix vs wavelength
-        param_spec = np.polyfit(w, specpix, 1)
+        ### WARNING - only one LED was actually observed:
+        # lambda = 0.6412 at position 256-30 and 2048-1040.
+        # Once we had the optics model calibrated, we used
+        # it to determine that the trace covers from
+        # 0.60378 to 0.95575 microns between specpix=1 and
+        # specpix=1137. The slope is therefore:
+        # d(lambda)/dx = -3.095602463e-4
+        dldx = -3.095602463e-4
+        # We can anchor from the one LED point
+        xintercept = (2048-1040) - 0.6412/dldx
+        # Fit the specpix vs wavelength, order 1
+        param_spec = np.array([1.0/dldx, xintercept])
+
         if False:
             wfit = np.linspace(0.6,0.9,200)
             xfit = np.polyval(param_spec, wfit)
@@ -74,7 +77,7 @@ def get_CV3_tracepars(order=1):
             plt.plot(wfit, xfit)
             plt.show()
 
-    return param_spec #, param_spat
+    return param_spec
 
 
 def CV3_wavelength_to_specpix(wavelength=None, order=1):
@@ -175,7 +178,7 @@ def calibrate_tracepol():
     # optics model traces are going to be compared for the fit.
     wavelength_o1 = np.linspace(0.9, 2.8, 50)
     wavelength_o2 = np.linspace(0.6, 1.4, 50)
-    wavelength_o3 = np.linspace(0.6, 0.9, 50)
+    wavelength_o3 = np.linspace(0.6, 0.95, 50)
 
     # Calibrate in wavelength the measured traces and make a
     # realization of positions at a few selected wavelengths.
@@ -216,6 +219,14 @@ def calibrate_tracepol():
     f_w2y = interpolate.interp1d(w_o3, y_o3)
     # Apply the wavelength --> spatpix relation to a few points
     y_obs_o3 = f_w2y(wavelength_o3)
+
+    # For order 3, what does the model say about the wavelength
+    # calibration x_fit_o3 vs w_fit_o3? Oh! But these 3 arrays
+    # are badly calibrated. Do from the model instead.
+    #print('Order 3 x, y, wavelength')
+    #for i in range(np.size(w_o3)):
+    #    print(x_o3[i], y_o3[i], w_o3[i])
+
 
     # Call tracepol's optics model then compute rotation offsets by
     # minimizing deviations to either only order 1 or all orders
@@ -364,10 +375,11 @@ def calibrate_tracepol():
         plt.legend()
         plt.show()
 
-
     # TODO: Add a measurement of the quality of the fit. i.e. the pixel
     # position rms deviations between rotated optics model and
     # observations.
+
+
 
 #run
 calibrate_tracepol()
