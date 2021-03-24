@@ -522,7 +522,7 @@ def wavelength_calibration(xpos, order=1, subarray='SUBSTRIP256'):
     return wavelengths
 
 
-def calibrate_widths(width_o1, width_o2=None, width_o3=None, subarray='SUBSTRIP256', debug=False):
+def calibrate_widths(width_o1, width_o2=None, width_o3=None, subarray='SUBSTRIP256', verbose=False):
     """Fit an exponential function to the wavelength-width relation, for use obtaining the
     contaminated order 2 trace positions.
 
@@ -530,13 +530,13 @@ def calibrate_widths(width_o1, width_o2=None, width_o3=None, subarray='SUBSTRIP2
     :param width_o2: The order 2 trace width at each column, must have shape = (2048,).
     :param width_o3: The order 3 trace width at each column, must have shape = (2048,).
     :param subarray: The subarray for which to build a mask.
-    :param debug: If set True some diagnostic plots will be made.
+    :param verbose: If set True some diagnostic plots will be made.
 
     :type width_o1: array[float]
     :type width_o2: array[float]
     :type width_o3: array[float]
     :type subarray: str
-    :type debug: bool
+    :type verbose: bool
 
     :returns: pars_width - a list containing the best-fit parameters for the wavelength-width relation.
     :rtype list[float]
@@ -578,7 +578,7 @@ def calibrate_widths(width_o1, width_o2=None, width_o3=None, subarray='SUBSTRIP2
     pars_width = cen.robust_polyfit(np.log(lba_all[mask]), np.log(width_all[mask]), 1)
 
     # Make a figure of the trace width versus the wavelength
-    if debug:
+    if verbose:
 
         # Evalaute the best-fit model.
         lba_fit = np.linspace(np.nanmin(lba_all), np.nanmax(lba_all), 101)
@@ -614,8 +614,9 @@ def calibrate_widths(width_o1, width_o2=None, width_o3=None, subarray='SUBSTRIP2
     return pars_width
 
 
-def get_soss_centroids(image, mask=None, subarray='SUBSTRIP256', apex_order1=None,
-                       calibrate=False, verbose=False, debug=False):  # TODO hardcoded parameters.
+def get_soss_centroids(image, mask=None, subarray='SUBSTRIP256', halfwidth=2,
+                       poly_orders=None, apex_order1=None,
+                       calibrate=True, verbose=False):
     """Determine the traces positions on a real image (native size) with as few
     assumptions as possible using the 'edge trigger' method.
 
@@ -628,16 +629,34 @@ def get_soss_centroids(image, mask=None, subarray='SUBSTRIP256', apex_order1=Non
     :param image: A 2D image of the detector.
     :param mask: A boolean array of the same shape as image. Pixels corresponding to True values will be masked.
     :param subarray: the subarray for which to build a mask.
+    :param halfwidth: the size of the window used when computing the derivatives of the 'edge trigger' method.
+    :param poly_orders: Dictionary of polynomial orders to fit to the extracted trace positions for each spectral order.
     :param apex_order1: The y-position of the order1 apex at 1.3 microns, in the given subarray.
         A rough estimate is sufficient as it is only used to mask rows when subarray='FULL' to
         ensure that the target of interest is detected instead of a field target.
-    :param calibrate: If True model the wavelength trace width relation. Default is False. TODO default to True?
-    :param verbose: TODO remove? Use verbose of debug in rest of centroids code?
-    :param debug: If set True some diagnostic plots will be made.
+    :param calibrate: If True model the wavelength trace width relation, otherwise use the CV3 parameters.
+        Default is True.
+    :param verbose: If set True some diagnostic plots will be made. Default is False.
+
+    :type image: array[float]
+    :type mask: array[bool]
+    :type subarray: str
+    :type halfwidth: int
+    :type poly_orders: dict
+    :type apex_order1: float
+    :type calibrate: bool
+    :type verbose: bool
 
     :returns: trace_dict - A dictionary containing the trace x, y, width and polynomial fit parameters for each order.
     :rtype: dict
     """
+
+    default_orders = {'order 1': 11,
+                      'order 2': 5,
+                      'order 3': 3}
+
+    if poly_orders is not None:
+        default_orders = {**default_orders, **poly_orders}
 
     # Initialize output dictionary.
     trace_dict = dict()
@@ -649,14 +668,14 @@ def get_soss_centroids(image, mask=None, subarray='SUBSTRIP256', apex_order1=Non
     if mask is not None:
         mask_256 = mask_256 | mask
 
-    if debug:
+    if verbose:
         hdu = fits.PrimaryHDU()
         hdu.data = np.where(mask_256, np.nan, image)
         hdu.writeto('mask_256.fits', overwrite=True)
 
     # Get the order 1 trace position.
     result = cen.get_uncontam_centroids_edgetrig(
-            image, mask=mask_256, poly_order=11, halfwidth=2,
+            image, mask=mask_256, poly_order=default_orders['order 1'], halfwidth=halfwidth,
             mode='combined', verbose=verbose)
 
     x_o1, y_o1, w_o1, par_o1 = result
@@ -682,14 +701,14 @@ def get_soss_centroids(image, mask=None, subarray='SUBSTRIP256', apex_order1=Non
     if mask is not None:
         mask_o3 = mask_o3 | mask
 
-    if debug:
+    if verbose:
         hdu = fits.PrimaryHDU()
         hdu.data = np.where(mask_o3, np.nan, image)
         hdu.writeto('mask_o3.fits', overwrite=True)
 
     # Get the order 3 trace position.
     result = cen.get_uncontam_centroids_edgetrig(image, mask=mask_o3,
-                                                 poly_order=3, halfwidth=2,
+                                                 poly_order=default_orders['order 3'], halfwidth=halfwidth,
                                                  mode='combined', verbose=verbose)
     x_o3, y_o3, w_o3, par_o3 = result
 
@@ -712,7 +731,7 @@ def get_soss_centroids(image, mask=None, subarray='SUBSTRIP256', apex_order1=Non
     if mask is not None:
         mask_o2_uncont = mask_o2_uncont | mask
 
-    if debug:
+    if verbose:
         hdu = fits.PrimaryHDU()
         hdu.data = np.where(mask_o2_uncont, np.nan, image)
         hdu.writeto('mask_o2_uncont.fits', overwrite=True)
@@ -720,20 +739,17 @@ def get_soss_centroids(image, mask=None, subarray='SUBSTRIP256', apex_order1=Non
     # Get the raw trace positions for the uncontaminated part of the order 2 trace.
     result = cen.get_uncontam_centroids_edgetrig(image,
                                                  mask=mask_o2_uncont,
-                                                 poly_order=None, halfwidth=2,
+                                                 poly_order=None, halfwidth=halfwidth,
                                                  mode='combined', verbose=verbose)
 
     x_o2_uncont, y_o2_uncont, w_o2_uncont, par_o2_uncont = result
 
     if calibrate:
 
-        pars_width = calibrate_widths(w_o1, w_o2_uncont, subarray=subarray, debug=debug)
+        pars_width = calibrate_widths(w_o1, w_o2_uncont, subarray=subarray, verbose=verbose)
 
     else:
-        # Adopt the already computed width relation. The best fit parameters
-        # were obtained on the CV3 stack, using halfwidth=2 in the call to
-        # get_uncontam_centroids_edgetrig. One should revisit the fit if using
-        # a different halfwidth, or different data set.
+        # Use pre-computed parameters from the CV3 deepstack.
         pars_width = [-0.20711659, 3.16387517]
 
     w0, m = np.exp(pars_width[1]), pars_width[0]  # w = w0 * lba^m
@@ -745,7 +761,7 @@ def get_soss_centroids(image, mask=None, subarray='SUBSTRIP256', apex_order1=Non
     if mask is not None:
         mask_o2_cont = mask_o2_cont | mask
 
-    if debug:
+    if verbose:
         hdu = fits.PrimaryHDU()
         hdu.data = np.where(mask_o2_cont, np.nan, image)
         hdu.writeto('mask_o2_cont.fits', overwrite=True)
@@ -753,7 +769,7 @@ def get_soss_centroids(image, mask=None, subarray='SUBSTRIP256', apex_order1=Non
     # Get the raw top-edge poistions of the contaminated order 2 trace. TODO rename minedge etc. in get_uncontam_centroids_edgetrig?
     result = cen.get_uncontam_centroids_edgetrig(image,
                                                  mask=mask_o2_cont,
-                                                 poly_order=None, halfwidth=2,
+                                                 poly_order=None, halfwidth=halfwidth,
                                                  mode='minedge', verbose=verbose)
 
     x_o2_top, y_o2_top, w_o2_top, par_o2_top = result
@@ -776,8 +792,11 @@ def get_soss_centroids(image, mask=None, subarray='SUBSTRIP256', apex_order1=Non
 
     # Fit the combined order 2 trace position with a polynomial.
     mask_fit = np.isfinite(x_o2) & np.isfinite(y_o2)
-    par_o2 = cen.robust_polyfit(x_o2[mask_fit], y_o2[mask_fit], 5)
-    y_o2 = np.polyval(par_o2, x_o2)
+    if default_orders['order 2'] is None:
+        par_o2 = []
+    else:
+        par_o2 = cen.robust_polyfit(x_o2[mask_fit], y_o2[mask_fit], default_orders['order 2'])
+        y_o2 = np.polyval(par_o2, x_o2)
 
     # Add parameters to output dictionary.
     o2_dict = dict()
@@ -787,7 +806,7 @@ def get_soss_centroids(image, mask=None, subarray='SUBSTRIP256', apex_order1=Non
     o2_dict['poly coefs'] = par_o2
     trace_dict['order 2'] = o2_dict
 
-    if debug:
+    if verbose:
 
         nrows, ncols = image.shape
 
