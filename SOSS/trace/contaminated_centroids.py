@@ -522,18 +522,18 @@ def wavelength_calibration(xpos, order=1, subarray='SUBSTRIP256'):
     return wavelengths
 
 
-def calibrate_widths(width_o1, width_o2_uncont, width_o3, subarray='SUBSTRIP256', debug=False):
+def calibrate_widths(width_o1, width_o2=None, width_o3=None, subarray='SUBSTRIP256', debug=False):
     """Fit an exponential function to the wavelength-width relation, for use obtaining the
     contaminated order 2 trace positions.
-    # TODO make order 2 and 3 widths optional use those provided?
+
     :param width_o1: The order 1 trace width at each column, must have shape = (2048,).
-    :param width_o2_uncont: The order 2 trace width at each column, must have shape = (2048,).
-    :param width_o3: The order 3 trace width at each column, must have shape = (2048,). # TODO Order 3 basically unused.
-    :param subarray: The subarray for which to build a mask. TODO basically has no effect?
+    :param width_o2: The order 2 trace width at each column, must have shape = (2048,).
+    :param width_o3: The order 3 trace width at each column, must have shape = (2048,).
+    :param subarray: The subarray for which to build a mask.
     :param debug: If set True some diagnostic plots will be made.
 
     :type width_o1: array[float]
-    :type width_o2_uncont: array[float]
+    :type width_o2: array[float]
     :type width_o3: array[float]
     :type subarray: str
     :type debug: bool
@@ -542,16 +542,36 @@ def calibrate_widths(width_o1, width_o2_uncont, width_o3, subarray='SUBSTRIP256'
     :rtype list[float]
     """
 
-    x = np.arange(2048)
+    dimx = 2048
+
+    # Check the shapes of the widths.
+    if np.shape(width_o1) != (dimx,):
+        msg = 'width_o1 must have shape (2048,)'
+        raise ValueError(msg)
+
+    if width_o2 is not None:
+        if np.shape(width_o2) != (dimx,):
+            msg = 'width_o2_uncont must have shape (2048,)'
+            raise ValueError(msg)
+    else:
+        width_o2 = np.full(dimx, fill_value=np.nan)
+
+    if width_o3 is not None:
+        if np.shape(width_o3) != (dimx,):
+            msg = 'width_o3_uncont must have shape (2048,)'
+            raise ValueError(msg)
+    else:
+        width_o3 = np.full(dimx, fill_value=np.nan)
 
     # Convert pixel positions to wavelengths for each order.
+    x = np.arange(dimx)
     lba_o1 = wavelength_calibration(x, order=1, subarray=subarray)
-    lba_o2_uncont = wavelength_calibration(x, order=2, subarray=subarray)
+    lba_o2 = wavelength_calibration(x, order=2, subarray=subarray)
     lba_o3 = wavelength_calibration(x, order=3, subarray=subarray)
 
-    # Join data from orders 1 and 2.
-    lba_all = np.concatenate((lba_o1, lba_o2_uncont), axis=None)
-    width_all = np.concatenate((width_o1, width_o2_uncont), axis=None)
+    # Join data from different orders.
+    lba_all = np.concatenate((lba_o1, lba_o2, lba_o3), axis=None)
+    width_all = np.concatenate((width_o1, width_o2, width_o3), axis=None)
 
     # Fit the wavelength vs width of order 1 and 2 using an exponential model.
     mask = np.isfinite(width_all) & np.isfinite(lba_all)
@@ -570,13 +590,17 @@ def calibrate_widths(width_o1, width_o2_uncont, width_o3, subarray='SUBSTRIP256'
 
         plt.scatter(lba_o1, width_o1, marker=',', s=1, color='red',
                     label='Order 1')
-        plt.scatter(lba_o2_uncont, width_o2_uncont + 0.05, marker=',', s=1,
-                    color='orange', label='Order 2 - Uncontaminated')
-        plt.scatter(lba_o3, width_o3 + 0.10, marker=',', s=1, color='navy',
-                    label='Order 3')
+
+        if np.any(np.isfinite(width_o2)):
+            plt.scatter(lba_o2, width_o2 + 0.05, marker=',', s=1,
+                        color='orange', label='Order 2')
+
+        if np.any(np.isfinite(width_o3)):
+            plt.scatter(lba_o3, width_o3 + 0.10, marker=',', s=1, color='navy',
+                        label='Order 3')
 
         plt.plot(lba_fit, width_fit, color='black', linewidth=5,
-                 label='Order 1 and 2 - Fit:\n width = {:6.2F} $\lambda**({:6.4F})$'.format(w0, m))
+                 label='Joint Fit:\n width = {:6.2F} $\lambda**({:6.4F})$'.format(w0, m))
 
         plt.xlabel('Wavelength (microns)', fontsize=12)
         plt.ylabel('Trace Width (pixels)', fontsize=12)
@@ -703,7 +727,7 @@ def get_soss_centroids(image, mask=None, subarray='SUBSTRIP256', apex_order1=Non
 
     if calibrate:
 
-        pars_width = calibrate_widths(w_o1, w_o2_uncont, w_o3, subarray=subarray, debug=debug)
+        pars_width = calibrate_widths(w_o1, w_o2_uncont, subarray=subarray, debug=debug)
 
     else:
         # Adopt the already computed width relation. The best fit parameters
