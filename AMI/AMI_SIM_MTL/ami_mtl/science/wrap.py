@@ -147,12 +147,23 @@ class Observation:
                              funcname=func_name)
         # clean name
         self.name = general.clean_name(self.name)
-
         # ---------------------------------------------------------------------
         # set raw magnitudes
         self.raw_magnitudes = properties.get(mag_key, None)
-        # get magnitudes
+        # store magnitudes (per filter)
         self.magnitudes = dict()
+        # store the filters to use (based on APT file)
+        self.filters = []
+        # store the sub array
+        self.subarrays = dict()
+        # store extracted flux (calculated from magnitudes)
+        self.ext_fluxes = dict()
+        # store total exposure time (calculated from nints * ngroups * tframe)
+        self.tot_exp = dict()
+        # store nints (per filter)
+        self.num_integrations = dict()
+        # store ngroups (per filter)
+        self.num_groups = dict()
 
     def link_to_xml(self):
         """
@@ -190,8 +201,18 @@ class Observation:
             # deal with no apt value (skip)
             if instance is None or instance.apt is None:
                 continue
+            # get xml value
+            values = xml_target[instance.apt]
+            # -----------------------------------------------------------------
+            # deal with sub array being None
+            if key == 'APT-TARGET-SUBARRAYS':
+                values = self._deal_with_subarray(values, func_name)
+            # check filters are valid
+            if key == 'APT-TARGET-FILTERS':
+                values = self._deal_with_filters(values, func_name)
+            # -----------------------------------------------------------------
             # else add to params (if in apt file)
-            self.params[key] = xml_target[instance.apt]
+            self.params[key] = values
             sargs = [xml_filename, self.name, instance.apt]
             self.params.set_source(key, '{0}[{1}].{2}'.format(*sargs))
 
@@ -218,6 +239,60 @@ class Observation:
                 out_list.append('{0}: Dict'.format(prop))
         # return list
         return out_list
+
+    def _deal_with_subarray(self, in_values: List[str],
+                            func_name: str) -> List[str]:
+        """
+        Deal specifically with sub array value from APT
+
+        :param in_values: list of str, the values for sub array from APT
+        :param func_name: str, the function name
+        :return:
+        """
+        # storage of outputs
+        out_values = []
+        # loop around input values
+        for in_value in in_values:
+            # assume source is APT originally
+            subarray_source = 'APT'
+            # check for None value
+            if in_value in ['None', None, '']:
+                out_value = self.params['DEFAULT_SUBARRAY']
+                subarray_source = self.params.sources['DEFAULT_SUBARRAY']
+            else:
+                out_value = str(in_value)
+            # check that value is now valid (in SUBARRAYS)
+            if out_value not in self.params['SUBARRAYS']:
+                emsg = 'ObservationError: XML Subarray value invalid'
+                emsg += '\n\t Subarray = "{0}" (source={1})'
+                emsg = emsg.format([out_value, subarray_source])
+                self.params.log.error(emsg, exception=ObservationException,
+                                      func_name=func_name)
+            # add to outputs
+            out_values.append(out_value)
+        # return value
+        return out_values
+
+    def _deal_with_filters(self, in_values: List[str],
+                           func_name: str) -> List[str]:
+        """
+        Deal specifically with sub array value from APT
+
+        :param in_values: list of str, the values for sub array from APT
+        :param func_name: str, the function name
+        :return:
+        """
+        # loop around input values
+        for in_value in in_values:
+            # check that value is now valid (in SUBARRAYS)
+            if in_value not in self.params['ALL_FILTERS']:
+                emsg = 'ObservationError: XML Filters value invalid'
+                emsg += '\n\t Filters = "{0}" (source={1})'
+                emsg = emsg.format(in_value, 'APT')
+                self.params.log.error(emsg, exception=ObservationException,
+                                      func_name=func_name)
+        # return value
+        return in_values
 
     def __str__(self) -> str:
         """
@@ -251,6 +326,105 @@ class Observation:
                 else:
                     self.magnitudes[mag] = np.nan
 
+    def get_observational_params(self):
+        """
+        observational parameters are per filter
+
+        :return:
+        """
+        # get all filters that can be used (due to APT file setup)
+        self.filters = list(self.params['APT-TARGET-FILTERS'])
+
+        # get parameters from params
+        nints = list(self.params['APT-TARGET-NINT'])
+        ngroups = list(self.params['APT-TARGET-NINT'])
+        nsubarrays = list(self.params['APT-TARGET-SUBARRAYS'])
+        zeropoints = dict(self.params['ZEROPOINTS'])
+        tframes = dict(self.params['T_FRAMES'])
+        # ----------------------------------------------------------------------
+        # check we have magniutdes for each filter
+        for _filter in self.filters:
+            # raise error if filter not present in magnitudes
+            if _filter not in self.magnitudes:
+                emsg = 'Filter {0} missing. Please run X.get_magnitudes()'
+                self.params.log.error(emsg.format(_filter))
+        # ----------------------------------------------------------------------
+        # loop around filters and set values
+        for it, _filter in enumerate(self.filters):
+            # get this iterations values
+            nint = int(nints[it])
+            ngroup = int(ngroups[it])
+            subarray = str(nsubarrays[it])
+            # ------------------------------------------------------------------
+            # get magnitude for this target
+            mag = self.magnitudes[_filter]
+            # get zeropoint for this target
+            zeropoint = zeropoints[_filter]
+            # get sub array tframe for this sub array
+            tframe = tframes[subarray]
+            # work out the extracted flux
+            ext_flux = self._get_flux_rate(mag, zeropoint)
+            # work out the total exposure time
+            tot_exp = self._get_total_exp_time(nint, ngroup, tframe)
+            # -----------------------------------------------------------------
+            # add to storage
+            # -----------------------------------------------------------------
+            # store extracted flux (calculated from magnitudes)
+            self.ext_fluxes[_filter] = ext_flux
+            # store total exposure time
+            self.tot_exp[_filter] = tot_exp
+            # store nints (per filter)
+            self.num_integrations[_filter] = nint
+            # store ngroups (per filter)
+            self.num_groups[_filter] = ngroup
+
+    def get_contrast(self, companion: 'Companion', _filter: str) -> float:
+        # make sure we have filter in self
+        if _filter not in self.magnitudes:
+            emsg = 'ObservationError: Cannot get contrast for target {0}'
+            emsg += '\n\tTarget {1} does not have magnitude "{2}"'
+            eargs = [self.name, self.name, _filter]
+            self.params.log(emsg.format(*eargs))
+        # get target magnitude
+        target_mag = self.magnitudes[_filter]
+        # make sure we have filter in companion
+        if _filter not in companion.magnitudes:
+            emsg = 'ObservationError: Cannot get contrast for target {0}'
+            emsg += '\n\tCompanion {1} does not have magnitude "{2}"'
+            eargs = [self.name, companion.name, _filter]
+            self.params.log(emsg.format(*eargs))
+        # get companion magnitude
+        companion_mag = companion.magnitudes[_filter]
+        # get delta magnitude
+        delta_mag = companion_mag - target_mag
+        # return contrast
+        return 10 ** (-0.4 * delta_mag)
+
+    def _get_flux_rate(self, magnitude: float, zeropoint: float) -> float:
+        """
+        Get the flux rate based on a magnitude (in e-/second)
+
+        :param magnitude: float, magnitude for a specific filter
+        :param zeropoint: float, the zeropoint magnitude for a specific filter
+
+        :return: the flux rate [e-/second]
+        """
+        return 10 ** (0.4 * (zeropoint - magnitude))
+
+    def _get_total_exp_time(self, nint: int, ngroup: int,
+                            tframe: float) -> float:
+        """
+        Get the total exposure time (based on number of integrations,
+        number of groups and tframe time based on sub array)
+
+        :param nint: int, the number of integrations
+        :param ngroup: int, the number of groups
+        :param tframe: float, the frame time for a specific sub array [seconds]
+
+        :return: float, the total exposure time [seconds]
+        """
+        return nint * (ngroup - 1) * tframe
+
 
 class Target(Observation):
 
@@ -268,6 +442,8 @@ class Target(Observation):
         self.link_to_xml()
         # load magnitudes
         self.get_magnitudes()
+        # get flux and exposure times (using APT info from link_to_xml)
+        self.get_observational_params()
         # deal with companions
         self.companions = []
         self.get_companion(properties)
@@ -310,6 +486,8 @@ class Calibrator(Observation):
         self.link_to_xml()
         # load magnitudes
         self.get_magnitudes()
+        # get flux and exposure times (using APT info from link_to_xml)
+        self.get_observational_params()
 
 
 class Companion(Observation):
@@ -323,7 +501,7 @@ class Companion(Observation):
         :param params: ParamDict, the parameter dictionary of constants
         :param properties:
         """
-        super().__init__(params, properties, mag_key='dmag')
+        super().__init__(params, properties, mag_key='mag')
         # get name
         self.name = general.clean_name(properties.get('name', 'Unknown'))
         # get kind (currently only support "planet")
@@ -411,13 +589,11 @@ def sim_module(simulations: List[Simulation]):
         # simulate using AMISIM
         if simulation.params['AMISIM-USE']:
             # simulate target
-            run_ami_sim(simulation.name, simulation.use_filters,
-                        simulation.target)
+            run_ami_sim(simulation.name, simulation.target)
             # simulate calibrators
             for calibrator in simulation.calibrators:
                 # simulate calibrator
-                run_ami_sim(simulation.name, simulation.use_filters,
-                            calibrator)
+                run_ami_sim(simulation.name, calibrator)
         # simulate using Mirage
         if simulation.params['MIRAGE-USE']:
             # simulate target
@@ -428,12 +604,11 @@ def sim_module(simulations: List[Simulation]):
 
 
 
-def run_ami_sim(simname: str, filters: List[str], observation: Observation):
+def run_ami_sim(simname: str, observation: Observation):
     """
     Run the AMI SIM module on a specific observation
 
     :param simname: the name of this simulation
-    :param filters: list of filters to use
     :param observation: the observation to run through AMI-SIM
     :return:
     """
@@ -447,14 +622,16 @@ def run_ami_sim(simname: str, filters: List[str], observation: Observation):
     margs = [simname, observation.name]
     params.log.info(msg.format(*margs))
     # loop around all filters to use
-    for _filter in filters:
+    for _filter in observation.filters:
         # construct file path
         path = Path(str(params.get('AMISIM-PATH', params['DIRECTORY'])))
         # construct filename
         oargs = [simname, observation.name, _filter]
         filename = 'SKY_SCENE_{0}_{1}_{2}.fits'.format(*oargs)
         # construct abs path to file
-        scenepath = path.joinpath(filename)
+        scenepath = str(path.joinpath(filename))
+        # get file path as a string
+        target_dir = str(path)
         # update params for observation
         akey = 'AMI-SIM-SCENE-{0}'.format(_filter)
         observation.params[akey] = scenepath
@@ -467,12 +644,8 @@ def run_ami_sim(simname: str, filters: List[str], observation: Observation):
         pkwargs['fov_pixels'] = params['FOV_PIXELS']
         pkwargs['oversample'] = params['OVERSAMPLE_FACTOR']
         pkwargs['pix_scale'] = params['PIX_SCALE']
-        # TODO: Need funciton to go from mag[fitler] --> flux
-        #pkwargs['ext_flux'] = observation.blank
-        pkwargs['ext_flux'] = 1000001
-        # TODO: Need to get this from xml file
-        #pkwargs['tot_exp'] = observation.blank
-        pkwargs['tot_exp'] = 600
+        pkwargs['ext_flux'] = observation.ext_fluxes[_filter]
+        pkwargs['tot_exp'] = observation.tot_exp[_filter]
         # add the target at the center of the image
         image, hdict = etienne.ami_sim_observation(**pkwargs)
         # add filter to hdict
@@ -498,9 +671,9 @@ def run_ami_sim(simname: str, filters: List[str], observation: Observation):
                     ckwargs['num'] = it + 1
                     ckwargs['position_angle'] = companion.position_angle
                     ckwargs['separation'] = companion.separation
-                    # TODO: Need function to get from dmag[filter] --> contrast
-                    # ckwargs['contrast'] = companion.blank
-                    ckwargs['contrast'] = 0.5
+                    # get the constrast between observation and companion
+                    contrast = observation.get_contrast(companion, _filter)
+                    ckwargs['contrast'] = contrast
                     # add companion
                     image, hdict = etienne.ami_sim_add_companion(**ckwargs)
         # ---------------------------------------------------------------------
@@ -529,9 +702,15 @@ def run_ami_sim(simname: str, filters: List[str], observation: Observation):
         # ---------------------------------------------------------------------
         # step 5: run ami-sim for observation
         # ---------------------------------------------------------------------
-        simfile = etienne.ami_sim_run_code(params, path, _filter, psf_filename,
-                                           scenepath, count_rate, simname,
-                                           observation.name)
+        # get parameters from observation
+        target_name = observation.name
+        nint = observation.num_integrations[_filter]
+        ngroups = observation.num_groups[_filter]
+
+
+        simfile = etienne.ami_sim_run_code(params, target_dir, _filter,
+                                           psf_filename, scenepath, count_rate,
+                                           simname, target_name, nint, ngroups)
         # update param for sim file
         okey = 'AMI-SIM-OUT_{0}'.format(_filter)
         observation.params[okey] = simfile
@@ -653,20 +832,24 @@ def _load_xml(params: ParamDict,
     table = xml.read_xml_silent(filename)
     # get target names (cleaned)
     target_names = list(map(general.clean_name, table[target_name_col]))
-    # get length of table
-    length = len(target_names)
     # storage of xml targets
     xml_targets = dict()
     # -------------------------------------------------------------------------
     # loop around all targets
-    for it in range(length):
+    for it in range(len(target_names)):
         # get name for this iteration
         name = target_names[it]
         # each entry should be a dictionary
-        xml_targets[name] = dict()
+        if name not in xml_targets:
+            xml_targets[name] = dict()
         # loop around entrys
         for entry in list(table.keys()):
-            xml_targets[name][entry] = table[entry][it]
+            # deal with appending a target entry
+            if entry in xml_targets[name]:
+                xml_targets[name][entry].append(table[entry][it])
+            # deal with
+            else:
+                xml_targets[name][entry] = [table[entry][it]]
         # add xml file path to parameters
         xml_targets[name]['XML-FILE'] = filename
     # -------------------------------------------------------------------------

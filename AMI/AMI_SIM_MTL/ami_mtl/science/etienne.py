@@ -272,7 +272,7 @@ def ami_sim_recompute_psf(_filter: str, filename: Union[str, Path],
     """
     Recompute the PSF using webbpsf
 
-    :param filter: str, the filter to use
+    :param _filter: str, the filter to use
     :param filename: str, the output filename
     :param fov_pixels: int, the fov in pixels
     :param oversample: int, the oversampling factor
@@ -293,9 +293,27 @@ def ami_sim_recompute_psf(_filter: str, filename: Union[str, Path],
     # run the psf calculation
     niriss.calc_psf(str(filename), fov_pixels=fov_pixels, oversample=oversample)
 
+
 def ami_sim_run_code(params: ParamDict, path: str, _filter: str,
                      psf_filename: str, scene_file: str, count_rate: float,
-                     simname: str, target_name: str):
+                     simname: str, target_name: str, nint: int,
+                     ngroups: int) -> str:
+    """
+    Run AMI-SIM code
+
+    :param params: ParamDict, the parameter dictionary of constants
+    :param path: str, the output path directory
+    :param _filter: str, the filter to run AMI-SIM on
+    :param psf_filename: str, the path to the PSF to use
+    :param scene_file: str, the scene fits image file
+    :param count_rate: float, the count rate
+    :param simname: str, simulation name (used with target to name outputs)
+    :param target_name: str, the target name
+    :param nint: int, the number of integrations to use
+    :param ngroups: int, the number of groups to use
+
+    :return: str, the AMI-SIM output filename
+    """
     # construct tag
     tag = '{0}_{1}'.format(simname, target_name)
     # -------------------------------------------------------------------------
@@ -305,9 +323,9 @@ def ami_sim_run_code(params: ParamDict, path: str, _filter: str,
         # add arguments
         args = []
         # output directory path (relative to home directory)
-        args += ['--target_dir', path]
+        args += ['--target_dir', str(path)]
         # absolute output directory path, if specified it overrides --target_dir
-        args += ['--output_absolute_path', path]
+        args += ['--output_absolute_path', str(path)]
         # overwrite yes/no, default 0 (no)
         args += ['--overwrite', params['AMISIM-OVERWRITE']]
         # generate up-the-ramp fits file? yes/no, default 0 (no)
@@ -322,9 +340,9 @@ def ami_sim_run_code(params: ParamDict, path: str, _filter: str,
         # sky scene oversampling (must be odd integer number)
         args += ['--oversample', params['OVERSAMPLE_FACTOR']]
         # number of integrations (IR community calls these exposures sometimes)
-        args += ['--nint', params['NINT']]
+        args += ['--nint', nint]
         # number of up-the-ramp readouts
-        args += ['--ngroups', params['NGROUP']]
+        args += ['--ngroups', ngroups]
         # create calibrator observation yes/no default 1 (yes)
         args += ['--create_calibrator', params['AMISMI-CREATE_CALIBRATOR']]
         # Photon count rate on 25m^2 per sec in the bandpass
@@ -351,6 +369,8 @@ def ami_sim_run_code(params: ParamDict, path: str, _filter: str,
         #     current. Default is on
         args += ['--include_detection_noise',
                  params['AMISIM-INCLUDE_DET_NOISE']]
+        # all args must be strings
+        args = list(map(lambda x: str(x), args))
         # load module
         mod = ami_sim(params)
         # run module main function

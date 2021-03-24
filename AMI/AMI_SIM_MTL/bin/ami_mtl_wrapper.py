@@ -117,11 +117,15 @@ if __name__ == "__main__":
     import sys
     sys.argv = 'test.py --config=/data/jwst_ami/data/neil_wrap/inputs/example.yaml'.split()
 
+    # setup parameters
     params = param_functions.setup(lconsts, dict(), log=log,
                                    desc=__DESCRIPTION__, name=__NAME__)
+    # load simulations
     simulations = wrap.load_simulations(params, str(params['WCONFIG']))
 
+    # wrap around the simulation module
     wrap.sim_module(simulations)
+
 
     # TODO: write code to use simulations / targets / calibrators / companions
 

@@ -119,34 +119,47 @@ Consts.add('APT-TARGETS', value=None, dtype=dict, source=__NAME__,
                        '(to be filled in code)')
 
 # Define the APT target name
-Consts.add('APT-TARGET-NAME', value=None, dtype=str, source=__NAME__,
+Consts.add('APT-TARGET-NAME', value=None, dtype=list, source=__NAME__,
            user=False, argument=False, group=group,
            description='Define the APT target name',
            apt='TargetID')
 
 # Define the APT-xml target Right Ascension
-Consts.add('APT-TARGET-RA', value=None, dtype=float, source=__NAME__,
+Consts.add('APT-TARGET-RA', value=None, dtype=list, source=__NAME__,
            user=False, argument=False, group=group,
            description='Define the APT target Right Ascension',
            apt='TargetRA')
 
 # Define the APT-xml target Declination
-Consts.add('APT-TARGET-DEC', value=None, dtype=float, source=__NAME__,
+Consts.add('APT-TARGET-DEC', value=None, dtype=list, source=__NAME__,
            user=False, argument=False, group=group,
            description='Define the APT target Declination',
            apt='TargetDec')
 
 # Define the APT-xml target number of groups
-Consts.add('APT-TARGET-NGROUP', value=None, dtype=int, source=__NAME__,
+Consts.add('APT-TARGET-NGROUP', value=None, dtype=list, source=__NAME__,
            user=False, argument=False, group=group,
            description='Define the APT-xml target number of groups',
            apt='Groups')
 
 # Define the APT-xml target number of groups
-Consts.add('APT-TARGET-NINT', value=None, dtype=int, source=__NAME__,
+Consts.add('APT-TARGET-NINT', value=None, dtype=list, source=__NAME__,
            user=False, argument=False, group=group,
            description='Define the APT-xml target number of integrations',
            apt='Integrations')
+
+# Define the APT-xml sub array
+Consts.add('APT-TARGET-SUBARRAYS', value=None, dtype=list, source=__NAME__,
+           user=False, argument=False, group=group,
+           description='Define the APT-xml sub array',
+           apt='Subarray')
+
+# Define the APT-xml filter list
+Consts.add('APT-TARGET-FILTERS', value=None, dtype=list, source=__NAME__,
+           user=False, argument=False, group=group,
+           description='Define the APT-xml filters',
+           apt='Filter')
+
 
 # =============================================================================
 #   Instrument constants
@@ -166,6 +179,30 @@ Consts.add('ALL_FILTERS', value=FILTERS,
            dtype=list, source=__NAME__, user=False, argument=False,
            group=group,
            description='Define all allowed filters')
+
+# Define filter zero point (should have all filters from ALL_FILTERS)
+ZEROPOINTS = dict(F277W=26.14, F380M=23.75, F430M=23.32, F480M=23.19)
+Consts.add('ZEROPOINTS', value=ZEROPOINTS, dtype=dict, source=__NAME__,
+           user=False, argument=False, group=group,
+           description='Zero point for all filters')
+
+# Define the valid sub array names
+SUB_ARRAYS = ['FULL', 'SUB80']
+Consts.add('SUBARRAYS', value=SUB_ARRAYS, dtype=list, source=__NAME__,
+           user=False, argument=False, group=group,
+           description='the valid sub array names')
+
+# Define the default subarray (if APT file is set to None)
+Consts.add('DEFAULT_SUBARRAY', value='SUB80', dtype=str, source=__NAME__,
+           user=False, argument=False, group=group, options=SUB_ARRAYS,
+           description='the default subarray (if APT file is set to None)')
+
+# Define the frame time for different subarrays
+T_FRAMES = dict(FULL=10.737, SUB80=0.07544)
+Consts.add('T_FRAMES', value=T_FRAMES, dtype=dict, source=__NAME__,
+           user=False, argument=False, group=group,
+           description='Define the frame time for subarray FULL')
+
 
 # =============================================================================
 #   Simulation constants
@@ -340,3 +377,6 @@ Consts.add('MIRAGE-USE', value=True, dtype=bool, source=__NAME__,
 #   IMPLANEIA constants
 # =============================================================================
 
+# =============================================================================
+#   End of constants file
+# =============================================================================
