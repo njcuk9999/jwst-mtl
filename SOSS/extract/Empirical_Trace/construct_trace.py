@@ -52,9 +52,9 @@ def build_empirical_trace(clear, F277W, badpix_mask, subarray, pad, oversample,
     subarray : str
         NIRISS SOSS subarray identifier. One of 'SUBSTRIP96', 'SUBSTRIP256', or
         'FULL'.
-    pad : int
-        Amount of padding to include (in native pixels). Padding will be equal
-        in the spatial and spectral directions.
+    pad : tuple
+        Amount of padding to include (in native pixels) in the spatial and
+        spectral directions, repsectively.
     oversample : int
         Oversampling factor. Oversampling will be equal in the spectral and
         spatial directions.
@@ -166,15 +166,16 @@ def build_empirical_trace(clear, F277W, badpix_mask, subarray, pad, oversample,
             print(' \nStarting spatial profile refinement...')
             print('  Refining the first order...', flush=True)
         # Refine the first order.
-        order1_uncontam = refine_order1(clear, order2_1, centroids, pad,
+        order1_uncontam = refine_order1(clear, order2_1, centroids, pad[0],
                                         verbose=verbose)
 
         # Refine the second order.
         if verbose != 0:
             print('  Refining the second order...')
         order2_uncontam = construct_order2(clear,
-                                           order1_uncontam[pad:(dimy+pad)],
-                                           centroids, verbose=verbose, pad=pad)
+                                           order1_uncontam[pad[0]:(dimy+pad[0])],
+                                           centroids, verbose=verbose,
+                                           pad=pad[0])
 
         # ========= FINAL TUNING =========
         # Pad the spectral axis.
@@ -184,19 +185,21 @@ def build_empirical_trace(clear, F277W, badpix_mask, subarray, pad, oversample,
             order1_uncontam = pad_spectral_axis(order1_uncontam,
                                                 centroids['order 1']['X centroid'],
                                                 centroids['order 1']['Y centroid'],
-                                                pad=pad)
+                                                pad=pad[1])
         # Even if padding is not requested, fill in the zero valued area of the
         # frame where the order 2 trace is off of the detector.
         edge = np.where(np.nanmedian(order2_uncontam, axis=0) == 0)[0][0] - 5
         order2_uncontam = pad_spectral_axis(order2_uncontam,
                                             centroids['order 2']['X centroid'],
                                             centroids['order 2']['Y centroid'],
-                                            pad=pad, ref_col=(5, edge-dimx))
+                                            pad=pad[1], ref_col=(5, edge-dimx))
 
         # Plot a map of the residuals.
         if verbose == 3:
-            o1_unpad = order1_uncontam[pad:(dimy+pad), :]
-            o2_unpad = order2_uncontam[pad:(dimy+pad), :]
+            o1_unpad = order1_uncontam[pad[0]:(dimy+pad[0]),
+                                       pad[1]:(dimx+pad[1])]
+            o2_unpad = order2_uncontam[pad[0]:(dimy+pad[0]),
+                                       pad[1]:(dimx+pad[1])]
             plotting._plot_trace_residuals(clear, o1_unpad, o2_unpad)
 
     # Add oversampling.
@@ -218,10 +221,10 @@ def build_empirical_trace(clear, F277W, badpix_mask, subarray, pad, oversample,
     if trim is True:
         subarray = 'FULL'
         # Create the FULL frame including oversampling and padding.
-        order1_full = np.zeros(((2048+2*pad)*oversample,
-                                (2048+2*pad)*oversample))
-        order2_full = np.zeros(((2048+2*pad)*oversample,
-                                (2048+2*pad)*oversample))
+        order1_full = np.zeros(((2048+2*pad[0])*oversample,
+                                (2048+2*pad[1])*oversample))
+        order2_full = np.zeros(((2048+2*pad[0])*oversample,
+                                (2048+2*pad[1])*oversample))
         # Put the uncontaminated SUBSTRIP256 frames on the FULL detector.
         dimy = np.shape(order1_uncontam)[0]
         order1_full[-dimy:, :] = order1_uncontam

@@ -32,9 +32,9 @@ class Empirical_Trace():
     subarray : str
         NIRISS SOSS subarray identifier. One of 'SUBSTRIP96', 'SUBSTRIP256', or
         'FULL'.
-    pad : int
-        Amount of padding to include (in native pixels). Padding will be equal
-        in the spatial and spectral directions.
+    pad : tuple
+        Amount of padding to include (in native pixels) in the spatial and
+        spectral directions respectively.
     oversample : int
         Oversampling factor. Oversampling will be equal in the spectral and
         spatial directions.

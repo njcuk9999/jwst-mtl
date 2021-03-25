@@ -218,8 +218,8 @@ def _validate_inputs(etrace):
     if np.shape(etrace.CLEAR) != np.shape(etrace.badpix_mask):
         raise ValueError('Bad pixel mask must be the same shape as the data.')
     # Ensure padding and oversampling are integers.
-    if type(etrace.pad) != int:
-        raise ValueError('Padding value must be an integer.')
+    if type(etrace.pad) != tuple and len(etrace.pad) != 2:
+        raise ValueError('Padding must be a length 2 tuple.')
     if type(etrace.oversample) != int:
         raise ValueError('Oversampling factor must be an integer.')
     # Ensure verbose is the correct format.
