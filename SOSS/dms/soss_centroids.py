@@ -82,7 +82,7 @@ def get_uncontam_centroids(image, header=None, mask=None, poly_order=11, verbose
 
     :param image: A 2D image of the detector.
     :param header: The header from one of the SOSS reference files.
-    :param mask: A boolean array of the same shape as stack. Pixels corresponding to True values will be masked.
+    :param mask: A boolean array of the same shape as image. Pixels corresponding to True values will be masked.
     :param poly_order: Order of the polynomial to fit to the extracted trace positions.
     :param verbose: If set True some diagnostic plots will be made.
 
@@ -298,7 +298,7 @@ def get_uncontam_centroids_edgetrig(image, header=None, mask=None, poly_order=11
 
     :param image: A 2D image of the detector.
     :param header: The header from one of the SOSS reference files.
-    :param mask: A boolean array of the same shape as stack. Pixels corresponding to True values will be masked.
+    :param mask: A boolean array of the same shape as image. Pixels corresponding to True values will be masked.
     :param poly_order: Order of the polynomial to fit to the extracted trace positions.
     :param halfwidth: the size of the window used when computing the derivatives.
     :param mode: Which trace values to use. Can be 'maxedge', 'minedge', 'mean' or 'combined'.
@@ -307,7 +307,7 @@ def get_uncontam_centroids_edgetrig(image, header=None, mask=None, poly_order=11
     :type image: array[float]
     :type header: astropy.io.fits.Header
     :type mask: array[bool]
-    :type poly_order: int
+    :type poly_order: int or None
     :type halfwidth: int
     :type mode: str
     :type verbose: bool
@@ -321,7 +321,7 @@ def get_uncontam_centroids_edgetrig(image, header=None, mask=None, poly_order=11
     if mask is None:
         mask = np.zeros_like(image, dtype='bool')
 
-    # Call the script that determines the dimensions of the stack.
+    # Call the script that determines the dimensions of the image.
     dimx, dimy, xos, yos, xnative, ynative, padding, refpix_mask = \
         get_image_dim(image, header=header, verbose=verbose)
 
