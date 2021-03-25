@@ -304,7 +304,7 @@ def get_uncontam_centroids_edgetrig(image, header=None, mask=None, poly_order=11
     :param mask: A boolean array of the same shape as image. Pixels corresponding to True values will be masked.
     :param poly_order: Order of the polynomial to fit to the extracted trace positions.
     :param halfwidth: the size of the window used when computing the derivatives.
-    :param mode: Which trace values to use. Can be 'maxedge', 'minedge', 'mean' or 'combined'.
+    :param mode: Which trace values to use. Can be 'bottomedge', 'topedge', 'mean' or 'combined'.
     :param verbose: If set True some diagnostic plots will be made.
 
     :type image: array[float]
@@ -336,9 +336,9 @@ def get_uncontam_centroids_edgetrig(image, header=None, mask=None, poly_order=11
     ytrace_max, ytrace_min, ytrace_best, widths_best = edge_trigger(image_masked, **fkwargs)
 
     # Use different y-positions depending on the mode parameter.
-    if mode == 'maxedge':
+    if mode == 'bottomedge':
         ytrace = ytrace_max
-    elif mode == 'minedge':
+    elif mode == 'topedge':
         ytrace = ytrace_min
     elif mode == 'mean':
         ytrace = (ytrace_min + ytrace_max)/2.
@@ -1188,11 +1188,11 @@ def get_soss_centroids(image, mask=None, subarray='SUBSTRIP256', halfwidth=2,
         hdu.data = np.where(mask_o2_cont, np.nan, image)
         hdu.writeto('mask_o2_cont.fits', overwrite=True)
 
-    # Get the raw top-edge poistions of the contaminated order 2 trace. TODO rename minedge etc. in get_uncontam_centroids_edgetrig?
+    # Get the raw top-edge poistions of the contaminated order 2 trace.
     result = get_uncontam_centroids_edgetrig(image,
                                              mask=mask_o2_cont,
                                              poly_order=None, halfwidth=halfwidth,
-                                             mode='minedge', verbose=verbose)
+                                             mode='topedge', verbose=verbose)
 
     x_o2_top, y_o2_top, w_o2_top, par_o2_top = result
 
