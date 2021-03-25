@@ -614,6 +614,68 @@ def calibrate_widths(width_o1, width_o2=None, width_o3=None, subarray='SUBSTRIP2
     return pars_width
 
 
+def visualize_trace(image, trace_dict, subarray):
+    """Visualize the trace extracted by get_soss_centroids().
+
+    :param image: A 2D image of the detector.
+    :param trace_dict: A dictionary containg the trace, as returned by get_soss_centroids().
+    :param subarray: the subarray for which to build a mask.
+
+    :type image: array[float]
+    :type trace_dict: dict
+    :type subarray: str
+
+    """
+
+    # Determine an appropriate figure size.
+    nrows, ncols = image.shape
+
+    if subarray == 'FULL':
+        aspect = 1
+        figsize = ncols / 64, nrows / 64
+    else:
+        aspect = 2
+        figsize = ncols / 64, nrows / 32
+
+    # Make a figure showing the trace for all 3 orders.
+    plt.figure(figsize=figsize)
+
+    plt.title('Trace Positions')
+
+    plt.imshow(image, origin='lower', cmap='inferno', norm=colors.LogNorm(), aspect=aspect)
+
+    tmp = trace_dict['order 1']
+    plt.plot(tmp['X centroid'], tmp['Y centroid'], color='orange', label='Order 1')
+    plt.plot(tmp['X centroid'], tmp['Y centroid'] - tmp['trace widths'] / 2, color='orange')
+    plt.plot(tmp['X centroid'], tmp['Y centroid'] + tmp['trace widths'] / 2, color='orange')
+
+    if 'order 2' in trace_dict:
+        tmp = trace_dict['order 2']
+        plt.plot(tmp['X centroid'], tmp['Y centroid'], color='black', label='Order 2')
+        plt.plot(tmp['X centroid'], tmp['Y centroid'] - tmp['trace widths'] / 2, color='black')
+        plt.plot(tmp['X centroid'], tmp['Y centroid'] + tmp['trace widths'] / 2, color='black')
+
+    if 'order 3' in trace_dict:
+        tmp = trace_dict['order 3']
+        plt.plot(tmp['X centroid'], tmp['Y centroid'], color='red', label='Order 3')
+        plt.plot(tmp['X centroid'], tmp['Y centroid'] - tmp['trace widths'] / 2, color='red')
+        plt.plot(tmp['X centroid'], tmp['Y centroid'] + tmp['trace widths'] / 2, color='red')
+
+    plt.xlabel('Spectral Pixel', fontsize=14)
+    plt.ylabel('Spatial Pixel', fontsize=14)
+    plt.legend(fontsize=12)
+
+    plt.xlim(-0.5, ncols - 0.5)
+    plt.ylim(-0.5, nrows - 0.5)
+
+    plt.tight_layout()
+
+    plt.show()
+    plt.close()
+
+    return
+
+
 def get_soss_centroids(image, mask=None, subarray='SUBSTRIP256', halfwidth=2,
                        poly_orders=None, apex_order1=None,
                        calibrate=True, verbose=False):
@@ -690,13 +752,19 @@ def get_soss_centroids(image, mask=None, subarray='SUBSTRIP256', halfwidth=2,
 
     # For SUBSTRIP96 only the order 1 can be measured.
     if subarray == 'SUBSTRIP96':
+
+        if verbose:
+
+            # Make a figure showing the order 1 trace.
+            visualize_trace(image, trace_dict, subarray)
+
         return trace_dict
 
-    # Now, one can re-evaluate what the apex of order 1 truly is
-    apex_order1_measured = np.round(np.min(y_o1))
+    # Update the order1 apex based on the extracted trace.
+    apex_order1 = np.nanmin(y_o1)
 
     # Make a mask to isolate the order 3 trace and combine it with the user-specified mask.
-    mask_o3 = build_mask_order3(subarray=subarray, apex_order1=apex_order1_measured)
+    mask_o3 = build_mask_order3(subarray=subarray, apex_order1=apex_order1)
 
     if mask is not None:
         mask_o3 = mask_o3 | mask
@@ -726,7 +794,7 @@ def get_soss_centroids(image, mask=None, subarray='SUBSTRIP256', halfwidth=2,
 
     # Make a mask to isolate the uncontaminated order 2 trace and combine it with the user-specified mask.
     mask_o2_uncont = build_mask_order2_uncontaminated(y_o1, y_o3,
-                                                      subarray=subarray, apex_order1=apex_order1_measured)
+                                                      subarray=subarray, apex_order1=apex_order1)
 
     if mask is not None:
         mask_o2_uncont = mask_o2_uncont | mask
@@ -798,16 +866,9 @@ def get_soss_centroids(image, mask=None, subarray='SUBSTRIP256', halfwidth=2,
         par_o2 = cen.robust_polyfit(x_o2[mask_fit], y_o2[mask_fit], default_orders['order 2'])
         y_o2 = np.polyval(par_o2, x_o2)
 
-    # Add parameters to output dictionary.
-    o2_dict = dict()
-    o2_dict['X centroid'] = x_o2
-    o2_dict['Y centroid'] = y_o2
-    o2_dict['trace widths'] = w_o2
-    o2_dict['poly coefs'] = par_o2
-    trace_dict['order 2'] = o2_dict
-
     if verbose:
 
+        # Determine an appropriate figure size.
         nrows, ncols = image.shape
 
         if subarray == 'FULL':
@@ -817,12 +878,12 @@ def get_soss_centroids(image, mask=None, subarray='SUBSTRIP256', halfwidth=2,
             aspect = 2
             figsize = ncols/64, nrows/32
 
+        # Make a figure showing how the order 2 trace was built from segments A and B.
         plt.figure(figsize=figsize)
 
         plt.title('Order 2 Trace Positions')
 
-        tmp = np.ma.masked_array(image, mask=mask)
-        plt.imshow(tmp, origin='lower', cmap='inferno', norm=colors.LogNorm(), aspect=aspect)
+        plt.imshow(image, origin='lower', cmap='inferno', norm=colors.LogNorm(), aspect=aspect)
 
         plt.plot(x_o2_cont, y_o2_cont, color='red', label='Contaminated')
         plt.plot(x_o2_uncont, y_o2_uncont, color='navy', label='Uncontaminated')
@@ -839,6 +900,19 @@ def get_soss_centroids(image, mask=None, subarray='SUBSTRIP256', halfwidth=2,
 
         plt.show()
         plt.close()
+
+    # Add parameters to output dictionary.
+    o2_dict = dict()
+    o2_dict['X centroid'] = x_o2
+    o2_dict['Y centroid'] = y_o2
+    o2_dict['trace widths'] = w_o2
+    o2_dict['poly coefs'] = par_o2
+    trace_dict['order 2'] = o2_dict
+
+    if verbose:
+
+        # Make a figure showing the trace for all orders.
+        visualize_trace(image, trace_dict, subarray)
 
     return trace_dict
 
