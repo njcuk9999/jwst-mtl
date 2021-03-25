@@ -39,9 +39,6 @@ def build_empirical_trace(clear, F277W, badpix_mask, subarray, pad, oversample,
     It is advisable to include an F277W exposure in addition to the standard
     CLEAR to improve the accuracy of both orders in the overlap region.
 
-    ***Will eventually want clear and F277W to be the full fits with headers
-    to get parameters from***
-
     Parameters
     ----------
     clear : np.array of float (2D)
@@ -332,6 +329,7 @@ def construct_order1(clear, F277, ycens, subarray, pad=0, verbose=0):
     dimx = 2048
     if subarray == 'SUBSTRIP96':
         dimy = 96
+        # Get uncontaminated wing for wing reconstruction.
         goodwing = get_goodwing(clear, ycens)
     elif subarray == 'SUBSTRIP256':
         dimy = 256
