@@ -12,7 +12,6 @@ the first and second diffraction orders of NIRISS/SOSS observations.
 from astropy.io import fits
 import numpy as np
 import numpy.ma as ma
-import os
 from scipy.optimize import minimize
 from tqdm import tqdm
 import warnings
@@ -31,7 +30,7 @@ path = '/Users/michaelradica/Documents/School/Ph.D./Research/SOSS/Extraction/Inp
 
 
 def build_empirical_trace(clear, F277W, badpix_mask, subarray, pad, oversample,
-                          normalize, save_to_file, verbose):
+                          normalize, verbose):
     '''Main procedural function for the empirical trace construction module.
     Calling this function will initialize and run all the requred subroutines
     to produce an uncontaminated spatial profile for the first and second
@@ -65,8 +64,6 @@ def build_empirical_trace(clear, F277W, badpix_mask, subarray, pad, oversample,
     normalize : bool
         if True, column normalize the final spatial profiles such that the
         flux in each column sums to one.
-    save_to_file : bool
-        If True, save the spatial profiles to a fits file.
     verbose : int
         Level of verbosity: either 3, 2, 1, or 0.
          3 - show all of progress prints, progress bars, and diagnostic plots.
@@ -234,21 +231,6 @@ def build_empirical_trace(clear, F277W, badpix_mask, subarray, pad, oversample,
         order2_full[-dimy:, :] = order2_uncontam
         order1_uncontam = order1_full
         order2_uncontam = order2_full
-
-    # Write the spatial profiles to a file.
-    if save_to_file is True:
-        if verbose != 0:
-            print('Writing to disk...')
-        filename = 'SOSS_2D_profile_{}.fits'.format(subarray)
-
-        # Print overwrite warning if output file already exists.
-        if os.path.exists(filename):
-            msg = 'Output file {} already exists.'\
-                  ' It will be overwritten'.format(filename)
-            warnings.warn(msg)
-
-        utils._write_to_file(order1_uncontam, order2_uncontam, subarray,
-                             filename, pad, oversample)
 
     if verbose != 0:
         print('\nDone.')

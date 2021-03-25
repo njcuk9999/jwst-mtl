@@ -10,6 +10,8 @@ class will be initalized and called by the user to create uncontaminated 2D
 trace profiles for the first and second order.
 """
 
+import os
+import warnings
 from SOSS.extract.empirical_trace import construct_trace as tm
 from SOSS.extract.empirical_trace import utils
 
@@ -64,13 +66,7 @@ class Empirical_Trace():
         self.order1 = None
         self.order2 = None
 
-    def validate_inputs(self):
-        '''Validate the input parameters.
-        '''
-
-        return utils._validate_inputs(self)
-
-    def build_empirical_trace(self, normalize=True, save_to_file=True):
+    def build_empirical_trace(self, normalize=True):
         '''Run the empirical trace construction module.
 
         Parameters
@@ -78,15 +74,44 @@ class Empirical_Trace():
         normalize : bool
             if True, column normalize the final spatial profiles such that the
             flux in each column sums to one.
-        save_to_file : bool
-            If True, save the spatial profiles to a fits file.
         '''
 
         # Run the empirical trace construction.
         o1, o2 = tm.build_empirical_trace(self.CLEAR, self.F277W,
                                           self.badpix_mask, self.subarray,
                                           self.pad, self.oversample,
-                                          normalize, save_to_file,
-                                          self.verbose)
+                                          normalize, self.verbose)
         # Store the uncontaminted profiles as attributes.
         self.order1, self.order2 = o1, o2
+
+    def save_to_file(self, filename=None):
+        '''Write the uncontaminated 2D trace profiles to a fits file.
+
+        Parameters
+        ----------
+        filename : str (optional)
+            Path to file to which to save the spatial profiles. Defaults to
+            'SOSS_2D_profile_{subarray}.fits'.
+        '''
+
+        # Get default filename if none provided.
+        if filename is None:
+            filename = 'SOSS_2D_profile_{}.fits'.format(self.subarray)
+        if self.verbose != 0:
+            print('Saving trace profiles to file {}...'.format(filename))
+
+        # Print overwrite warning if output file already exists.
+        if os.path.exists(filename):
+            msg = 'Output file {} already exists.'\
+                  ' It will be overwritten'.format(filename)
+            warnings.warn(msg)
+
+        # Write trace profiles to disk.
+        utils._write_to_file(self.order1, self.order2, self.subarray,
+                             filename, self.pad, self.oversample)
+
+    def validate_inputs(self):
+        '''Validate the input parameters.
+        '''
+
+        return utils._validate_inputs(self)
