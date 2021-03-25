@@ -1024,7 +1024,7 @@ def calibrate_widths(width_o1, width_o2=None, width_o3=None, subarray='SUBSTRIP2
                         label='Order 3')
 
         plt.plot(lba_fit, width_fit, color='black', linewidth=5,
-                 label='Joint Fit:\n width = {:6.2F} $\lambda**({:6.4F})$'.format(w0, m))
+                 label='Joint Fit:\nwidth = {:6.2F} $\\lambda**({:6.4F})$'.format(w0, m))
 
         plt.xlabel('Wavelength (microns)', fontsize=12)
         plt.ylabel('Trace Width (pixels)', fontsize=12)
