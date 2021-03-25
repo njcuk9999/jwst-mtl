@@ -728,44 +728,14 @@ def construct_order2(clear, order1_rescale, ycens, pad=0, verbose=0):
         o2frame[:, o2pix] = newprof[start:(end+ext)]
 
     # ========= SMOOTH DISCONTINUITIES =========
-    # Smooth over streaks (especially in the contaminated region).
-    # If the mean flux value of a column is >10% deviant from that of the
-    # surrounding columns, replace it with the median of its neighbours.
-    # Get mean flux values for each column.
+    # Smooth over discontinuities (streaks and oversubtractions) in both the
+    # spatial and spectral directions.
     if verbose != 0:
         print('   Smoothing...', flush=True)
-    col_mean = np.nanmean(o2frame, axis=0)
-    # Find where order 2 ends.
-    end = np.where(col_mean == 0)[0][0] - 5
-    # For each column, find the local mean of the surrounding 6 columns.
-    loc_mean = utils._local_mean(col_mean, step=3)
-    # Calculate the deviation of each column from the local mean.
-    dev_0 = np.abs((col_mean[3:end] - loc_mean[3:end])/loc_mean[3:end])
-    # Replace all columns whose mean value is >10% deviant from the local mean
-    # with the median of its neighbours.
-    dev, iter = dev_0, 0
-    # Iterate until no columns are >10% deviant, or 10 iterations have run.
-    while np.any(dev > 0.1) and iter < 10:
-        # Get all >10% deviant columns.
-        inds = np.where(dev >= 0.1)[0]
-        for i in inds:
-            i += 3
-            # For each column, calculate the median of the 'local region'.
-            # Expand the region by one pixel each iteration.
-            local = np.concatenate([o2frame[:, (i-2-iter):i],
-                                    o2frame[:, (i+1):(i+3+iter)]], axis=1)
-            o2frame[:, i] = np.nanmedian(local, axis=1)
-        # Recalculate the flux deviations as before.
-        col_mean = np.nanmean(o2frame, axis=0)
-        loc_mean = utils._local_mean(col_mean, step=3)
-        dev = np.abs((col_mean[3:end] - loc_mean[3:end])/loc_mean[3:end])
-        # Increment iteration.
-        iter += 1
+    o2frame = smooth_spec_discont(o2frame, verbose=verbose)
+    o2frame = smooth_spat_discont(o2frame, ycens)
 
-    # Plot the change in flux deviations after all iterations are complete.
-    if verbose == 3:
-        plotting._plot_flux_deviations(dev_0, dev, iter)
-
+    # ========= ADD PADDING =========
     # Add padding to the spatial axis by repeating the median of the 5 edge
     # pixels for each column.
     if pad != 0:
@@ -864,14 +834,32 @@ def _fit_trace_widths(clear, wave_coefs, verbose=0):
 
 
 def get_goodwing(clear96, centroids):
-    '''
+    '''Obtain an uncontaminated wing of the first order spatial profile to use
+    as a reference wing for SUBSTRIP96 wing reconstruction.
+
+    Parameters
+    ----------
+    clear96 : np.ndarray (2D)
+        SUBSTRIP96 2D trace profile dataframe.
+    centroids : dict
+        Centroids dictionary.
+
+    Returns
+    -------
+    goodwing : np.ndarray
+        Uncontaminated first order wing.
     '''
 
+    # Find the column where the first order is lowest on the detector. This
+    # ensures that we will never have to extend the goodwing.
     ymin = np.min(centroids['order 1']['Y centroid'])
     ind = np.where(centroids['order 1']['Y centroid'] == ymin)[0][0]
+    # Ensure that the second order core is off the detector so there is no
+    # contamination.
     while centroids['order 2']['Y centroid'][ind] < 100:
         ind += 1
 
+    # Extract the right wing of the chosen column.
     ycen = int(round(centroids['order 1']['Y centroid'][ind], 0))
     goodwing = np.nanmedian(clear96[(ycen+13):, (ind-2):(ind+2)], axis=1)
 
@@ -1181,13 +1169,32 @@ def reconstruct_wings256(profile, ycens=None, contamination=[2, 3], pad=0,
 
 def reconstruct_wings96(profile, ycen, goodwing=None, contamination=False,
                         pad=0, verbose=0, **kwargs):
-    '''
+    '''Wing reconstruction for the SUBSTRIP96 subarray. As not enough of the
+    first order wings remain on the detector to perform the full wing
+    reconstruction, a standard uncontaminated wing profile is used to correct
+    second order contamination.
 
     Parameters
     ----------
+    profile : np.array
+        Spectral trace spatial profile.
+    ycens : list
+        Y-coordinates of the trace centroids. Must include all three
+        diffraction orders if contamination is True, or only the first order if
+        False.
+    goodwing : np.ndarray or None
+        Uncontaminated wing profile.
+    contamination : bool
+        If True, profile is contaminated by the second order.
+    pad : int
+        Amount to pad each end of the spartial axis (in pixels).
+    verbose : int
+        Level of verbosity.
 
     Returns
     -------
+    newprof : np.array
+        Input spatial profile with reconstructed wings and padding.
 
     Raises
     ------
@@ -1375,3 +1382,99 @@ def rescale_model(data, model, centroids, verbose=0):
     model_rescale = ks*model
 
     return model_rescale
+
+
+def smooth_spat_discont(o2frame, ycens):
+    '''Smooth oversubtracted pixels in the spatial direction. If the flux in a
+    pixel is >3sigma deviant from the mean value of the trace core in its
+    column, it is replaced by a median of flux values over its nieghbours in
+    the spectral direction.
+
+    Parameters
+    ----------
+    o2frame : np.ndarray (2D)
+        Uncontaminated second order trace profile.
+    ycens : dict
+        Centroids dictionary.
+
+    Returns
+    -------
+    o2frame : np.ndarray (2D)
+        Uncontaminated trace profile with oversubtracted pixels interpolated.
+    '''
+
+    for col in range(o2frame.shape[1]):
+        # Get lower and upper bounds of trace core
+        start = int(round(ycens['order 2']['Y centroid'][col], 0)) - 11
+        end = int(round(ycens['order 2']['Y centroid'][col], 0)) + 11
+        # Calculate mean and standard deviation of core.
+        mn = np.mean(np.log10(o2frame[start:end, col]))
+        sd = np.std(np.log10(o2frame[start:end, col]))
+        diff = np.abs(np.log10(o2frame[start:end, col]) - mn)
+        # Find where flux values are >3sigma deviant from mean
+        inds = np.where(diff > 3*sd)[0]
+        for i in inds:
+            # Pixel location in spatial profile.
+            loc = start+i
+            # Replace bad pixel with median of rows.
+            start2 = np.max([col-25, 0])
+            end2 = np.min([col+25, o2frame.shape[1]])
+            rep_val = np.median(o2frame[loc, start2:end2])
+            o2frame[loc, col] = rep_val
+
+    return o2frame
+
+
+def smooth_spec_discont(o2frame, verbose):
+    '''Smooth over streaks (especially in the contaminated region). If the mean
+    flux value of a column is >10% deviant from that of the surrounding
+    columns, replace it with the median of its neighbours.
+
+    Parameters
+    ----------
+    o2frame : np.ndarray (2D)
+        Uncontaminated second order trace profile.
+    verbose : int
+        Level of verbosity.
+
+    Returns
+    -------
+    o2frame : np.ndarray (2D)
+        Uncontaminated trace profile with column-to-column discontinuities
+        smoothed.
+    '''
+
+    # Get mean flux values for each column.
+    col_mean = np.nanmean(o2frame, axis=0)
+    # Find where order 2 ends.
+    end = np.where(col_mean == 0)[0][0] - 5
+    # For each column, find the local mean of the surrounding 6 columns.
+    loc_mean = utils._local_mean(col_mean, step=3)
+    # Calculate the deviation of each column from the local mean.
+    dev_0 = np.abs((col_mean[3:end] - loc_mean[3:end])/loc_mean[3:end])
+    # Replace all columns whose mean value is >10% deviant from the local mean
+    # with the median of its neighbours.
+    dev, iter = dev_0, 0
+    # Iterate until no columns are >10% deviant, or 10 iterations have run.
+    while np.any(dev > 0.1) and iter < 10:
+        # Get all >10% deviant columns.
+        inds = np.where(dev >= 0.1)[0]
+        for i in inds:
+            i += 3
+            # For each column, calculate the median of the 'local region'.
+            # Expand the region by one pixel each iteration.
+            local = np.concatenate([o2frame[:, (i-2-iter):i],
+                                    o2frame[:, (i+1):(i+3+iter)]], axis=1)
+            o2frame[:, i] = np.nanmedian(local, axis=1)
+        # Recalculate the flux deviations as before.
+        col_mean = np.nanmean(o2frame, axis=0)
+        loc_mean = utils._local_mean(col_mean, step=3)
+        dev = np.abs((col_mean[3:end] - loc_mean[3:end])/loc_mean[3:end])
+        # Increment iteration.
+        iter += 1
+
+    # Plot the change in flux deviations after all iterations are complete.
+    if verbose == 3:
+        plotting._plot_flux_deviations(dev_0, dev, iter)
+
+    return o2frame
