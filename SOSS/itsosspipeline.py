@@ -84,9 +84,14 @@ def readpaths(config_paths_filename, pars):
 def second2day(time_seconds):
     return(time_seconds / (3600.0*24.0))
 
+def second2hour(time_seconds):
+    return(time_seconds/3600.0)
 
 def hour2day(time_hours):
     return(time_hours / 24.0)
+
+def hour2second(time_hours):
+    return(time_hours * 3600.0)
 
 
 def barupdate(result):
@@ -100,19 +105,28 @@ def frames_to_exposure(frameseries, ng, nint, readpattern):
 
 def generate_timesteps(simuPars):
 
-    # This function outputs the time steps for each simulated
-    # frame (read) or integration for the whole time-series.
-    # It returns the time at the center of the read or integration.
-    # It uses as inputs, the subarray, ngroup, tstart, tend of the
-    # simulation parameters.
+    ''' This function outputs the time steps for each simulated
+    frame (read) or integration for the whole time-series.
+    It returns the time at the center of the read or integration.
+    It uses as inputs, the subarray, ngroup, tstart, tend of the
+    simulation parameters.
+    :param simuPars:
+    :return:
+    tintopen : time during which the detector is receiving photons
+    in seconds during an integration.
+    frametime : readout time of one frame in seconds.
+    nint : number of integrations (integer)
+    timesteps : The clock time of each integration (in seconds)
+    '''
+    #
 
     # Determine what the frame time is from the subarray requested
     if simuPars.subarray == 'SUBSTRIP96':
-        frametime = second2day(2.214)   # seconds per read
+        frametime = 2.214   # seconds per read
     elif simuPars.subarray == 'SUBSTRIP256':
-        frametime = second2day(5.494)   # seconds per read
+        frametime = 5.494   # seconds per read
     elif simuPars.subarray == 'FF':
-        frametime = second2day(10.737)  # seconds per read
+        frametime = 10.737  # seconds per read
     else:
         print('Need to specify the subarray requested for this simulation. Either SUBSTRIP96, SUBSTRIP256 or FF')
         sys.exit(1)
@@ -123,7 +137,7 @@ def generate_timesteps(simuPars):
     # Compute the number of integrations to span at least the requested range of time
     # Use ngroup to define the integration time.
     intduration = frametime * (simuPars.ngroup + 1)
-    nint = int(np.ceil((hour2day(simuPars.tend - simuPars.tstart)/intduration)))
+    nint = int(np.ceil(hour2second(simuPars.tend - simuPars.tstart)/intduration))
     # Update the frametime parameter in the simuPars structure
     simuPars.nint = np.copy(nint)
 
@@ -137,7 +151,7 @@ def generate_timesteps(simuPars):
         # arrays of time steps in units of days. Each step represents the time at the center of a frame (a read)
         timesteps = np.arange(0,nint*(simuPars.ngroup+1)) * frametime
         # add the time at the start and shift by half a frame time to center in mid-frame
-        timesteps += hour2day(simuPars.tstart) + frametime/2
+        timesteps += hour2second(simuPars.tstart) + frametime/2
         # remove the reset frame
         indices = np.arange(0,nint*(simuPars.ngroup+1))
         isread = np.where(np.mod(indices,simuPars.ngroup+1) != 0)
@@ -151,7 +165,7 @@ def generate_timesteps(simuPars):
         # add the time at the start and shift by half an integration time to center in mid-integration
         # Notice that the center of an integration should exclude the reset frame
         # so the center is from read 1 (so add a frametime).
-        timesteps += hour2day(simuPars.tstart) + frametime + simuPars.ngroup * frametime / 2
+        timesteps += hour2second(simuPars.tstart) + frametime + simuPars.ngroup * frametime / 2
         # open shutter time, actually the time for which photons
         # reach the detector dor simulation purposes
         tintopen = frametime * simuPars.ngroup
@@ -159,13 +173,28 @@ def generate_timesteps(simuPars):
         print('Time granularity of the simulation should either be FRAME or INTEGRATION.')
         sys.exit(1)
 
-    return(tintopen, frametime, nint, timesteps)
+    return tintopen, frametime, nint, timesteps
 
 
 def generate_traces(pathPars, simuPars, tracePars, throughput,
                     star_angstrom, star_flux, ld_coeff,
                     planet_angstrom, planet_rprs,
                     timesteps, granularitytime):
+    '''
+
+    :param pathPars:
+    :param simuPars:
+    :param tracePars:
+    :param throughput:
+    :param star_angstrom:
+    :param star_flux:
+    :param ld_coeff:
+    :param planet_angstrom:
+    :param planet_rprs:
+    :param timesteps: clock time of the whole frame or integration series (in seconds)
+    :param granularitytime: time duration of each frame or integration (in seconds)
+    :return:
+    '''
 
     # output is a cube (1 slice per spectral order) at the requested
     # pixel oversampling.
@@ -227,11 +256,12 @@ def generate_traces(pathPars, simuPars, tracePars, throughput,
         # Loop over all spectral orders
         for m in range(len(simuPars.orderlist)):
             spectral_order = int(np.copy(simuPars.orderlist[m]))  # very important to pass an int here or tracepol fails
-            currenttime = np.copy(timesteps[t])
-            print('Time step {:} minutes - Order {:}'.format(currenttime*24*60, spectral_order))
+            currenttime = second2day(timesteps[t])
+            exposetime = second2day(granularitytime)
+            print('Time step {:} minutes - Order {:}'.format(currenttime/60, spectral_order))
             pixels=spgen.gen_unconv_image(simuPars, throughput, star_angstrom_bin, star_flux_bin,
                                       ld_coeff_bin, planet_rprs_bin,
-                                      currenttime, granularitytime, solin, spectral_order, tracePars)
+                                      currenttime, exposetime, solin, spectral_order, tracePars)
 
             pixels_t=np.copy(pixels.T)
 
@@ -348,12 +378,12 @@ def write_dmsready_fits_init(imagelist, normalization_scale, simuPars):
 
     # At this point, each image is a slope image (calibrated flux per second) for
     # a chunk of time that is either at the frame granularity or at the integration
-    # granularity. It is time to divide in frame with the propely scaled flux as
+    # granularity. It is time to divide in frame with the properly scaled flux as
     # happens during an integraiton.
     ngroup = np.copy(simuPars.ngroup)
     nint = np.copy(simuPars.nint)
     frametime = np.copy(simuPars.frametime)
-    print(nint,ngroup,frametime)
+    print('nint={:}, ngroup={:}, frametime={:} sec '.format(nint,ngroup,frametime))
 
     # Initialize the exposure array containing up-the-ramp reads.
     exposure = np.zeros((nint, ngroup, dimy, dimx), dtype=float)
@@ -419,21 +449,21 @@ def write_dmsready_fits(image, filename, os=1, input_frame='sim', verbose=True):
             # For each int and group, bin the image to native pixel size (handling flux properly)
             for i in range(nint):
                 for j in range(ngroup):
-                    data[i, j, :, :] = downscale_local_mean(image[i, j, :, :], (os, os)) * os ** 2
+                    data[i, j, :, :] = downscale_local_mean(image[i, j, :, :], (os, os)) * os**2
         elif len(size) == 3:
             if verbose: print('3 dimensional array')
             nint = 1
             ngroup, dimy, dimx = size
             data = np.zeros((nint, ngroup, int(dimy / os), int(dimx / os)))
             for j in range(ngroup):
-                data[0, j, :, :] = downscale_local_mean(image[j, :, :], (os, os)) * os ** 2
+                data[0, j, :, :] = downscale_local_mean(image[j, :, :], (os, os)) * os**2
         elif len(size) == 2:
             if verbose: print('2 dimensional array')
             nint = 1
             ngroup = 1
             dimy, dimx = size
             data = np.zeros((nint, ngroup, int(dimy / os), int(dimx / os)))
-            data[0, 0, :, :] = downscale_local_mean(image, (os, os)) * os ** 2
+            data[0, 0, :, :] = downscale_local_mean(image, (os, os)) * os**2
         else:
             print('There is a problem with the image passed to write_dmsread_fits.')
             print('Needs to have 2 to 4 dimensions.')

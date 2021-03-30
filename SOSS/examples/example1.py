@@ -79,16 +79,21 @@ print(simuPars.pmodeltype[0])
 
 # Here one can manually edit the parameters but we encourage rather to change
 # the simulation parameter file directly.
-simuPars.noversample = 1  #example of changing a model parameter
-simuPars.xout = 4000      #spectral axis
-simuPars.yout = 300       #spatial (cross-dispersed axis)
+#simuPars.noversample = 1  #example of changing a model parameter
+#simuPars.xout = 4000      #spectral axis
+#simuPars.yout = 300       #spatial (cross-dispersed axis)
 
 
-if True:
-    detector.add_noise([os.path.join(WORKING_DIR, 'test.fits')],
-                       outputfilename=os.path.join(WORKING_DIR, 'test_noisy.fits'))
-    result = Detector1Pipeline.call(os.path.join(WORKING_DIR, 'test_noisy.fits'))
+if False:
+    #result = Detector1Pipeline.call(os.path.join(WORKING_DIR, 'caca_noisy.fits'),
+    #                                output_file='toto', output_dir=WORKING_DIR)
+    WORKING_DIR = '/genesis/jwst/userland-soss/loic_review/full_20210319/'
+    result = Detector1Pipeline.call(os.path.join(WORKING_DIR, 'simu_noisy.fits'),
+                                output_file='simu_noisy', output_dir=WORKING_DIR)
 
+    #detector.add_noise([os.path.join(WORKING_DIR, 'test.fits')],
+    #                   outputfilename=os.path.join(WORKING_DIR, 'test_noisy.fits'))
+    #result = Detector1Pipeline.call(os.path.join(WORKING_DIR, 'test_noisy.fits'))
     #detector.add_noise(os.path.join(WORKING_DIR, 'test.fits')
     #from jwst.pipeline import Detector1Pipeline
     #result = Detector1Pipeline.call(os.path.join(WORKING_DIR, 'test_mod_poisson_noise_zodibackg_flat_dark_nonlin_bias_detector.fits'))
@@ -111,52 +116,69 @@ planetmodel_angstrom, planetmodel_rprs = spgen.readplanetmodel(pathPars.path_pla
 
 # Generate the time steps array
 tintopen, frametime, nint, timesteps = soss.generate_timesteps(simuPars)
-print(timesteps/frametime)
-print('nint={:} nsteps={:} frametime={:}'.format(nint, len(timesteps), frametime))
-
-# For testing purposes, reduce the number of steps
-if True:
-    n = 1
-    timesteps = timesteps[0:n]
-    simuPars.nint = n
-######
+print('Generated time steps:')
+print('nint={:} nsteps={:} frametime={:}'.format(\
+    nint, len(timesteps), frametime))
+print('Generated time steps (in seconds): ', timesteps)
 
 # Generate the Time-Series simulation
-norders, nsteps = len(simuPars.orderlist), len(timesteps)
+norders = len(simuPars.orderlist)
 dimy, dimx = simuPars.yout, simuPars.xout
-print('norders={:} nsteps={:} dimy={:} dimx={:}'.format(norders,nsteps,dimy,dimx))
+print('norders={:} dimy={:} dimx={:}'.format(norders,dimy,dimx))
 # For each time step, a cube of simulated images is written to disk
 # The cube has all spectral orders in separate slices.
 # The list of such fits cube file names is returned.
-imagelist = soss.generate_traces(pathPars, simuPars, tracePars, throughput,
+if False:
+    imagelist = soss.generate_traces(pathPars, simuPars, tracePars, throughput,
                                    starmodel_angstrom, starmodel_flambda, ld_coeff,
                                    planetmodel_angstrom, planetmodel_rprs,
                                    timesteps, tintopen)
-# Here, a single out-of-transit simulation is used to establish
-# the normalization scale that will anchor to a requested magnitude.
-normalization_scale = np.ones(norders)*10000.0
+else:
+    SIMUDIR = '/genesis/jwst/userland-soss/loic_review/tmp/'
+    imagelist = os.listdir(SIMUDIR)
+    for i in range(np.size(imagelist)):
+        imagelist[i] = os.path.join(SIMUDIR,imagelist[i])
+    print(imagelist)
+
+
+
+# Here, a single out-of-transit simulation is used to establish the
+# normalization scale needed to flux calibrate our simulations.
 # To override the simpar parameters:
 # simuPars.filter = 'J'
 # simuPars.magnitude = 8.5
 expected_counts = smag.expected_flux_calibration(
                     simuPars.filter, simuPars.magnitude,
                     starmodel_angstrom, starmodel_flambda,
-                    simuPars.orderlist, verbose=True,
+                    simuPars.orderlist, subarray=simuPars.subarray,
+                    verbose=False,
                     trace_file=pathPars.tracefile,
                     response_file=pathPars.throughputfile,
                     pathfilter=pathPars.path_filtertransmission,
                     pathvega=pathPars.path_filtertransmission)
-
-#simulated_counts = smag.actual_flux()
-
+# Measure the actual counts on the simulated images
+simulated_counts = smag.measure_actual_flux(imagelist[0], xbounds=[0,2048], ybounds=[0,256],
+                        noversample=simuPars.noversample)
+# Prints the expected/measured counts
+for i in range(np.size(imagelist)):
+    print(i, expected_counts, simulated_counts)
+# Apply flux scaling
+normalization_scale = expected_counts / simulated_counts
+print('Normalization scales = ',normalization_scale)
 
 # All simulations are normalized, all orders summed and gathered in a single array
 # with the 3rd dimension being the number of time steps.
 data = soss.write_dmsready_fits_init(imagelist, normalization_scale, simuPars)
+
 # All simulations (e-/sec) are converted to up-the-ramp images.
 soss.write_dmsready_fits(data[:,:,0:256,0:2048], os.path.join(WORKING_DIR,'test.fits'),
                     os=simuPars.noversample, input_frame='sim')
 
-detector.add_noise(os.path.join(WORKING_DIR,'test.fits'), outputfilename=os.path.join(WORKING_DIR, 'test_noisy.fits'))
-result = Detector1Pipeline.call(os.path.join(WORKING_DIR, 'test_noisy.fits'))
+# Add detector noise to the noiseless data
+detector.add_noise(os.path.join(WORKING_DIR,'test.fits'),
+                   outputfilename=os.path.join(WORKING_DIR, 'test_noisy.fits'))
+
+# Process the data through the DMS level 1 pipeline
+result = Detector1Pipeline.call(os.path.join(WORKING_DIR, 'test_noisy.fits'),
+                                output_file='test_noisy', output_dir=WORKING_DIR)
 

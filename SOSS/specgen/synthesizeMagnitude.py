@@ -19,7 +19,8 @@ import sys
 
 
 def expected_flux_calibration(filtername, magnitude, model_angstrom, model_flux,
-                              list_orders, convert_to_adupersec=False, 
+                              list_orders, subarray='SUBSTRIP256',
+                              convert_to_adupersec=False,
                               F277=None, verbose=None,
                               trace_file = None,
                               response_file = None,
@@ -60,16 +61,15 @@ def expected_flux_calibration(filtername, magnitude, model_angstrom, model_flux,
     # Note: the count rate is by default in electrons per second. The optional
     #       keyword convert_to_adupersec will trigger output to be in adu/sec.
     
-    # NOTE: This could fail for subarrays different than 256x2048 because it
-    # uses the mask output by trace.x2wavelength which itself assumes that
-    # subarray by default. We would need improving the trace package to
-    # change the mask according to the subarray it uses.
-    
+
     # To return the expectd counts of an F277W + GR700XD exposure rather than
     # the default CLEAR + F277W exposure, use the F277=True option. It will
     # calibrate based on the model flux (without F277) but compute the expected
     # counts based on the model flux being multiplied by the F277 transmission
     # curve.
+
+    # Output text to let the user know where we are
+    print('Entering expected_flux_calibration')
 
     # Import trace position library
     import tracepol as tp
@@ -110,11 +110,11 @@ def expected_flux_calibration(filtername, magnitude, model_angstrom, model_flux,
         print(syntmag)
         print('Synthetic magnitude of input spectrum: {:6.2f}'.format(syntmag))
     
-    # The nromalization scale is the difference between synthetic mag and 
+    # The normalization scale is the difference between synthetic mag and
     # requested mag. So Flba is the flux normalized expressed in W/m2/um
     model_flux_norm = model_flux * 10**(-0.4*(magnitude-syntmag))
     
-    # Check that thsi worked by re synthesizing the magnitude
+    # Check that this worked by re synthesizing the magnitude
     syntmag_check = syntMag(model_um,model_flux_norm,filtername, 
                             path_filter_transmission=pathfilter,
                             path_vega_spectrum=pathvega,verbose=verbose)
@@ -135,12 +135,8 @@ def expected_flux_calibration(filtername, magnitude, model_angstrom, model_flux,
         m = list_orders[eachorder]
         
         # Get wavelength (in um) of first and last pixel of the Order m trace
-        pixels = np.linspace(1,2048,2048)
-        lbabounds, mask = tp.specpix_to_wavelength(pixels, tracepars, m=m, frame='sim',oversample=1)
-        # It is important to apply the mask to make sure we will sum flux that
-        # actually falls on the detector.
-        lbabound1 = np.min(lbabounds)#[mask])
-        lbabound2 = np.max(lbabounds)#[mask])
+        lbabound1, lbabound2 = tp.subarray_wavelength_bounds(tracepars, subarray=subarray, m=m)
+        print('CHECK lba bounds1. m={:}, lbabound1={:}, lbabound2={:}'.format(m,lbabound1,lbabound2))
         
         # The number of photons per second integrated over that range is
         # (Flambda: J/sec/m2/um requires dividing by photon energy to get counts)
@@ -215,6 +211,39 @@ def expected_flux_calibration(filtername, magnitude, model_angstrom, model_flux,
         return(output_elec_per_sec)
 
     
+def measure_actual_flux(imagename, xbounds=[0,2048], ybounds=[0,256],
+                        noversample=1):
+    '''
+    Measures the integrated flux in a spectral order on actual
+    images.
+
+    :param imagename:
+    :param xbounds:
+    :param ybounds:
+    :param noversample:
+    :return:
+    '''
+
+    # Convert to numpy arrays
+    xbounds = np.array(xbounds, dtype=np.int)
+    ybounds = np.array(ybounds, dtype=np.int)
+
+    # Read the cube on disk assuming a (norder, dimy, dimx) shape
+    image = fits.getdata(imagename)
+    norder, dimy, dimx = np.shape(image)
+    image_cropped = image[:, ybounds[0]:ybounds[1], xbounds[0]:xbounds[1]]
+    print('shape of the image on which flux is measured:', np.shape(image_cropped))
+
+    # Measure the flux on a single order at a time
+    measured_flux = []
+    for i in range(norder):
+        measured_flux.append(np.sum(image_cropped[i,:,:]))
+    measured_flux = np.array(measured_flux)
+
+    # Correct for the oversampling
+    measured_flux = measured_flux / noversample**2
+
+    return np.array(measured_flux)
 
 
 def read_throughput(order, throughput_file=None):

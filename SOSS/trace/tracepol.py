@@ -124,6 +124,7 @@ def get_tracepars(filename=None, origin=np.array([1365.1909267381, 470.097981329
     :type angle: float
 
     :returns: tracepars - a dictionary containg the parameters for the polynomial fits.
+    For example tracepars[-1] is a thing. It returns the order=-1 dictionary.
     :rtype: dict
     """
     
@@ -170,6 +171,70 @@ def bounds_check(values, lower, upper):
     mask = (values >= lower) & (values <= upper)
     
     return mask
+
+
+def subarray_wavelength_bounds(tracepars, subarray='SUBSTRIP256', m=1,
+                               specpix_offset=0, spatpix_offset=0):
+    '''
+    This function's goal is to return the wavelengths bounds where
+    the spectral order is within the subarray pixels.
+    :param tracepars: polynomial fit to the optics model
+    :param subarray:
+    :param m: spectral order, one of these: 1, 2, 3
+    :param specpix_offset: a pixel offset by which traces are
+    positionned relative to the model
+    :param spatpix_offset: a pixel offset by which traces are
+    positionned relative to the model
+    :return:
+    wave_min and wave_max: the smallest and largest wavelengths
+    landing within the subarray.
+    '''
+
+    # Generate wavelengths (microns) spanning all orders
+    wavelength = np.linspace(0.5,5.5,50001)
+
+    # Convert wavelength to nat pixel coordinates.
+    # tracepars accepts m = -1, 0, 1, 2 or 3
+    w2spec = Legendre(tracepars[m]['spec_coef'], domain=tracepars[m]['spec_domain'])
+    w2spat = Legendre(tracepars[m]['spat_coef'], domain=tracepars[m]['spat_domain'])
+
+    specpix_nat = w2spec(np.log(wavelength))
+    spatpix_nat = w2spat(np.log(wavelength))
+
+    # Convert coordinates to the requested frame.
+    specpix, spatpix = pix_ref_to_frame(specpix_nat, spatpix_nat, frame='dms', subarray=subarray)
+
+    #import matplotlib.pyplot as plt
+    #plt.plot(wavelength, spatpix)
+    #plt.plot(wavelength, specpix)
+    #plt.show()
+
+    # Depending on subarray, determine the wavelengths that
+    # fall within the subarray.
+    specpix_dms_min = 0 - specpix_offset
+    specpix_dms_max = 2048 - specpix_offset
+    if subarray == 'SUBSTRIP256':
+        spatpix_dms_min = 0 - spatpix_offset
+        spatpix_dms_max = 256 - spatpix_offset
+    elif subarray == 'SUBSTRIP96':
+        spatpix_dms_min = 0 - spatpix_offset
+        spatpix_dms_max = 96 - spatpix_offset
+    elif subarray == 'FULL':
+        spatpix_dms_min = 0 - spatpix_offset
+        spatpix_dms_max = 2048 - spatpix_offset
+    else:
+        print('tracepol --> subarray_wavelength_bounds reached a corner case, investigate.')
+        sys.exit()
+
+    # Generate a mask of wavelengths that are within the subarray
+    mask = (specpix >= specpix_dms_min) & (specpix < specpix_dms_max) & \
+           (spatpix >= spatpix_dms_min) & (spatpix < spatpix_dms_max)
+
+    # Finally, obtain the wavelength boundaries
+    wave_min = np.min(wavelength[mask])
+    wave_max = np.max(wavelength[mask])
+
+    return wave_min, wave_max
 
 
 def specpix_ref_to_frame(specpix_ref, frame='dms', oversample=1):
@@ -228,6 +293,12 @@ def spatpix_ref_to_frame(spatpix_ref, frame='dms', subarray='SUBSTRIP256', overs
         spatpix = 245*oversample - spatpix_ref
     elif (frame == 'sim') & (subarray == 'SUBSTRIP96'):
         spatpix = spatpix_ref - 150*oversample
+    elif (frame == 'nat') & (subarray == 'FULL'):
+        spatpix = spatpix_ref
+    elif (frame == 'dms') & (subarray == 'FULL'):
+        spatpix = 2047*oversample - spatpix_ref
+    elif (frame == 'sim') & (subarray == 'FULL'):
+        spatpix = spatpix_ref
     else:
         raise ValueError('Unknown coordinate frame or subarray: {} {}'.format(frame, subarray))
 

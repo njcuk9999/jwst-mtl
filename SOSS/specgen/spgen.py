@@ -34,7 +34,7 @@ class ModelPars:
     sol=np.zeros(nplanetmax*8+1)
     sol[0]=1.0 #mean stellar density [g/cc]
     subarray='SUBSTRIP256' #SOSS subarray name SUBSTRIP96, SUBSTRIP256 or FF
-    granularity='FRAME' # FRAME or INTEGRAION, an image is created at each XXX
+    granularity='FRAME' # FRAME or INTEGRATION, an image is created at each XXX
     xout=2048  #dispersion axis
     yout=256   #spatial axis
     noversample=1 #oversampling
@@ -52,6 +52,7 @@ class ModelPars:
     detectorname = 'NISRAPID' #confirm this 
     prodtype='cal'
     orderlist = np.array([-1,0,1,2,3],dtype=np.int) # the spectral orders to simulate
+    orderlist = np.array([1,2,3], dtype=np.int)
     frametime = np.nan # not selectable in the config file. Will be filled in the code.
     nint = np.nan # not selectable in the config file. Will be filled in the code.
     magnitude = 10.0
