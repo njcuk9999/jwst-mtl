@@ -1,0 +1,111 @@
+# Define targets
+Simulation1:
+
+  name: Simulation 1
+
+  xmlpath: '/data/jwst_ami/data/neil_wrap/inputs/jwst_ami_p23_example.xml'
+
+  target:
+    name: HD-218396
+    ra: None
+    dec: None
+    pmra: None
+    pmdec: None
+    magnitude:
+      F277W: 12.123
+      F380M: 12.123
+      F430M: 12.123
+      F480M: 12.123
+
+    companion1:
+      kind: planet
+      name: planet1
+      separation: 0.5 
+      pa: 90
+      mag:
+        F277W: 20.123
+        F380M: 20.123
+        F430M: 20.123
+        F480M: 20.123
+    
+    companion2:
+      kind: planet
+      name: planet2
+      separation: 1.0
+      pa: 180
+      mag:
+        F277W: 20.123
+        F380M: 20.123
+        F430M: 20.123
+        F480M: 20.123
+
+  calibrator1:
+    name: HD-218172
+    tot_exp: None
+    ext_flux: None
+    magnitude:
+      F277W: 10.123
+      F380M: 10.123
+      F430M: 10.123
+      F480M: 10.123
+
+
+# Define parameters (that overwrite defaults)
+parameters:
+  general:
+    in_dir: /data/jwst_ami/data/neil_wrap
+    # Must set this - no default value
+    out_dir: /data/jwst_ami/data/neil_wrap
+  
+  instrument:
+    pix_scale: 0.065
+  
+  simulation:
+    psf: 
+      F380M:
+        # Must set this - no default value
+        path: /data/jwst_ami/data/neil_wrap/psfs/psf_F380M.fits
+        recompute_psf: False
+      F480M:
+        # Must set this - no default value
+        path: /data/jwst_ami/data/neil_wrap/psfs/psf_F480M.fits
+        recompute_psf: False
+    fov_pixels: 79
+    oversample: 11
+    
+  ami-sim:
+    use: True
+    # Must set this no default value
+    path: /data/jwst_ami/data/neil_wrap/amisim/
+    uptheramp: 0
+    create_calibrator: 0
+    overwrite: 1
+    uniform_flatfield: 0
+    overwrite_flatfield: 0
+    random-seed: 1
+    include-det-noise: 1
+    install-dir: /data/jwst_ami/bin/ami_sim
+    package: driver_scene
+    modules: pyami
+    # don't set these
+    scene:
+      F380M: /data/jwst_ami/data/neil_wrap/amisim/file.fits
+      F480M: /data/jwst_ami/data/neil_wrap/amisim/file.fits
+    # don't set these
+    out:
+      F380M: /data/jwst_ami/data/neil_wrap/amisim/file.fits
+      F480M: /data/jwst_ami/data/neil_wrap/amisim/file.fits
+  mirage:
+    use: False
+    test1: True
+    test2: False
+  dms:
+    use: False
+    test1: True
+    test2: False
+  ami-cal:
+    use: False
+    test1: True
+    test2: False
+  implaneia:
+    use: False

@@ -115,6 +115,7 @@ def __main__(params):
 if __name__ == "__main__":
     # test
     import sys
+    # copy the yaml in ../inputs to somewhere not in the github repo
     sys.argv = 'test.py --config=/data/jwst_ami/data/neil_wrap/inputs/example.yaml'.split()
 
     # setup parameters
