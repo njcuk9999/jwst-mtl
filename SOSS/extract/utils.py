@@ -8,308 +8,350 @@ from warnings import warn
 from scipy.integrate.quadrature import AccuracyWarning
 
 
-def get_wave_p_or_m(lam):
+def get_wave_p_or_m(wave_map):
+    # TODO rename function?
+    """Compute lambda_plus and lambda_minus of pixel map, given the pixel
+    central value.
+
+    :param wave_map: Array of the pixel wavelengths for a given order.
+
+    :type wave_map: array[float]
+
+    :returns: wave_plus, wave_minus - The wavelength edges of each pixel,
+        given the central value.
+    :rtype: Tuple(array[float], array[float])
     """
-    Compute lambda_plus and lambda_minus of pixel map,
-    given the pixel central value
 
-    lam: 2d array
-        2d map of the wavelengths.
-        The spectral axis should be the first one (I think?).
-    """
-    lam = lam.T  # Simpler to use transpose
+    wave_map = wave_map.T  # Simpler to use transpose
 
-    # Init
-    lam_r = np.zeros_like(lam)
-    lam_l = np.zeros_like(lam)
+    # Iniitialize arrays.
+    wave_left = np.zeros_like(wave_map)
+    wave_right = np.zeros_like(wave_map)
 
-    # Def delta lambda
-    d_lam = np.diff(lam, axis=0)
+    # Compute the change in wavelength.
+    delta_wave = np.diff(wave_map, axis=0)
 
-    # Define lambda left and lambda right of each pixels
-    lam_r[:-1] = lam[:-1] + d_lam/2
-    lam_r[-1] = lam[-1] + d_lam[-1]/2
-    lam_l[1:] = lam[:-1] + d_lam/2  # Same values as lam_r
-    lam_l[0] = lam[0] - d_lam[0]/2
+    # Compute the wavelength values on the left and right edges of each pixel.
+    wave_left[1:] = wave_map[:-1] + delta_wave/2  # TODO check this logic.
+    wave_left[0] = wave_map[0] - delta_wave[0]/2
+    wave_right[:-1] = wave_map[:-1] + delta_wave/2
+    wave_right[-1] = wave_map[-1] + delta_wave[-1]/2
 
-    # The outputs depend on the direction of the spectral axis
-    if (lam_r >= lam_l).all():
-        return lam_r.T, lam_l.T
-    elif (lam_r <= lam_l).all():
-        return lam_l.T, lam_r.T
+    # The outputs depend on the direction of the spectral axis.
+    if (wave_right >= wave_left).all():
+        wave_plus, wave_minus = wave_right.T, wave_left.T
+    elif (wave_right <= wave_left).all():
+        wave_plus, wave_minus = wave_left.T, wave_right.T
     else:
-        raise ValueError('Bad pixel values for wavelength')
+        raise ValueError('Bad pixel values for wavelength.')
+
+    return wave_plus, wave_minus
 
 
-def oversample_grid(lam_grid, n_os=1):
+def oversample_grid(wave_grid, n_os=1):
+    """Create an oversampled version of the input 1D wavelength grid.
+
+    :param wave_grid: Wavelength grid to be oversampled.
+    :param n_os: Oversampling factor. If it is a scalar, take the same value for each
+        interval of the grid. If it is an array, n_os specifies the oversampling
+        at each interval of the grid, so len(n_os) = len(wave_grid) - 1.
+
+    :type wave_grid: array[float]
+    :type n_os: int or array[int]
+
+    :returns: wave_grid_os - The oversampled wavelength grid.
+    :rtype: array[float]
     """
-    Returns lam_grid evenly oversample at `n_os`.
 
-    Parameters
-    ----------
-    lam_grid: 1D array
-        Grid to be oversampled
-    n_os: scalar or 1D array, optional
-        Oversampling. If it's a scalar, take the same value for each
-        intervals of the grid. If it's an array, n_os is then
-        specified for each interval of the grid, so
-        len(n_os) = len(lam_grid) - 1.
-    Returns
-    -------
-    new_grid: 1D array
-        Oversampled grid.
-    """
-    # Convert n_os to array
-    n_os = np.array(n_os)
+    # Convert n_os to an array.
+    n_os = np.asarray(n_os)
 
-    # n_os needs to have the dimension:
-    # len(lam_grid) - 1
+    # n_os needs to have the dimension: len(wave_grid) - 1.
     if n_os.ndim == 0:
-        n_os = np.repeat(n_os, len(lam_grid)-1)
 
-    # Grid intervals
-    d_lam = np.diff(lam_grid)
-    # Init grid for output
-    new_grid = lam_grid.copy()
-    # Iterate to generate nodes
+        # A scalar was given, repeat the value.
+        n_os = np.repeat(n_os, len(wave_grid) - 1)
+
+    elif len(n_os) != (len(wave_grid) - 1):
+        # An array of incorrect size was given.
+        msg = 'n_os must be a scalar or an array of size len(wave_grid) - 1.'
+        raise ValueError(msg)
+
+    # Grid intervals.
+    delta_wave = np.diff(wave_grid)
+
+    # Initialize the new oversampled wavelength grid.
+    wave_grid_os = wave_grid.copy()
+
+    # Iterate over oversampling factors to generate new grid points.
     for i_os in range(1, n_os.max()):
-        # Compute only nodes that need to be computed
-        index = (n_os > i_os)
-        # Compute the next node in each grid intervals
-        sub_grid = (lam_grid[:-1][index]
-                    + i_os * d_lam[index] / n_os[index])
-        # Add to ouput grid
-        new_grid = np.concatenate([new_grid, sub_grid])
 
-    # Return sorted and unique
-    return np.unique(new_grid)
+        # Consider only intervals that are not complete yet.
+        mask = n_os > i_os
+
+        # Compute the new grid points.
+        sub_grid = (wave_grid[:-1][mask] + i_os*delta_wave[mask]/n_os[mask])
+
+        # Add the grid points to the oversampled wavelength grid.
+        wave_grid_os = np.concatenate([wave_grid_os, sub_grid])
+
+    # Take only uniqyue values and sort them.
+    wave_grid_os = np.unique(wave_grid_os)
+
+    return wave_grid_os
 
 
-def _extrapolate_grid(grid, poly_ord, wv_range):
+def extrapolate_grid(wave_grid, wave_range, poly_ord):
+    """Extrapolate the given 1D wavelength grid to cover a given range of values
+    by fitting the derivate with a polynomial of a given order and using it to
+    compute subsequent values at both ends of the grid.
+
+    :param wave_grid: Wavelength grid to be extrapolated.
+    :param wave_range: Wavelength range the new grid should cover.
+    :param poly_ord: Order of the polynomial used to fit the derivative of
+        wave_grid.
+
+    :type wave_grid: array[float]
+    :type wave_range: list[float]
+    :type poly_ord: int
+
+    :returns: wave_grid_ext - The extrapolated 1D wavelength grid.
+    :rtype: array[float]
     """
-    Extrapolate `grid` using d_grid as a function of
-    `grid` to compute iteratively the next extrapolated nodes.
-    The extapolation is done with a polynomial of order `poly_ord`.
-    The extrapolation range is given by `wv_range`.
-    Returns the extrapolated grid.
-    """
-    # Define delta_grid as a function of grid
-    # by fitting a polynomial
-    d_grid = np.diff(grid)
-    f_dgrid = np.polyfit(grid[:-1], d_grid, poly_ord)
-    f_dgrid = np.poly1d(f_dgrid)
 
-    # Extrapolate values out of the wv_map if needed
-    grid_left, grid_right = [], []
-    if wv_range[0] < grid.min():
-        # Need the grid value to get delta_grid ...
-        grid_left = [grid.min() - f_dgrid(grid.min())]
-        # ... and iterate to get the next one until
-        # the range is reached
+    # Define delta_wave as a function of wavelength by fitting a polynomial.
+    delta_wave = np.diff(wave_grid)
+    pars = np.polyfit(wave_grid[:-1], delta_wave, poly_ord)
+    f_delta = np.poly1d(pars)
+
+    # Extrapolate out-of-bound values on the left-side of the grid.
+    grid_left = []
+    if wave_range[0] < wave_grid.min():
+
+        # Compute the first extrapolated grid point.
+        grid_left = [wave_grid.min() - f_delta(wave_grid.min())]
+
+        # Iterate until the end of wave_range is reached.
         while True:
-            next_val = grid_left[-1] - f_dgrid(grid_left[-1])
-            if next_val < wv_range[0]:
+            next_val = grid_left[-1] - f_delta(grid_left[-1])
+
+            if next_val < wave_range[0]:
                 break
             else:
                 grid_left.append(next_val)
-        # Need to sort (and unique)
+
+        # Sort extrapolated vales (and keep only unique).
         grid_left = np.unique(grid_left)
-    if wv_range[-1] > grid.max():
-        # Need the grid value to get delta_grid ...
-        grid_right = [grid.max() + f_dgrid(grid.max())]
-        # ... and iterate to get the next one until
-        # the range is reached
+
+    # Extrapolate out-of-bound values on the right-side of the grid.
+    grid_right = []
+    if wave_range[-1] > wave_grid.max():
+
+        # Compute the first extrapolated grid point.
+        grid_right = [wave_grid.max() + f_delta(wave_grid.max())]
+
+        # Iterate until the end of wave_range is reached.
         while True:
-            next_val = grid_right[-1] + f_dgrid(grid_right[-1])
-            if next_val > wv_range[-1]:
+            next_val = grid_right[-1] + f_delta(grid_right[-1])
+
+            if next_val > wave_range[-1]:
                 break
             else:
                 grid_right.append(next_val)
 
-    # Combine to get output
-    return np.concatenate([grid_left, grid, grid_right])
+        # Sort extrapolated vales (and keep only unique).
+        grid_right = np.unique(grid_right)
+
+    # Combine the extrapolated sections with the original grid.
+    wave_grid_ext = np.concatenate([grid_left, wave_grid, grid_right])
+
+    return wave_grid_ext
 
 
-def _grid_from_map(wv_map, psf, out_col=False):
+def _grid_from_map(wave_map, aperture, out_col=False):
+    # TODO is out_col still needed.
+    """Define a wavelength grid by taking the wavelength of each column at the
+    center of mass of the spatial profile.
+
+    :param wave_map: Array of the pixel wavelengths for a given order.
+    :param aperture: Array of the spatial profile for a given order.
+    :param out_col:
+
+    :type wave_map: array[float]
+    :type aperture: array[float]
+    :type out_col: bool
+
+    :returns:
+    :rtype:
     """
-    Define wavelength grid by taking the center wavelength
-    at each columns at the center of mass of
-    the spatial profile.
-    If out_col is True, return the columns positions
-    """
-    # Normalisation for each column
-    col_sum = psf.sum(axis=0)
 
-    # Compute only valid columns
-    good = (psf > 0).any(axis=0)
-    good &= (wv_map > 0).any(axis=0)
+    # Use only valid columns.
+    mask = (aperture > 0).any(axis=0) & (wave_map > 0).any(axis=0)
 
-    # Get center wavelength using center of mass
-    # with psf as weights
-    center_wv = (wv_map * psf)[:, good]
-    center_wv /= col_sum[good]
-    center_wv = center_wv.sum(axis=0)
+    # Get central wavelength using PSF as weights.
+    num = (aperture * wave_map).sum(axis=0)
+    denom = aperture.sum(axis=0)
+    center_wv = num[mask]/denom[mask]
 
-    # Return sorted
-    i_sort = np.argsort(center_wv)
-    out = center_wv[i_sort]
+    # Make sure the wavelength values are in ascending order.
+    sort = np.argsort(center_wv)
+    grid = center_wv[sort]
 
-    # Return index of columns if specified
-    if out_col:
-        cols = np.where(good)[0]
-        return out, cols[i_sort]
+    if out_col:  # TODO I don't like this type of contruction much.
+        # Return index of columns if out_col is True.
+        icols, = np.where(mask)
+        return grid, icols[sort]
     else:
-        # Return sorted and unique if out_cols is False
-        return np.unique(out)
+        # Return sorted and unique if out_col is False.
+        grid = np.unique(grid)
+        return grid
 
 
-def grid_from_map(wv, psf, wv_range=None, poly_ord=1, out_col=False, n_os=1):
+def grid_from_map(wave_map, aperture, wave_range=None, n_os=1, poly_ord=1,
+                  out_col=False):
+    # TODO is out_col still needed.
+    """Define a wavelength grid by taking the central wavelength at each columns
+    given by the center of mass of the spatial profile (so one wavelength per
+    column). If wave_range is outside of the wave_map, extrapolate with a
+    polynomial of order poly_ord.
+
+    :param wave_map: Array of the pixel wavelengths for a given order.
+    :param aperture: Array of the spatial profile for a given order.
+    :param wave_range: Minimum and maximum boundary of the grid to generate,
+        in microns. wave_range must include some wavelenghts of wave_map.
+    :param n_os: Oversampling of the grid compare to the pixel sampling. Can be
+        specified for each order if a list is given. If a single value is given
+        it will be used for all orders.
+    :param poly_ord: Order of the polynomial use to extrapolate the grid.
+        Default is 1.
+    :param out_col: Return columns. TODO It will be forced to False if extrapolation is needed.
+
+    :type wave_map: array[float]
+    :type aperture: array[float]
+    :type wave_range: List[float]
+    :type poly_ord: int
+    :type out_col: bool
+    :type n_os: int
+
+    :returns:
+    :rtype:
     """
-    Define wavelength grid by taking the center wavelength
-    at each columns given by the center of mass of
-    the spatial profile (so one wavelength per column).
-    If `wv_range` is out of the wv map,
-    extrapolate with a polynomial of order `poly_ord`.
 
-    Parameters
-    ----------
-    wv : (N, M) array
-        Array of the central wavelength position
-        for a given order on the (N, M) detector.
-    psf : (N, M) array
-        Array of the spatial profile for
-        the a given order on the (N, M) detector.
-    wv_range : 2-element list, optional
-        Minimum and maximum boundary of the grid to generate. In microns.
-        `wv_range` must include some wavelenghts of `wv`.
-    poly_ord : int, optional
-        Order of the polynomial use to extrapolate the grid. Default is 1.
-    out_col : bool, optional
-        Return or not. It will be forced to False if extrapolation is needed.
-    n_os : 2 element list or int, optional
-        Oversampling of the grid compare to the pixel sampling.
-        Can be specified for each orders if a list is given.
-        If `int` is given, take same value for both orders.
-        Default is 2.
-    """
-    # Different treatement if `wv_range` is given
-    if wv_range is None:
-        out = _grid_from_map(wv, psf, out_col=out_col)
+    # Different treatement if wave_range is given.
+    if wave_range is None:
+        out = _grid_from_map(wave_map, aperture, out_col=out_col)
     else:
-        # Get grid
-        grid, col = _grid_from_map(wv, psf, out_col=True)
+        # Get an initial estimate of the grid.
+        grid, icols = _grid_from_map(wave_map, aperture, out_col=True)
 
-        # Check if extrapolation needed.
-        # If so, `out_col` must be False
-        extrapolate = (wv_range[0] < grid.min())
-        extrapolate |= (wv_range[1] > grid.max())
+        # Check if extrapolation needed. If so, out_col must be False.
+        extrapolate = (wave_range[0] < grid.min()) | (wave_range[1] > grid.max())
         if extrapolate and out_col:
             out_col = False
-            warn("Cannot extrapolate and return columns."
-                 + " Setting `out_col` to False.")
+            msg = ("Cannot extrapolate and return columns. "
+                   "Setting out_col = False.")
+            warn(msg)
 
         # Make sure grid is between the range
-        cond = (wv_range[0] <= grid) & (grid <= wv_range[-1])
-        grid, col = grid[cond], col[cond]
+        mask = (wave_range[0] <= grid) & (grid <= wave_range[-1])
+
         # Check if grid and wv_range are compatible
-        if not cond.any():
-            raise ValueError("Invalid `wv` or `wv_range`."
-                             + " `wv_range`: {}".format(wv_range))
+        if not mask.any():
+            msg = "Invalid wave_map or wv_range. wv_range: {}"
+            raise ValueError(msg.format(wave_range))
+
+        grid, icols = grid[mask], icols[mask]
 
         # Extrapolate values out of the wv_map if needed
         if extrapolate:
-            grid = _extrapolate_grid(grid, poly_ord, wv_range)
+            grid = extrapolate_grid(grid, wave_range, poly_ord)
 
         # Different output depending on `out_col`
         if out_col:
-            out = grid, col
+            out = grid, icols
         else:
             out = grid
 
     # Apply oversampling
     if out_col:
-        # Return grid and columns
+        # Return grid and columns TODO this doesn't seem to do that? Would crash if out was a tuple?
         return [oversample_grid(out_i, n_os=n_os) for out_i in out]
     else:
         # Only the grid
         return oversample_grid(out, n_os=n_os)
 
 
-def get_soss_grid(p_list, lam_list, lam_min=0.55, lam_max=3.0, n_os=None):
-    """
-    Return a wavelength grid specific for NIRISS SOSS mode.
-    Assume 2 orders are given.
-    See `grid_from_map` function if only one order is needed.
+def get_soss_grid(wave_maps, apertures, wave_min=0.55, wave_max=3.0, n_os=None):
+    # TODO replace wave_min, wave_max with wave_range?
+    """Create a wavelength grid specific to NIRISS SOSS mode observations.
+    Assumes 2 orders are given, use grid_from_map if only one order is needed.
 
     Parameters
     ----------
-    p_list : (N_ord=2, N, M) list or array of 2-D arrays
-        A list or array of the spatial profile for
-        the 2 orders on the (N, M) detector.
-    lam_list : (N_ord=2, N, M) list or array of 2-D arrays
-        A list or array of the central wavelength position
-        for the 2 orders on the (N, M) detector.
-    lam_min : float, optional
-        Minimum boundary of the grid to generate. In microns.
-    lam_max : float, optional
-        Maximum boundary of the grid to generate. In microns.
-    n_os : 2 element list or int, optional
-        Oversampling of the grid compare to the pixel sampling.
-        Can be specified for each orders if a list is given.
-        If `int` is given, take same value for both orders.
-        Default is 2.
+    :param wave_maps: Array containing the pixel wavelengths for order 1 and 2.
+    :param apertures: Array containing the spatial profiles for order 1 and 2.
+    :param wave_min: Minimum wavelength the output grid should cover.
+    :param wave_max: Maximum wavelength the output grid should cover.
+    :param n_os: Oversampling of the grid compare to the pixel sampling. Can be
+        specified for each order if a list is given. If a single value is given
+        it will be used for all orders.
+
+    :type wave_maps: array[float]
+    :type apertures: array[float]
+    :type wave_min: float
+    :type wave_max: float
+    :type n_os: int or List[int]
+
+    :returns: wave_grid_soss - A wavelength grid optimized for extracting SOSS
+        spectra across order 1 and order 2.
+    :rtype: array[float]
     """
-    # Check n_os input.
-    # Default value is 2 for each orders
-    if n_os is None:
+
+    # Check n_os input, default value is 2 for all orders.
+    if n_os is None:  # TODO check for integer type?
         n_os = [2, 2]
-    else:
-        # Check if input has length = 2
-        try:
-            length = len(n_os)
-        # If scalar, same value for each orders
-        except TypeError:
-            n_os = [n_os, n_os]
-        else:
-            if length != 2:
-                err = ValueError(
-                    "len(n_os) == {},".format(length)
-                    + " but it must have length = 2"
-                    + " or be a scalar."
-                )
-                raise err
+    elif np.ndim(n_os) == 0:
+        n_os = [n_os, n_os]
+    elif len(n_os) != 2:
+        msg = ("n_os must be an integer or a 2 element list or array of "
+               "integers, got {} instead")
+        raise ValueError(msg.format(n_os))
 
-    # Generate wavelength range for each orders
+    # Generate a wavelength range for each order.
     # Order 1 covers the reddest part of the spectrum,
-    # so apply `lam_max` on order 1. Opposite for order 2.
-    # Take the most restrictive lam_min for order 1
-    lam_min_1 = np.max([lam_list[0].min(), lam_min])
-    # Take the most restrictive lam_max for order 2
-    lam_max_2 = np.min([lam_list[1].max(), lam_max])
+    # so apply wave_max on order 1 and vice versa for order 2.
+
+    # Take the most restrictive wave_min for order 1
+    wave_min_o1 = np.maximum(wave_maps[0].min(), wave_min)
+
+    # Take the most restrictive wave_max for order 2.
+    wave_max_o2 = np.minimum(wave_maps[1].max(), wave_max)
+
     # Now generate range for each orders
-    range_list = [[lam_min_1, lam_max],
-                  [lam_min, lam_max_2]]
+    range_list = [[wave_min_o1, wave_max],
+                  [wave_min, wave_max_o2]]
 
-    # Use grid given by the wavelength at the center of the pixels
-    # at the center of mass of the spatial profile
-    # (so one wavelength per column)
-    # Do it for both orders and apply oversampling
-    lam_grid = [grid_from_map(wv_i, p_i, wv_range=rng_i, n_os=i_os)
-                for wv_i, p_i, rng_i, i_os
-                in zip(lam_list, p_list, range_list, n_os)]
+    # Use grid_from_map to construct separate oversampled grids for both orders.
+    wave_grid_o1 = grid_from_map(wave_maps[0], apertures[0],
+                                 wave_range=range_list[0], n_os=n_os[0])
+    wave_grid_o2 = grid_from_map(wave_maps[1], apertures[1],
+                                 wave_range=range_list[1], n_os=n_os[1])
 
-    # Remove values from order 1 that are already covered by order 2
-    lam_grid[0] = lam_grid[0][lam_grid[0] > lam_grid[1].max()]
+    # Keep only wavelengths in order 1 that aren't covered by order 2.
+    mask = wave_grid_o1 > wave_grid_o2.max()
+    wave_grid_o1 = wave_grid_o1[mask]
 
-    # Combine both grid
-    out_grid = np.concatenate(lam_grid)
+    # Combine the order 1 and order 2 grids.
+    wave_grid_soss = np.concatenate([wave_grid_o1, wave_grid_o2])
 
-    # Make sure sorted and unique
-    return np.unique(out_grid)
+    # Sort values (and keep only unique).
+    wave_grid_soss = np.unique(wave_grid_soss)
+
+    return wave_grid_soss
 
 
 def uneven_grid(lam_grid, n_os=1, space=None):
-
+    # TODO obsolete, remove.
     if space is None:
         space = 1/n_os
 
