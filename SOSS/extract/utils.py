@@ -8,15 +8,6 @@ from warnings import warn
 from scipy.integrate.quadrature import AccuracyWarning
 
 
-def _romberg_diff(b, c, k):
-    """
-    Compute the differences for the Romberg quadrature corrections.
-    See Forman Acton's "Real Computing Made Real," p 143.
-    """
-    tmp = 4.0**k
-    return (tmp * c - b)/(tmp - 1.0)
-
-
 def get_wave_p_or_m(lam):
     """
     Compute lambda_plus and lambda_minus of pixel map,
@@ -48,6 +39,128 @@ def get_wave_p_or_m(lam):
         return lam_l.T, lam_r.T
     else:
         raise ValueError('Bad pixel values for wavelength')
+
+
+def oversample_grid(lam_grid, n_os=1):
+    """
+    Returns lam_grid evenly oversample at `n_os`.
+
+    Parameters
+    ----------
+    lam_grid: 1D array
+        Grid to be oversampled
+    n_os: scalar or 1D array, optional
+        Oversampling. If it's a scalar, take the same value for each
+        intervals of the grid. If it's an array, n_os is then
+        specified for each interval of the grid, so
+        len(n_os) = len(lam_grid) - 1.
+    Returns
+    -------
+    new_grid: 1D array
+        Oversampled grid.
+    """
+    # Convert n_os to array
+    n_os = np.array(n_os)
+
+    # n_os needs to have the dimension:
+    # len(lam_grid) - 1
+    if n_os.ndim == 0:
+        n_os = np.repeat(n_os, len(lam_grid)-1)
+
+    # Grid intervals
+    d_lam = np.diff(lam_grid)
+    # Init grid for output
+    new_grid = lam_grid.copy()
+    # Iterate to generate nodes
+    for i_os in range(1, n_os.max()):
+        # Compute only nodes that need to be computed
+        index = (n_os > i_os)
+        # Compute the next node in each grid intervals
+        sub_grid = (lam_grid[:-1][index]
+                    + i_os * d_lam[index] / n_os[index])
+        # Add to ouput grid
+        new_grid = np.concatenate([new_grid, sub_grid])
+
+    # Return sorted and unique
+    return np.unique(new_grid)
+
+
+def _extrapolate_grid(grid, poly_ord, wv_range):
+    """
+    Extrapolate `grid` using d_grid as a function of
+    `grid` to compute iteratively the next extrapolated nodes.
+    The extapolation is done with a polynomial of order `poly_ord`.
+    The extrapolation range is given by `wv_range`.
+    Returns the extrapolated grid.
+    """
+    # Define delta_grid as a function of grid
+    # by fitting a polynomial
+    d_grid = np.diff(grid)
+    f_dgrid = np.polyfit(grid[:-1], d_grid, poly_ord)
+    f_dgrid = np.poly1d(f_dgrid)
+
+    # Extrapolate values out of the wv_map if needed
+    grid_left, grid_right = [], []
+    if wv_range[0] < grid.min():
+        # Need the grid value to get delta_grid ...
+        grid_left = [grid.min() - f_dgrid(grid.min())]
+        # ... and iterate to get the next one until
+        # the range is reached
+        while True:
+            next_val = grid_left[-1] - f_dgrid(grid_left[-1])
+            if next_val < wv_range[0]:
+                break
+            else:
+                grid_left.append(next_val)
+        # Need to sort (and unique)
+        grid_left = np.unique(grid_left)
+    if wv_range[-1] > grid.max():
+        # Need the grid value to get delta_grid ...
+        grid_right = [grid.max() + f_dgrid(grid.max())]
+        # ... and iterate to get the next one until
+        # the range is reached
+        while True:
+            next_val = grid_right[-1] + f_dgrid(grid_right[-1])
+            if next_val > wv_range[-1]:
+                break
+            else:
+                grid_right.append(next_val)
+
+    # Combine to get output
+    return np.concatenate([grid_left, grid, grid_right])
+
+
+def _grid_from_map(wv_map, psf, out_col=False):
+    """
+    Define wavelength grid by taking the center wavelength
+    at each columns at the center of mass of
+    the spatial profile.
+    If out_col is True, return the columns positions
+    """
+    # Normalisation for each column
+    col_sum = psf.sum(axis=0)
+
+    # Compute only valid columns
+    good = (psf > 0).any(axis=0)
+    good &= (wv_map > 0).any(axis=0)
+
+    # Get center wavelength using center of mass
+    # with psf as weights
+    center_wv = (wv_map * psf)[:, good]
+    center_wv /= col_sum[good]
+    center_wv = center_wv.sum(axis=0)
+
+    # Return sorted
+    i_sort = np.argsort(center_wv)
+    out = center_wv[i_sort]
+
+    # Return index of columns if specified
+    if out_col:
+        cols = np.where(good)[0]
+        return out, cols[i_sort]
+    else:
+        # Return sorted and unique if out_cols is False
+        return np.unique(out)
 
 
 def grid_from_map(wv, psf, wv_range=None, poly_ord=1, out_col=False, n_os=1):
@@ -120,128 +233,6 @@ def grid_from_map(wv, psf, wv_range=None, poly_ord=1, out_col=False, n_os=1):
     else:
         # Only the grid
         return oversample_grid(out, n_os=n_os)
-
-
-def _grid_from_map(wv_map, psf, out_col=False):
-    """
-    Define wavelength grid by taking the center wavelength
-    at each columns at the center of mass of
-    the spatial profile.
-    If out_col is True, return the columns positions
-    """
-    # Normalisation for each column
-    col_sum = psf.sum(axis=0)
-
-    # Compute only valid columns
-    good = (psf > 0).any(axis=0)
-    good &= (wv_map > 0).any(axis=0)
-
-    # Get center wavelength using center of mass
-    # with psf as weights
-    center_wv = (wv_map * psf)[:, good]
-    center_wv /= col_sum[good]
-    center_wv = center_wv.sum(axis=0)
-
-    # Return sorted
-    i_sort = np.argsort(center_wv)
-    out = center_wv[i_sort]
-
-    # Return index of columns if specified
-    if out_col:
-        cols = np.where(good)[0]
-        return out, cols[i_sort]
-    else:
-        # Return sorted and unique if out_cols is False
-        return np.unique(out)
-
-
-def _extrapolate_grid(grid, poly_ord, wv_range):
-    """
-    Extrapolate `grid` using d_grid as a function of
-    `grid` to compute iteratively the next extrapolated nodes.
-    The extapolation is done with a polynomial of order `poly_ord`.
-    The extrapolation range is given by `wv_range`.
-    Returns the extrapolated grid.
-    """
-    # Define delta_grid as a function of grid
-    # by fitting a polynomial
-    d_grid = np.diff(grid)
-    f_dgrid = np.polyfit(grid[:-1], d_grid, poly_ord)
-    f_dgrid = np.poly1d(f_dgrid)
-
-    # Extrapolate values out of the wv_map if needed
-    grid_left, grid_right = [], []
-    if wv_range[0] < grid.min():
-        # Need the grid value to get delta_grid ...
-        grid_left = [grid.min() - f_dgrid(grid.min())]
-        # ... and iterate to get the next one until
-        # the range is reached
-        while True:
-            next_val = grid_left[-1] - f_dgrid(grid_left[-1])
-            if next_val < wv_range[0]:
-                break
-            else:
-                grid_left.append(next_val)
-        # Need to sort (and unique)
-        grid_left = np.unique(grid_left)
-    if wv_range[-1] > grid.max():
-        # Need the grid value to get delta_grid ...
-        grid_right = [grid.max() + f_dgrid(grid.max())]
-        # ... and iterate to get the next one until
-        # the range is reached
-        while True:
-            next_val = grid_right[-1] + f_dgrid(grid_right[-1])
-            if next_val > wv_range[-1]:
-                break
-            else:
-                grid_right.append(next_val)
-
-    # Combine to get output
-    return np.concatenate([grid_left, grid, grid_right])
-
-
-def oversample_grid(lam_grid, n_os=1):
-    """
-    Returns lam_grid evenly oversample at `n_os`.
-
-    Parameters
-    ----------
-    lam_grid: 1D array
-        Grid to be oversampled
-    n_os: scalar or 1D array, optional
-        Oversampling. If it's a scalar, take the same value for each
-        intervals of the grid. If it's an array, n_os is then
-        specified for each interval of the grid, so
-        len(n_os) = len(lam_grid) - 1.
-    Returns
-    -------
-    new_grid: 1D array
-        Oversampled grid.
-    """
-    # Convert n_os to array
-    n_os = np.array(n_os)
-
-    # n_os needs to have the dimension:
-    # len(lam_grid) - 1
-    if n_os.ndim == 0:
-        n_os = np.repeat(n_os, len(lam_grid)-1)
-
-    # Grid intervals
-    d_lam = np.diff(lam_grid)
-    # Init grid for output
-    new_grid = lam_grid.copy()
-    # Iterate to generate nodes
-    for i_os in range(1, n_os.max()):
-        # Compute only nodes that need to be computed
-        index = (n_os > i_os)
-        # Compute the next node in each grid intervals
-        sub_grid = (lam_grid[:-1][index]
-                    + i_os * d_lam[index] / n_os[index])
-        # Add to ouput grid
-        new_grid = np.concatenate([new_grid, sub_grid])
-
-    # Return sorted and unique
-    return np.unique(new_grid)
 
 
 def get_soss_grid(p_list, lam_list, lam_min=0.55, lam_max=3.0, n_os=None):
@@ -330,6 +321,54 @@ def uneven_grid(lam_grid, n_os=1, space=None):
         return np.unique(new_grid)
     else:
         return lam_grid
+
+
+def _romberg_diff(b, c, k):
+    """
+    Compute the differences for the Romberg quadrature corrections.
+    See Forman Acton's "Real Computing Made Real," p 143.
+    """
+    tmp = 4.0**k
+    return (tmp * c - b)/(tmp - 1.0)
+
+
+def difftrap(fct, interval, numtraps):
+    """
+    ** Quasi entirely taken from scipy.integrate.quadrature **
+    Adapted to work with multiple intervals.
+
+    Desciption taken from scipy:
+    Perform part of the trapezoidal rule to integrate a fct.
+    Assume that we had called difftrap with all lower powers-of-2
+    starting with 1.  Calling difftrap only returns the summation
+    of the new ordinates.  It does _not_ multiply by the width
+    of the trapezoids.  This must be performed by the caller.
+        'fct' is the fct to evaluate (must accept vector arguments).
+        'interval' is a sequence with lower and upper limits
+                   of integration.
+        'numtraps' is the number of trapezoids to use (must be a
+                   power-of-2).
+    """
+    # Convert input intervals to numpy array
+    interval = np.array(interval)
+    # If 1-d, add dimension so it's 2-d
+    # (the algorithm is made for multiple intervals, so 2-d)
+    if interval.ndim == 1:
+        interval = interval[:, None]
+
+    # Quasi-copy of scipy.integrate.quadrature._difftrap code
+    if numtraps <= 0:
+        raise ValueError("numtraps must be > 0 in difftrap().")
+    elif numtraps == 1:
+        return 0.5*(fct(interval[0])+fct(interval[1]))
+    else:
+        numtosum = numtraps/2
+        h = (interval[1]-interval[0]).astype(float)/numtosum
+        lox = interval[0] + 0.5 * h
+
+        points = lox[None, :] + h * np.arange(numtosum)[:, None]
+        s = np.sum(fct(points), axis=0)
+        return s
 
 
 def get_n_nodes(grid, fct, tol=1.48e-4,
@@ -457,40 +496,10 @@ def get_n_nodes(grid, fct, tol=1.48e-4,
         return n_grid
 
 
-def difftrap(fct, interval, numtraps):
-    """
-    ** Quasi entirely taken from scipy.integrate.quadrature **
-    Adapted to work with multiple intervals.
+def main():
 
-    Desciption taken from scipy:
-    Perform part of the trapezoidal rule to integrate a fct.
-    Assume that we had called difftrap with all lower powers-of-2
-    starting with 1.  Calling difftrap only returns the summation
-    of the new ordinates.  It does _not_ multiply by the width
-    of the trapezoids.  This must be performed by the caller.
-        'fct' is the fct to evaluate (must accept vector arguments).
-        'interval' is a sequence with lower and upper limits
-                   of integration.
-        'numtraps' is the number of trapezoids to use (must be a
-                   power-of-2).
-    """
-    # Convert input intervals to numpy array
-    interval = np.array(interval)
-    # If 1-d, add dimension so it's 2-d
-    # (the algorithm is made for multiple intervals, so 2-d)
-    if interval.ndim == 1:
-        interval = interval[:, None]
+    return
 
-    # Quasi-copy of scipy.integrate.quadrature._difftrap code
-    if numtraps <= 0:
-        raise ValueError("numtraps must be > 0 in difftrap().")
-    elif numtraps == 1:
-        return 0.5*(fct(interval[0])+fct(interval[1]))
-    else:
-        numtosum = numtraps/2
-        h = (interval[1]-interval[0]).astype(float)/numtosum
-        lox = interval[0] + 0.5 * h
 
-        points = lox[None, :] + h * np.arange(numtosum)[:, None]
-        s = np.sum(fct(points), axis=0)
-        return s
+if __name__ == '__main__':
+    main()
