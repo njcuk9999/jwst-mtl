@@ -366,176 +366,187 @@ def uneven_grid(lam_grid, n_os=1, space=None):
 
 
 def _romberg_diff(b, c, k):
-    """
-    Compute the differences for the Romberg quadrature corrections.
+    """Compute the differences for the Romberg quadrature corrections.
     See Forman Acton's "Real Computing Made Real," p 143.
+
+    :param b: R(n-1, m-1) of Rombergs method.
+    :param c: R(n, m-1) of Rombergs method.
+    :param k: The parameter m of Rombergs method.
+
+    :type b: float or array[float]
+    :type c: float or array[float]
+    :type k: int
+
+    :returns: R(n, m) of Rombergs method.
+    :rtype: float or array[float]
     """
+
     tmp = 4.0**k
-    return (tmp * c - b)/(tmp - 1.0)
+    diff = (tmp * c - b) / (tmp - 1.0)
+
+    return diff
 
 
-def difftrap(fct, interval, numtraps):
+def _difftrap(fct, intervals, numtraps):
+    """Perform part of the trapezoidal rule to integrate a function. Assume that
+    we had called difftrap with all lower powers-of-2 starting with 1. Calling
+    difftrap only returns the summation of the new ordinates. It does not
+    multiply by the width of the trapezoids. This must be performed by the
+    caller.
+
+    Note: This function is based on scipy.integrate.quadrature. Adapted to work
+    with multiple intervals.
+
+    :param fct: Function to be integrated.
+    :param intervals: A 2D array of integration intervals of shape (Nx2) or a
+        single interval of shape (2,).
+    :param numtraps: The number of trapezoids used to integrate the interval.
+        numtraps must be a power of 2.
+
+    :type fct: callable
+    :type intervals: array[float]
+    :type numtraps: int
+
+    :returns: s - The sum of function values at the new trapezoid boundaries
+    compared to numtraps = numtraps/2. When numtraps = 1 they are fivided by
+    two.
+    :rtype: float
     """
-    ** Quasi entirely taken from scipy.integrate.quadrature **
-    Adapted to work with multiple intervals.
 
-    Desciption taken from scipy:
-    Perform part of the trapezoidal rule to integrate a fct.
-    Assume that we had called difftrap with all lower powers-of-2
-    starting with 1.  Calling difftrap only returns the summation
-    of the new ordinates.  It does _not_ multiply by the width
-    of the trapezoids.  This must be performed by the caller.
-        'fct' is the fct to evaluate (must accept vector arguments).
-        'interval' is a sequence with lower and upper limits
-                   of integration.
-        'numtraps' is the number of trapezoids to use (must be a
-                   power-of-2).
-    """
     # Convert input intervals to numpy array
-    interval = np.array(interval)
-    # If 1-d, add dimension so it's 2-d
-    # (the algorithm is made for multiple intervals, so 2-d)
-    if interval.ndim == 1:
-        interval = interval[:, None]
+    intervals = np.asarray(intervals)
 
-    # Quasi-copy of scipy.integrate.quadrature._difftrap code
-    if numtraps <= 0:
+    # If intervals is 1D assume it's a single interval.
+    if intervals.ndim == 1:
+        intervals = intervals[:, np.newaxis]
+
+    # Check the value of numtraps.
+    if numtraps <= 0:  # TODO check it is a power of 2? Or change input to log2(numtraps)?
         raise ValueError("numtraps must be > 0 in difftrap().")
-    elif numtraps == 1:
-        return 0.5*(fct(interval[0])+fct(interval[1]))
+
+    if numtraps == 1:
+        # Return the function evaluations for a single trapezoid.
+        # Only points add the edge of the interval need to be halfed.
+        ordsum = 0.5*(fct(intervals[0]) + fct(intervals[1]))
+
     else:
+        # Number of new points compared to lower 2**N multiple of trapezoids.
         numtosum = numtraps/2
-        h = (interval[1]-interval[0]).astype(float)/numtosum
-        lox = interval[0] + 0.5 * h
 
-        points = lox[None, :] + h * np.arange(numtosum)[:, None]
-        s = np.sum(fct(points), axis=0)
-        return s
+        # Find coordinates of new points.
+        h = (intervals[1] - intervals[0])/numtosum
+        lox = intervals[0] + 0.5*h
+        points = lox[np.newaxis, :] + h*np.arange(numtosum)[:, np.newaxis]
+
+        # Evalaute and sum the new points.
+        ordsum = np.sum(fct(points), axis=0)
+
+    return ordsum
 
 
-def get_n_nodes(grid, fct, tol=1.48e-4,
-                rtol=1.48e-4, divmax=10, out_res=False):
-    """
-    *** THIS FUNCTION IS _STRONGLY_ INSPIRED BY SCIPY ***
-    See scipy.integrate.quadrature.romberg
-
-    Refine parts of a grid to reach a specified integration precision
+def get_n_nodes(grid, fct, divmax=10, tol=1.48e-4, rtol=1.48e-4):
+    """Refine parts of a grid to reach a specified integration precision
     based on Romberg integration of a callable function or method.
     Returns the number of nodes needed in each intervals of
     the input grid to reach the specified tolerance over the integral
     of `fct` (a function of one variable).
 
-    Note: The difference between th scipy version is that it is vectorised
-    to deal with multiple intervals separately. It also returns the
-    number of nodes needed to reached the required precision instead
-    of returning the value of the integral.
-    Parameters
-    ----------
-    grid: 1D array-like
-        Grid for integration. Each sections of this grid are treated
-        as separate integrals. So if grid has length N; N-1 integrals
-        are optimized.
-    function : callable
-        Function to be integrated.
+    Note: This function is based on scipy.integrate.quadrature.romberg. The
+    difference between it and the scipy version is that it is vectorised to deal
+    with multiple intervals separately. It also returns the number of nodes
+    needed to reached the required precision instead of returning the value of
+    the integral.
 
-    Returns
-    -------
-    n_grid  : 1D array, length = len(grid) - 1
-        Number of nodes needed on each distinct intervals in the grid
-        to reach the specified tolerance.
-    residual : 1D array, optional
-        Estimate of the error in each intervals. Same length as n_grid.
-    Other Parameters
-    ----------------
-    tol, rtol : float, optional
-        The desired absolute and relative tolerances. Defaults are 1.48e-4.
-    divmax : int, optional
-        Maximum order of extrapolation. Default is 10.
-    out_res: bool, optional
-        Return or not the residuals in each intervals. Default is False.
-    See Also
-    --------
-    scipy.integrate.quadrature.romberg
-    References
-    ----------
-    .. [1] 'Romberg's method' https://en.wikipedia.org/wiki/Romberg%27s_method
+    :param grid: Grid for integration. Each sections of this grid are treated
+        as separate integrals. So if grid has length N; N-1 integrals are
+        optimized.
+    :param fct: Function to be integrated.
+    :param tol: The desired absolute tolerance. Default is 1.48e-4.
+    :param rtol: The desired relative tolerance. Default is 1.48e-4.
+    :param divmax: Maximum order of extrapolation. Default is 10.
+
+    :type grid: array[float]
+    :type fct: callable
+    :type tol: float
+    :type rtol: float
+    :type divmax: int
+
+    :returns: n_grid - Number of nodes needed on each distinct intervals in the
+        grid to reach the specified tolerance. If out_res=True also returns
+        residual - Estimate of the error in each intervals. Same length as
+        n_grid.
     """
-    n_intervals = len(grid)-1
+
+    # Initialize some variables.
+    n_intervals = len(grid) - 1
     i_bad = np.arange(n_intervals)
     n_grid = np.repeat(-1, n_intervals)
     residual = np.repeat(np.nan, n_intervals)
 
+    # Change the 1D grid into a 2D set of intervals.
     intervals = np.array([grid[:-1], grid[1:]])
     intrange = np.diff(grid)
     err = np.inf
 
-    # First estimate without subdivision
-    n = 1
-    ordsum = difftrap(fct, intervals, n)
+    # First estimate without subdivision.
+    numtraps = 1
+    ordsum = _difftrap(fct, intervals, numtraps)
     results = intrange * ordsum
     last_row = [results]
 
-    for i_div in range(1, divmax+1):
+    for i_div in range(1, divmax + 1):
 
-        # Refine number of points
-        n *= 2
+        # Increase the number of trapezoids by factors of 2.
+        numtraps *= 2
 
-        # Evaluate trpz integration for intervals
-        # that are not converged
-        ordsum += difftrap(fct, intervals[:, i_bad], n)
-        row = [intrange[i_bad] * ordsum / n]
+        # Evaluate trpz integration for intervals that are not converged.
+        ordsum += _difftrap(fct, intervals[:, i_bad], numtraps)
+        row = [intrange[i_bad] * ordsum / numtraps]
 
-        # Compute Romberg for each computed sub grids
+        # Compute Romberg for each of the computed sub grids.
         for k in range(i_div):
-            romb_k = _romberg_diff(last_row[k], row[k], k+1)
+            romb_k = _romberg_diff(last_row[k], row[k], k + 1)
             row = np.vstack([row, romb_k])
 
-        # Save R(n,n) and R(n-1,n-1) from Romberg method
+        # Save R(n,n) and R(n-1, n-1) from Romberg method.
         results = row[i_div]
-        lastresults = last_row[i_div-1]
+        lastresults = last_row[i_div - 1]
 
-        # Estimate error
+        # Estimate error.
         err = np.abs(results - lastresults)
 
-        # Find intervals that are converged
+        # Find intervals that are converged.
         conv = (err < tol) | (err < rtol * np.abs(results))
 
-        # Save number of nodes for these intervals
-        n_grid[i_bad[conv]] = n
+        # Save number of nodes for these intervals.
+        n_grid[i_bad[conv]] = numtraps
 
-        # Save residuals
+        # Save residuals.
         residual[i_bad] = err
 
-        # Stop if convergence
+        # Stop if all intervals have converged.
         if conv.all():
-            # All converged!
             break
 
-        # Find intervals not converged
+        # Find intervals not converged.
         i_bad = i_bad[~conv]
 
-        # Save last_row for the next iteration
-        # but keep only non-converged intervals
-        last_row = row[:, ~conv]
-        # Same for ordsum
+        # Save last_row and ordsum for the next iteration for non-converged
+        # intervals.
         ordsum = ordsum[~conv]
+        last_row = row[:, ~conv]
 
     else:
-        # Warn that convergence is not reached everywhere
-        # and print max residual.
-        message = "divmax (%d) exceeded. Latest difference = {}"
-        warn(message.format(divmax, err.max()), AccuracyWarning)
+        # Warn that convergence is not reached everywhere.
+        msg = "divmax {%d} exceeded. Latest difference = {}"
+        warn(msg.format(divmax, err.max()), AccuracyWarning)
 
-    # Make sure all values of n_grid where assigned during process
+    # Make sure all values of n_grid where assigned during the process.
     if (n_grid == -1).any():
-        raise ValueError("Values where not assigned at grid "
-                         + "position: {}".format(np.where(n_grid == -1)))
+        msg = "Values where not assigned at grid position: {}"
+        raise ValueError(msg.format(np.where(n_grid == -1)))
 
-    # Return
-    if out_res:
-        return n_grid, residual
-    else:
-        return n_grid
+    return n_grid, residual
 
 
 def main():

@@ -595,7 +595,7 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
             fct = interp1d(grid_ord, convolved_spectrum, kind='cubic')
 
             # Find number of nodes to reach the precision
-            n_oversample = utils.get_n_nodes(grid_ord, fct, **kwargs)
+            n_oversample, _ = utils.get_n_nodes(grid_ord, fct, **kwargs)
 
             # Make sure n_oversample is not greater than
             # user's define `n_max`
