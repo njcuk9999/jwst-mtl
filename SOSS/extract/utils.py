@@ -350,21 +350,6 @@ def get_soss_grid(wave_maps, apertures, wave_min=0.55, wave_max=3.0, n_os=None):
     return wave_grid_soss
 
 
-def uneven_grid(lam_grid, n_os=1, space=None):
-    # TODO obsolete, remove.
-    if space is None:
-        space = 1/n_os
-
-    if n_os > 1:
-        d_lam = np.diff(lam_grid) * space
-        sub_grid = [lam_grid[:-1] + (-1)**(i-1) * ((i+1)//2) * d_lam
-                    for i in range(1, n_os)]
-        new_grid = np.concatenate([lam_grid, *sub_grid])
-        return np.unique(new_grid)
-    else:
-        return lam_grid
-
-
 def _romberg_diff(b, c, k):
     """Compute the differences for the Romberg quadrature corrections.
     See Forman Acton's "Real Computing Made Real," p 143.
