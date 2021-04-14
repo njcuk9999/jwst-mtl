@@ -128,7 +128,7 @@ print('norders={:} dimy={:} dimx={:}'.format(norders,dimy,dimx))
 # For each time step, a cube of simulated images is written to disk
 # The cube has all spectral orders in separate slices.
 # The list of such fits cube file names is returned.
-if False:
+if True:
     imagelist = soss.generate_traces(pathPars, simuPars, tracePars, throughput,
                                    starmodel_angstrom, starmodel_flambda, ld_coeff,
                                    planetmodel_angstrom, planetmodel_rprs,
