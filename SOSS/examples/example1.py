@@ -182,3 +182,5 @@ detector.add_noise(os.path.join(WORKING_DIR,'test.fits'),
 result = Detector1Pipeline.call(os.path.join(WORKING_DIR, 'test_noisy.fits'),
                                 output_file='test_noisy', output_dir=WORKING_DIR)
 
+print('The end of the simulation')
+
