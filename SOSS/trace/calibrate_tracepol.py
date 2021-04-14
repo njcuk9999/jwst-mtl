@@ -7,8 +7,9 @@ from scipy.optimize import least_squares
 import sys
 sys.path.insert(0, '/genesis/jwst/github/jwst-mtl/')
 
-from SOSS.trace.contaminated_centroids import get_soss_centroids
 import SOSS.trace.tracepol as tp
+from SOSS.dms.soss_centroids import get_soss_centroids
+
 
 def get_CV3_tracepars(order=1):
 
@@ -162,17 +163,20 @@ def calibrate_tracepol():
     badpix[~np.isfinite(bad)] = True
 
     # Measure the trace centroid position for the deep stack image.
-    cv3 = get_soss_centroids(im, subarray='SUBSTRIP256', apex_order1=None,
-                                    badpix=badpix, verbose=False)
-    x_o1 = cv3['order 1']['X centroid']
-    y_o1 = cv3['order 1']['Y centroid']
-    pars_o1 = cv3['order 1']['poly coefs']
-    x_o2 = cv3['order 2']['X centroid']
-    y_o2 = cv3['order 2']['Y centroid']
-    pars_o2 = cv3['order 2']['poly coefs']
-    x_o3 = cv3['order 3']['X centroid']
-    y_o3 = cv3['order 3']['Y centroid']
-    pars_o3 = cv3['order 3']['poly coefs']
+    centroids = get_soss_centroids(im, subarray='SUBSTRIP256', apex_order1=None,
+                                    mask=badpix, verbose=False)
+    x_o1 = centroids['order 1']['X centroid']
+    y_o1 = centroids['order 1']['Y centroid']
+    w_o1 = centroids['order 1']['trace widths']
+    pars_o1 = centroids['order 1']['poly coefs']
+    x_o2 = centroids['order 2']['X centroid']
+    y_o2 = centroids['order 2']['Y centroid']
+    w_o2 = centroids['order 2']['trace widths']
+    pars_o2 = centroids['order 2']['poly coefs']
+    x_o3 = centroids['order 3']['X centroid']
+    y_o3 = centroids['order 3']['Y centroid']
+    w_o3 = centroids['order 3']['trace widths']
+    pars_o3 = centroids['order 3']['poly coefs']
 
     # Wavelengths at which the measured traces and the
     # optics model traces are going to be compared for the fit.
