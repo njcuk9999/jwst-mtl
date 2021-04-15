@@ -148,7 +148,7 @@ def center_of_mass(column, ypos, halfwidth):
     return ycom
 
 
-def get_uncontam_centroids(image, header=None, mask=None, poly_order=11, verbose=False):
+def get_centroids_com(image, header=None, mask=None, poly_order=11, verbose=False):
     """Determine the x, y coordinates of the trace using a center-of-mass analysis.
     Works for either order if there is no contamination, or for order 1 on a detector
     where the two orders are overlapping.
@@ -364,8 +364,8 @@ def edge_trigger(image, halfwidth=5, yos=1, verbose=False):
     return ytrace_max, ytrace_min, ytrace_best, widths_best
 
 
-def get_uncontam_centroids_edgetrig(image, header=None, mask=None, poly_order=11,
-                                    halfwidth=5, mode='combined', verbose=False):
+def get_centroids_edgetrigger(image, header=None, mask=None, poly_order=11,
+                              halfwidth=5, mode='combined', verbose=False):
     """Determine the x, y coordinates of the trace using the derivatives along the y-axis.
     Works for either order if there is no contamination.
 
@@ -760,40 +760,44 @@ def build_mask_order2_uncontaminated(ytrace_o1, ytrace_o3, subarray='SUBSTRIP256
     if xlims is None:
         xlims = [700, 1800]
 
-    if point1 is None:
+    if (point1 is None) ^ (point2 is None):
+        msg = 'point1 and point2 must both be None or both be set.'
+        raise ValueError(msg)
 
+    elif (point1 is None) and (point2 is None):
+
+        # If no points were given use default values.
         point1 = [1249, 31]  # Assuming SUBSTRIP256.
-
-        if subarray == 'FULL':
-            point1[1] += 1792
-
-        if subarray == 'SUBSTRIP96':
-            point1[1] += -10
-
-    if point2 is None:
-
         point2 = [1911, 253]  # Assuming SUBSTRIP256.
 
         if subarray == 'FULL':
+            point1[1] += 1792
             point2[1] += 1792
 
         if subarray == 'SUBSTRIP96':
+            point1[1] += -10
             point2[1] += -10
 
-    if apex_order1 is not None:
+        # If apex_order1 was given shift the points as needed.
+        if apex_order1 is not None:
 
-        apex_default = 40  # Assuming SUBSTRIP256.
+            apex_default = 40  # Assuming SUBSTRIP256.
 
-        if subarray == 'FULL':
-            apex_default += 1792
+            if subarray == 'FULL':
+                apex_default += 1792
 
-        if subarray == 'SUBSTRIP96':
-            apex_default += -10
+            if subarray == 'SUBSTRIP96':
+                apex_default += -10
 
-        # Shift points based on apex_order1. TODO but only if points were None?
-        offset = apex_order1 - apex_default
-        point1[1] += offset
-        point2[1] += offset
+            # Shift points based on apex_order1.
+            offset = apex_order1 - apex_default
+            point1[1] += offset
+            point2[1] += offset
+
+    else:
+        msg = ('Using user-provided values for point1 and point2, '
+               'apex_order1 will be ignored.')
+        print(msg)
 
     # Mask the order 1 trace and everything below.
     mask_trace_o1 = build_mask_trace(ytrace_o1, subarray=subarray,
@@ -864,45 +868,50 @@ def build_mask_order3(subarray='SUBSTRIP256', xlim=None, point1=None, point2=Non
     if xlim is None:
         xlim = 700
 
-    if point1 is None:
+    if (point1 is None) ^ (point2 is None):
+        msg = 'point1 and point2 must both be None or both be set.'
+        raise ValueError(msg)
 
+    elif (point1 is None) & (point2 is None):
+
+        # If no points were given use default values.
         point1 = [0, 132]  # Assuming SUBSTRIP256.
-
-        if subarray == 'FULL':
-            point1[1] += 1792
-
-        if subarray == 'SUBSTRIP96':
-            point1[1] += -10
-
-    if point2 is None:
-
         point2 = [1000, 163]  # Assuming SUBSTRIP256.
 
         if subarray == 'FULL':
+            point1[1] += 1792
             point2[1] += 1792
 
         if subarray == 'SUBSTRIP96':
+            point1[1] += -10
             point2[1] += -10
 
-    if apex_order1 is not None:
+        # If apex_order1 was given shift the points as needed.
+        if apex_order1 is not None:
 
-        apex_default = 40  # Assuming SUBSTRIP256.
+            apex_default = 40  # Assuming SUBSTRIP256.
 
-        if subarray == 'FULL':
-            apex_default += 1792
+            if subarray == 'FULL':
+                apex_default += 1792
 
-        if subarray == 'SUBSTRIP96':
-            apex_default += -10
+            if subarray == 'SUBSTRIP96':
+                apex_default += -10
 
-        # Shift points based on apex_order1. TODO but only if points were None?
-        offset = apex_order1 - apex_default
-        point1[1] += offset
-        point2[1] += offset
+            # Shift points based on apex_order1.
+            offset = apex_order1 - apex_default
+            point1[1] += offset
+            point2[1] += offset
+
+    else:
+        msg = ('Using user-provided values for point1 and point2, '
+               'apex_order1 will be ignored.')
+        print(msg)
 
     # Check how close the boundary line is to the top of the subarray.
     if point1[1] > (dimy - 25 - 10):
-        msg = 'Warning: masking for order 3 with apex_order1={} leaves too little of order 3 to fit position.'
-        print(msg.format(apex_order1))
+        msg = ('Warning: masking for order 3 leaves too little of '
+               'order 3 to fit position.')
+        print(msg)
 
     # Mask everything beyond where the order 3 transmission approaches zero.
     mask_vertical = build_mask_vertical((dimy, dimx), [xlim], mask_right=True)
@@ -1098,9 +1107,10 @@ def get_soss_centroids(image, mask=None, subarray='SUBSTRIP256', halfwidth=2,
         hdu.writeto('mask_256.fits', overwrite=True)
 
     # Get the order 1 trace position.
-    result = get_uncontam_centroids_edgetrig(
-            image, mask=mask_256, poly_order=default_orders['order 1'], halfwidth=halfwidth,
-            mode='combined', verbose=verbose)
+    result = get_centroids_edgetrigger(image, mask=mask_256,
+                                       poly_order=default_orders['order 1'],
+                                       halfwidth=halfwidth, mode='combined',
+                                       verbose=verbose)
 
     x_o1, y_o1, w_o1, par_o1 = result
 
@@ -1137,9 +1147,11 @@ def get_soss_centroids(image, mask=None, subarray='SUBSTRIP256', halfwidth=2,
         hdu.writeto('mask_o3.fits', overwrite=True)
 
     # Get the order 3 trace position.
-    result = get_uncontam_centroids_edgetrig(image, mask=mask_o3,
-                                             poly_order=default_orders['order 3'], halfwidth=halfwidth,
-                                             mode='combined', verbose=verbose)
+    result = get_centroids_edgetrigger(image, mask=mask_o3,
+                                       poly_order=default_orders['order 3'],
+                                       halfwidth=halfwidth, mode='combined',
+                                       verbose=verbose)
+
     x_o3, y_o3, w_o3, par_o3 = result
 
     # Add parameters to output dictionary.
@@ -1167,10 +1179,9 @@ def get_soss_centroids(image, mask=None, subarray='SUBSTRIP256', halfwidth=2,
         hdu.writeto('mask_o2_uncont.fits', overwrite=True)
 
     # Get the raw trace positions for the uncontaminated part of the order 2 trace.
-    result = get_uncontam_centroids_edgetrig(image,
-                                             mask=mask_o2_uncont,
-                                             poly_order=None, halfwidth=halfwidth,
-                                             mode='combined', verbose=verbose)
+    result = get_centroids_edgetrigger(image, mask=mask_o2_uncont,
+                                       poly_order=None, halfwidth=halfwidth,
+                                       mode='combined', verbose=verbose)
 
     x_o2_uncont, y_o2_uncont, w_o2_uncont, par_o2_uncont = result
 
@@ -1197,10 +1208,9 @@ def get_soss_centroids(image, mask=None, subarray='SUBSTRIP256', halfwidth=2,
         hdu.writeto('mask_o2_cont.fits', overwrite=True)
 
     # Get the raw top-edge poistions of the contaminated order 2 trace.
-    result = get_uncontam_centroids_edgetrig(image,
-                                             mask=mask_o2_cont,
-                                             poly_order=None, halfwidth=halfwidth,
-                                             mode='topedge', verbose=verbose)
+    result = get_centroids_edgetrigger(image, mask=mask_o2_cont,
+                                       poly_order=None, halfwidth=halfwidth,
+                                       mode='topedge', verbose=verbose)
 
     x_o2_top, y_o2_top, w_o2_top, par_o2_top = result
 
