@@ -760,40 +760,44 @@ def build_mask_order2_uncontaminated(ytrace_o1, ytrace_o3, subarray='SUBSTRIP256
     if xlims is None:
         xlims = [700, 1800]
 
-    if point1 is None:
+    if (point1 is None) ^ (point2 is None):
+        msg = 'point1 and point2 must both be None or both be set.'
+        raise ValueError(msg)
 
+    elif (point1 is None) and (point2 is None):
+
+        # If no points were given use default values.
         point1 = [1249, 31]  # Assuming SUBSTRIP256.
-
-        if subarray == 'FULL':
-            point1[1] += 1792
-
-        if subarray == 'SUBSTRIP96':
-            point1[1] += -10
-
-    if point2 is None:
-
         point2 = [1911, 253]  # Assuming SUBSTRIP256.
 
         if subarray == 'FULL':
+            point1[1] += 1792
             point2[1] += 1792
 
         if subarray == 'SUBSTRIP96':
+            point1[1] += -10
             point2[1] += -10
 
-    if apex_order1 is not None:
+        # If apex_order1 was given shift the points as needed.
+        if apex_order1 is not None:
 
-        apex_default = 40  # Assuming SUBSTRIP256.
+            apex_default = 40  # Assuming SUBSTRIP256.
 
-        if subarray == 'FULL':
-            apex_default += 1792
+            if subarray == 'FULL':
+                apex_default += 1792
 
-        if subarray == 'SUBSTRIP96':
-            apex_default += -10
+            if subarray == 'SUBSTRIP96':
+                apex_default += -10
 
-        # Shift points based on apex_order1. TODO but only if points were None?
-        offset = apex_order1 - apex_default
-        point1[1] += offset
-        point2[1] += offset
+            # Shift points based on apex_order1.
+            offset = apex_order1 - apex_default
+            point1[1] += offset
+            point2[1] += offset
+
+    else:
+        msg = ('Using user-provided values for point1 and point2, '
+               'apex_order1 will be ignored.')
+        print(msg)
 
     # Mask the order 1 trace and everything below.
     mask_trace_o1 = build_mask_trace(ytrace_o1, subarray=subarray,
@@ -864,45 +868,50 @@ def build_mask_order3(subarray='SUBSTRIP256', xlim=None, point1=None, point2=Non
     if xlim is None:
         xlim = 700
 
-    if point1 is None:
+    if (point1 is None) ^ (point2 is None):
+        msg = 'point1 and point2 must both be None or both be set.'
+        raise ValueError(msg)
 
+    elif (point1 is None) & (point2 is None):
+
+        # If no points were given use default values.
         point1 = [0, 132]  # Assuming SUBSTRIP256.
-
-        if subarray == 'FULL':
-            point1[1] += 1792
-
-        if subarray == 'SUBSTRIP96':
-            point1[1] += -10
-
-    if point2 is None:
-
         point2 = [1000, 163]  # Assuming SUBSTRIP256.
 
         if subarray == 'FULL':
+            point1[1] += 1792
             point2[1] += 1792
 
         if subarray == 'SUBSTRIP96':
+            point1[1] += -10
             point2[1] += -10
 
-    if apex_order1 is not None:
+        # If apex_order1 was given shift the points as needed.
+        if apex_order1 is not None:
 
-        apex_default = 40  # Assuming SUBSTRIP256.
+            apex_default = 40  # Assuming SUBSTRIP256.
 
-        if subarray == 'FULL':
-            apex_default += 1792
+            if subarray == 'FULL':
+                apex_default += 1792
 
-        if subarray == 'SUBSTRIP96':
-            apex_default += -10
+            if subarray == 'SUBSTRIP96':
+                apex_default += -10
 
-        # Shift points based on apex_order1. TODO but only if points were None?
-        offset = apex_order1 - apex_default
-        point1[1] += offset
-        point2[1] += offset
+            # Shift points based on apex_order1.
+            offset = apex_order1 - apex_default
+            point1[1] += offset
+            point2[1] += offset
+
+    else:
+        msg = ('Using user-provided values for point1 and point2, '
+               'apex_order1 will be ignored.')
+        print(msg)
 
     # Check how close the boundary line is to the top of the subarray.
     if point1[1] > (dimy - 25 - 10):
-        msg = 'Warning: masking for order 3 with apex_order1={} leaves too little of order 3 to fit position.'
-        print(msg.format(apex_order1))
+        msg = ('Warning: masking for order 3 leaves too little of '
+               'order 3 to fit position.')
+        print(msg)
 
     # Mask everything beyond where the order 3 transmission approaches zero.
     mask_vertical = build_mask_vertical((dimy, dimx), [xlim], mask_right=True)
