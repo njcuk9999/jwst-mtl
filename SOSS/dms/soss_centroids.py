@@ -148,7 +148,7 @@ def center_of_mass(column, ypos, halfwidth):
     return ycom
 
 
-def get_uncontam_centroids(image, header=None, mask=None, poly_order=11, verbose=False):
+def get_centroids_com(image, header=None, mask=None, poly_order=11, verbose=False):
     """Determine the x, y coordinates of the trace using a center-of-mass analysis.
     Works for either order if there is no contamination, or for order 1 on a detector
     where the two orders are overlapping.
@@ -364,8 +364,8 @@ def edge_trigger(image, halfwidth=5, yos=1, verbose=False):
     return ytrace_max, ytrace_min, ytrace_best, widths_best
 
 
-def get_uncontam_centroids_edgetrig(image, header=None, mask=None, poly_order=11,
-                                    halfwidth=5, mode='combined', verbose=False):
+def get_centroids_edgetrigger(image, header=None, mask=None, poly_order=11,
+                              halfwidth=5, mode='combined', verbose=False):
     """Determine the x, y coordinates of the trace using the derivatives along the y-axis.
     Works for either order if there is no contamination.
 
@@ -1107,9 +1107,10 @@ def get_soss_centroids(image, mask=None, subarray='SUBSTRIP256', halfwidth=2,
         hdu.writeto('mask_256.fits', overwrite=True)
 
     # Get the order 1 trace position.
-    result = get_uncontam_centroids_edgetrig(
-            image, mask=mask_256, poly_order=default_orders['order 1'], halfwidth=halfwidth,
-            mode='combined', verbose=verbose)
+    result = get_centroids_edgetrigger(image, mask=mask_256,
+                                       poly_order=default_orders['order 1'],
+                                       halfwidth=halfwidth, mode='combined',
+                                       verbose=verbose)
 
     x_o1, y_o1, w_o1, par_o1 = result
 
@@ -1146,9 +1147,11 @@ def get_soss_centroids(image, mask=None, subarray='SUBSTRIP256', halfwidth=2,
         hdu.writeto('mask_o3.fits', overwrite=True)
 
     # Get the order 3 trace position.
-    result = get_uncontam_centroids_edgetrig(image, mask=mask_o3,
-                                             poly_order=default_orders['order 3'], halfwidth=halfwidth,
-                                             mode='combined', verbose=verbose)
+    result = get_centroids_edgetrigger(image, mask=mask_o3,
+                                       poly_order=default_orders['order 3'],
+                                       halfwidth=halfwidth, mode='combined',
+                                       verbose=verbose)
+
     x_o3, y_o3, w_o3, par_o3 = result
 
     # Add parameters to output dictionary.
@@ -1176,10 +1179,9 @@ def get_soss_centroids(image, mask=None, subarray='SUBSTRIP256', halfwidth=2,
         hdu.writeto('mask_o2_uncont.fits', overwrite=True)
 
     # Get the raw trace positions for the uncontaminated part of the order 2 trace.
-    result = get_uncontam_centroids_edgetrig(image,
-                                             mask=mask_o2_uncont,
-                                             poly_order=None, halfwidth=halfwidth,
-                                             mode='combined', verbose=verbose)
+    result = get_centroids_edgetrigger(image, mask=mask_o2_uncont,
+                                       poly_order=None, halfwidth=halfwidth,
+                                       mode='combined', verbose=verbose)
 
     x_o2_uncont, y_o2_uncont, w_o2_uncont, par_o2_uncont = result
 
@@ -1206,10 +1208,9 @@ def get_soss_centroids(image, mask=None, subarray='SUBSTRIP256', halfwidth=2,
         hdu.writeto('mask_o2_cont.fits', overwrite=True)
 
     # Get the raw top-edge poistions of the contaminated order 2 trace.
-    result = get_uncontam_centroids_edgetrig(image,
-                                             mask=mask_o2_cont,
-                                             poly_order=None, halfwidth=halfwidth,
-                                             mode='topedge', verbose=verbose)
+    result = get_centroids_edgetrigger(image, mask=mask_o2_cont,
+                                       poly_order=None, halfwidth=halfwidth,
+                                       mode='topedge', verbose=verbose)
 
     x_o2_top, y_o2_top, w_o2_top, par_o2_top = result
 
