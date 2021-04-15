@@ -764,7 +764,7 @@ def build_mask_order2_uncontaminated(ytrace_o1, ytrace_o3, subarray='SUBSTRIP256
         msg = 'point1 and point2 must both be None or both be set.'
         raise ValueError(msg)
 
-    elif (point1 is None) and (point2 is None):
+    elif (point1 is None) & (point2 is None):
 
         # If no points were given use default values.
         point1 = [1249, 31]  # Assuming SUBSTRIP256.
