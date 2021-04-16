@@ -613,7 +613,6 @@ def run_ami_sim(simname: str, observation: Observation):
     :param observation: the observation to run through AMI-SIM
     :return:
     """
-
     # set function name
     func_name = display_func('run_ami_sim', __NAME__)
     # get params
@@ -718,15 +717,35 @@ def run_ami_sim(simname: str, observation: Observation):
         observation.params.set_source(okey, func_name)
         # ---------------------------------------------------------------------
 
+
 def define_ami_sim_outkey(_filter: str):
+    """
+    Define the AMI SIM output key in the parameter dictionary
+
+    :param _filter: str, the filter used
+    :return:
+    """
     return 'AMI-SIM-OUT_{0}'.format(_filter)
 
 
 def run_mirage(observation: Observation):
+    """
+    Run the Mirage module on a specific observation
+
+    :param simname: the name of this simulation
+    :param observation: the observation to run through Mirage
+    :return:
+    """
     pass
 
 
 def define_mirage_sim_outkey(_filter: str):
+    """
+    Define the Miarge output key in the parameter dictionary
+
+    :param _filter: str, the filter used
+    :return:
+    """
     return 'MIRAGE_DMS_SIM-OUT_{0}'.format(_filter)
 
 
@@ -739,6 +758,12 @@ def define_mirage_sim_outkey(_filter: str):
 # Define AMICAL extract functions
 # =============================================================================
 def amical_extraction(simulations: List[Simulation]):
+    """
+    Loop around simulations and dispatch to AMICAL extraction
+
+    :param simulations: list of simulation instances
+    :return:
+    """
     # loop around simulations
     for simulation in simulations:
         # simulate using AMISIM
@@ -757,8 +782,16 @@ def amical_extraction(simulations: List[Simulation]):
 
 def run_amical_extraction(simname: str, observation: Observation,
                           calibrators: List[Observation], mode: str):
+    """
+    Run the AMI SIM module on a specific observation
 
+    :param simname: the name of this simulation
+    :param observation: the observation to run through AMI-SIM
+    :param calibrators: the calibrator observations
+    :param mode: str, either "amisim" or "mirage"
 
+    :return:
+    """
     # push parameters into a dictionary for ami
     params_ami = dict()
     # instrument name
@@ -910,18 +943,41 @@ def run_amical_extraction(simname: str, observation: Observation,
 
 def define_amical_ext_outname(simname: str, targetname: str, mode: str,
                               _filter: str):
+    """
+    Define the amical extraction output name
+
+    :param simname: str, simulation name
+    :param targetname: str, the target name of the observation
+    :param mode: str, either 'amisim' or 'mirage'
+    :param _filter: str, the filter used
+    :return:
+    """
     pargs = [simname, targetname, mode, _filter]
     return '{0}_{1}_{2}_NIRISS_{3}'.format(*pargs)
 
 
 def define_amical_ext_calname(simname: str, targetname: str, mode: str,
                               _filter: str):
+    """
+    Define the amical calibration extraction output name
 
+    :param simname: str, simulation name
+    :param targetname: str, the target name of the observation
+    :param mode: str, either 'amisim' or 'mirage'
+    :param _filter: str, the filter used
+    :return:
+    """
     pargs = [simname, targetname, mode, _filter]
     return '{0}_{1}_{2}_NIRISS_{3}.oifits'.format(*pargs)
 
 
 def define_amical_ext_outkey(_filter: str):
+    """
+    Define the AMICAL extraction output key in the parameter dictionary
+
+    :param _filter: str, the filter used
+    :return:
+    """
     return 'AMICAL-EXT-OUT_{0}'.format(_filter)
 
 

@@ -128,6 +128,7 @@ if __name__ == "__main__":
     wrap.sim_module(simulations)
 
     # TODO: wrap around dms
+    # wrap.do_dms(simulations)
 
     # wrap around ami-cal extraction
     wrap.amical_extraction(simulations)
@@ -135,6 +136,7 @@ if __name__ == "__main__":
     # TODO: wrap around ami-cal analysis
 
     # TODO: write code to use simulations / targets / calibrators / companions
+    # wrap.amical_analysis(simulations)
 
     # run main code
     #ll = main()
