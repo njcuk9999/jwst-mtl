@@ -9,11 +9,13 @@ Created on
 
 @author: 
 """
+import amical
 import numpy as np
 import os
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Union
+import matplotlib.pyplot as plt
 from mirage.apt import read_apt_xml
 import yaml
 
@@ -22,6 +24,7 @@ from ami_mtl.core.core import exceptions
 from ami_mtl.core.core import general
 from ami_mtl.core.core import param_functions
 from ami_mtl.science import etienne
+from ami_mtl.io import drs_file
 
 # =============================================================================
 # Define variables
@@ -573,7 +576,6 @@ def load_simulations(params: ParamDict, config_file: Union[str, Path]):
     return simulations
 
 
-
 # =============================================================================
 # Define simulation functions
 # =============================================================================
@@ -601,7 +603,6 @@ def sim_module(simulations: List[Simulation]):
             # simulate calibrators
             for calibrator in simulation.calibrators:
                 run_mirage(calibrator)
-
 
 
 def run_ami_sim(simname: str, observation: Observation):
@@ -712,17 +713,21 @@ def run_ami_sim(simname: str, observation: Observation):
                                            psf_filename, scenepath, count_rate,
                                            simname, target_name, nint, ngroups)
         # update param for sim file
-        okey = 'AMI-SIM-OUT_{0}'.format(_filter)
+        okey = define_ami_sim_outkey(_filter)
         observation.params[okey] = simfile
         observation.params.set_source(okey, func_name)
         # ---------------------------------------------------------------------
 
-
-
+def define_ami_sim_outkey(_filter: str):
+    return 'AMI-SIM-OUT_{0}'.format(_filter)
 
 
 def run_mirage(observation: Observation):
     pass
+
+
+def define_mirage_sim_outkey(_filter: str):
+    return 'MIRAGE_DMS_SIM-OUT_{0}'.format(_filter)
 
 
 # =============================================================================
@@ -731,7 +736,197 @@ def run_mirage(observation: Observation):
 
 
 # =============================================================================
-# Define AMICAL functions
+# Define AMICAL extract functions
+# =============================================================================
+def amical_extraction(simulations: List[Simulation]):
+    # loop around simulations
+    for simulation in simulations:
+        # simulate using AMISIM
+        if simulation.params['AMISIM-USE']:
+            # simulate using AMISIM
+            if simulation.params['AMICAL-EXT-USE']:
+                run_amical_extraction(simulation.name, simulation.target,
+                                      simulation.calibrators, mode='amisim')
+        # simulate using Mirage
+        if simulation.params['MIRAGE-USE']:
+            # simulate using AMISIM
+            if simulation.params['AMICAL-EXT-USE']:
+                run_amical_extraction(simulation.name, simulation.target,
+                                      simulation.calibrators, mode='mirage')
+
+
+def run_amical_extraction(simname: str, observation: Observation,
+                          calibrators: List[Observation], mode: str):
+
+
+    # push parameters into a dictionary for ami
+    params_ami = dict()
+    # instrument name
+    params_ami['instrum'] = 'NIRISS'
+    # Name of the mask
+    params_ami['maskname'] = observation.params['AMICAL_EXT_MASK_NAME']
+    # Use the multiple triangle technique to compute the bispectrum
+    params_ami['bs_multi_tri'] = observation.params['AMICAL_EXT_BS_MULTI_TRI']
+    # 3 methods are used to sample to u-v space:
+    # - 'fft' uses fft between individual holes to compute the expected
+    #         splodge position;
+    # - 'square' compute the splodge in a square using the expected fraction
+    #            of pixel to determine its weight;
+    # - 'gauss' considers a gaussian splodge (with a gaussian weight) to get
+    #           the same splodge side for each n(n-1)/2 baselines
+    params_ami['peakmethod'] = observation.params['AMICAL_EXT_PEAK_METHOD']
+    # NO DESC: Define the hole diameter
+    params_ami['hole_diam'] = observation.params['AMICAL_EXT_HOLE_DIAMETER']
+    # NO DESC: Define the cut off
+    params_ami['cutoff'] = observation.params['AMICAL_EXT_CUTOFF']
+    # Relative size of the splodge used to compute multiple triangle indices
+    #    and the fwhm of the 'gauss' technique
+    params_ami['fw_splodge'] = observation.params['AMICAL_EXT_FW_SPLODGE']
+    # If True, the uncertainties are computed using the std of the overall
+    #         cvis or bs array. Otherwise, the uncertainties are computed using
+    #         covariance matrice
+    params_ami['naive_err'] = observation.params['AMICAL_EXT_NATIVE_ERR']
+    # Number of elements to sample the spectral filters (default: 3)
+    params_ami['n_wl'] = observation.params['AMICAL_EXT_N_WL']
+    # Number of separated blocks use to split the data cube and get more
+    #         accurate uncertainties (default: 0, n_blocks = n_ps)
+    params_ami['n_blocks'] = observation.params['AMICAL_EXT_N_BLOCKS']
+    # Angle [deg] to rotate the mask compare to the detector (if the mask is not
+    #         perfectly aligned with the detector, e.g.: VLT/VISIR)
+    params_ami['theta_detctor'] = observation.params['AMICAL_EXT_THETA_DET']
+    # Only used for IFU data (e.g.: IFS/SPHERE), select the desired spectral channel
+    #         to retrieve the appropriate wavelength and mask positions
+    params_ami['scaling_uv'] = observation.params['AMICAL_EXT_SCALING_UV']
+    # NO DESC: Define i_wl
+    params_ami['i_wl'] = observation.params['AMICAL_EXT_I_WL']
+    # If True, the squared visibilities are unbiased using the Fourier base
+    params_ami['unbias_v2'] = observation.params['AMICAL_EXT_UNBIAS_V2']
+    # NO DESC: Define whether to compute CP cov
+    params_ami['compute_cp_cov'] = observation.params['AMICAL_EXT_COMP_CP_COV']
+    # NO DESC: Define whether to do the expert plot
+    params_ami['expert_plot'] = observation.params['AMICAL_EXT_EXPERT_PLOT']
+    # If True, print useful information during the process
+    params_ami['verbose'] = observation.params['']
+    # If True, display all figures
+    params_ami['display'] = observation.params['AMICAL_EXT_DISPLAY_PLOT']
+    # ---------------------------------------------------------------------
+    # loop around filters
+    # ---------------------------------------------------------------------
+    # loop around all filters to use
+    for _filter in observation.filters:
+        # update filter in params for ami
+        params_ami['filtname'] = _filter
+        # get input key
+        if mode == 'amisim':
+            key = define_ami_sim_outkey(_filter)
+        else:
+            key = define_mirage_sim_outkey(_filter)
+        # ---------------------------------------------------------------------
+        # get input data
+        # ---------------------------------------------------------------------
+        # get target input filename
+        target_inname = str(observation.params[key])
+        # ---------------------------------------------------------------------
+        # get calibrators input filename
+        calibator_innames = []
+        # loop around calibrators
+        for calibrator in calibrators:
+            calibator_innames.append(str(calibrator.params[key]))
+        # ---------------------------------------------------------------------
+        # construct output filename
+        # ---------------------------------------------------------------------
+        # get the target output filename
+        target_outname = define_amical_ext_outname(simname, observation.name,
+                                                   mode, _filter)
+        # get the calibrators output filenames
+        calibator_outnames = []
+        for calibrator in calibrators:
+            # construct the outname
+            calibrator_outname = define_amical_ext_outname(simname,
+                                                           calibrator.name,
+                                                           mode, _filter)
+            # add to calibrators list
+            calibator_outnames.append(calibrator_outname)
+        # ---------------------------------------------------------------------
+        # read cubes
+        # ---------------------------------------------------------------------
+        target_cube = drs_file.read_fits(observation.params, target_inname,
+                                         get_header=False)
+        calibrator_cubes = []
+        # loop around calibrators
+        for c_it, calibrator in enumerate(calibrators):
+            calibrator_cube = drs_file.read_fits(calibrator.params,
+                                                 calibator_innames[c_it],
+                                                 get_header=False)
+            # append to list
+            calibrator_cubes.append(calibrator_cube)
+        # ---------------------------------------------------------------------
+        # Extract raw complex observables for the target and the calibrator:
+        # It's the core of the pipeline (amical/mf_pipeline/bispect.py)
+        # ---------------------------------------------------------------------
+        # extract the target
+        target_bs = amical.extract_bs(target_cube, target_inname,
+                                      targetname=target_outname,
+                                      **params_ami)
+
+        # extract the calibrators
+        calibrators_bs = []
+        for c_it, calibrator in enumerate(calibrators):
+            # extract the calibrator
+            calib_bs = amical.extract_bs(calibrator_cubes[c_it],
+                                         calibator_innames[c_it],
+                                         targetname=calibator_outnames[c_it],
+                                         **params_ami)
+            # append calibrator to list
+            calibrators_bs.append(calib_bs)
+        # ---------------------------------------------------------------------
+        # Calibrate the raw data to get calibrated V2 and CP.
+        # bs_c can be a single calibrator result or a list of calibrators.
+        # (see amical/calibration.py for details).
+        # ---------------------------------------------------------------------
+        cal_target = amical.calibrate(target_bs, calibrators_bs)
+        # ---------------------------------------------------------------------
+        # Deal with plotting
+        # ---------------------------------------------------------------------
+        # display the plots
+        amical.show(cal_target)
+        if observation.params['AMICAL_EXT_DISPLAY_PLOT']:
+            plt.show(block=True)
+            plt.close()
+        # ---------------------------------------------------------------------
+        # Write calibrated output
+        # ---------------------------------------------------------------------
+        # create calibrated output filename
+        cal_target_outfilename = define_amical_ext_calname(simname,
+                                                           observation.name,
+                                                           mode, _filter)
+        # save the results as oifits
+        _ = amical.save(cal_target, oifits_file=cal_target_outfilename,
+                        fake_obj=observation.params['AMICAL_EXT_FAKE_OBJ'])
+        # push outfile into observation params
+        outkey = define_amical_ext_outkey(_filter)
+        observation.params[outkey] = cal_target_outfilename
+
+
+def define_amical_ext_outname(simname: str, targetname: str, mode: str,
+                              _filter: str):
+    pargs = [simname, targetname, mode, _filter]
+    return '{0}_{1}_{2}_NIRISS_{3}'.format(*pargs)
+
+
+def define_amical_ext_calname(simname: str, targetname: str, mode: str,
+                              _filter: str):
+
+    pargs = [simname, targetname, mode, _filter]
+    return '{0}_{1}_{2}_NIRISS_{3}.oifits'.format(*pargs)
+
+
+def define_amical_ext_outkey(_filter: str):
+    return 'AMICAL-EXT-OUT_{0}'.format(_filter)
+
+
+# =============================================================================
+# Define AMICAL analysis functions
 # =============================================================================
 
 

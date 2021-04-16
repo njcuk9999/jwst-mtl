@@ -359,6 +359,7 @@ Consts.add('AMISIM-MODULES', value='ami_sim.pyami', dtype=str,
 # =============================================================================
 #   Mirage constants
 # =============================================================================
+group = 'mirage'
 # Define switch whether to use Mirage
 Consts.add('MIRAGE-USE', value=True, dtype=bool, source=__NAME__,
            user=True, argument=False, group=group,
@@ -368,14 +369,158 @@ Consts.add('MIRAGE-USE', value=True, dtype=bool, source=__NAME__,
 # =============================================================================
 #   DMS constants
 # =============================================================================
+group = 'dms'
 
 # =============================================================================
 #   AMICAL constants
 # =============================================================================
+group = 'amical'
+# Define switch to use ami-cal extraction
+Consts.add('AMICAL-EXT-USE', value=True, dtype=bool, source=__NAME__,
+           user=True, argument=False, group=group,
+           description='Define switch to use ami-cal extraction',
+           path='amical.use.extraction')
+
+# Define switch to use ami-cal analysis (requires ami-cal extraction done)
+Consts.add('AMICAL-ANALYSIS-USE', value=True, dtype=bool, source=__NAME__,
+           user=True, argument=False, group=group,
+           description='Define switch to use ami-cal analysis '
+                       '(requires ami-cal extraction done)',
+           path='amical.use.analysis')
+
+# Define whether object is fake (for amical extract save)
+#    - i.e. observables are extracted from simulated data this means simbad
+#    search is ignored
+Consts.add('AMICAL_EXT_FAKE_OBJ', value=True, dtype=bool, source=__NAME__,
+           user=True, argument=False, group=group,
+           description='Define whether object is fake (for amical extract save)'
+                       ' - i.e. observables are extracted from simulated data '
+                       'this means simbad search is ignored',
+           path='amical.extract.fake_obj')
+
+# Define whether to plot amical extraction plots
+Consts.add('AMICAL_EXT_DISPLAY_PLOT', value=False, dtype=bool, source=__NAME__,
+           user=True, argument=False, group=group,
+           description='Define whether to plot amical extraction plots',
+           path='amical.extract.display_plots')
+
+# Define the name of the mask used in amical extraction
+Consts.add('AMICAL_EXT_MASK_NAME', value='g7', dtype=str, source=__NAME__,
+           user=True, arguemnt=False, group=group,
+           description='Define the name of the mask used in amical extraction',
+           path='amical.extract.mask_name')
+
+# Define whether to use the multiple triangle technique to compute the
+#    bispectrum
+Consts.add('AMICAL_EXT_BS_MULTI_TRI', value=False, dtype=bool, source=__NAME__,
+           description='Define whether to use the multiple triangle technique '
+                       'to compute the bispectrum',
+           path='amical.extract.bs_multi_tri')
+
+# Define which of the 3 methods are used to sample to u-v space
+# - 'fft' uses fft between individual holes to compute the expected
+#         splodge position;
+# - 'square' compute the splodge in a square using the expected fraction
+#            of pixel to determine its weight;
+# - 'gauss' considers a gaussian splodge (with a gaussian weight) to get
+#           the same splodge side for each n(n-1)/2 baselines
+Consts.add('AMICAL_EXT_PEAK_METHOD', value='fft', dtype=str, source=__NAME__,
+           description='Define which of the 3 methods are used to sample '
+                       'to u-v space. "fft" uses fft between individual '
+                       'holes to compute the expected splodge position '
+                       '"square" compute the splodge in a square using the '
+                       'expected fraction of pixel to determine its weight '
+                       '"gauss" considers a gaussian splodge (with a gaussian '
+                       'weight) to get the same splodge side for each n(n-1)/2 '
+                       'baselines',
+           path='amical.extract.peak_method')
+
+# Define the hole diameter for amical extract
+Consts.add('AMICAL_EXT_HOLE_DIAMETER', value=0.8, dtype=float, source=__NAME__,
+           description='Define the hole diameter for amical extract',
+           path='amical.extract.hole_diameter')
+
+# Define the cut off for amical extract
+Consts.add('AMICAL_EXT_CUTOFF', value=1e-4, dtype=float, source=__NAME__,
+           description='Define the cut off for amical extract',
+           path='amical.extract.cutoff')
+
+# Define the relative size of the splodge used to compute multiple triangle
+#    indices and the fwhm of the 'gauss' technique
+Consts.add('AMICAL_EXT_FW_SPLODGE', value=0.7, dtype=float, source=__NAME__,
+           description='Define the relative size of the splodge used to compute '
+                       'multiple triangle indices and the fwhm of the "gauss" '
+                       'technique',
+           path='amical.extract.fw_splodge')
+
+# Define switch, if True, the uncertainties are computed using the std of the
+#     overall cvis or bs array. Otherwise, the uncertainties are computed using
+#     covariance matrice
+Consts.add('AMICAL_EXT_NATIVE_ERR', value=False, dtype=bool, source=__NAME__,
+           description='Define switch, if True, the uncertainties are computed '
+                       'using the std of the overall cvis or bs array. '
+                       'Otherwise, the uncertainties are computed using '
+                       'covariance matrice',
+           path='amical.extract.native_err')
+
+# Define the number of elements to sample the spectral filters
+Consts.add('AMICAL_EXT_N_WL', value=3, dtype=int, source=__NAME__,
+           description='Define the number of elements to sample the spectral '
+                       'filters',
+           path='amical.extract.n_wl')
+
+# Define the number of separated blocks use to split the data cube and get
+#     more accurate uncertainties (default: 0, n_blocks = n_ps)
+Consts.add('AMICAL_EXT_N_BLOCKS', value=0, dtype=int, source=__NAME__,
+           description='Define the number of separated blocks use to split the '
+                       'data cube and get more accurate uncertainties '
+                       '(default: 0, n_blocks = n_ps)',
+           path='amical.extract.n_block')
+
+# Define the angle in [deg] to rotate the mask compare to the detector
+#      (if the mask is not perfectly aligned with the detector, e.g.: VLT/VISIR)
+Consts.add('AMICAL_EXT_THETA_DET', value=0, dtype=float, source=__NAME__,
+           description='Define the angle in [deg] to rotate the mask '
+                       'compare to the detector (if the mask is not perfectly '
+                       'aligned with the detector, e.g.: VLT/VISIR)',
+           path='amical.extract.theta_detector')
+
+# Define the scaling in the UV (Only used for IFU data)
+Consts.add('AMICAL_EXT_SCALING_UV', value=1, dtype=float, source=__NAME__,
+           description='Define the scaling in the UV (Only used for IFU data)',
+           path='amical.extract.scaling_uv')
+
+# Define i_wl
+Consts.add('AMICAL_EXT_I_WL', value=None, dtype=int, source=__NAME__,
+           description='Define i_wl', path='amical.extract.i_wl')
+
+# Define the switch, if True the squared visibilities are unbiased using
+# the Fourier base
+Consts.add('AMICAL_EXT_UNBIAS_V2', value=True, dtype=bool, source=__NAME__,
+           description='Define the switch, if True the squared visibilities '
+                       'are unbiased using the Fourier base',
+           path='amical.extract.unbias_v2')
+
+# Define whether to compute CP cov
+Consts.add('AMICAL_EXT_COMP_CP_COV', value=True, dtype=bool, source=__NAME__,
+           description='Define whether to compute CP cov',
+           path='amical.extract.comp_cp_cov')
+
+# Define whether to do the expert plot
+Consts.add('AMICAL_EXT_EXPERT_PLOT', value=False, dtype=bool, source=__NAME__,
+           description='Define whether to do the expert plot',
+           path='amical.extract.expert_plot')
+
+# Define whether to print useful information during the amical extract process
+Consts.add('AMICAL_EXT_VERBOSE', value=False, dtype=bool, source=__NAME__,
+           description='Define whether to print useful information during the '
+                       'amical extract process',
+           path='amical.extract.verbose')
 
 # =============================================================================
 #   IMPLANEIA constants
 # =============================================================================
+group = 'implaneia'
 
 # =============================================================================
 #   End of constants file
