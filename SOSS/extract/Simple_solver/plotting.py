@@ -9,17 +9,6 @@ File containing all diagnostic plotting functions for the simple solver.
 """
 
 import matplotlib.pyplot as plt
-import numpy as np
-import corner
-
-
-def _plot_corner(sampler):
-    '''Utility function to produce the corner plot for results of _do_emcee.
-    '''
-    labels = [r"ang", "xshift", "yshift"]
-    flat_samples = sampler.get_chain(discard=500, thin=15, flat=True)
-    fig = corner.corner(flat_samples, labels=labels)
-    plt.show()
 
 
 def _plot_transformation_steps(data_shift, data_rot, data_shiftback,
