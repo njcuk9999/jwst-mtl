@@ -46,129 +46,113 @@ def first_change(cond, axis=None):  # TODO unused, remove?
     return np.where(cond)
 
 
-def vrange(*args, return_where=False, dtype=None):  # TODO remove use of args...
-    """
-    Create concatenated ranges of integers for multiple start/stop
+def vrange(*args, dtype=None):
+    """Create concatenated ranges of integers for multiple start/stop values.
 
-    usage:
-        vrange([starts,] stops, return_where=False, dtype=None)
+    :param starts: start values for each range.
+    :param stops: end values for each range.
+    :param dtype: type of output array
 
-    Parameters:
-        starts (1-D array_like, optional):
-            starts for each range, default is 0
-        stops (1-D array_like):
-            stops for each range (same shape as starts)
-        return_where: bool, optional
-            return the corresponding indices to be able to
-            transform in a 2d array. Default is False.
-        dtype: type object, optional
-            type of output array
+    :type starts: array[]
+    :type stops: array[]
+    :type dtype:
 
-    Returns:
-        numpy.ndarray: concatenated ranges
-        indices of 2 axis
-
-    For example:
-
-        >>> starts = [1, 3, 4, 6]
-        >>> stops  = [1, 5, 7, 6]
-        >>> vrange(starts, stops)
-        array([3, 4, 4, 5, 6])
-
+    :returns: values, indices - 1D array of concatenated ranges, tuple of
+        indices for transforming the values to a 2D array.
+    :rtype: Tuple(array, Tuple(array, array))
     """
 
+    # Parse the input args.
     if len(args) == 1:
         starts = 0
     elif len(args) == 2:
         starts = args[0]
     else:
-        raise TypeError('vrange() takes at most 2 non-kw args')
+        raise TypeError('vrange() takes at most 2 non-keyword args.')
+
     stops = args[-1]
 
-    if return_where:
-        l = (stops - starts).astype(int)
-        ind1 = np.repeat(np.arange(len(l)), l)
-        ind2 = _vrange(0, l)
-        return _vrange(starts, stops, dtype), (ind1, ind2)
-    else:
-        return _vrange(starts, stops, dtype)
+    # Compute the 1D array of consecutive ranges.
+    values = _vrange(starts, stops, dtype)
+
+    # Compute indices for transforming the values to a 2D array.
+    lengths = (stops - starts).astype(int)
+    ind1 = np.repeat(np.arange(len(lengths)), lengths)
+    ind2 = _vrange(0, lengths)
+
+    return values, (ind1, ind2)
 
 
-def _vrange(starts, stops, dtype=None):  # TODO Merge with vrange?
+def _vrange(starts, stops, dtype=None):
+    """Create concatenated ranges of integers for multiple start/stop values.
+
+    :param starts: start values for each range.
+    :param stops: end values for each range.
+    :param dtype:
+
+    :type starts: array[]
+    :type stops: array[]
+    :type dtype:
+
+    :returns: ranges - an array containing the concatenated ranges.
+    :rtype: array
     """
-    Taken from a forum.
-    Create concatenated ranges of integers for multiple start/stop
 
-    Parameters:
-        starts (1-D array_like): starts for each range
-        stops (1-D array_like): stops for each range (same shape as starts)
+    # Check that starts and stops have the same shape.
+    if len(starts) != len(stops):
+        raise ValueError('starts and stops must have the same length.')
 
-    Returns:
-        numpy.ndarray: concatenated ranges
-
-    For example:
-
-        >>> starts = [1, 3, 4, 6]
-        >>> stops  = [1, 5, 7, 6]
-        >>> vrange(starts, stops)
-        array([3, 4, 4, 5, 6])
-
-    """
-    if (dtype == int) or (dtype is None):
-        stops = np.asarray(stops, dtype=dtype)
-        lengths = (stops - starts).astype(int)  # Lengths of each range.
-        return np.repeat(stops - lengths.cumsum(), lengths) + np.arange(lengths.sum())
-    else:
+    # Check if the dtype is valid.
+    if (dtype is not None) & (dtype != int):
         return NotImplemented
 
+    # Create the array of ranges.
+    stops = np.asarray(stops, dtype=dtype)
+    lengths = (stops - starts).astype(int)  # Lengths of each range.
+    values = np.repeat(stops - lengths.cumsum(), lengths) + np.arange(lengths.sum())
 
-def arange_2d(*args, dtype=None, return_mask=False):  # TODO remove use of args...
+    return values
+
+
+def arange_2d(*args, dtype=None):
+    """Create a 2D array containing a series of ranges. The ranges do not have
+    to be of equal length.
+
+    :param starts: start values for each range.
+    :param stops: end values for each range.
+    :param dtype:
+
+    :type starts: array[]
+    :type stops: array[]
+    :type dtype:
+
+    :returns: out, mask - The 2D array of ranges and a mask indicating valid
+        elements.
+    :rtype: Tuple(array[int], array[bool])
     """
-    Equivalent of numpy.arange, but in 2d.
 
-    usage:
-        vrange([starts,] stops, dtype=None, return_mask=False)
-
-    Parameters
-    ----------
-    starts (1-D array_like, optional):
-        starts for each range, default is 0
-    stops (1-D array_like):
-        stops for each range (same shape as starts)
-    dtype: type object, optional
-        type of output array
-    return_mask: bool, optional
-        Return a mask where the values are not valid.
-        If False, ones are put in these positions (weird).
-
-    Ouput
-    -----
-    numpy.ndarray: 2d arange
-    mask (ooptional)
-    """
+    # Parse the input args.
     if len(args) == 1:
         starts = 0
     elif len(args) == 2:
         starts = args[0]
     else:
-        raise TypeError('vrange() takes at most 2 non-kw args')
+        raise TypeError('arange_2d() takes at most 2 non-keyword args')
+
     stops = args[-1]
 
-    l1 = len(stops)
-    l2 = int((stops - starts).max())
+    # Initialize the output array.
+    nrows = len(stops)
+    ncols = int((stops - starts).max())
+    out = np.ones((nrows, ncols), dtype=dtype)
+    mask = np.ones((nrows, ncols), dtype='bool')
 
-    out = np.ones((l1, l2), dtype=dtype)
+    # Compute the 1D values and broadcast to 2D.
+    values, indices = vrange(starts, stops, dtype=dtype)
+    out[indices[0], indices[1]] = values
+    mask[indices[0], indices[1]] = False
 
-    values, ind = vrange(starts, stops,
-                         dtype=dtype, return_where=True)
-    out[ind[0], ind[1]] = values
-
-    if return_mask:
-        mask = np.ones((l1, l2), dtype=bool)
-        mask[ind[0], ind[1]] = False
-        return out, mask
-    else:
-        return out
+    return out, mask
 
 
 def arange_R_cst(x1, x2, res):
