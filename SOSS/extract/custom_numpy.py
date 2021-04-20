@@ -11,21 +11,17 @@ def _vrange(starts, stops, dtype=None):
 
     :param starts: start values for each range.
     :param stops: end values for each range.
-    :param dtype:
+    :param dtype: the type of the output values.
 
-    :type starts: array[]
-    :type stops: array[]
-    :type dtype:
+    :type starts: int or array[int]
+    :type stops: int or array[int]
+    :type dtype: str
 
-    :returns: ranges - an array containing the concatenated ranges.
-    :rtype: array
+    :returns: values - 1D array of concatenated ranges.
+    :rtype: array[int]
     """
 
-    # Check that starts and stops have the same shape.
-    if len(starts) != len(stops):
-        raise ValueError('starts and stops must have the same length.')
-
-    # Check if the dtype is valid.
+    # Check if the dtype is valid. # TODO not sure what this does?
     if (dtype is not None) & (dtype != int):
         return NotImplemented
 
@@ -37,69 +33,77 @@ def _vrange(starts, stops, dtype=None):
     return values
 
 
-def vrange(*args, dtype=None):
+def vrange(starts, stops, dtype=None):
     """Create concatenated ranges of integers for multiple start/stop values.
 
     :param starts: start values for each range.
     :param stops: end values for each range.
     :param dtype: type of output array
 
-    :type starts: array[]
-    :type stops: array[]
-    :type dtype:
+    :type starts: int or array[int]
+    :type stops: int or array[int]
+    :type dtype: str
 
-    :returns: values, indices - 1D array of concatenated ranges, tuple of
-        indices for transforming the values to a 2D array.
-    :rtype: Tuple(array, Tuple(array, array))
+    :returns: values, irow, icol - 1D array of concatenated ranges, row and
+        column indices for transforming the values to a 2D array.
+    :rtype: Tuple(array[int], array[int], array[int])
     """
 
-    # Parse the input args.
-    if len(args) == 1:
-        starts = 0
-    elif len(args) == 2:
-        starts = args[0]
-    else:
-        raise TypeError('vrange() takes at most 2 non-keyword args.')
+    # Ensure starts and stops are arrays.
+    starts = np.asarray(starts)
+    stops = np.asarray(stops)
 
-    stops = args[-1]
+    # Check input for starts and stops is valid.
+    if (starts.shape != stops.shape) & (starts.shape != ()):
+        msg = ('Shapes of starts and stops are not compatible, '
+               'they must either have the same shape or starts must be scalar.')
+        raise ValueError(msg)
+
+    if np.any(stops < starts):
+        msg = 'stops must be everywhere greater or equal to starts.'
+        raise ValueError(msg)
 
     # Compute the 1D array of consecutive ranges.
     values = _vrange(starts, stops, dtype)
 
     # Compute indices for transforming the values to a 2D array.
     lengths = (stops - starts).astype(int)
-    ind1 = np.repeat(np.arange(len(lengths)), lengths)
-    ind2 = _vrange(0, lengths)
+    irow = np.repeat(np.arange(len(lengths)), lengths)
+    icol = _vrange(0, lengths)
 
-    return values, (ind1, ind2)
+    return values, irow, icol
 
 
-def arange_2d(*args, dtype=None):
+def arange_2d(starts, stops, dtype=None):
     """Create a 2D array containing a series of ranges. The ranges do not have
     to be of equal length.
 
     :param starts: start values for each range.
     :param stops: end values for each range.
-    :param dtype:
+    :param dtype: the type of the output values.
 
-    :type starts: array[]
-    :type stops: array[]
-    :type dtype:
+    :type starts: int or array[int]
+    :type stops: int or array[int]
+    :type dtype: str
 
-    :returns: out, mask - The 2D array of ranges and a mask indicating valid
+    :returns: out, mask - 2D array of ranges and a mask indicating valid
         elements.
     :rtype: Tuple(array[int], array[bool])
     """
 
-    # Parse the input args.
-    if len(args) == 1:
-        starts = 0
-    elif len(args) == 2:
-        starts = args[0]
-    else:
-        raise TypeError('arange_2d() takes at most 2 non-keyword args')
+    # Ensure starts and stops are arrays.
+    starts = np.asarray(starts)
+    stops = np.asarray(stops)
 
-    stops = args[-1]
+    # Check input for starts and stops is valid.
+    if (starts.shape != stops.shape) & (starts.shape != ()):
+        msg = ('Shapes of starts and stops are not compatible, '
+               'they must either have the same shape or starts must be scalar.')
+        raise ValueError(msg)
+
+    if np.any(stops < starts):
+        msg = 'stops must be everywhere greater or equal to starts.'
+        raise ValueError(msg)
 
     # Initialize the output array.
     nrows = len(stops)
@@ -108,8 +112,8 @@ def arange_2d(*args, dtype=None):
     mask = np.ones((nrows, ncols), dtype='bool')
 
     # Compute the 1D values and broadcast to 2D.
-    values, indices = vrange(starts, stops, dtype=dtype)
-    out[indices[0], indices[1]] = values
-    mask[indices[0], indices[1]] = False
+    values, irow, icol = vrange(starts, stops, dtype=dtype)
+    out[irow, icol] = values
+    mask[irow, icol] = False
 
     return out, mask
