@@ -6,6 +6,37 @@
 import numpy as np
 
 
+def _vrange(starts, stops, dtype=None):
+    """Create concatenated ranges of integers for multiple start/stop values.
+
+    :param starts: start values for each range.
+    :param stops: end values for each range.
+    :param dtype:
+
+    :type starts: array[]
+    :type stops: array[]
+    :type dtype:
+
+    :returns: ranges - an array containing the concatenated ranges.
+    :rtype: array
+    """
+
+    # Check that starts and stops have the same shape.
+    if len(starts) != len(stops):
+        raise ValueError('starts and stops must have the same length.')
+
+    # Check if the dtype is valid.
+    if (dtype is not None) & (dtype != int):
+        return NotImplemented
+
+    # Create the array of ranges.
+    stops = np.asarray(stops, dtype=dtype)
+    lengths = (stops - starts).astype(int)  # Lengths of each range.
+    values = np.repeat(stops - lengths.cumsum(), lengths) + np.arange(lengths.sum())
+
+    return values
+
+
 def vrange(*args, dtype=None):
     """Create concatenated ranges of integers for multiple start/stop values.
 
@@ -41,37 +72,6 @@ def vrange(*args, dtype=None):
     ind2 = _vrange(0, lengths)
 
     return values, (ind1, ind2)
-
-
-def _vrange(starts, stops, dtype=None):
-    """Create concatenated ranges of integers for multiple start/stop values.
-
-    :param starts: start values for each range.
-    :param stops: end values for each range.
-    :param dtype:
-
-    :type starts: array[]
-    :type stops: array[]
-    :type dtype:
-
-    :returns: ranges - an array containing the concatenated ranges.
-    :rtype: array
-    """
-
-    # Check that starts and stops have the same shape.
-    if len(starts) != len(stops):
-        raise ValueError('starts and stops must have the same length.')
-
-    # Check if the dtype is valid.
-    if (dtype is not None) & (dtype != int):
-        return NotImplemented
-
-    # Create the array of ranges.
-    stops = np.asarray(stops, dtype=dtype)
-    lengths = (stops - starts).astype(int)  # Lengths of each range.
-    values = np.repeat(stops - lengths.cumsum(), lengths) + np.arange(lengths.sum())
-
-    return values
 
 
 def arange_2d(*args, dtype=None):
