@@ -175,8 +175,8 @@ def get_centroids_com(image, header=None, mask=None, poly_order=11, verbose=Fals
         mask = np.zeros_like(image, dtype='bool')
 
     # Call the script that determines the dimensions of the stack.
-    dimx, dimy, xos, yos, xnative, ynative, padding, refpix_mask = \
-        get_image_dim(image, header=header, verbose=verbose)
+    result = get_image_dim(image, header=header, verbose=verbose)
+    dimx, dimy, xos, yos, xnative, ynative, padding, refpix_mask = result
 
     # Replace masked pixel values with NaNs.
     image_masked = np.where(mask | ~refpix_mask, np.nan, image)
@@ -395,8 +395,8 @@ def get_centroids_edgetrigger(image, header=None, mask=None, poly_order=11,
         mask = np.zeros_like(image, dtype='bool')
 
     # Call the script that determines the dimensions of the image.
-    dimx, dimy, xos, yos, xnative, ynative, padding, refpix_mask = \
-        get_image_dim(image, header=header, verbose=verbose)
+    result = get_image_dim(image, header=header, verbose=verbose)
+    dimx, dimy, xos, yos, xnative, ynative, padding, refpix_mask = result
 
     # Replace masked pixel values with NaNs.
     image_masked = np.where(mask | ~refpix_mask, np.nan, image)
