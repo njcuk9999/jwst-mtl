@@ -6,46 +6,6 @@
 import numpy as np
 
 
-def is_sorted(x, no_dup=True):  # TODO unused, remove?
-    """
-    Check if x is sorted and has noo duplicates (if no_dup is True).
-    Returns True of False.
-    """
-    if no_dup:
-        return (np.diff(x) > 0).all()
-    else:
-        return (np.diff(x) >= 0).all()
-
-
-def fill_list(x, fill_value=np.nan, **kwargs):  # TODO unused, remove?
-    """
-    Fill a list `x` (N, non-constant M)
-    to make an array (N, M) with it.
-    kwargs are passed to np.ones to initiate
-    the output array (so possibility to specify the dtype)
-    """
-    n1 = len(x)
-    n2 = np.max([len(x_i) for x_i in x])
-
-    out = np.ones((n1, n2), **kwargs) * fill_value
-    for i, x_i in enumerate(x):
-        out[i, :len(x_i)] = x_i
-
-    return out
-
-
-def first_change(cond, axis=None):  # TODO unused, remove?
-    """
-    Returns the position before the first change
-    in array value, along axis. If no change is found,
-    an empty array will be returned.
-    """
-    # Find first change
-    cond = np.diff(cond, axis=axis)
-    # Return position
-    return np.where(cond)
-
-
 def vrange(*args, dtype=None):
     """Create concatenated ranges of integers for multiple start/stop values.
 
@@ -153,14 +113,3 @@ def arange_2d(*args, dtype=None):
     mask[indices[0], indices[1]] = False
 
     return out, mask
-
-
-def arange_R_cst(x1, x2, res):
-    """
-    Return an array with constant resolution so
-    that x/dx = res = constant
-    """
-    log_dx = np.log(1.0 + 1.0/res)
-    log_x = np.arange(np.log(x1), np.log(x2), log_dx)
-
-    return np.exp(log_x)
