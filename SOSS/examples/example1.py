@@ -156,7 +156,7 @@ expected_counts = smag.expected_flux_calibration(
                     response_file=pathPars.throughputfile,
                     pathfilter=pathPars.path_filtertransmission,
                     pathvega=pathPars.path_filtertransmission)
-# Measure the actual counts on the simulated images
+# Measure the actual counts on only the first (out-of-transit) simulated image
 simulated_counts = smag.measure_actual_flux(imagelist[0], xbounds=[0,2048], ybounds=[0,256],
                         noversample=simuPars.noversample)
 # Prints the expected/measured counts
@@ -181,6 +181,21 @@ detector.add_noise(os.path.join(WORKING_DIR,'test.fits'),
 # Process the data through the DMS level 1 pipeline
 result = Detector1Pipeline.call(os.path.join(WORKING_DIR, 'test_noisy.fits'),
                                 output_file='test_noisy', output_dir=WORKING_DIR)
+
+'''
+SIMULATE THE F277W CALIBRATION EXPOSURE OBTAINED AFTER THE GR700XD EXPOSURE
+- read new star model (with F277W transmission included)
+- planet model: no change
+- determine time steps for F277W short time series
+- Figure out the flux scaling between F277W and GR700XD and apply normalization_scale * it
+- Convert to up-the-ramp images, store on disk
+- Add detector noise
+- Process the data through DMS
+'''
+
+
+
+
 
 print('The end of the simulation')
 
