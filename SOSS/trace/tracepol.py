@@ -124,7 +124,7 @@ def get_tracepars(filename=None, origin=ORIGIN_CV3, angle=ANGLE_CV3,
     :type angle: float
 
     :returns: tracepars - a dictionary containg the parameters for the polynomial fits.
-    For example tracepars[-1] is a thing. It returns the order=-1 dictionary.
+    For example tracepars[-1] returns the parameters for order = -1 as a dictionary.
     :rtype: dict
     """
     
