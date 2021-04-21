@@ -33,7 +33,6 @@ def apply_rotation(coords, origin=np.array([1419.8897384173,472.9340739229]), an
 
     :returns: x_rot, y_rot - rotated coordinates.
     :rtype: Tuple(array[float], array[float])
-
     """
 
     x, y = coords
@@ -185,23 +184,25 @@ def bounds_check(values, lower, upper):
 def subarray_wavelength_bounds(tracepars, subarray='SUBSTRIP256', m=1,
                                specpix_offset=0, spatpix_offset=0,
                                return_pixel_bounds=False):
-    '''
-    This function's goal is to return the wavelengths bounds where
+    """This function's goal is to return the wavelengths bounds where
     the spectral order is within the subarray pixels.
+
     :param tracepars: polynomial fit to the optics model
     :param subarray:
     :param m: spectral order, one of these: 1, 2, 3
-    :param specpix_offset: a pixel offset by which traces are
-    positionned relative to the model
-    :param spatpix_offset: a pixel offset by which traces are
-    positionned relative to the model
-    :return:
-    wave_min and wave_max: the smallest and largest wavelengths
-    landing within the subarray.
-    '''
+    :param specpix_offset: a pixel offset by which traces are positionned
+        relative to the model
+    :param spatpix_offset: a pixel offset by which traces are positionned
+        relative to the model
+    :param return_pixel_bounds: If True return the bounds in units of pixels.
+
+    :returns: wave_min, wave_max - the minimum and maxiumum wavelengths present
+        within the subarray.
+    :rtype: Tuple(float, float)
+    """
 
     # Generate wavelengths (microns) spanning all orders
-    wavelength = np.linspace(0.5,5.5,50001)
+    wavelength = np.linspace(0.5, 5.5, 50001)
 
     # Convert wavelength to nat pixel coordinates.
     # tracepars accepts m = -1, 0, 1, 2 or 3
@@ -214,10 +215,10 @@ def subarray_wavelength_bounds(tracepars, subarray='SUBSTRIP256', m=1,
     # Convert coordinates to the requested frame.
     specpix, spatpix = pix_ref_to_frame(specpix_nat, spatpix_nat, frame='dms', subarray=subarray)
 
-    #import matplotlib.pyplot as plt
-    #plt.plot(wavelength, spatpix)
-    #plt.plot(wavelength, specpix)
-    #plt.show()
+    # import matplotlib.pyplot as plt
+    # plt.plot(wavelength, spatpix)
+    # plt.plot(wavelength, specpix)
+    # plt.show()
 
     # Depending on subarray, determine the wavelengths that
     # fall within the subarray.
