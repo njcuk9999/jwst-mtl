@@ -354,7 +354,7 @@ def calibrate_tracepol():
 
 
 
-    please_check = False
+    please_check = True
 
     if please_check:
 
