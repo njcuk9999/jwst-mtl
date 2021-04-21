@@ -21,7 +21,7 @@ def apply_rotation(coords, origin=np.array([1419.8897384173,472.9340739229]), an
     The angle should be given in radians. This transformation is performed
     in the native coordinates (aka ds9).
 
-    The defaults were obtained using generate_calibration() in cv3_calibration.py
+    The defaults were obtained using calibrate_tracepol.py
 
     :param coords: x, y coordinates to rotate.
     :param origin: point around which to rotate the coordinates.
