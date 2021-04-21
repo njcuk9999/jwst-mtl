@@ -183,7 +183,8 @@ def bounds_check(values, lower, upper):
 
 
 def subarray_wavelength_bounds(tracepars, subarray='SUBSTRIP256', m=1,
-                               specpix_offset=0, spatpix_offset=0):
+                               specpix_offset=0, spatpix_offset=0,
+                               return_pixel_bounds=False):
     '''
     This function's goal is to return the wavelengths bounds where
     the spectral order is within the subarray pixels.
@@ -243,7 +244,14 @@ def subarray_wavelength_bounds(tracepars, subarray='SUBSTRIP256', m=1,
     wave_min = np.min(wavelength[mask])
     wave_max = np.max(wavelength[mask])
 
-    return wave_min, wave_max
+    # Could also ask for pixel boundaries
+    pixel_min = np.min(specpix[mask])
+    pixel_max = np.max(specpix[mask])
+
+    if return_pixel_bounds:
+        return pixel_min, pixel_max
+    else:
+        return wave_min, wave_max
 
 
 def specpix_ref_to_frame(specpix_ref, frame='dms', oversample=1):

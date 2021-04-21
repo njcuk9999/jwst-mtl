@@ -148,7 +148,7 @@ def apply_calibration(param, x, y):
 def calibrate_tracepol():
     '''
     Calibrate the tracepol default rotation+offsets based on the CV3
-    deep stack and the contaminated_centroid function.
+    deep stack and the get_soss_centroid function.
     :return:
     '''
 
@@ -354,7 +354,7 @@ def calibrate_tracepol():
 
 
 
-    please_check = True
+    please_check = False
 
     if please_check:
 
@@ -376,6 +376,7 @@ def calibrate_tracepol():
 
         # First recalculate model positions for all observed positions
         param = tp.get_tracepars(filename=optmodel, disable_rotation=False)
+        print(param)
         x_mod_o1, y_mod_o1, mask_mod_o1 = tp.wavelength_to_pix(w_o1,
                                                                param, m=1,
                                                                frame='dms',
@@ -458,6 +459,7 @@ def calibrate_tracepol():
         frame['B'].xaxis.set_ticks_position('top')
         frame['B'].set_xlabel('Y Pixel Deviation')
 
+        plt.tight_layout()
         plt.savefig('/genesis/jwst/userland-soss/loic_review/traces_position_CV3_vs_Optics.png')
         plt.show()
 
