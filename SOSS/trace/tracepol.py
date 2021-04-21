@@ -13,11 +13,13 @@ from astropy.io import ascii
 # SUBSTRIP256 keeps columns 0:255 (0 based) in the nat frame.
 # SUBSTRIP96 keeps columns 150:245 (0 based) in the nat frame.
 
+# Default parameters for the CV3 calibration of the trace positions.
+ANGLE_CV3 = 1.3824300138
+ORIGIN_CV3 = np.array([1419.8897384173, 472.9340739229])
 
-def apply_rotation(coords, origin=np.array([1419.8897384173,472.9340739229]), angle=1.3824300138):
 
-    """
-    Rotate a point counterclockwise by a given angle around a given origin.
+def apply_rotation(coords, origin=ORIGIN_CV3, angle=ANGLE_CV3):
+    """Rotate a point counterclockwise by a given angle around a given origin.
     The angle should be given in radians. This transformation is performed
     in the native coordinates (aka ds9).
 
@@ -106,10 +108,8 @@ def trace_polynomial(trace, m=1, maxorder=15):
     return pars
 
 
-#def get_tracepars(filename=None, origin=np.array([1365.1909267381, 470.0979813298]), angle=1.3868425075,
-#                  disable_rotation=False):
-def get_tracepars(filename=None, origin=None, angle=None, disable_rotation=False):
-
+def get_tracepars(filename=None, origin=ORIGIN_CV3, angle=ANGLE_CV3,
+                  disable_rotation=False):
     """Read a file containing the trace profile and generate
     polynomial parameters for each order.
 
@@ -140,17 +140,10 @@ def get_tracepars(filename=None, origin=None, angle=None, disable_rotation=False
     trace['xpos'] -= 0.5  # Set the origin at the center of the lower-left pixel.
     trace['ypos'] -= 0.5  # Set the origin at the center of the lower-left pixel.
 
-    # Apply rotation around point (by default)
-    if disable_rotation == False:
-        print('get_tracepars - Apply rotation to Optics model.')
-        if (origin is not None) & (angle is not None):
-            trace['xpos'], trace['ypos'] = apply_rotation((trace['xpos'], trace['ypos']), origin=origin, angle=angle)
-        elif angle is not None:
-            trace['xpos'], trace['ypos'] = apply_rotation((trace['xpos'], trace['ypos']), angle=angle)
-        elif origin is not None:
-            trace['xpos'], trace['ypos'] = apply_rotation((trace['xpos'], trace['ypos']), origin=origin)
-        else:
-            trace['xpos'], trace['ypos'] = apply_rotation((trace['xpos'], trace['ypos']))
+    # Apply rotation around point (by default).
+    if not disable_rotation:
+
+        trace['xpos'], trace['ypos'] = apply_rotation((trace['xpos'], trace['ypos']), origin=origin, angle=angle)
 
     # Compute polynomial parameters for different orders.
     tracepars = dict()
