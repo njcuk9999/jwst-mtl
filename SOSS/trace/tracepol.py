@@ -174,78 +174,59 @@ def bounds_check(values, lower, upper):
     return mask
 
 
-def subarray_wavelength_bounds(tracepars, subarray='SUBSTRIP256', m=1,
-                               specpix_offset=0, spatpix_offset=0,
-                               return_pixel_bounds=False):
-    """This function's goal is to return the wavelengths bounds where
-    the spectral order is within the subarray pixels.
+def subarray_wavelength_bounds(tracepars, m=1, subarray='SUBSTRIP256',
+                               specpix_offset=0, spatpix_offset=0):
+    """Compute the minimum and maximum wavelength of a given order in a given
+    subarray.
 
-    :param tracepars: polynomial fit to the optics model
-    :param subarray:
-    :param m: spectral order, one of these: 1, 2, 3
-    :param specpix_offset: a pixel offset by which traces are positionned
-        relative to the model
-    :param spatpix_offset: a pixel offset by which traces are positionned
-        relative to the model
-    :param return_pixel_bounds: If True return the bounds in units of pixels.
+    :param tracepars: the trace polynomial solutions returned by get_tracepars.
+    :param subarray: the output coordinate subarray.
+    :param m: the spectral order.
+    :param specpix_offset: a pixel offset by which the traces are positioned
+        relative to the model given by tracepars.
+    :param spatpix_offset: a pixel offset by which the traces are positioned
+        relative to the model given by tracepars.
 
-    :returns: wave_min, wave_max - the minimum and maxiumum wavelengths present
-        within the subarray.
-    :rtype: Tuple(float, float)
+    :returns: (wave_min, wave_max), (pixel_min, pixel_max) - A tuple of
+        wavelength bounds and a tuple of the corresponding pixel bounds.
+    :rtype: Tuple(Tuple(float, float), Tuple(float, float))
     """
 
     # Generate wavelengths (microns) spanning all orders
     wavelength = np.linspace(0.5, 5.5, 50001)
 
-    # Convert wavelength to nat pixel coordinates.
-    # tracepars accepts m = -1, 0, 1, 2 or 3
-    w2spec = Legendre(tracepars[m]['spec_coef'], domain=tracepars[m]['spec_domain'])
-    w2spat = Legendre(tracepars[m]['spat_coef'], domain=tracepars[m]['spat_domain'])
+    # Convert wavelengths to dms pixel coordinates in the requested subarray.
+    specpix, spatpix, _ = wavelength_to_pix(wavelength, tracepars, m=m, frame='dms', subarray=subarray)
 
-    specpix_nat = w2spec(np.log(wavelength))
-    spatpix_nat = w2spat(np.log(wavelength))
+    # Apply the offsets.
+    specpix = specpix + specpix_offset
+    spatpix = spatpix + spatpix_offset
 
-    # Convert coordinates to the requested frame.
-    specpix, spatpix = pix_ref_to_frame(specpix_nat, spatpix_nat, frame='dms', subarray=subarray)
+    # Determine the valid region in both pixel coordinate directions.
+    mask_spec = (specpix >= 0) & (specpix < 2048)
 
-    # import matplotlib.pyplot as plt
-    # plt.plot(wavelength, spatpix)
-    # plt.plot(wavelength, specpix)
-    # plt.show()
-
-    # Depending on subarray, determine the wavelengths that
-    # fall within the subarray.
-    specpix_dms_min = 0 - specpix_offset
-    specpix_dms_max = 2048 - specpix_offset
     if subarray == 'SUBSTRIP256':
-        spatpix_dms_min = 0 - spatpix_offset
-        spatpix_dms_max = 256 - spatpix_offset
+        mask_spat = (spatpix >= 0) & (spatpix < 256)
     elif subarray == 'SUBSTRIP96':
-        spatpix_dms_min = 0 - spatpix_offset
-        spatpix_dms_max = 96 - spatpix_offset
+        mask_spat = (spatpix >= 0) & (spatpix < 96)
     elif subarray == 'FULL':
-        spatpix_dms_min = 0 - spatpix_offset
-        spatpix_dms_max = 2048 - spatpix_offset
+        mask_spat = (spatpix >= 0) & (spatpix < 2048)
     else:
-        print('tracepol --> subarray_wavelength_bounds reached a corner case, investigate.')
-        sys.exit()
+        msg = 'Unknown subarray: {}'
+        raise ValueError(msg.format(subarray))
 
-    # Generate a mask of wavelengths that are within the subarray
-    mask = (specpix >= specpix_dms_min) & (specpix < specpix_dms_max) & \
-           (spatpix >= spatpix_dms_min) & (spatpix < spatpix_dms_max)
+    # Combine the masks.
+    mask = mask_spec & mask_spat
 
-    # Finally, obtain the wavelength boundaries
+    # Obtain the bounds in wavelength units.
     wave_min = np.min(wavelength[mask])
     wave_max = np.max(wavelength[mask])
 
-    # Could also ask for pixel boundaries
+    # Obtain the bounds in pixel units.
     pixel_min = np.min(specpix[mask])
     pixel_max = np.max(specpix[mask])
 
-    if return_pixel_bounds:
-        return pixel_min, pixel_max
-    else:
-        return wave_min, wave_max
+    return (wave_min, wave_max), (pixel_min, pixel_max)
 
 
 def specpix_ref_to_frame(specpix_ref, frame='dms', oversample=1):
@@ -425,7 +406,8 @@ def pix_frame_to_ref(specpix, spatpix, frame='dms', subarray='SUBSTRIP256', over
     :type subarray: str
     :type oversample: int
 
-    :returns: specpix_ref, spatpix_ref - the input coordinates transformed to nat coordinate frame and SUBSTRIP256 subarray.
+    :returns: specpix_ref, spatpix_ref - the input coordinates transformed to
+        nat coordinate frame and SUBSTRIP256 subarray.
     :rtype: Tuple(array[float], array[float])
     """
 

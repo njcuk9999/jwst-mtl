@@ -394,15 +394,16 @@ def calibrate_tracepol():
                                                                oversample=1)
 
         # Determine the wavelength boundaries for nice display purposes
-        wmin1, wmax1 = tp.subarray_wavelength_bounds(param, subarray='SUBSTRIP256', m=1,
+        wavebounds1, _ = tp.subarray_wavelength_bounds(param, subarray='SUBSTRIP256', m=1,
                                        specpix_offset=0, spatpix_offset=0)
-        wmin2, wmax2 = tp.subarray_wavelength_bounds(param, subarray='SUBSTRIP256', m=2,
+        wavebounds2, _ = tp.subarray_wavelength_bounds(param, subarray='SUBSTRIP256', m=2,
                                        specpix_offset=0, spatpix_offset=0)
-        wmin3, wmax3 = tp.subarray_wavelength_bounds(param, subarray='SUBSTRIP256', m=3,
+        wavebounds3, _ = tp.subarray_wavelength_bounds(param, subarray='SUBSTRIP256', m=3,
                                        specpix_offset=0, spatpix_offset=0)
-        indo1 = (w_o1 >= wmin1) & (w_o1 <= wmax1)
-        indo2 = (w_o2 >= wmin2) & (w_o2 <= wmax2)
-        indo3 = (w_o3 >= wmin3) & (w_o3 <= wmax3)
+
+        indo1 = (w_o1 >= wavebounds1[0]) & (w_o1 <= wavebounds1[1])
+        indo2 = (w_o2 >= wavebounds2[0]) & (w_o2 <= wavebounds2[1])
+        indo3 = (w_o3 >= wavebounds3[0]) & (w_o3 <= wavebounds3[1])
 
         frame['A'].set_xlim((0,2048))
         frame['A'].set_ylim((0,256))
