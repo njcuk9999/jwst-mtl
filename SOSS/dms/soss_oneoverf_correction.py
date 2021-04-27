@@ -45,93 +45,79 @@ def make_background_mask(deepstack, width=20):
     return bkg_mask
     
 
-def soss_oneoverf_correction(image, deepstack, backgroundmask=None, 
-                             make_net_bias_zero=False):
-    """This function does a column by column subtraction of a "difference"
-    images (a SOSS integration - a deep stack of the same time series) to 
-    remove the 1/f noise from each individual integration.
+def soss_oneoverf_correction(scidata, scimask, deepstack, bkg_mask=None,
+                             zero_bias=False):
+    """Compute a columnwise correction to the 1/f noise on the difference image
+    of an inidividual SOSS integration (i.e. an individual integration - a deep
+    image of the same observation).
     
-    image : Image for a single integration. The flux units have to be the same
-            as that of the deep stack to allow for a proper subtraction.
-    deepstack : Image obtained by stacking a large number of single integra-
-            tions in the same observing sequence as the input image. The idea
-            is for deepstack to be of significantly higher SNR than the image.
-    errormap : Uncertainty associated with the input image. That will be used
-            set thresholds for masking pixels having significant star flux. If
-            no errormap is passed then an estimate of the photon noise + read
-            out noise will be calculated based on the input image alone.
-    backgroundmask : A mask of the pixels considered to be mostly free of
-            star flux. Those with light contamination are masked out. If no
-            such map is passed then one will be constructed.
-    make_net_bias_zero : Controls whether or not we want the net overall flux
-            (avaraged over the full image) to remain as it was before the
-            column correction was applied. By dedault, make_net_bias_zero is
-            False and we let the bias float.
-            
-    returns : 1) corrected image. i.e. image - correctionmap
-              2) the overall DC offset produced by that correction
-    
+    :param scidata: the image of the SOSS trace.
+    :param scimask: a boolean mask of pixels to be excluded based on the DQ
+        values.
+    :param deepstack: a deep image of the trace constructed by combining
+        individual integrations of the observation.
+    :param bkg_mask:
+        a boolean mask of pixels to be exluded because they are in the trace, if
+        not provided a mask will be constructed based on the deepstack.
+    :param zero_bias: if True the corrections to individual columns will be
+        adjusted so that their mean is zero.
+
+    :type scidata: array[float]
+    :type scimask: array[bool]
+    :type deepstack: array[float]
+    :type bkg_mask: array[bool]
+    :type zero_bias: bool
+
+    :returns: scidata_cor, col_cor, npix_cor, bias - The 1/f corrected image,
+        columnwise correction values, number of pixels used in each column, and
+        the net change to the image if zero_bias was False.
+    :rtype: Tuple(array[float], array[float], array[float], float)
     """
-    
-    # Check that the deep stack image is of same dimensions as input image to
-    # correct 1/f for.
-    # TO DO:
-    # Get the dimensions of the input image and output mask
-    nrow, ncol = np.shape(image)
-    
-    # Subtract the deep stack from the image
-    diffimage = image - deepstack
-    
-    '''
-    Construct a map of backgroud pixels, i.e. pixels containing no or very
-    little star flux.
-    '''
-    if backgroundmask is None:
-        backgroundmask = make_background_pixel_mask(image, deepstack)
-    hdu = fits.PrimaryHDU()
-    hdu.data = backgroundmask
-    hdu.writeto('mask.fits', overwrite=True)
-    
-    '''
-    Calculate the correction map
-    '''
-    
-    # Initialize a correction map
-    correctionmap = np.zeros((nrow, ncol))
-    
-    # Work on the mask of pixels considered to be devoid of star flux
-    diffimage_masked = diffimage * backgroundmask
-    
-    # Compute the average level of each column. The correction is simply
-    # the average of each column. No linear or higher order fit.
-    sigclip = SigmaClip(sigma_lower=3, sigma_upper=3, maxiters=None, cenfunc='mean')
-    for col in range(ncol):
-        # Extract one column
-        column = diffimage_masked[:, col]
-        # Retain elements whose deviations respect +/- 3 sigma
-        column = sigclip(column)
-        correctionmap[:, col] = np.ones(nrow) * column.mean()
-    
-    # Column levels, once corrected, have a net effect on the whole image, i.e.
-    # the mean overall flux may change by some DC level. Here, we compute that
-    # bias offset over the whole image. What you do with the information 
-    # depends on the previous processing that went on, i.e. was their a prior
-    # reference pixels correction made in the level 1 DMS pipeline or is the 
-    # astrophysical scene variable? If it is not variable then do not apply
-    # this image-wide DC offset.
-    bias = np.mean(correctionmap)
-    if make_net_bias_zero:
-        correctionmap = correctionmap - bias
 
-    print('correctionmap mean = {:}'.format(bias))
+    # Check the validity of the input.
+    data_shape = scidata.shape
 
-    hdu = fits.PrimaryHDU()
-    hdu.data = correctionmap
-    hdu.writeto('corr.fits', overwrite=True)
+    if scimask.shape != data_shape:
+        msg = 'scidata and scimask must have the same shape.'
+        raise ValueError(msg)
+
+    if deepstack.shape != data_shape:
+        msg = 'scidata and deepstack must have the same shape.'
+        raise ValueError(msg)
     
-    # Return the image minus the levels of all "difference" image columns.
-    # Also return the overall DC bias correction.
-    return image - correctionmap, bias
+    # Subtract the deep stack from the image.
+    diffimage = scidata - deepstack
+
+    # If not given build a background mask based on the deepstack.
+    if bkg_mask is None:
+        bkg_mask = make_background_mask(deepstack)
+    elif bkg_mask.shape != data_shape:
+        msg = 'scidata and bkg_mask must have the same shape.'
+        raise ValueError(msg)
+
+    # Combine the masks and create a masked array.
+    mask = (scimask | bkg_mask) | ~np.isfinite(deepstack)  # TODO invalid values in deepstack?
+    diffimage_masked = np.ma.array(diffimage, mask=mask)
+
+    # Mask additional pixels using sigma-clipping.
+    sigclip = SigmaClip(sigma=3, maxiters=None, cenfunc='mean')
+    diffimage_clipped = sigclip(diffimage_masked, axis=0)
+
+    # Compute the mean for each column and record the number of pixels used.
+    col_cor = diffimage_clipped.mean(axis=0)
+    npix_cor = (~diffimage_clipped.mask).sum(axis=0)
+
+    # Compute the net change to the image.
+    bias = np.nanmean(col_cor)
+
+    # Set the net bias to zero.
+    if zero_bias:
+        col_cor = col_cor - bias
+
+    # Apply the 1/f correction to the image.
+    scidata_cor = scidata - col_cor
+
+    return scidata_cor, col_cor, npix_cor, bias
 
 
 def main():
@@ -140,26 +126,42 @@ def main():
     # Geert Jan, I've put the fits files used as input here:
     # http://www.astro.umontreal.ca/~albert/jwst/
 
-    a = fits.open('mask.fits')
+    import matplotlib.pyplot as plt
+
+    a = fits.open('/home/talens-irex/Downloads/mask.fits')
     mask = a[0].data
 
-    a = fits.open('/Users/albert/NIRISS/CV3/myanalysis/rehearsal/deepstack.fits')
+    a = fits.open('/home/talens-irex/Downloads/deepstack.fits')
     deepstack = a[0].data
     deepstack = np.rot90(deepstack)
 
-    a = fits.open('/Users/albert/NIRISS/CV3/myanalysis/rehearsal/cds_256_ng3.fits')
+    a = fits.open('/home/talens-irex/Downloads/cds_256_ng3.fits')
     cube = a[0].data
     image = np.rot90(cube[10, :, :])
 
     imagecorr = np.zeros((2, 50, 256, 2048))
     allDC = np.zeros(50)
-    for i in range(50):
+    for i in range(1):
         image = np.rot90(cube[i, :, :])
+        mask = ~np.isfinite(image)
         # call the function with an already created mask. But in reality, you would want to
         # first combine the DMS DQ map plus the background mask.
-        imagecorr[0, i, :, :], allDC[i] = soss_oneoverf_correction(image, deepstack, backgroundmask=mask)
+        imagecorr[0, i, :, :], col_cor, npix_cor, allDC[i] = soss_oneoverf_correction(image, mask, deepstack)
+
+        plt.subplot(211)
+        plt.plot(col_cor)
+        plt.subplot(212)
+        plt.plot(npix_cor)
+        plt.show()
+
         imagecorr[1, i, :, :] = imagecorr[0, i, :, :] - allDC[i]
-        print(i, allDC[i])
+        # print(i, allDC[i])
+
+    plt.subplot(211)
+    plt.imshow(image, vmin=-50, vmax=500)
+    plt.subplot(212)
+    plt.imshow(imagecorr[0, i], vmin=-50, vmax=500)
+    plt.show()
 
     print(allDC)
 
