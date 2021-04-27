@@ -13,8 +13,8 @@ def soss_background(scidata, scimask, ref_2d_profile, threshold=1e-3):
     :param threshold: threshold value for excluding pixels based on ref_2d_profile.
 
     :type scidata: array[float]
-    :type scimask: arra[bool]
-    :type ref_2d_profile: array[float
+    :type scimask: array[bool]
+    :type ref_2d_profile: array[float]
     :type threshold: float
 
     :returns: scidata_bkg, col_bkg, npix_bkg - The background subtracted image, columnwise background values,

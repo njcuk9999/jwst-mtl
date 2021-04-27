@@ -7,39 +7,42 @@ from astropy.io import fits
 from astropy.stats import SigmaClip
 
 
-def make_background_pixel_mask(image, deepstack):
-    """This function creates a mask of the pixels considered to be mostly
-    devoid of star flux.
+def make_background_mask(deepstack, width=20):
+    """Build a mask of the pixels considered to contain the majority of the 
+    flux, and should therefore not be used to compute the background.
+
+    :param deepstack: a deep image of the trace constructed by combining
+        individual integrations of the observation.
+    :param width: the width of the trace is used to set the fraction of pixels
+        to exclude with the mask (i.e. width/256 for a SUBSTRIP256 observation).
+
+    :type deepstack: array[float]
+    :type width: int
+
+    :returns: bkg_mask - Masks pixels in the trace based on the deepstack or
+        non-finite in the image.
+    :rtype: array[bool]
     """
 
-    # Get the dimensions of the input image and output mask
-    nrow, ncol = np.shape(image)
-    
-    # Definition of masked or not masked pixels
-    masked_value = np.nan
-    notmasked_value = 1
-    
-    # Initialize the background mask to 1 everywhere
-    bkgd_mask = np.ones((nrow, ncol)) * notmasked_value
+    # Get the dimensions of the input image.
+    nrows, ncols = np.shape(deepstack)
 
-    # Set to zero all pixels that are
-    bkgd_mask[~np.isfinite(image)] = masked_value
-    
-    # On the deepstack, identify pixels mostly devoid of star flux, i.e. pixels
-    # belonging to a low percentile threshold. Assuming a trace is 20 pixels
-    # wide, for SUBSTRIP96 with only order 1, 20/96 ~ 20%. For SUBSTRIP256 or
-    # FF, then traces of order 1 and 2 are present. It is a bit counter-intuit
-    # ive here: making the trace width smaller ususally helps the fit.
-    width = 20
-    if nrow == 96:
-        flux_threshold = np.nanpercentile(deepstack, 100*(1-width/96.0))
-    if nrow >= 256:
-        flux_threshold = np.nanpercentile(deepstack, 100*(1-2*width/256.0))
+    # Compute the threshold value above which a pixel should be masked.
+    if nrows == 96:
+        quantile = 100*(1 - width/96)  # Mask 1 order worth of pixels.
+        threshold = np.nanpercentile(deepstack, quantile)
+    elif nrows >= 256:
+        quantile = 100*(1 - 2*width/256)  # Mask 2 orders worth of pixels. TODO does not make sense when nrows>256?
+        threshold = np.nanpercentile(deepstack, quantile)
+    else:
+        msg = ('Unexpected image dimensions, expected nrows = 96 or '
+               'nrows >= 256, got nrows = {}.')
+        raise ValueError(msg.format(nrows))
         
-    # Mask those pixels in the background mask
-    bkgd_mask[deepstack > flux_threshold] = masked_value
+    # Mask pixels above the threshold in the background mask.
+    bkg_mask = (deepstack > threshold)
 
-    return bkgd_mask
+    return bkg_mask
     
 
 def soss_oneoverf_correction(image, deepstack, backgroundmask=None, 
