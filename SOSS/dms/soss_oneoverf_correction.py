@@ -7,7 +7,7 @@ from astropy.io import fits
 from astropy.stats import SigmaClip
 
 
-def make_background_mask(deepstack, width=20):
+def make_background_mask(deepstack, width=28):
     """Build a mask of the pixels considered to contain the majority of the 
     flux, and should therefore not be used to compute the background.
 
