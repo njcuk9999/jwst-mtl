@@ -198,37 +198,7 @@ def soss_oneoverf_correction(scidata, scimask, deepstack, bkg_mask=None,
 
 
 def main():
-    # test the thing
-
-    # Geert Jan, I've put the fits files used as input here:
-    # http://www.astro.umontreal.ca/~albert/jwst/
-
-    from astropy.io import fits
-    import matplotlib.pyplot as plt
-
-    a = fits.open('/home/talens-irex/Downloads/deepstack.fits')
-    deepstack = a[0].data
-    deepstack = np.rot90(deepstack)
-
-    a = fits.open('/home/talens-irex/Downloads/cds_256_ng3.fits')
-    cube = a[0].data
-    scidata = np.rot90(cube[10, :, :])
-    scimask = ~np.isfinite(scidata)
-
-    bkg_mask = make_background_mask(deepstack)
-    scidata_cor, col_cor, npix_cor, bias = soss_oneoverf_correction(scidata, scimask, deepstack, bkg_mask=bkg_mask)
-
-    print(bias)
-
-    ax = plt.subplot(411)
-    plt.plot(col_cor)
-    plt.subplot(412, sharex=ax)
-    plt.plot(npix_cor)
-    plt.subplot(413, sharex=ax)
-    plt.imshow(scidata, vmin=-50, vmax=50, aspect='auto')
-    plt.subplot(414, sharex=ax)
-    plt.imshow(scidata_cor, vmin=-50, vmax=50, aspect='auto')
-    plt.show()
+    """Placeholder for potential multiprocessing."""
 
     return
 
