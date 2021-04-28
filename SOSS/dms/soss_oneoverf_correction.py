@@ -39,9 +39,12 @@ def make_background_mask(deepstack, width=28):
                'got nrows = {}.')
         raise ValueError(msg.format(nrows))
         
-    # Mask pixels above the threshold determined by the quantile.
+    # Find the threshold value associated with the quantile.
     threshold = np.nanpercentile(deepstack, quantile)
-    bkg_mask = (deepstack > threshold) | ~np.isfinite(deepstack)  # TODO invalid values in deepstack?
+
+    # Mask pixels above the threshold value.
+    with np.errstate(invalid='ignore'):
+        bkg_mask = (deepstack > threshold) | ~np.isfinite(deepstack)  # TODO invalid values in deepstack?
 
     return bkg_mask
     
