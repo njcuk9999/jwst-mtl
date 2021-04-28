@@ -27,19 +27,20 @@ def make_background_mask(deepstack, width=20):
     # Get the dimensions of the input image.
     nrows, ncols = np.shape(deepstack)
 
-    # Compute the threshold value above which a pixel should be masked.
-    if nrows == 96:
+    # Set the appropriate quantile for masking based on the subarray size.
+    if nrows == 96:  # SUBSTRIP96
         quantile = 100*(1 - width/96)  # Mask 1 order worth of pixels.
-        threshold = np.nanpercentile(deepstack, quantile)
-    elif nrows >= 256:
-        quantile = 100*(1 - 2*width/256)  # Mask 2 orders worth of pixels. TODO does not make sense when nrows>256?
-        threshold = np.nanpercentile(deepstack, quantile)
+    elif nrows == 256:  # SUBSTRIP256
+        quantile = 100*(1 - 2*width/256)  # Mask 2 orders worth of pixels.
+    elif nrows == 2048:  # FULL
+        quantile = 100*(1 - 2*width/2048)  # Mask 2 orders worth of pixels.
     else:
-        msg = ('Unexpected image dimensions, expected nrows = 96 or '
-               'nrows >= 256, got nrows = {}.')
+        msg = ('Unexpected image dimensions, expected nrows = 96, 256 or 2048, '
+               'got nrows = {}.')
         raise ValueError(msg.format(nrows))
         
-    # Mask pixels above the threshold in the background mask.
+    # Mask pixels above the threshold determined by the quantile.
+    threshold = np.nanpercentile(deepstack, quantile)
     bkg_mask = (deepstack > threshold)
 
     return bkg_mask
