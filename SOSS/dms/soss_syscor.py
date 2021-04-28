@@ -64,9 +64,13 @@ def soss_background(scidata, scimask, bkg_mask=None):
 
     scidata_masked = np.ma.array(scidata, mask=mask)
 
+    # Mask additional pixels using sigma-clipping.
+    sigclip = SigmaClip(sigma=3, maxiters=None, cenfunc='mean')
+    scidata_clipped = sigclip(scidata_masked, axis=0)
+
     # Compute the mean for each column and record the number of pixels used.
-    col_bkg = np.ma.mean(scidata_masked, axis=0)
-    npix_bkg = np.sum(~mask, axis=0)
+    col_bkg = scidata_clipped.mean(axis=0)
+    npix_bkg = (~scidata_clipped.mask).sum(axis=0)
 
     # Background subtract the science data.
     scidata_bkg = scidata - col_bkg
