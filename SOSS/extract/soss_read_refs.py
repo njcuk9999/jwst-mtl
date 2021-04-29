@@ -8,7 +8,9 @@ import numpy as np
 from astropy.io import fits
 
 
+# Where the ref files are to be found depends who runs it.
 PATH = '/Users/michaelradica/Documents/School/Ph.D./Research/SOSS/Extraction/Input_Files/SOSS_Ref_Files/'
+PATH = '/genesis/jwst/jwst-ref-soss/dms/'
 
 
 class RefTraceTable:
