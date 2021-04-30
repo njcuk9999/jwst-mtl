@@ -406,7 +406,7 @@ Consts.add('AMICAL_EXT_DISPLAY_PLOT', value=False, dtype=bool, source=__NAME__,
 
 # Define the name of the mask used in amical extraction
 Consts.add('AMICAL_EXT_MASK_NAME', value='g7', dtype=str, source=__NAME__,
-           user=True, arguemnt=False, group=group,
+           user=True, argument=False, group=group,
            description='Define the name of the mask used in amical extraction',
            path='amical.extract.mask_name')
 

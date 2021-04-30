@@ -588,21 +588,17 @@ def sim_module(simulations: List[Simulation]):
     """
     # loop around simulations
     for simulation in simulations:
-        # simulate using AMISIM
-        if simulation.params['AMISIM-USE']:
-            # simulate target
-            run_ami_sim(simulation.name, simulation.target)
-            # simulate calibrators
-            for calibrator in simulation.calibrators:
-                # simulate calibrator
-                run_ami_sim(simulation.name, calibrator)
-        # simulate using Mirage
-        if simulation.params['MIRAGE-USE']:
-            # simulate target
-            run_mirage(simulation.target)
-            # simulate calibrators
-            for calibrator in simulation.calibrators:
-                run_mirage(calibrator)
+        # simulate target
+        run_ami_sim(simulation.name, simulation.target)
+        # simulate calibrators
+        for calibrator in simulation.calibrators:
+            # simulate calibrator
+            run_ami_sim(simulation.name, calibrator)
+        # simulate target
+        run_mirage(simulation.target)
+        # simulate calibrators
+        for calibrator in simulation.calibrators:
+            run_mirage(calibrator)
 
 
 def run_ami_sim(simname: str, observation: Observation):
@@ -621,6 +617,9 @@ def run_ami_sim(simname: str, observation: Observation):
     msg = 'Processing Simulation: {0} Observation: {1}'
     margs = [simname, observation.name]
     params.log.info(msg.format(*margs))
+    # -----------------------------------------------------------------
+    # Big loop around filters
+    # -----------------------------------------------------------------
     # loop around all filters to use
     for _filter in observation.filters:
         # construct file path
@@ -636,59 +635,76 @@ def run_ami_sim(simname: str, observation: Observation):
         akey = 'AMI-SIM-SCENE-{0}'.format(_filter)
         observation.params[akey] = scenepath
         observation.params.set_source(akey, func_name)
-        # ---------------------------------------------------------------------
+        # -----------------------------------------------------------------
         # step 1: make primary on image
-        # ---------------------------------------------------------------------
-        # get properties for simple scene
-        pkwargs = dict()
-        pkwargs['fov_pixels'] = params['FOV_PIXELS']
-        pkwargs['oversample'] = params['OVERSAMPLE_FACTOR']
-        pkwargs['pix_scale'] = params['PIX_SCALE']
-        pkwargs['ext_flux'] = observation.ext_fluxes[_filter]
-        pkwargs['tot_exp'] = observation.tot_exp[_filter]
-        # add the target at the center of the image
-        image, hdict = etienne.ami_sim_observation(**pkwargs)
-        # add filter to hdict
-        hdict['FILTER'] = (_filter, 'Input filter used')
-        hdict['TNAME'] = (observation.name)
-        # get combined count_rate
-        count_rate = float(hdict['COUNT0'][0])
-        # ---------------------------------------------------------------------
+        # -----------------------------------------------------------------
+        if observation.params['AMISIM-USE']:
+            # get properties for simple scene
+            pkwargs = dict()
+            pkwargs['fov_pixels'] = params['FOV_PIXELS']
+            pkwargs['oversample'] = params['OVERSAMPLE_FACTOR']
+            pkwargs['pix_scale'] = params['PIX_SCALE']
+            pkwargs['ext_flux'] = observation.ext_fluxes[_filter]
+            pkwargs['tot_exp'] = observation.tot_exp[_filter]
+            # add the target at the center of the image
+            image, hdict = etienne.ami_sim_observation(**pkwargs)
+            # add filter to hdict
+            hdict['FILTER'] = (_filter, 'Input filter used')
+            hdict['TNAME'] = (observation.name)
+            # get combined count_rate
+            count_rate = float(hdict['COUNT0'][0])
+        else:
+            image, hdict = None, None
+            count_rate = 0
+        # -------------------------------------------------------------
         # step 2: add companion(s)
-        # ---------------------------------------------------------------------
-        # only do this for targets (calibrators do not have companions by
-        #     definition)
-        if isinstance(observation, Target):
-            # loop around all companions
-            for it, companion in enumerate(observation.companions):
-                # deal with planet companions
-                if companion.kind == 'planet':
-                    # get companion properties
-                    ckwargs = dict()
-                    ckwargs['params'] = params
-                    ckwargs['image'] = image
-                    ckwargs['hdict'] = hdict
-                    ckwargs['num'] = it + 1
-                    ckwargs['position_angle'] = companion.position_angle
-                    ckwargs['separation'] = companion.separation
-                    # get the constrast between observation and companion
-                    contrast = observation.get_contrast(companion, _filter)
-                    ckwargs['contrast'] = contrast
-                    # add companion
-                    image, hdict = etienne.ami_sim_add_companion(**ckwargs)
-        # ---------------------------------------------------------------------
+        # -------------------------------------------------------------
+        if observation.params['AMISIM-USE']:
+            # only do this for targets (calibrators do not have companions
+            #     by definition)
+            if isinstance(observation, Target):
+                # loop around all companions
+                for it, companion in enumerate(observation.companions):
+                    # deal with planet companions
+                    if companion.kind == 'planet':
+                        # get companion properties
+                        ckwargs = dict()
+                        ckwargs['params'] = params
+                        ckwargs['image'] = image
+                        ckwargs['hdict'] = hdict
+                        ckwargs['num'] = it + 1
+                        ckwargs['position_angle'] = companion.position_angle
+                        ckwargs['separation'] = companion.separation
+                        # get the contrast between observation and
+                        #    companion
+                        contrast = observation.get_contrast(companion,
+                                                            _filter)
+                        ckwargs['contrast'] = contrast
+                        # add companion
+                        cout = etienne.ami_sim_add_companion(**ckwargs)
+                        image, hdict = cout
+        else:
+            image, hdict = None, None
+        # -------------------------------------------------------------
         # step 3: save image to disk
-        # ---------------------------------------------------------------------
-        etienne.ami_sim_save_scene(params, scenepath, image, hdict)
-        # ---------------------------------------------------------------------
+        # -------------------------------------------------------------
+        if observation.params['AMISIM-USE']:
+            etienne.ami_sim_save_scene(params, scenepath, image, hdict)
+
+        # -----------------------------------------------------------------
         # step 4: Deal with psf
-        # ---------------------------------------------------------------------
+        #     - need to generate filename for ami sim output
+        # -----------------------------------------------------------------
         # get psf properties
         psfkwargs = dict()
         # get psf path for this filter
         psfkwargs['path'] = params['PSF_{0}_PATH'.format(_filter)]
         # get whether we want to recomputer psf
-        psfkwargs['recompute'] = params['PSF_{0}_RECOMPUTE'.format(_filter)]
+        if observation.params['AMISIM-USE']:
+            rkey = 'PSF_{0}_RECOMPUTE'.format(_filter)
+            psfkwargs['recompute'] = params[rkey]
+        else:
+            psfkwargs['recompute'] = False
         # get other properties
         psfkwargs['fov_pixels'] = params['FOV_PIXELS']
         psfkwargs['oversample'] = params['OVERSAMPLE_FACTOR']
@@ -699,18 +715,39 @@ def run_ami_sim(simname: str, observation: Observation):
         pkey = 'PSF_{0}_PATH'.format(_filter)
         observation.params[pkey] = psf_filename
         observation.params.set_source(pkey, func_name)
-        # ---------------------------------------------------------------------
+        # -----------------------------------------------------------------
         # step 5: run ami-sim for observation
-        # ---------------------------------------------------------------------
+        # -----------------------------------------------------------------
         # get parameters from observation
         target_name = observation.name
         nint = observation.num_integrations[_filter]
         ngroups = observation.num_groups[_filter]
-
-
-        simfile = etienne.ami_sim_run_code(params, target_dir, _filter,
+        # run ami-sim
+        if observation.params['AMISIM-USE']:
+            tag = etienne.ami_sim_run_code(params, target_dir, _filter,
                                            psf_filename, scenepath, count_rate,
                                            simname, target_name, nint, ngroups)
+        # else just ge tthe tag for output filename
+        else:
+            # get parameters from observation
+            target_name = observation.name
+            # construct tag
+            tag = '{0}_{1}'.format(simname, target_name)
+
+        # -----------------------------------------------------------------
+        # Construct names of ami-sim outputs
+        # -----------------------------------------------------------------
+        # get psf basename
+        psf_basename = os.path.basename(psf_filename).split('.fits')[0]
+        scene_basename = os.path.basename(scenepath).split('.fits')[0]
+        # construct ami-sim out filename
+        oargs = [scene_basename, psf_basename, tag]
+        simfile = 't_{0}__{1}_{2}_00.fits'.format(*oargs)
+
+        # ---------------------------------------------------------------------
+        # step 6: define ami sim output (may be required even if AMI-SIM is not
+        #         run
+        # ---------------------------------------------------------------------
         # update param for sim file
         okey = define_ami_sim_outkey(_filter)
         observation.params[okey] = simfile
@@ -839,7 +876,7 @@ def run_amical_extraction(simname: str, observation: Observation,
     # NO DESC: Define whether to do the expert plot
     params_ami['expert_plot'] = observation.params['AMICAL_EXT_EXPERT_PLOT']
     # If True, print useful information during the process
-    params_ami['verbose'] = observation.params['']
+    params_ami['verbose'] = observation.params['AMICAL_EXT_VERBOSE']
     # If True, display all figures
     params_ami['display'] = observation.params['AMICAL_EXT_DISPLAY_PLOT']
     # ---------------------------------------------------------------------

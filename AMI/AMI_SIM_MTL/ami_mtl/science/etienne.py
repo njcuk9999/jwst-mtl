@@ -312,7 +312,7 @@ def ami_sim_run_code(params: ParamDict, path: str, _filter: str,
     :param nint: int, the number of integrations to use
     :param ngroups: int, the number of groups to use
 
-    :return: str, the AMI-SIM output filename
+    :return: the tag (for file name)
     """
     # construct tag
     tag = '{0}_{1}'.format(simname, target_name)
@@ -381,16 +381,6 @@ def ami_sim_run_code(params: ParamDict, path: str, _filter: str,
         emsg = 'AMI-SIM Error: {0}: {1}'
         eargs = [type(e), str(e)]
         params.log.error(emsg.format(*eargs))
-    # -------------------------------------------------------------------------
-    # Construct names of ami-sim outputs
-    # -------------------------------------------------------------------------
-    # get psf basename
-    psf_basename = os.path.basename(psf_filename).split('.fits')[0]
-    # construct ami-sim out filename
-    oargs = [tag, _filter, psf_basename]
-    outfile = 't_{0}_{1}_{2}_Obs1_00.fits'.format(*oargs)
-    # return out filename
-    return outfile
 
 
 def ami_sim(params: ParamDict):
