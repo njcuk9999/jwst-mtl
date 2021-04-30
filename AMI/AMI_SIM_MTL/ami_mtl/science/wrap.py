@@ -804,6 +804,7 @@ def amical_extraction(simulations: List[Simulation]):
     # loop around simulations
     for simulation in simulations:
         # simulate using AMISIM
+        # TODO: move switch inside extraction
         if simulation.params['AMISIM-USE']:
             # simulate using AMISIM
             if simulation.params['AMICAL-EXT-USE']:
