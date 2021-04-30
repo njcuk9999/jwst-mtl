@@ -81,6 +81,79 @@ def readpaths(config_paths_filename, pars):
     pars.tracefile = str(value[param =='TRACE_FILE'][0])
     pars.throughputfile = str(value[param =='THROUGHPUT_FILE'][0])
 
+def planck(wave_micron, teff):
+    """
+    Black body spectrum
+    :param wave_micron:
+    :param teff:
+    :return:
+    """
+    h = 6.626e-34
+    c = 3.0e+8
+    k = 1.38e-23
+
+    # wave in microns, so:
+    wave_meter = wave_micron * 1e-6
+    a = 2.0*h*c**2
+    b = h*c/(wave_meter*k*teff)
+    # units of J/m2/s/m (Flambda)
+    intensity = a / ( (wave_meter**5) * (np.exp(b) - 1.0) )
+
+    return intensity
+
+
+def starlimbdarkening(wave_angstrom, ld_type='flat'):
+    """
+    Generates an array of limb darkening coefficients when creating a star atmosphere model
+    :return:
+    """
+
+    if ld_type == 'flat':
+        # flat
+        a1234 = [0, 0, 0, 0]
+        ld_coeff = np.zeros((np.size(wave_angstrom), 4))
+        #ld_coeff[]
+        #print(np.shape(ld_coeff))
+    else:
+        # no limb darkening - flat intensity
+        ld_coeff = np.zeros((np.size(wave_angstrom), 4))
+
+    return ld_coeff
+
+
+def starmodel(simuPars, pathPars, verbose=True):
+    """
+    From the simulation parameter file - determine what star atmosphere model
+    to read or generate.
+    :return:
+    """
+    if simuPars.modelfile == 'BLACKBODY' and simuPars.bbteff:
+        if verbose: print('Star atmosphere model type: BLACKBODY')
+        model_angstrom = np.linspace(4000, 55000, 51001)
+        model_flambda = planck(model_angstrom/10000, simuPars.bbteff)
+        model_ldcoeff = starlimbdarkening(model_angstrom)
+    elif simuPars.modelfile == 'CONSTANT_FLAMBDA':
+        if verbose: print('Star atmosphere model type: CONSTANT_FLAMBDA')
+        model_angstrom = np.linspace(4000, 55000, 51001)
+        model_flambda = np.ones(np.size(model_angstrom))
+        model_ldcoeff = starlimbdarkening(model_angstrom)
+    elif simuPars.modelfile == 'CONSTANT_FNU':
+        if verbose: print('Star atmosphere model type: CONSTANT_FNU')
+        model_angstrom = np.linspace(4000, 55000, 51001)
+        fnu = np.ones(np.size(model_angstrom))
+        speedoflight = 3e+8
+        model_flambda = speedoflight * fnu / (model_angstrom * 1e-10)**2
+        model_ldcoeff = starlimbdarkening(model_angstrom)
+    else:
+        if verbose: print('Star atmosphere model assumed to be on disk.')
+        # Read Stellar Atmosphere Model (wavelength in angstrom and flux in energy/sec/wavelength)
+        model_angstrom, model_flambda, model_ldcoeff = spgen.readstarmodel(
+                    pathPars.path_starmodelatm + simuPars.modelfile,
+                    simuPars.nmodeltype, quiet=False)
+
+    return model_angstrom, model_flambda, model_ldcoeff
+
+
 def second2day(time_seconds):
     return(time_seconds / (3600.0*24.0))
 
@@ -103,7 +176,7 @@ def frames_to_exposure(frameseries, ng, nint, readpattern):
 
     nframes, dimy, dimx = np.shape(frameseries)
 
-def generate_timesteps(simuPars):
+def generate_timesteps(simuPars, f277=False):
 
     ''' This function outputs the time steps for each simulated
     frame (read) or integration for the whole time-series.
@@ -111,6 +184,7 @@ def generate_timesteps(simuPars):
     It uses as inputs, the subarray, ngroup, tstart, tend of the
     simulation parameters.
     :param simuPars:
+    :param f277: set to True to generate output for the F277W calibration
     :return:
     tintopen : time during which the detector is receiving photons
     in seconds during an integration.
@@ -118,7 +192,6 @@ def generate_timesteps(simuPars):
     nint : number of integrations (integer)
     timesteps : The clock time of each integration (in seconds)
     '''
-    #
 
     # Determine what the frame time is from the subarray requested
     if simuPars.subarray == 'SUBSTRIP96':
@@ -137,6 +210,10 @@ def generate_timesteps(simuPars):
     # Compute the number of integrations to span at least the requested range of time
     # Use ngroup to define the integration time.
     intduration = frametime * (simuPars.ngroup + 1)
+    # Determine the number of integrations
+    #if f277:
+    #    nint = simuPars.nintf277
+    #else:
     nint = int(np.ceil(hour2second(simuPars.tend - simuPars.tstart)/intduration))
     # Update the frametime parameter in the simuPars structure
     simuPars.nint = np.copy(nint)
@@ -157,7 +234,7 @@ def generate_timesteps(simuPars):
         isread = np.where(np.mod(indices,simuPars.ngroup+1) != 0)
         timesteps = timesteps[isread]
         # open shutter time, actually the time for which photons
-        # reach the detector dor simulation purposes
+        # reach the detector for simulation purposes
         tintopen = np.copy(frametime)
     elif simuPars.granularity == 'INTEGRATION':
         # TBC
@@ -173,7 +250,44 @@ def generate_timesteps(simuPars):
         print('Time granularity of the simulation should either be FRAME or INTEGRATION.')
         sys.exit(1)
 
-    return tintopen, frametime, nint, timesteps
+    if not f277:
+        return tintopen, frametime, nint, timesteps
+    else:
+        # Generate the same for the F277W calibration
+        nint_f277 = simuPars.nintf277
+        f277_overhead = 600 # seconds
+        if simuPars.granularity == 'FRAME':
+            # arrays of time steps in units of days. Each step represents the time at the center of a frame (a read)
+            timesteps_f277 = np.arange(0,nint_f277*(simuPars.ngroup+1)) * frametime
+            # Determine the start of the F277W exposure - 5 minutes after the last science integration
+            tstart_f277 = second2hour(np.max(timesteps) + f277_overhead)
+            # add the time at the start and shift by half a frame time to center in mid-frame
+            timesteps_f277 += hour2second(tstart_f277) + frametime/2
+            # remove the reset frame
+            indices = np.arange(0,nint_f277*(simuPars.ngroup+1))
+            isread = np.where(np.mod(indices,simuPars.ngroup+1) != 0)
+            timesteps_f277 = timesteps_f277[isread]
+            # open shutter time, actually the time for which photons
+            # reach the detector for simulation purposes
+            tintopen = np.copy(frametime)
+        elif simuPars.granularity == 'INTEGRATION':
+            # TBC
+            timesteps_f277 = np.arange(0, nint_f277) * (simuPars.ngroup+1) * frametime
+            # Determine the start of the F277W exposure - 10 minutes after the last science integration
+            tstart_f277 = second2hour(np.max(timesteps) + f277_overhead)
+            # add the time at the start and shift by half an integration time to center in mid-integration
+            # Notice that the center of an integration should exclude the reset frame
+            # so the center is from read 1 (so add a frametime).
+            timesteps_f277 += hour2second(tstart_f277) + frametime + simuPars.ngroup * frametime / 2
+            # open shutter time, actually the time for which photons
+            # reach the detector dor simulation purposes
+            tintopen = frametime * simuPars.ngroup
+        else:
+            print('Time granularity of the simulation should either be FRAME or INTEGRATION.')
+            sys.exit(1)
+
+        return tintopen, frametime, nint_f277, timesteps_f277
+
 
 
 def generate_traces(pathPars, simuPars, tracePars, throughput,
@@ -359,7 +473,15 @@ def write_intermediate_fits(image, filename, timestep_index):
 
     return(filename_current)
 
-def write_dmsready_fits_init(imagelist, normalization_scale, simuPars):
+def write_dmsready_fits_init(imagelist, normalization_scale,
+                             ngroup, nint, frametime, granularity,
+                             verbose=None):
+    if verbose:
+        print('Entered write_dmsready_fits_init')
+        print('imagelist =', imagelist)
+        print('nint={:}, ngroup={:}, frametime={:} sec '.format(nint, ngroup, frametime))
+        print('Granularity = {:}'.format(granularity))
+
     ntimesteps = len(imagelist)
     for t in range(ntimesteps):
         # Read the current image
@@ -380,14 +502,14 @@ def write_dmsready_fits_init(imagelist, normalization_scale, simuPars):
     # a chunk of time that is either at the frame granularity or at the integration
     # granularity. It is time to divide in frame with the properly scaled flux as
     # happens during an integraiton.
-    ngroup = np.copy(simuPars.ngroup)
-    nint = np.copy(simuPars.nint)
-    frametime = np.copy(simuPars.frametime)
+    #ngroup = np.copy(simuPars.ngroup)
+    #nint = np.copy(simuPars.nint)
+    #frametime = np.copy(simuPars.frametime)
     print('nint={:}, ngroup={:}, frametime={:} sec '.format(nint,ngroup,frametime))
 
     # Initialize the exposure array containing up-the-ramp reads.
     exposure = np.zeros((nint, ngroup, dimy, dimx), dtype=float)
-    if simuPars.granularity == 'FRAME':
+    if granularity == 'FRAME':
         # Then we already have a rate image for each individual read.
         for i in range(nint):
             cumulative = np.zeros((dimy, dimx))
@@ -396,7 +518,7 @@ def write_dmsready_fits_init(imagelist, normalization_scale, simuPars):
                 cumulative = cumulative + fluxratecube[n,:,:] * frametime
                 print('i={:} g={:} n={:} flux={:} rate={:}'.format(i,g,n,np.sum(cumulative),np.sum(fluxratecube[n,:,:])))
                 exposure[i, g, :, :] = np.copy(cumulative.reshape((1,1,dimy,dimx)))
-    elif simuPars.granularity == 'INTEGRATION':
+    elif granularity == 'INTEGRATION':
         # We need to create ngroup reads per simulated rate image.
         for i in range(nint):
             for g in range(ngroup):
@@ -411,7 +533,7 @@ def write_dmsready_fits_init(imagelist, normalization_scale, simuPars):
 
 
 
-def write_dmsready_fits(image, filename, os=1, input_frame='sim', verbose=True):
+def write_dmsready_fits(image, filename, os=1, input_frame='sim', verbose=True, f277=False):
     '''
     This script writes DMS ready fits files. It uses as input a simulated
     noiseless image to which it adds the required minimum set of FITS keywords
@@ -565,7 +687,10 @@ def write_dmsready_fits(image, filename, os=1, input_frame='sim', verbose=True):
     phdr.set('SRCTYPE', 'POINT', 'Advised source type (point/extended)')
     phdr.set('INSTRUME', 'NIRISS', 'Instrument used to acquire the data')
     phdr.set('DETECTOR', 'NIS', 'Name of detector used to acquire the data')
-    phdr.set('FILTER', 'CLEAR', 'Name of the filter element used')
+    if f277:
+        phdr.set('FILTER', 'F277W', 'Name of the filter element used')
+    else:
+        phdr.set('FILTER', 'CLEAR', 'Name of the filter element used')
     phdr.set('PUPIL', 'GR700XD', 'Name of the pupil element used')
     phdr.set('EXP_TYPE', 'NIS_SOSS', 'Type of data in the exposure')
     phdr.set('READPATT', 'NISRAPID', 'Readout pattern')

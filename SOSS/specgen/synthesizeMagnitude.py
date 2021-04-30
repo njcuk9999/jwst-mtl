@@ -84,7 +84,7 @@ def expected_flux_calibration(filtername, magnitude, model_angstrom, model_flux,
     if pathvega == None: pathvega = './specgen/FilterSVO/'
     if pathfilter == None: pathfilter = './specgen/FilterSVO/'
     if trace_file == None: trace_file = './trace/NIRISS_GR700_trace_extended.csv'
-    if response_file == None: response_file = './tables/NIRISS_Throughput_STScI.fits'
+    if response_file == None: response_file = './tables/NIRISS_Throughput_20210318.fits'
     
     # Some more constants
     hc = 6.62607015e-34 * 299792458.0 # J * m
@@ -897,6 +897,7 @@ def readFilter(requestedFilterName,path_filter_transmission=None,
             if requestedFilterName == dico[n][2][s]:
                 found = True
                 filename = path+dico[n][0]
+                if verbose: print('Reading file named {:}'.format(filename))
                 tab = ascii.read(filename, names=['wave', 'transmission'],data_start=0, delimiter=' ')
                 l = tab['wave']  # First column
                 t = tab['transmission']  # Second column
@@ -928,6 +929,7 @@ def readFilter(requestedFilterName,path_filter_transmission=None,
 
     #fig = plt.figure(figsize=(15,6))
     #plt.plot(wave_micron,t)
+    #plt.show()
 
     # Scale the peak of the transmission curve to 1
     if keepPeakAbsolute != True:
@@ -956,6 +958,36 @@ def readFilter(requestedFilterName,path_filter_transmission=None,
 
     if returnWidth is True:
         width = np.sum(transmission*wave_delta)/np.max(transmission)
-        return(wave_micron,transmission,magsystem,width)
+        return(wave_micron,transmission, magsystem, width)
     else:
-        return(wave_micron,transmission,magsystem)
+        return(wave_micron,transmission, magsystem)
+
+
+def throughput_withF277W(response, path_filter_transmission):
+    """
+    Convolves the GR700XD + CLEAR throughput by the F277W filter to o get
+    the GR700XD + F277W throughput.
+    :param response: GR700XD + CLEAR input response
+    :param path_filter_transmission: The path to the directory where filter curves are stored
+    :return: GR700XD + F277W output throughput
+    """
+    # Initialize a copy of the input response
+    import copy
+    response_f277 = copy.deepcopy(response)
+
+    # Get the F277W filter transmission curve
+    response_micron = response.wv / 10000 # angstrom to micron
+    filter_wave, filter_t, magsystem = readFilter('NIRISS.F277W',
+                                                  wave_sampling=response_micron,
+                                                  path_filter_transmission=path_filter_transmission,
+                                                  verbose=True)
+    #plt.figure(figsize=(10, 6))
+    #plt.plot(filter_wave, filter_t)
+    #plt.xlabel('Wavelength [$\mu$m')
+    #plt.show()
+
+    for m in response.response_order:
+        # Multiply the CLEAR response by the F277W transmission curve
+        response_f277.response[m] = response.response[m] * filter_t
+
+    return response_f277

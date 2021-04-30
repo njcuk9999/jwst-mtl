@@ -11,6 +11,8 @@ import binmodels_py as bm #Fortran routine for speedy resampling of data
 
 import tracepol as tp
 
+import specgen.synthesizeMagnitude as smag
+
 class ModelPars:
     """Default Model Parameters
     """
@@ -22,6 +24,7 @@ class ModelPars:
     exptime=0.0 #exposure time (s)
     deadtime=0.0 #dead time (s)
     modelfile='null' #stellar spectrum file name
+    bbteff='null' # black body temperature if modelfile is 'blackbody'
     nmodeltype=2 #stellar spectrum type. 1=BT-Settl, 2=Atlas-9+NL limbdarkening
     rvstar=0.0 #radial velocity of star (km/s)
     vsini=0.0 #projected rotation of star (km/s)
@@ -55,6 +58,7 @@ class ModelPars:
     orderlist = np.array([1,2,3], dtype=np.int)
     frametime = np.nan # not selectable in the config file. Will be filled in the code.
     nint = np.nan # not selectable in the config file. Will be filled in the code.
+    nintf277 = np.nan
     magnitude = 10.0
     filter = 'J'
     f277wcal = True
@@ -93,6 +97,8 @@ def read_pars(filename,pars):
                         pars.sol[0] = np.float(columns[1])
                     elif command == 'starmodel':
                         pars.modelfile = str(columns[1])
+                    elif command == 'bbteff':
+                        pars.bbteff = np.float(columns[1])
                     elif command == 'startype':
                         pars.nmodeltype = int(columns[1])
                         if pars.nmodeltype != 2:
@@ -150,6 +156,8 @@ def read_pars(filename,pars):
                         pars.saturation = np.float(columns[1])
                     elif command == 'ngroup':
                         pars.ngroup = int(np.float(columns[1]))
+                    elif command == 'nintf277':
+                        pars.nintf277 = int(np.float(columns[1]))
                     elif command == 'pid':
                         pars.pid = int(np.float(columns[1]))
                     elif command == 'onum':
@@ -290,7 +298,7 @@ class instrument_response_class:
         self.response_order=[]
         self.quantum_yield=[]
 
-def read_response(throughput_file, verbose=True):
+def read_response(throughput_file, verbose=True, f277w=False, path_filter_transmission=None):
     """ Usage: response = read_response(throughput_file)
     throughput_file : FITS file for the instrument throughput.
 
@@ -337,9 +345,21 @@ def read_response(throughput_file, verbose=True):
     # Close FITS file
     a.close()
 
+    if f277w and path_filter_transmission:
+        # Further multiply by the F277W transmission
+
+        # Get the F277W filter transmission curve
+        response_micron = response.wv / 10000 # angstrom to micron
+        filter_wave, filter_t, magsystem = smag.readFilter('NIRISS.F277W',
+                                                      wave_sampling=response_micron,
+                                                      path_filter_transmission=path_filter_transmission)
+        for m in response.response_order:
+            # Multiply the CLEAR response by the F277W transmission curve
+            response.response[m] = response.response[m] * filter_t
+
     return response
 
-def readresponse(response_file, quiet=False):
+def readresponse_tmp(response_file, quiet=False):
     """Usage: response=readresponse(response_file)
     Inputs
      response_file - FITS file for instrument response.
@@ -393,6 +413,7 @@ def readresponse_old(response_file):
     hdulist.close()                            #Close FITS file
 
     return reponse_ld,reponse_n0,reponse_n1,reponse_n2,reponse_n3,quantum_yield;
+
 
 def readstarmodel(starmodel_file, nmodeltype, quiet=False):
     """Usage: starmodel_wv,starmodel_flux=readstarmodel(starmodel_file,smodeltype)

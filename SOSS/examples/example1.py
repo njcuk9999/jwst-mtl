@@ -84,31 +84,14 @@ print(simuPars.pmodeltype[0])
 #simuPars.yout = 300       #spatial (cross-dispersed axis)
 
 
-if False:
-    #result = Detector1Pipeline.call(os.path.join(WORKING_DIR, 'caca_noisy.fits'),
-    #                                output_file='toto', output_dir=WORKING_DIR)
-    WORKING_DIR = '/genesis/jwst/userland-soss/loic_review/full_20210319/'
-    result = Detector1Pipeline.call(os.path.join(WORKING_DIR, 'simu_noisy.fits'),
-                                output_file='simu_noisy', output_dir=WORKING_DIR)
-
-    #detector.add_noise([os.path.join(WORKING_DIR, 'test.fits')],
-    #                   outputfilename=os.path.join(WORKING_DIR, 'test_noisy.fits'))
-    #result = Detector1Pipeline.call(os.path.join(WORKING_DIR, 'test_noisy.fits'))
-    #detector.add_noise(os.path.join(WORKING_DIR, 'test.fits')
-    #from jwst.pipeline import Detector1Pipeline
-    #result = Detector1Pipeline.call(os.path.join(WORKING_DIR, 'test_mod_poisson_noise_zodibackg_flat_dark_nonlin_bias_detector.fits'))
-    print('Exiting the test...')
-    sys.exit()
-
 # Instrument Throughput (Response)
 throughput = spgen.read_response(pathPars.throughputfile, verbose=verbose)
 
 # Set up Trace (Position vs. Wavelength)
 tracePars = tp.get_tracepars(pathPars.tracefile)
 
-# Read Stellar Atmosphere Model (wavelength in angstrom and flux in energy/sec/wavelength)
-starmodel_angstrom, starmodel_flambda, ld_coeff = spgen.readstarmodel(pathPars.path_starmodelatm+simuPars.modelfile,
-                                                                     simuPars.nmodeltype, quiet=False)
+# Generate or read the star atmosphere model
+starmodel_angstrom, starmodel_flambda, ld_coeff = soss.starmodel(simuPars, pathPars)
 
 # Read Planet Atmosphere Model (wavelength in angstroms and radius_planet/radius_star ratio)
 planetmodel_angstrom, planetmodel_rprs = spgen.readplanetmodel(pathPars.path_planetmodelatm+simuPars.pmodelfile[0],
@@ -168,7 +151,9 @@ print('Normalization scales = ',normalization_scale)
 
 # All simulations are normalized, all orders summed and gathered in a single array
 # with the 3rd dimension being the number of time steps.
-data = soss.write_dmsready_fits_init(imagelist, normalization_scale, simuPars)
+data = soss.write_dmsready_fits_init(imagelist, normalization_scale,
+                                     simuPars.ngroup, simuPars.nint,
+                                     simuPars.frametime, simuPars.granularity)
 
 # All simulations (e-/sec) are converted to up-the-ramp images.
 soss.write_dmsready_fits(data[:,:,0:256,0:2048], os.path.join(WORKING_DIR,'test.fits'),
@@ -182,20 +167,61 @@ detector.add_noise(os.path.join(WORKING_DIR,'test.fits'),
 result = Detector1Pipeline.call(os.path.join(WORKING_DIR, 'test_noisy.fits'),
                                 output_file='test_noisy', output_dir=WORKING_DIR)
 
-'''
+"""
 SIMULATE THE F277W CALIBRATION EXPOSURE OBTAINED AFTER THE GR700XD EXPOSURE
-- read new star model (with F277W transmission included)
+- throughput needs to be rest differently
+- star model: no change
 - planet model: no change
 - determine time steps for F277W short time series
-- Figure out the flux scaling between F277W and GR700XD and apply normalization_scale * it
+- Apply normalization_scale * it
 - Convert to up-the-ramp images, store on disk
 - Add detector noise
 - Process the data through DMS
-'''
+"""
 
+# Get the throughput with the F277W filter in place of the CLEAR
+# throughput_f277 = smag.throughput_withF277W(throughput, pathPars.path_filtertransmission)
+# Instrument Throughput (Response)
+throughput_f277 = spgen.read_response(pathPars.throughputfile, f277w=True,
+                                      path_filter_transmission=pathPars.path_filtertransmission,
+                                      verbose=verbose)
 
+# Generate the time steps array
+tintopen, frametime, nint_f277, timesteps_f277 = soss.generate_timesteps(simuPars, f277=True)
+print('F277W calibration generated time steps:')
+print('nint_f277={:} nsteps={:} frametime={:}'.format(\
+    nint_f277, len(timesteps_f277), frametime))
+print('F277W calibration generated time steps (in seconds): ', timesteps_f277)
 
+if True:
+    imagelist_f277 = soss.generate_traces(pathPars, simuPars, tracePars, throughput_f277,
+                                   starmodel_angstrom, starmodel_flambda, ld_coeff,
+                                   planetmodel_angstrom, planetmodel_rprs,
+                                   timesteps_f277, tintopen)
+else:
+    SIMUDIR = '/genesis/jwst/userland-soss/loic_review/tmp/'
+    imagelist_f277 = os.listdir(SIMUDIR)
+    for i in range(np.size(imagelist_f277)):
+        imagelist_f277[i] = os.path.join(SIMUDIR,imagelist_f277[i])
+    print(imagelist_f277)
 
+# All simulations are normalized, all orders summed and gathered in a single array
+# with the 3rd dimension being the number of time steps.
+data_f277 = soss.write_dmsready_fits_init(imagelist_f277, normalization_scale,
+                                          simuPars.ngroup, simuPars.nintf277,
+                                          simuPars.frametime, simuPars.granularity, verbose=True)
+
+# All simulations (e-/sec) are converted to up-the-ramp images.
+soss.write_dmsready_fits(data_f277[:,:,0:256,0:2048], os.path.join(WORKING_DIR,'test_f277.fits'),
+                    os=simuPars.noversample, input_frame='sim', f277=True)
+
+# Add detector noise to the noiseless data
+detector.add_noise(os.path.join(WORKING_DIR,'test_f277.fits'),
+                   outputfilename=os.path.join(WORKING_DIR, 'test_f277_noisy.fits'))
+
+# Process the data through the DMS level 1 pipeline
+result = Detector1Pipeline.call(os.path.join(WORKING_DIR, 'test_f277_noisy.fits'),
+                                output_file='test_f277_noisy', output_dir=WORKING_DIR)
 
 print('The end of the simulation')
 
