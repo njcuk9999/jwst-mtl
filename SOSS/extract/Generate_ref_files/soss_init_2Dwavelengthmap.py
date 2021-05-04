@@ -322,8 +322,9 @@ def make_2D_wavemap(fitsmap_name, subarray_name='SUBSTRIP256', coordinate_system
     
     return(lambda_map)
 
-make_2D_wavemap('/genesis/jwst/userland-soss/loic_review/wave2Dmap_os1.fits',
-                subarray_name = 'SUBSTRIP256', oversampling=1)
+# To run it, uncomment
+#make_2D_wavemap('/genesis/jwst/userland-soss/loic_review/wave2Dmap_os1.fits',
+#                subarray_name = 'SUBSTRIP256', oversampling=1)
 
 #
 # IDL CODE -------------------------------------------------------------------

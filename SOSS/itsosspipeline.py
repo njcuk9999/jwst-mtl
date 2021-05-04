@@ -443,6 +443,22 @@ def flux_calibrate_simulation(parameters):
 
 
 
+def rebin(image2D, noversampling):
+    """
+    Takes an oversampled image and bins it down to native pixel size, taking
+    the mean of the pixel values.
+    :param arr:
+    :param noversampling:
+    :return:
+    """
+    dimy, dimx = np.shape(image2D)
+    newdimy, newdimx = int(dimy/noversampling), int(dimx/noversampling)
+    shape = (newdimy, image2D.shape[0] // newdimy,
+             newdimx, image2D.shape[1] // newdimx)
+
+    return image2D.reshape(shape).mean(-1).mean(1)
+
+
 def write_simu_fits(image, filename):
 
     # Writes the simulated data set as simulated, independently of the DMS constraints
