@@ -129,17 +129,17 @@ def starmodel(simuPars, pathPars, verbose=True):
     """
     if simuPars.modelfile == 'BLACKBODY' and simuPars.bbteff:
         if verbose: print('Star atmosphere model type: BLACKBODY')
-        model_angstrom = np.linspace(4000, 55000, 51001)
+        model_angstrom = np.linspace(4000, 55000, 200001)
         model_flambda = planck(model_angstrom/10000, simuPars.bbteff)
         model_ldcoeff = starlimbdarkening(model_angstrom)
     elif simuPars.modelfile == 'CONSTANT_FLAMBDA':
         if verbose: print('Star atmosphere model type: CONSTANT_FLAMBDA')
-        model_angstrom = np.linspace(4000, 55000, 51001)
+        model_angstrom = np.linspace(4000, 55000, 200001)
         model_flambda = np.ones(np.size(model_angstrom))
         model_ldcoeff = starlimbdarkening(model_angstrom)
     elif simuPars.modelfile == 'CONSTANT_FNU':
         if verbose: print('Star atmosphere model type: CONSTANT_FNU')
-        model_angstrom = np.linspace(4000, 55000, 51001)
+        model_angstrom = np.linspace(4000, 55000, 200001)
         fnu = np.ones(np.size(model_angstrom))
         speedoflight = 3e+8
         model_flambda = speedoflight * fnu / (model_angstrom * 1e-10)**2

@@ -14,6 +14,7 @@ WORKING_DIR = '/genesis/jwst/jwst-user-soss/loic_review/'
 import os
 # os.environ["OMP_NUM_THREADS"] = "24"
 import numpy as np
+
 # Will be used to create FITS writer
 from astropy.io import fits
 # Plotting
