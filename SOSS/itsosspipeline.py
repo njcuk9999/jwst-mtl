@@ -21,6 +21,7 @@ from skimage.transform import downscale_local_mean, resize
 import multiprocessing as mp
 import os.path
 from astropy.io import fits
+from astropy.io import ascii
 from tqdm.notebook import tqdm as tqdm_notebook
 
 import sys
@@ -143,6 +144,12 @@ def starmodel(simuPars, pathPars, verbose=True):
         fnu = np.ones(np.size(model_angstrom))
         speedoflight = 3e+8
         model_flambda = speedoflight * fnu / (model_angstrom * 1e-10)**2
+        model_ldcoeff = starlimbdarkening(model_angstrom)
+    elif (simuPars.modelfile == 'ZODI_NOMINAL') | (simuPars.modelfile == 'ZODI'):
+        if verbose: print('Star atmosphere model type: ZODI_NOMINAL')
+        tab = ascii.read(pathPars.path_starmodelatm + 'zodi_nominal.txt')
+        model_angstrom = np.array(tab['angstrom'])
+        model_flambda = np.array(tab['W/m2/um/pixel'])
         model_ldcoeff = starlimbdarkening(model_angstrom)
     else:
         if verbose: print('Star atmosphere model assumed to be on disk.')

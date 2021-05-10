@@ -283,6 +283,31 @@ def read_quantumyield(throughput_file=None):
     return(lba_um, quantum_yield)
 
 
+def anchor_spectrum(wave_micron, flux_W_m2_micron, filtername, magnitude,
+                    path_filter_transmission, verbose=False):
+    '''
+    Anchors a spectrum to the flux measured in a photometric band.
+    :param wave_micron:
+    :param flux_W_m2_micron:
+    :param filtername:
+    :param magnitude:
+    :param path_filter_transmission:
+    :param path_vega_spectrum:
+    :return:
+    '''
+
+    rawmag = syntMag(wave_micron, flux_W_m2_micron, filtername,
+                        path_filter_transmission = path_filter_transmission,
+                        path_vega_spectrum = path_filter_transmission, verbose=verbose)
+
+    if verbose:
+        print('Normalizing spectrum to magnitude {:6.2f} in filter {:}'.format(magnitude, filtername))
+
+    flux_normalized = flux_W_m2_micron * 10**(-0.4*(magnitude-rawmag))
+
+    return flux_normalized
+
+
 def example_1(wave_micron, flux_W_m2_micron):
     
     print('Beginning of example_1')

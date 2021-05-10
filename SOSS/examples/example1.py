@@ -94,6 +94,10 @@ tracePars = tp.get_tracepars(pathPars.tracefile)
 # Generate or read the star atmosphere model
 starmodel_angstrom, starmodel_flambda, ld_coeff = soss.starmodel(simuPars, pathPars)
 
+# Anchor star spectrum on a photometric band magnitude
+star_flambda = smag.anchor_spectrum(starmodel_angstrom/10000., starmodel_flambda, simuPars.filter,
+                                    simuPars.magnitude, pathPars.path_filtertransmission)
+
 # Read Planet Atmosphere Model (wavelength in angstroms and radius_planet/radius_star ratio)
 planetmodel_angstrom, planetmodel_rprs = spgen.readplanetmodel(pathPars.path_planetmodelatm+simuPars.pmodelfile[0],
                                                                simuPars.pmodeltype[0])
