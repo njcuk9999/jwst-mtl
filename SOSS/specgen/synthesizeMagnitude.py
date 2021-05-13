@@ -135,8 +135,9 @@ def expected_flux_calibration(filtername, magnitude, model_angstrom, model_flux,
         m = list_orders[eachorder]
         
         # Get wavelength (in um) of first and last pixel of the Order m trace
-        lbabound1, lbabound2 = tp.subarray_wavelength_bounds(tracepars, subarray=subarray, m=m)
-        print('CHECK lba bounds1. m={:}, lbabound1={:}, lbabound2={:}'.format(m,lbabound1,lbabound2))
+        (lbabound1, lbabound2), (pixbound1, pixbound2) = tp.subarray_wavelength_bounds(tracepars, subarray=subarray, m=m)
+        print('CHECK lba bounds. m={:}, lbabound1={:}, lbabound2={:}'.format(m,lbabound1,lbabound2))
+        print('CHECK specpix bounds. pixbound1={:}, pixbound2={:}'.format(pixbound1, pixbound2))
         
         # The number of photons per second integrated over that range is
         # (Flambda: J/sec/m2/um requires dividing by photon energy to get counts)
@@ -281,6 +282,31 @@ def read_quantumyield(throughput_file=None):
     quantum_yield = np.array(a[1].data['YIELD'])
     
     return(lba_um, quantum_yield)
+
+
+def anchor_spectrum(wave_micron, flux_W_m2_micron, filtername, magnitude,
+                    path_filter_transmission, verbose=False):
+    '''
+    Anchors a spectrum to the flux measured in a photometric band.
+    :param wave_micron:
+    :param flux_W_m2_micron:
+    :param filtername:
+    :param magnitude:
+    :param path_filter_transmission:
+    :param path_vega_spectrum:
+    :return:
+    '''
+
+    rawmag = syntMag(wave_micron, flux_W_m2_micron, filtername,
+                        path_filter_transmission = path_filter_transmission,
+                        path_vega_spectrum = path_filter_transmission, verbose=verbose)
+
+    if verbose:
+        print('Normalizing spectrum to magnitude {:6.2f} in filter {:}'.format(magnitude, filtername))
+
+    flux_normalized = flux_W_m2_micron * 10**(-0.4*(magnitude-rawmag))
+
+    return flux_normalized
 
 
 def example_1(wave_micron, flux_W_m2_micron):
