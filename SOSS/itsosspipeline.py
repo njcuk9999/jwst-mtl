@@ -297,7 +297,7 @@ def generate_timesteps(simuPars, f277=False):
 
 
 
-def generate_traces(pathPars, simuPars, tracePars, throughput,
+def generate_traces(savingprefix, pathPars, simuPars, tracePars, throughput,
                     star_angstrom, star_flux, ld_coeff,
                     planet_angstrom, planet_rprs,
                     timesteps, granularitytime):
@@ -423,7 +423,7 @@ def generate_traces(pathPars, simuPars, tracePars, throughput,
             print('Actual counts measured on the simulation = {:} e-/sec'.format(actual_counts))
             print()
 
-        tmpfilename = write_intermediate_fits(convolved_image, pathPars.path_userland+'tmp.fits',t)
+        tmpfilename = write_intermediate_fits(convolved_image, savingprefix, t)
         filelist.append(tmpfilename)
 
     return(filelist)
@@ -475,14 +475,13 @@ def write_simu_fits(image, filename):
 
     return
 
-def write_intermediate_fits(image, filename, timestep_index):
+def write_intermediate_fits(image, savingprefix, timestep_index):
     # Write image for a single time step. Differents spectral orders stored in third dimension
     # of the array. filename is the name of the final product. Intermediate filenames will
     # be forged based on that.
 
-    name, suffix = os.path.splitext(filename)
-    directory_name = name+'/'
-    filename_current = directory_name+'tmp_{:06d}'.format(timestep_index)+suffix
+    directory_name = os.dirname(savingprefix)
+    filename_current = savingprefix+'_{:06d}'.format(timestep_index)+'.fits'
 
     # Create a list of HDU with primary and extension HDUs
     hdu = fits.PrimaryHDU(image)
