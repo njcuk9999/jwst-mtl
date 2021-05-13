@@ -480,7 +480,7 @@ def write_intermediate_fits(image, savingprefix, timestep_index):
     # of the array. filename is the name of the final product. Intermediate filenames will
     # be forged based on that.
 
-    directory_name = os.dirname(savingprefix)
+    directory_name = os.path.dirname(savingprefix)
     filename_current = savingprefix+'_{:06d}'.format(timestep_index)+'.fits'
 
     # Create a list of HDU with primary and extension HDUs

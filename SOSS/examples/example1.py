@@ -65,8 +65,8 @@ verbose = True
 
 # Read in all paths used to locate reference files and directories
 WORKING_DIR = '/genesis/jwst/jwst-user-soss/loic_review/'
-#config_paths_filename = os.path.join(WORKING_DIR, 'jwst-mtl_configpath.txt')
-config_paths_filename = os.path.join(WORKING_DIR, 'jwst-mtl_configpath_runkim.txt')
+config_paths_filename = os.path.join(WORKING_DIR, 'jwst-mtl_configpath.txt')
+#config_paths_filename = os.path.join(WORKING_DIR, 'jwst-mtl_configpath_runkim.txt')
 
 pathPars = soss.paths()
 soss.readpaths(config_paths_filename, pathPars)
@@ -163,16 +163,16 @@ data = soss.write_dmsready_fits_init(imagelist, normalization_scale,
                                      simuPars.frametime, simuPars.granularity)
 
 # All simulations (e-/sec) are converted to up-the-ramp images.
-soss.write_dmsready_fits(data[:,:,0:256,0:2048], os.path.join(pathPars.path_userland,'test.fits'),
+soss.write_dmsready_fits(data[:,:,0:256,0:2048], os.path.join(pathPars.path_userland,'test_clear.fits'),
                     os=simuPars.noversample, input_frame='sim')
 
 # Add detector noise to the noiseless data
-detector.add_noise(os.path.join(pathPars.path_userland,'test.fits'),
-                   outputfilename=os.path.join(pathPars.path_userland, 'test_noisy.fits'))
+detector.add_noise(os.path.join(pathPars.path_userland,'test_clear.fits'),
+                   outputfilename=os.path.join(pathPars.path_userland, 'test_clear_noisy.fits'))
 
 # Process the data through the DMS level 1 pipeline
-result = Detector1Pipeline.call(os.path.join(pathPars.path_userland, 'test_noisy.fits'),
-                                output_file='test_noisy', output_dir=pathPars.path_userland)
+result = Detector1Pipeline.call(os.path.join(pathPars.path_userland, 'test_clear_noisy.fits'),
+                                output_file='test_clear_noisy', output_dir=pathPars.path_userland)
 
 """
 SIMULATE THE F277W CALIBRATION EXPOSURE OBTAINED AFTER THE GR700XD EXPOSURE
