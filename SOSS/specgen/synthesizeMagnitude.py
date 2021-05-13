@@ -135,8 +135,9 @@ def expected_flux_calibration(filtername, magnitude, model_angstrom, model_flux,
         m = list_orders[eachorder]
         
         # Get wavelength (in um) of first and last pixel of the Order m trace
-        lbabound1, lbabound2 = tp.subarray_wavelength_bounds(tracepars, subarray=subarray, m=m)
-        print('CHECK lba bounds1. m={:}, lbabound1={:}, lbabound2={:}'.format(m,lbabound1,lbabound2))
+        (lbabound1, lbabound2), (pixbound1, pixbound2) = tp.subarray_wavelength_bounds(tracepars, subarray=subarray, m=m)
+        print('CHECK lba bounds. m={:}, lbabound1={:}, lbabound2={:}'.format(m,lbabound1,lbabound2))
+        print('CHECK specpix bounds. pixbound1={:}, pixbound2={:}'.format(pixbound1, pixbound2))
         
         # The number of photons per second integrated over that range is
         # (Flambda: J/sec/m2/um requires dividing by photon energy to get counts)
