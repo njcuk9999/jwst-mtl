@@ -19,4 +19,7 @@ ENV_DIR = 'AMIDIR'
 # set package name
 PACKAGE = 'ami_mtl'
 
+# flush text time in seconds (too fast you wont see anything, too slow
+#   and it will slow the code down) - zero means no wait
+FLUSH_TEXT_TIME = 0
 

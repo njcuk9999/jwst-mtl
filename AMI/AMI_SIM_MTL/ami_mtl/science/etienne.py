@@ -373,14 +373,33 @@ def ami_sim_run_code(params: ParamDict, path: str, _filter: str,
         args = list(map(lambda x: str(x), args))
         # load module
         mod = ami_sim(params)
-        # run module main function
-        mod.main(args)
+        # ---------------------------------------------------------------------
+        # print that we are running amisim
+        params.log.info('Running AMI SIM')
+        argstring = ''
+        for arg in args:
+            if arg.startswith('--'):
+                argstring += '\n\t' + arg
+            else:
+                argstring += ' ' + arg
+        params.log.info(argstring)
+        # ---------------------------------------------------------------------
+        # run module main function (dealing with print outs)
+        with general.ModifyPrintouts(text='AMI-SIM Output', flush=True,
+                                     logfile=params['LOGFILE']):
+            mod.main(args)
+        # ---------------------------------------------------------------------
+        # return the tag
+        return tag
 
     except Exception as e:
         # log error
         emsg = 'AMI-SIM Error: {0}: {1}'
         eargs = [type(e), str(e)]
         params.log.error(emsg.format(*eargs))
+    # ---------------------------------------------------------------------
+    # return the tag
+    return tag
 
 
 def ami_sim(params: ParamDict):

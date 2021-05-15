@@ -14,8 +14,11 @@ import os
 from pathlib import Path
 import pkg_resources
 import string
+import sys
+import time
 from typing import Union
 
+from ami_mtl.core.base import base
 from ami_mtl.core.core import exceptions
 
 
@@ -32,9 +35,139 @@ REL_CACHE = dict()
 # bad characters
 BAD_CHARS = [' '] + list(string.punctuation.replace('_', ''))
 
+
 # =============================================================================
 # Define functions
 # =============================================================================
+class Unbuffered:
+    """
+    Modified from: https://stackoverflow.com/a/107717
+    """
+    def __init__(self, stream, text=None, log=None):
+        """
+        Construct stream
+        :param stream:
+        """
+        self.stream = stream
+        if text is None:
+            self.text = ''
+        else:
+            self.text = text + ': '
+        self.log = log
+
+    def _check(self, data) -> bool:
+        """
+        Check if data is valid for printing / logging
+
+        :param data: string, the stdout string
+
+        :return: bool, True if we should print / log
+        """
+        data = data.strip()
+        # if empty return False
+        if len(data) == 0:
+            return False
+        # if just one bad character return False
+        if data in BAD_CHARS:
+            return False
+        # else return True
+        else:
+            return True
+
+    def _fmt(self, data: str) -> str:
+        """
+        Must remove new lines (otherwise this doesn't work)
+        :param data:
+        :return:
+        """
+        # first remove 'n
+        data = data.replace('\n', '')
+        # deal with prefix
+        if len(self.text) > 0:
+            if not data.startswith(self.text):
+                data = self.text + data
+        # return data
+        return str(data)
+
+    def _writelog(self, data: str):
+        if self.log is not None:
+            with open(self.log, 'a') as logfile:
+                logfile.write(data + '\n')
+
+    def write(self, data: str):
+        """
+        Write line of text and then flush the line
+        :param data:
+        :return:
+        """
+        if self._check(data):
+            data = self._fmt(data)
+            self.stream.write('\r' + data)
+            self.stream.flush()
+            self._writelog(data)
+        if base.FLUSH_TEXT_TIME > 0:
+            time.sleep(base.FLUSH_TEXT_TIME)
+
+    def writelines(self, datas):
+        """
+        Write a set of lines (in a loop) then flush the line
+
+        :param datas: list of strings
+        :return:
+        """
+        for data in datas:
+            if self._check(data):
+                data = self._fmt(data)
+                self.stream.write('\r' + data)
+                self.stream.flush()
+                self._writelog(data)
+            if base.FLUSH_TEXT_TIME > 0:
+                time.sleep(base.FLUSH_TEXT_TIME)
+        # self.stream.writelines(datas)
+        # self.stream.flush()
+
+    def __getattr__(self, attr):
+        return getattr(self.stream, attr)
+
+
+class ModifyPrintouts:
+    """
+    Class to hide printouts
+
+    Use as follows:
+
+    with HiddenPrints():
+        # code to hide printouts
+
+    Taken from https://stackoverflow.com/a/45669280
+    """
+    def __init__(self, text=None, flush=False, logfile=None):
+        """
+        Construct the hidden printouts - if text is set this is displayed
+        at the start
+
+        :param text: str, the text displayed before the flushed text
+        """
+        self.text = text
+        self.flush = flush
+        if logfile is not None:
+            self.logfile = str(logfile)
+
+    def __enter__(self):
+        self._original_stdout = sys.stdout
+        if self.flush:
+            sys.stdout = Unbuffered(sys.stdout, text=self.text,
+                                    log=self.logfile)
+        else:
+            sys.stdout = open(os.devnull, 'w')
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if not self.flush:
+            sys.stdout.close()
+        # reset stdout
+        sys.stdout = self._original_stdout
+
+
 def display_func(func_name: str, program_name: str = None,
                  class_name: str = None,
                  params: Union[object, None] = None) -> str:
@@ -143,7 +276,6 @@ def clean_name(name: str) -> str:
     name = name.upper()
     # return clean name
     return name
-
 
 
 def printtxt(message):

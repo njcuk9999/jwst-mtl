@@ -375,6 +375,22 @@ group = 'dms'
 #   AMICAL constants
 # =============================================================================
 group = 'amical'
+# Define switch to use ami-sim input (requied as may not want to use the
+#    ami-sim inputs)
+Consts.add('AMICAL-INPUT-AMISIM', value=True, dtype=bool, source=__NAME__,
+           user=True, argument=False, group=group,
+           description='Define switch to use ami-sim input (requied as may '
+                       'not want to use the ami-sim inputs)',
+           path='amical.use.ami-sim_input')
+
+# Define switch to use mirage input (requied as may not want to use the
+#    mirage inputs)
+Consts.add('AMICAL-INPUT-MIRAGE', value=True, dtype=bool, source=__NAME__,
+           user=True, argument=False, group=group,
+           description='Define switch to use mirage input (requied as may '
+                       'not want to use the mirage inputs)',
+           path='amical.use.mirage_input')
+
 # Define switch to use ami-cal extraction
 Consts.add('AMICAL-EXT-USE', value=True, dtype=bool, source=__NAME__,
            user=True, argument=False, group=group,

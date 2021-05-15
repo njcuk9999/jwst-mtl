@@ -64,7 +64,9 @@ def main(**kwargs):
                                        desc=__DESCRIPTION__, name=__NAME__)
         # run the __main__ to return products
         if not params['GENERATE_CONFIG_FILE']:
-            return __main__(params)
+            returns = __main__(params)
+            param_functions.success_end(params)
+            return returns
     except Exception as e:
         if hasattr(e, '__log__'):
             log.exception(e.__log__())
@@ -79,8 +81,6 @@ def main(**kwargs):
 
 
 def __main__(params):
-    # debug where we have got to in the code
-    params.log.ldebug('run __main__', 7)
     # =========================================================================
     # deal with wrapper file
     # =========================================================================
@@ -98,6 +98,8 @@ def __main__(params):
     # =========================================================================
     # Extraction section
     # =========================================================================
+    # wrap around ami-cal extraction
+    wrap.amical_extraction(simulations)
 
     # =========================================================================
     # Analysis section
@@ -140,6 +142,9 @@ if __name__ == "__main__":
 
     # run main code
     #ll = main()
+
+    # log end
+    param_functions.success_end(params)
 
 # =============================================================================
 # End of code

@@ -1952,6 +1952,17 @@ def _splash(params: ParamDict, quiet: bool = False,
         params.log.empty(nametext.format(name), 'b')
         params.log.header()
 
+
+def success_end(params: ParamDict):
+    """
+    Display the our code ended successfully
+    :param params:
+    :return:
+    """
+    params.log.header()
+    params.log.empty('Recipe completed successfully', 'b')
+    params.log.header()
+
 def _generate_config_file(params: ParamDict):
     """
     Write a config file based on lconsts
