@@ -285,7 +285,7 @@ class Log:
         if kwargs.get('raise_exception', True):
             self.raise_exception(args[0], **kwargs)
 
-    def empty(self, message, _colour=None, *args, **kwargs):
+    def empty(self, message, _colour=None, _wrap=True, *args, **kwargs):
         """
         Log without any log formatting
 
@@ -301,7 +301,10 @@ class Log:
         # construct coloured message
         message = Colors().print(message, _colour)
         # empty message
-        messages = self.wrap(message)
+        if _wrap:
+            messages = self.wrap(message)
+        else:
+            messages = [message]
         # push to logger
         for msg in messages:
             self.logger._log(999, msg, args, **kwargs)
@@ -316,7 +319,7 @@ class Log:
         if self.theme in NO_THEME:
             color = None
         message = '*' * 79
-        self.empty(message, color)
+        self.empty(message, color, _wrap=False)
 
     def update_theme(self, theme):
         """
