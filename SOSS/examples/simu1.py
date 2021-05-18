@@ -63,7 +63,7 @@ verbose = True
 ###############################################################################
 
 # Read in all paths used to locate reference files and directories
-config_paths_filename = os.path.join(WORKING_DIR, 'jwst-mtl_configpath.txt')
+config_paths_filename = os.path.join(WORKING_DIR, 'jwst-mtl_configpath_kim.txt')
 pathPars = soss.paths()
 soss.readpaths(config_paths_filename, pathPars)
 
@@ -112,7 +112,7 @@ print('norders={:} dimy={:} dimx={:}'.format(norders,dimy,dimx))
 # For each time step, a cube of simulated images is written to disk
 # The cube has all spectral orders in separate slices.
 # The list of such fits cube file names is returned.
-if False:
+if True:
     imagelist = soss.generate_traces(pathPars, simuPars, tracePars, throughput,
                                    starmodel_angstrom, starmodel_flambda, ld_coeff,
                                    planetmodel_angstrom, planetmodel_rprs,

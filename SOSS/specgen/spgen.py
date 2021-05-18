@@ -1,5 +1,6 @@
 import sys
 sys.path.insert(0, "../trace/")
+sys.path.insert(0,"/genesis/jwst/jwst-ref-soss/fortran_lib/")
 
 import numpy as np #numpy gives us better array management 
 import os #checking status of requested files
