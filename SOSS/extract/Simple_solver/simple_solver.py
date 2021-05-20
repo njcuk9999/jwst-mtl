@@ -10,8 +10,7 @@ from scipy.ndimage.interpolation import rotate
 from astropy.io import fits
 
 from . import plotting
-from SOSS.extract import soss_read_refs  # TODO will need to handle incoming DataModels instead.
-from SOSS.dms import soss_centroids as ctd  # TODO remove shorthand.
+from SOSS.dms import soss_centroids as ctd  # TODO remove shorthand?
 
 warnings.simplefilter(action='ignore', category=RuntimeWarning)
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -238,146 +237,93 @@ def rot_centroids(ang, xshift, yshift, xpix, ypix, bound=True, atthesex=None,
     return rot_xpix, rot_ypix
 
 
-def simple_solver(clear, badpix=None, verbose=0, save_to_file=True):
-    """Algorithm to calculate and preform the necessary rotation and offsets to
-    transform the reference traces and wavelength maps to match the science
-    data.
-    The steps are as follows:
-        1. Determine the correct subarray for the data.
-        2. Get the first order centroids for the refrence trace.
-        3. Determine the first order centroids for the data.
-        4. Fit the reference centroids to the data to determine the correct
-           rotation angle and offset.
-        5. Apply this transformation to the reference traces and wavelength
-           maps for the first and second order.
-        6. Save transformed reference files to disk.
+def solve_transform(scidata, scimask, xcen_ref, ycen_ref, subarray,
+                    verbose=False):
+    """Given a science image, determine the centroids and find the simple
+    transformation needed to match xcen_ref and ycen_ref to the image.
 
-    Parameters
-    ----------
-    clear : np.ndarray
-        CLEAR science exposure.
-    badpix : np.ndarray (bool)
-        Bad pixel mask. Array with the same shape as clear. True denotes a bad
-        pixel.
-    verbose : int
-        Either 0, 1, or 2. If 2, show all progress prints and diagnostic plots.
-        If 1, only show progress prints. If 0, show nothing.
-    save_to_file : bool
-        If True, write the transformed wavelength map and 2D trace profiles to
-        disk in two multi-extension fits files.
+    :param scidata: the image of the SOSS trace.
+    :param scimask: a boolean mask of pixls to be excluded.
+    :param xcen_ref: a priori expectation of the trace x-positions.
+    :param ycen_ref: a priori expectation of the trace y-positions.
+    :param subarray: the subarray of the observations.
+    :param verbose: If set True provide diagnostic information.
 
-    Returns
-    -------
-    ref_trace_trans : np.ndarray
-        2xYx2048 array containing the reference trace profiles transformed
-        to match the science data.
-    wave_map_trans : np.ndarray
-        2xYx2048 array containing the reference trace profiles transformed
-        to match the science data.
+    :type scidata: array[float]
+    :type scimask: array[bool]
+    :type xcen_ref: array[float]
+    :type ycen_ref: array[float]
+    :type subarray: str
+    :type verbose: bool
 
-    Raises
-    ------
-    ValueError
-        If shape of clear input does not match known subarrays.
+    :returns: simple_transform - Array containing the angle, x-shift and y-shift
+        needed to match xcen_ref and ycen_ref to the image.
+    :rtype: array[float]
     """
 
-    if verbose != 0:
-        print('Starting the simple solver algorithm.')
-
-    # Open 2D trace profile reference file.
-    ref_trace_file = soss_read_refs.Ref2dProfile()
-
-    # Open trace table reference file.
-    ttab_file = soss_read_refs.RefTraceTable()
-
-    # Get first order centroids (in DMS coords).
-    wavemap_file = soss_read_refs.Ref2dWave()
-
-    if verbose != 0:
-        print(' Reading reference files...')
-
-    # Determine correct subarray dimensions and offsets.
-    dimy, dimx = np.shape(clear)
-    if dimy == 96:
-        subarray = 'SUBSTRIP96'
-    elif dimy == 256:
-        subarray = 'SUBSTRIP256'
-    elif dimy == 2048:
-        subarray = 'FULL'
-    else:
-        errmsg = 'Unrecognized subarray shape: {}x{}.'.format(dimy, dimx)
-        raise ValueError(errmsg)
-
-    # Get first order centroids on subarray.
-    xcen_ref = ttab_file('X', subarray=subarray)[1]
-
-    # Extend centroids beyond edges of the subarray for more accurate fitting.
-    inds = np.where((xcen_ref >= -50) & (xcen_ref < 2098))
-    xcen_ref = xcen_ref[inds]
-    ycen_ref = ttab_file('Y', subarray=subarray)[1][inds]
+    # Extend centroids beyond edges of the subarray for more accurate fitting. TODO Actually removes points, no need to do this?
+    mask = (xcen_ref >= -50) & (xcen_ref < 2098)
+    xcen_ref = xcen_ref[mask]
+    ycen_ref = ycen_ref[mask]
 
     # Get centroids from data.
-    if verbose != 0:
-        print(' Getting centroids...')
+    centroids = ctd.get_soss_centroids(scidata, mask=scimask,
+                                       subarray=subarray, verbose=verbose)
 
-    cen_dict = ctd.get_soss_centroids(clear*1, mask=badpix,
-                                      subarray=subarray, verbose=False)
-    xcen_dat = cen_dict['order 1']['X centroid']
-    ycen_dat = cen_dict['order 1']['Y centroid']
+    xcen_dat = centroids['order 1']['X centroid']
+    ycen_dat = centroids['order 1']['Y centroid']
 
     # Fit the reference file centroids to the data.
-    guess_params = (0.15, 1, 1)
+    guess_transform = np.array([0.15, 1, 1])
     lik_args = (xcen_ref, ycen_ref, xcen_dat, ycen_dat, subarray)
-    fit = minimize(_chi_squared, guess_params, lik_args).x
-    rot_ang, x_shift, y_shift = fit
+    result = minimize(_chi_squared, guess_transform, args=lik_args)
+    simple_transform = result.x
 
-    # Transform reference files to match data.
-    if verbose != 0:
-        print(' Transforming reference files...')
+    return simple_transform
 
-    ref_trace_trans = np.ones((2, dimy, dimx))
-    wave_map_trans = np.ones((2, dimy, dimx))
-    for order in [1, 2]:
 
-        # Load the reference trace and wavelength map for the current order and
-        # correct subarray, as well as padding and oversampling information.
-        ref_trace, os_t, pad_t = ref_trace_file(order=order, subarray=subarray,
-                                                native=False, only_prof=False)
-        ref_wavemap, os_w, pad_w = wavemap_file(order=order, subarray=subarray,
-                                                native=False, only_prof=False)
+def apply_transform(simple_transform, ref_maps, oversample, pad, verbose=False):
+    """Apply the transformation found by solve_transform() to a 2D reference map.
+
+    :param simple_transform: The transformation parameters returned by
+        solve_transform().
+    :param ref_maps: Array of reference maps.
+    :param oversample: The oversampling factor the reference maps.
+    :param pad: The padding (in native pixels) on the reference maps.
+    :param verbose: If set True provide diagnostic information.
+
+    :type simple_transform: Tuple, List, Array
+    :type ref_maps: array[float]
+    :type oversample:
+    :type pad:
+    :type verbose: bool
+
+    :returns: trans_maps - the ref_maps after having the transformation applied.
+    :rtype: array[float]
+    """
+
+    # Unpack the transformation.
+    rot_ang, x_shift, y_shift = simple_transform
+
+    # Get the dimensions of the reference map.
+    norders, dimy, dimx = ref_maps.shape
+
+    trans_maps = np.ones_like(ref_maps)
+    for i_ord in range(norders):
 
         # Set NaN pixels to zero - the rotation doesn't handle NaNs well.
-        ref_trace[np.isnan(ref_trace)] = 0
-        ref_wavemap[np.isnan(ref_wavemap)] = 0
+        ref_maps[np.isnan(ref_maps)] = 0
 
         # Do the transformation for the reference 2D trace.
         # Pass negative rot_ang to convert from CCW to CW rotation
-        trace_trans = _do_transform(ref_trace, -rot_ang, x_shift, y_shift,
-                                    pad=pad_t, oversample=os_t,
-                                    verbose=verbose)
+        trans_map = _do_transform(ref_maps[i_ord], -rot_ang, x_shift, y_shift,
+                                  pad=pad, oversample=oversample,
+                                  verbose=verbose)
 
         # Renormalize the spatial profile so columns sum to one.
-        ref_trace_trans[order-1] = trace_trans / np.nansum(trace_trans, axis=0)
+        trans_maps[i_ord] = trans_map/np.nansum(trans_map, axis=0)  # TODO handle this with a switch?
 
-        # Transform the wavelength map.
-        wave_map_trans[order-1, :, :] = _do_transform(ref_wavemap, -rot_ang,
-                                                      x_shift, y_shift,
-                                                      pad=pad_w,
-                                                      oversample=os_w,
-                                                      verbose=verbose)
-
-    # Write files to disk if requested.
-    if save_to_file is True:
-        if verbose != 0:
-            print(' Writing to file...')
-        write_to_file(ref_trace_trans,
-                      filename='SOSS_ref_2Dprofile_simplysolved')
-        write_to_file(wave_map_trans, filename='SOSS_ref_2Dwave_simplysolved')
-
-    if verbose != 0:
-        print('Done.')
-
-    return ref_trace_trans, wave_map_trans
+    return trans_maps
 
 
 def write_to_file(stack, filename):
