@@ -1,35 +1,33 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-Created on Wed Dec 09 10:41 2020
 
-@author: MCR
-
-Functions for the 'simple solver' - calculating rotation and offset of
-reference order 1 and 2 trace profiles, as well as wavelength maps.
-"""
+import warnings
 
 import numpy as np
-from astropy.io import fits
-import warnings
-from scipy.ndimage.interpolation import rotate
 from scipy.optimize import minimize
-from SOSS.extract import soss_read_refs
-from SOSS.extract.simple_solver import plotting as plotting
-from SOSS.dms import soss_centroids as ctd
+from scipy.ndimage.interpolation import rotate
+
+from astropy.io import fits
+
+from . import plotting
+from SOSS.extract import soss_read_refs  # TODO will need to handle incoming DataModels instead.
+from SOSS.dms import soss_centroids as ctd  # TODO remove shorthand.
 
 warnings.simplefilter(action='ignore', category=RuntimeWarning)
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 
 def _chi_squared(theta, xmod, ymod, xdat, ydat, subarray):
-    '''Definition of a modified Chi squared statistic to fit refrence centroid
+    """"Definition of a modified Chi squared statistic to fit refrence centroid
     to those extracted from the data.
-    '''
-    ang, xshift, yshift = theta
+    """
+
+    ang, xshift, yshift = theta  # TODO rename theta to transform?
+
     # Calculate rotated model.
     modelx, modely = rot_centroids(ang, xshift, yshift, xmod, ymod, bound=True,
                                    subarray=subarray)
+
     # Interpolate rotated model onto same x scale as data.
     modely = np.interp(xdat, modelx, modely)
 
@@ -38,7 +36,7 @@ def _chi_squared(theta, xmod, ymod, xdat, ydat, subarray):
 
 def _do_transform(data, rot_ang, x_shift, y_shift, pad=0, oversample=1,
                   verbose=0):
-    '''Do the rotation (via a rotation matrix) and offset of the reference
+    """Do the rotation (via a rotation matrix) and offset of the reference
     files to match the data. Rotation angle and center, as well as the
     required vertical and horizontal displacements must be calculated
     beforehand.
@@ -72,9 +70,10 @@ def _do_transform(data, rot_ang, x_shift, y_shift, pad=0, oversample=1,
     data_sub256_nat : np.ndarray
         Reference file with all transformations applied and interpolated
         to the native detector resolution.
-    '''
+    """
 
     x_shift, y_shift = int(round(x_shift, 0)), int(round(y_shift, 0))
+
     # Determine x and y center of the padded dataframe.
     pad_ydim, pad_xdim = np.shape(data)
     nat_xdim = int(round(pad_xdim / oversample - 2*pad, 0))
@@ -88,17 +87,21 @@ def _do_transform(data, rot_ang, x_shift, y_shift, pad=0, oversample=1,
 
     # Shift dataframe such that rotation anchor is in the center of the frame.
     data_shift = np.roll(data, (pad_ycen-y_anch, pad_xcen-x_anch), (0, 1))
+
     # Rotate the shifted dataframe by the required amount.
     data_rot = rotate(data_shift, rot_ang, reshape=False)
+
     # Shift the rotated data back to its original position.
     data_shiftback = np.roll(data_rot, (-pad_ycen+y_anch, -pad_xcen+x_anch),
                              (0, 1))
+
     # Apply vertical and horizontal offsets.
     data_offset = np.roll(data_shiftback, (y_shift*oversample,
                           x_shift*oversample), (0, 1))
     if verbose == 2:
         plotting._plot_transformation_steps(data_shift, data_rot,
                                             data_shiftback, data_offset)
+
     # Remove the padding.
     data_sub = data_offset[(pad*oversample):(-pad*oversample),
                            (pad*oversample):(-pad*oversample)]
@@ -107,6 +110,7 @@ def _do_transform(data, rot_ang, x_shift, y_shift, pad=0, oversample=1,
     if oversample != 1:
         data_nat1 = np.ones((nat_ydim, nat_xdim*oversample))
         data_nat = np.ones((nat_ydim, nat_xdim))
+
         # Loop over the spectral direction and interpolate the oversampled
         # spatial profile to native resolution.
         # Can likely be done in a more vectorized way.
@@ -116,6 +120,7 @@ def _do_transform(data, rot_ang, x_shift, y_shift, pad=0, oversample=1,
                                       endpoint=False)
             oversamp_prof = data_sub[:, i]
             data_nat1[:, i] = np.interp(new_ax, oversamp_ax, oversamp_prof)
+
         # Same for the spectral direction.
         for i in range(nat_ydim):
             new_ax = np.arange(nat_xdim)
@@ -131,7 +136,7 @@ def _do_transform(data, rot_ang, x_shift, y_shift, pad=0, oversample=1,
 
 def rot_centroids(ang, xshift, yshift, xpix, ypix, bound=True, atthesex=None,
                   cenx=1024, ceny=50, subarray='SUBSTRIP256'):
-    '''Apply a rotation and shift to the trace centroids positions. This
+    """Apply a rotation and shift to the trace centroids positions. This
     assumes that the trace centroids are already in the CV3 coordinate system.
 
     Parameters
@@ -170,11 +175,12 @@ def rot_centroids(ang, xshift, yshift, xpix, ypix, bound=True, atthesex=None,
     ------
     ValueError
         If bad subarray identifier is passed.
-    '''
+    """
 
     # Convert to numpy arrays
     xpix = np.atleast_1d(xpix)
     ypix = np.atleast_1d(ypix)
+
     # Required rotation in the detector frame to match the data.
     t = np.deg2rad(ang)
     R = np.array([[np.cos(t), -np.sin(t)], [np.sin(t), np.cos(t)]])
@@ -190,14 +196,17 @@ def rot_centroids(ang, xshift, yshift, xpix, ypix, bound=True, atthesex=None,
     rot_pix[1] += yshift
 
     if atthesex is None:
+
         # Ensure that there are no jumps of >1 pixel.
-        min = int(round(np.min(rot_pix[0]), 0))
-        max = int(round(np.max(rot_pix[0]), 0))
+        minval = int(round(np.min(rot_pix[0]), 0))  # TODO clean these up a bit.
+        maxval = int(round(np.max(rot_pix[0]), 0))
+
         # Same range as rotated pixels but with step of 1 pixel.
-        atthesex = np.linspace(min, max, max-min+1)
+        atthesex = np.linspace(minval, maxval, maxval-minval+1)
 
     # Polynomial fit to ensure a centroid at each pixel in atthesex
     pp = np.polyfit(rot_pix[0], rot_pix[1], 5)
+
     # Warn user if atthesex extends beyond polynomial domain.
     if np.max(atthesex) > np.max(rot_pix[0])+25 or np.min(atthesex) < np.min(rot_pix[0])-25:
         warnmsg = 'atthesex extends beyond rot_xpix. Use with caution.'
@@ -207,6 +216,7 @@ def rot_centroids(ang, xshift, yshift, xpix, ypix, bound=True, atthesex=None,
 
     # Check to ensure all points are on the subarray.
     if bound is True:
+
         # Get dimensions of the subarray
         if subarray == 'SUBSTRIP96':
             yend = 96
@@ -218,6 +228,7 @@ def rot_centroids(ang, xshift, yshift, xpix, ypix, bound=True, atthesex=None,
             errmsg = 'Unknown subarray. Allowed identifiers are "SUBSTRIP96",\
              "SUBSTRIP256", or "FULL".'
             raise ValueError(errmsg)
+
         # Reject pixels which are not on the subarray.
         inds = [(rot_ypix >= 0) & (rot_ypix < yend) & (rot_xpix >= 0) &
                 (rot_xpix < 2048)]
@@ -228,7 +239,7 @@ def rot_centroids(ang, xshift, yshift, xpix, ypix, bound=True, atthesex=None,
 
 
 def simple_solver(clear, badpix=None, verbose=0, save_to_file=True):
-    '''Algorithm to calculate and preform the necessary rotation and offsets to
+    """Algorithm to calculate and preform the necessary rotation and offsets to
     transform the reference traces and wavelength maps to match the science
     data.
     The steps are as follows:
@@ -268,20 +279,23 @@ def simple_solver(clear, badpix=None, verbose=0, save_to_file=True):
     ------
     ValueError
         If shape of clear input does not match known subarrays.
-    '''
+    """
 
     if verbose != 0:
         print('Starting the simple solver algorithm.')
 
     # Open 2D trace profile reference file.
     ref_trace_file = soss_read_refs.Ref2dProfile()
+
     # Open trace table reference file.
     ttab_file = soss_read_refs.RefTraceTable()
+
     # Get first order centroids (in DMS coords).
     wavemap_file = soss_read_refs.Ref2dWave()
 
     if verbose != 0:
         print(' Reading reference files...')
+
     # Determine correct subarray dimensions and offsets.
     dimy, dimx = np.shape(clear)
     if dimy == 96:
@@ -296,6 +310,7 @@ def simple_solver(clear, badpix=None, verbose=0, save_to_file=True):
 
     # Get first order centroids on subarray.
     xcen_ref = ttab_file('X', subarray=subarray)[1]
+
     # Extend centroids beyond edges of the subarray for more accurate fitting.
     inds = np.where((xcen_ref >= -50) & (xcen_ref < 2098))
     xcen_ref = xcen_ref[inds]
@@ -304,7 +319,8 @@ def simple_solver(clear, badpix=None, verbose=0, save_to_file=True):
     # Get centroids from data.
     if verbose != 0:
         print(' Getting centroids...')
-    cen_dict = ctd.get_soss_centroids(clear*1, badpix=badpix,
+
+    cen_dict = ctd.get_soss_centroids(clear*1, mask=badpix,
                                       subarray=subarray, verbose=False)
     xcen_dat = cen_dict['order 1']['X centroid']
     ycen_dat = cen_dict['order 1']['Y centroid']
@@ -318,15 +334,18 @@ def simple_solver(clear, badpix=None, verbose=0, save_to_file=True):
     # Transform reference files to match data.
     if verbose != 0:
         print(' Transforming reference files...')
+
     ref_trace_trans = np.ones((2, dimy, dimx))
     wave_map_trans = np.ones((2, dimy, dimx))
     for order in [1, 2]:
+
         # Load the reference trace and wavelength map for the current order and
         # correct subarray, as well as padding and oversampling information.
         ref_trace, os_t, pad_t = ref_trace_file(order=order, subarray=subarray,
                                                 native=False, only_prof=False)
         ref_wavemap, os_w, pad_w = wavemap_file(order=order, subarray=subarray,
                                                 native=False, only_prof=False)
+
         # Set NaN pixels to zero - the rotation doesn't handle NaNs well.
         ref_trace[np.isnan(ref_trace)] = 0
         ref_wavemap[np.isnan(ref_wavemap)] = 0
@@ -336,14 +355,17 @@ def simple_solver(clear, badpix=None, verbose=0, save_to_file=True):
         trace_trans = _do_transform(ref_trace, -rot_ang, x_shift, y_shift,
                                     pad=pad_t, oversample=os_t,
                                     verbose=verbose)
+
         # Renormalize the spatial profile so columns sum to one.
         ref_trace_trans[order-1] = trace_trans / np.nansum(trace_trans, axis=0)
+
         # Transform the wavelength map.
         wave_map_trans[order-1, :, :] = _do_transform(ref_wavemap, -rot_ang,
                                                       x_shift, y_shift,
                                                       pad=pad_w,
                                                       oversample=os_w,
                                                       verbose=verbose)
+
     # Write files to disk if requested.
     if save_to_file is True:
         if verbose != 0:
@@ -359,7 +381,7 @@ def simple_solver(clear, badpix=None, verbose=0, save_to_file=True):
 
 
 def write_to_file(stack, filename):
-    '''Utility function to write transformed 2D trace profile or wavelength map
+    """Utility function to write transformed 2D trace profile or wavelength map
     files to disk. Data will be saved as a multi-extension fits file.
 
     Parameters
@@ -370,7 +392,7 @@ def write_to_file(stack, filename):
         the spatial dimension, and the third the spectral dimension.
     filename : str
         Name of the file to which to write the data.
-    '''
+    """
 
     hdu_p = fits.PrimaryHDU()
     hdulist = [hdu_p]
@@ -382,3 +404,15 @@ def write_to_file(stack, filename):
 
     hdu = fits.HDUList(hdulist)
     hdu.writeto('{}.fits'.format(filename), overwrite=True)
+
+    return
+
+
+def main():
+    """Placeholder for potential multiprocessing."""
+
+    return
+
+
+if __name__ == '__main__':
+    main()
