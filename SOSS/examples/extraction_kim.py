@@ -25,16 +25,43 @@ simuPars = spgen.read_pars(pathPars.simulationparamfile, simuPars) #read in para
 starmodel_angstrom, starmodel_flambda, ld_coeff = soss.starmodel(simuPars, pathPars)
 
 trace_file = "/genesis/jwst/jwst-ref-soss/trace_model/NIRISS_GR700_trace_extended.csv"
-x = np.linspace(0,2047,2048)
-pars = tp.get_tracepars(trace_file)
-w, tmp = tp.specpix_to_wavelength(x,pars,m=1)   #Donne mes wl pour chaque x
+x = np.linspace(0,2047,2048)    #Array of pixels
+pars = tp.get_tracepars(trace_file)   #Gives the middle position of trace
+w, tmp = tp.specpix_to_wavelength(x,pars,m=1)   #Returns wavelength for each x, order 1
 
-xnew, y, mask = tp.wavelength_to_pix(w, pars, m=1)
+xnew, y, mask = tp.wavelength_to_pix(w, pars, m=1)   #Converts wavelenghths to pixel coordinate
 
 cube = fits.getdata("/home/kmorel/ongenesis/jwst-user-soss/test_noisy_rateints.fits")
 im = cube[0,:,:]
 
+a = fits.open("/home/kmorel/ongenesis/jwst-user-soss/test_noisy_rateints.fits")
+dq = a[3].data  #Data quality
+dq = dq[0,:,:]
+
+#VALEUR IMPAIRES DE DQ = PIXELS À NE PAS UTILISER
+
+ynew = np.interp(x, xnew, y)    #Interpolation of y at integer values of x
+ynew = np.around(ynew)
+
+spec = np.zeros_like(x)
+for x_i in x:
+    x_i = int(x_i)
+    i = int(ynew[x_i])
+    #buttom_light = im[:i-15,x_i]
+    #top_light = im[i+15:,x_i]
+    #residu_light = np.concatenate((buttom_light, top_light))
+    #residu_light = np.mean(residu_light)
+    #im[:,x_i] -= residu_light
+    spec[x_i] = np.sum(im[i-15:i+15,x_i])
+
+
 plt.figure()
-plt.imshow(im,vmin=0,vmax=1000,origin="lower")
-plt.plot(x,y,color="red")
+plt.imshow(im, vmin=0, vmax=1000, origin="lower")
+plt.plot(x, y, color="red")
+plt.show()
+
+
+plt.figure()
+plt.plot(w, spec, color="HotPink")
+#plt.plot(starmodel_angstrom, starmodel_flambda,color='Aqua')
 plt.show()
