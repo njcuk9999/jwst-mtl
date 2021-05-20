@@ -16,25 +16,26 @@ warnings.simplefilter(action='ignore', category=RuntimeWarning)
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 
-def _chi_squared(theta, xmod, ymod, xdat, ydat, subarray):
+def _chi_squared(transform, xmod, ymod, xdat, ydat, subarray):
     """"Definition of a modified Chi squared statistic to fit refrence centroid
     to those extracted from the data.
     """
 
-    ang, xshift, yshift = theta  # TODO rename theta to transform?
+    angle, xshift, yshift = transform
 
     # Calculate rotated model.
-    modelx, modely = rot_centroids(ang, xshift, yshift, xmod, ymod, bound=True,
+    modelx, modely = rot_centroids(angle, xshift, yshift, xmod, ymod, bound=True,
                                    subarray=subarray)
 
     # Interpolate rotated model onto same x scale as data.
     modely = np.interp(xdat, modelx, modely)
+    chisq = np.nansum((ydat - modely)**2)
 
-    return np.nansum((ydat - modely)**2)
+    return chisq
 
 
 def _do_transform(data, rot_ang, x_shift, y_shift, pad=0, oversample=1,
-                  verbose=0):
+                  verbose=False):
     """Do the rotation (via a rotation matrix) and offset of the reference
     files to match the data. Rotation angle and center, as well as the
     required vertical and horizontal displacements must be calculated
@@ -81,23 +82,26 @@ def _do_transform(data, rot_ang, x_shift, y_shift, pad=0, oversample=1,
     pad_ycen = pad_ydim // 2
 
     # Rotation anchor is o1 ~trace centroid halfway along the spectral axis.
-    x_anch = int((1024+pad)*oversample)
-    y_anch = int((50+pad)*oversample)
+    x_anch = int((1024 + pad)*oversample)  # TODO hardcoded here, optional in rot_centroids.
+    y_anch = int((50 + pad)*oversample)
 
+    # TODO this roll rotate roll construction assumes more padding than we have
+    # TODO solve by adding padding (stackoverflow) or use affine_transform()?
     # Shift dataframe such that rotation anchor is in the center of the frame.
-    data_shift = np.roll(data, (pad_ycen-y_anch, pad_xcen-x_anch), (0, 1))
+    data_shift = np.roll(data, (pad_ycen - y_anch, pad_xcen - x_anch), (0, 1))
 
     # Rotate the shifted dataframe by the required amount.
     data_rot = rotate(data_shift, rot_ang, reshape=False)
 
     # Shift the rotated data back to its original position.
-    data_shiftback = np.roll(data_rot, (-pad_ycen+y_anch, -pad_xcen+x_anch),
+    data_shiftback = np.roll(data_rot, (-pad_ycen + y_anch, -pad_xcen + x_anch),
                              (0, 1))
 
     # Apply vertical and horizontal offsets.
     data_offset = np.roll(data_shiftback, (y_shift*oversample,
                           x_shift*oversample), (0, 1))
-    if verbose == 2:
+
+    if verbose:
         plotting._plot_transformation_steps(data_shift, data_rot,
                                             data_shiftback, data_offset)
 
@@ -133,14 +137,14 @@ def _do_transform(data, rot_ang, x_shift, y_shift, pad=0, oversample=1,
     return data_nat
 
 
-def rot_centroids(ang, xshift, yshift, xpix, ypix, bound=True, atthesex=None,
+def rot_centroids(angle, xshift, yshift, xpix, ypix, bound=True, xgrid=None,
                   cenx=1024, ceny=50, subarray='SUBSTRIP256'):
     """Apply a rotation and shift to the trace centroids positions. This
     assumes that the trace centroids are already in the CV3 coordinate system.
 
     Parameters
     ----------
-    ang : float
+    angle : float
         The rotation angle in degrees CCW.
     xshift : float
         Offset in the X direction to be rigidly applied after rotation.
@@ -152,7 +156,7 @@ def rot_centroids(ang, xshift, yshift, xpix, ypix, bound=True, atthesex=None,
         Centroid pixel Y values.
     bound : bool
         Whether to trim rotated solutions to fit within the specified subarray.
-    atthesex : list of float
+    xgrid : list of float
         Pixel values at which to calculate rotated centroids.
     cenx : int
         X-coordinate in pixels of the rotation center.
@@ -181,7 +185,7 @@ def rot_centroids(ang, xshift, yshift, xpix, ypix, bound=True, atthesex=None,
     ypix = np.atleast_1d(ypix)
 
     # Required rotation in the detector frame to match the data.
-    t = np.deg2rad(ang)
+    t = np.deg2rad(angle)
     R = np.array([[np.cos(t), -np.sin(t)], [np.sin(t), np.cos(t)]])
 
     # Rotation center set to o1 trace centroid halfway along spectral axis.
@@ -194,23 +198,24 @@ def rot_centroids(ang, xshift, yshift, xpix, ypix, bound=True, atthesex=None,
     rot_pix[0] += xshift
     rot_pix[1] += yshift
 
-    if atthesex is None:
+    if xgrid is None:
 
         # Ensure that there are no jumps of >1 pixel.
-        minval = int(round(np.min(rot_pix[0]), 0))  # TODO clean these up a bit.
-        maxval = int(round(np.max(rot_pix[0]), 0))
+        minval = int(round(np.amin(rot_pix[0]), 0))
+        maxval = int(round(np.amax(rot_pix[0]), 0))
 
         # Same range as rotated pixels but with step of 1 pixel.
-        atthesex = np.linspace(minval, maxval, maxval-minval+1)
+        xgrid = np.linspace(minval, maxval, maxval-minval+1)
 
-    # Polynomial fit to ensure a centroid at each pixel in atthesex
+    # Polynomial fit to ensure a centroid at each pixel in xgrid.
     pp = np.polyfit(rot_pix[0], rot_pix[1], 5)
 
-    # Warn user if atthesex extends beyond polynomial domain.
-    if np.max(atthesex) > np.max(rot_pix[0])+25 or np.min(atthesex) < np.min(rot_pix[0])-25:
-        warnmsg = 'atthesex extends beyond rot_xpix. Use with caution.'
+    # Warn user if xgrid extends beyond polynomial domain.
+    if np.amax(xgrid) > np.amax(rot_pix[0]) + 25 or np.amin(xgrid) < np.amin(rot_pix[0])-25:
+        warnmsg = 'xgrid extends beyond rot_xpix. Use with caution.'
         warnings.warn(warnmsg)
-    rot_xpix = atthesex
+
+    rot_xpix = xgrid
     rot_ypix = np.polyval(pp, rot_xpix)
 
     # Check to ensure all points are on the subarray.
