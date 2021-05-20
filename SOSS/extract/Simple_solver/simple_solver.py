@@ -16,7 +16,7 @@ from scipy.ndimage.interpolation import rotate
 from scipy.optimize import minimize
 from SOSS.extract import soss_read_refs
 from SOSS.extract.simple_solver import plotting as plotting
-from SOSS.trace import contaminated_centroids as ctd
+from SOSS.dms import soss_centroids as ctd
 
 warnings.simplefilter(action='ignore', category=RuntimeWarning)
 warnings.simplefilter(action='ignore', category=FutureWarning)
