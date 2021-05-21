@@ -46,43 +46,41 @@ im[i[0],i[1]] = 0
 ynew = np.interp(x, xnew, y)    #Interpolation of y at integer values of x
 ynew = np.around(ynew)
 
-spec = np.zeros_like(x)   #Extracted spectrum
+radius_pixel = 15   #"Rayon" de la boîte
+flux = np.zeros_like(x)   #Array extracted spectrum
+
 for x_i in x:
     x_i = int(x_i)
     i = int(ynew[x_i])
-    #buttom_light = im[:i-15,x_i]
-    #top_light = im[i+15:,x_i]
-    #residu_light = np.concatenate((buttom_light, top_light))
-    #residu_light = np.mean(residu_light)
-    #im[:,x_i] -= residu_light
-    spec[x_i] = np.sum(im[i-15:i+15,x_i])
+    flux[x_i] = np.sum(im[i-radius_pixel:i+radius_pixel,x_i])
 
-g = 1.6  #e⁻/adu
-energy = sc_cst.Planck*sc_cst.speed_of_light/(w*10**(-6))
+gain = 1.6  #e⁻/adu
+phot_ener = sc_cst.Planck*sc_cst.speed_of_light/(w*10**(-6))
 area = 25  #m²
 
 dw = np.zeros_like(w)
+
 for i in range(len(w)):
     if i == 0:
         dw[i] = w[0]-w[1]
     else:
         dw[i] = w[i-1]-w[i]
 
-f_lambda = spec*g*energy/area/dw  #Flux
+f_lambda = flux*gain*phot_ener/area/dw  #Flux
 
 plt.figure(1)
 plt.imshow(im, vmin=0, vmax=1000, origin="lower")
 plt.plot(x, y, color="red")
 plt.show()
 
-
 plt.figure(2)
-#plt.plot(w, spec, color="HotPink")
 plt.plot(w, f_lambda, color="HotPink")
-plt.xlabel("Wavelength [microns]"), plt.ylabel("Flux [W/m²/micron]")
+plt.xlabel(r"Wavelength [$\mu$m]"), plt.ylabel(r"Flux [J s⁻¹ m⁻² $\mu$m⁻¹]")
 plt.show()
 
 plt.figure(3)
 plt.plot(starmodel_angstrom, starmodel_flambda,color='Aqua')
-plt.xlabel("Wavelength [angstroms]"), plt.ylabel("Flux [W/m²/angstrom]")
+plt.xlabel(r"Wavelength [angstrom]"), plt.ylabel(r"Flux [J s⁻¹ m⁻² $\mu$m⁻¹]")
 plt.show()
+
+print(w)
