@@ -201,110 +201,94 @@ def solve_transform(scidata, scimask, xcen_ref, ycen_ref, subarray,
     return simple_transform
 
 
-def _do_transform(data, rot_ang, x_shift, y_shift, pad=0, oversample=1,
-                  verbose=False):
-    """Do the rotation (via a rotation matrix) and offset of the reference
-    files to match the data. Rotation angle and center, as well as the
-    required vertical and horizontal displacements must be calculated
-    beforehand.
-    This assumes that we have a sufficiently padded reference file, and that
-    oversampling is equal in the spatial and spectral directions.
-    The reference file is interpolated to the native detector resolution after
-    the transformations if oversampled.
+def rotate_image(image, angle, origin):
+    """Rotate an image around a specific pixel.
 
-    Parameters
-    ----------
-    data : np.ndarray
-        Reference file data.
-    rot_ang : float
-        Rotation angle in degrees.
-    x_shift : float
-        Offset in the spectral direction to be applied after rotation.
-    y_shift : float
-        Offset in the spatial direction to be applied after rotation.
-    pad : int
-        Number of native pixels of padding on each side of the frame.
-    oversample : int
-        Factor by which the reference data is oversampled. The
-        oversampling is assumed to be equal in both the spectral and
-        spatial directions.
-    verbose : int
-        Either 0, 1, or 2. If 2, show all progress prints and diagnostic plots.
-        If 1, only show progress prints. If 0, show nothing.
+    :param image: The image to rotate.
+    :param angle: The rotation angle in degrees.
+    :param origin: The x, y pixel position around which to rotate.
 
-    Returns
-    -------
-    data_sub256_nat : np.ndarray
-        Reference file with all transformations applied and interpolated
-        to the native detector resolution.
+    :type image: array[float]
+    :type angle: float
+    :type origin: Tuple, List, Array
+
+    :returns: image_rot - The rotated image.
+    :rtype: array[float]
     """
 
-    x_shift, y_shift = int(round(x_shift, 0)), int(round(y_shift, 0))
+    # Pad image so we can safely rotate around the origin.
+    padx = [image.shape[1] - origin[0], origin[0]]
+    pady = [image.shape[0] - origin[1], origin[1]]
+    image_pad = np.pad(image, [pady, padx], 'constant')
 
-    # Determine x and y center of the padded dataframe.
-    pad_ydim, pad_xdim = np.shape(data)
-    nat_xdim = int(round(pad_xdim / oversample - 2*pad, 0))
-    nat_ydim = int(round(pad_ydim / oversample - 2*pad, 0))
-    pad_xcen = pad_xdim // 2
-    pad_ycen = pad_ydim // 2
-
-    # Rotation anchor is o1 ~trace centroid halfway along the spectral axis.
-    x_anch = int((1024 + pad)*oversample)  # TODO hardcoded here, optional in rot_centroids.
-    y_anch = int((50 + pad)*oversample)
-
-    # TODO this roll rotate roll construction assumes more padding than we have
-    # TODO solve by adding padding (stackoverflow) or use affine_transform()?
-    # Shift dataframe such that rotation anchor is in the center of the frame.
-    data_shift = np.roll(data, (pad_ycen - y_anch, pad_xcen - x_anch), (0, 1))
-
-    # Rotate the shifted dataframe by the required amount.
-    data_rot = rotate(data_shift, rot_ang, reshape=False)
-
-    # Shift the rotated data back to its original position.
-    data_shiftback = np.roll(data_rot, (-pad_ycen + y_anch, -pad_xcen + x_anch),
-                             (0, 1))
-
-    # Apply vertical and horizontal offsets.
-    data_offset = np.roll(data_shiftback, (y_shift*oversample,
-                          x_shift*oversample), (0, 1))
-
-    if verbose:
-        plotting._plot_transformation_steps(data_shift, data_rot,
-                                            data_shiftback, data_offset)
+    # Rotate the image.
+    image_pad_rot = rotate(image_pad, angle, reshape=False)
 
     # Remove the padding.
-    data_sub = data_offset[(pad*oversample):(-pad*oversample),
-                           (pad*oversample):(-pad*oversample)]
+    image_rot = image_pad_rot[pady[0]:-pady[1], padx[0]:-padx[1]]
 
-    # Interpolate to native resolution if the reference frame is oversampled.
-    if oversample != 1:
-        data_nat1 = np.ones((nat_ydim, nat_xdim*oversample))
-        data_nat = np.ones((nat_ydim, nat_xdim))
-
-        # Loop over the spectral direction and interpolate the oversampled
-        # spatial profile to native resolution.
-        # Can likely be done in a more vectorized way.
-        for i in range(nat_xdim*oversample):
-            new_ax = np.arange(nat_ydim)
-            oversamp_ax = np.linspace(0, nat_ydim, nat_ydim*oversample,
-                                      endpoint=False)
-            oversamp_prof = data_sub[:, i]
-            data_nat1[:, i] = np.interp(new_ax, oversamp_ax, oversamp_prof)
-
-        # Same for the spectral direction.
-        for i in range(nat_ydim):
-            new_ax = np.arange(nat_xdim)
-            oversamp_ax = np.linspace(0, nat_xdim, nat_xdim*oversample,
-                                      endpoint=False)
-            oversamp_prof = data_nat1[i, :]
-            data_nat[i, :] = np.interp(new_ax, oversamp_ax, oversamp_prof)
-    else:
-        data_nat = data_sub
-
-    return data_nat
+    return image_rot
 
 
-def apply_transform(simple_transform, ref_maps, oversample, pad, verbose=False):
+def _do_transform(ref_map, angle, xshift, yshift, oversample, pad):
+    """Apply the rotation and offset to a 2D reference map, and bin
+    the map down the native size and resolution.
+
+    :param ref_map: A 2D reference file array such as a wavelength map or trace
+        profile.
+    :param angle: The angle by which to rotate the file, in degrees.
+    :param xshift: The x-shift to apply in native pixels, will be rounded to the
+        nearest (oversampled) pixel.
+    :param yshift: The y-shift to apply in native pixels, will be rounded to the
+        nearest (oversampled) pixel.
+    :param oversample: The oversampling of the reference file array.
+    :param pad: The padding, in native pixels, on the reference file array.
+
+    :type ref_map: array[float]
+    :type angle: float
+    :type xshift: float
+    :type yshift: float
+    :type oversample: int
+    :type pad: int
+
+    :returns: ref_map_nat - The data, after applying the shift and rotation and
+        binned down to the native size and resolution.
+    :rtype: array[float]
+    """
+
+    ovs = oversample
+
+    if (xshift > pad) | (yshift > pad):
+        msg = 'The applied shift exceeds the padding.'  # TODO better message.
+        raise ValueError(msg)
+
+    # Determine the native shape of the data.
+    pad_ydim, pad_xdim = np.shape(ref_map)
+    nat_xdim = int(round(pad_xdim/ovs - 2*pad, 0))
+    nat_ydim = int(round(pad_ydim/ovs - 2*pad, 0))
+
+    # Rotation anchor is o1 trace centroid halfway along the spectral axis.
+    x_anch = int((pad + 1024)*ovs)  # TODO hardcoded here, optional in rot_centroids.
+    y_anch = int((pad + 50)*ovs)
+
+    # Rotate the reference map.
+    ref_map_rot = rotate_image(ref_map, angle, [x_anch, y_anch])
+
+    # Select the relevant area after shifting.
+    minrow = ovs*pad + int(ovs*yshift)
+    maxrow = minrow + ovs*nat_ydim
+    mincol = ovs*pad + int(ovs*xshift)
+    maxcol = mincol + ovs*nat_xdim
+    ref_map_sub = ref_map_rot[minrow:maxrow, mincol:maxcol]
+
+    # Bin down to native resolution.
+    ref_map_nat = ref_map_sub.reshape(nat_ydim, ovs, nat_xdim, ovs)
+    ref_map_nat = ref_map_nat.mean(-1).mean(1)  # TODO needs to be different for wavelength and profile?
+
+    return ref_map_nat
+
+
+def apply_transform(simple_transform, ref_maps, oversample, pad, norm=False):
     """Apply the transformation found by solve_transform() to a 2D reference map.
 
     :param simple_transform: The transformation parameters returned by
@@ -312,25 +296,26 @@ def apply_transform(simple_transform, ref_maps, oversample, pad, verbose=False):
     :param ref_maps: Array of reference maps.
     :param oversample: The oversampling factor the reference maps.
     :param pad: The padding (in native pixels) on the reference maps.
-    :param verbose: If set True provide diagnostic information.
+    :param norm: If True normalize columns to 1, used for trace profile
+        reference maps.
 
     :type simple_transform: Tuple, List, Array
     :type ref_maps: array[float]
-    :type oversample:
-    :type pad:
-    :type verbose: bool
+    :type oversample: int
+    :type pad: int
+    :type norm: bool
 
     :returns: trans_maps - the ref_maps after having the transformation applied.
     :rtype: array[float]
     """
 
     # Unpack the transformation.
-    rot_ang, x_shift, y_shift = simple_transform
+    angle, xshift, yshift = simple_transform
 
     # Get the dimensions of the reference map.
     norders, dimy, dimx = ref_maps.shape
 
-    trans_maps = np.ones_like(ref_maps)
+    trans_maps = []
     for i_ord in range(norders):
 
         # Set NaN pixels to zero - the rotation doesn't handle NaNs well.
@@ -338,14 +323,16 @@ def apply_transform(simple_transform, ref_maps, oversample, pad, verbose=False):
 
         # Do the transformation for the reference 2D trace.
         # Pass negative rot_ang to convert from CCW to CW rotation
-        trans_map = _do_transform(ref_maps[i_ord], -rot_ang, x_shift, y_shift,
-                                  pad=pad, oversample=oversample,
-                                  verbose=verbose)
+        trans_map = _do_transform(ref_maps[i_ord], -angle, xshift, yshift,
+                                  pad=pad, oversample=oversample)
 
         # Renormalize the spatial profile so columns sum to one.
-        trans_maps[i_ord] = trans_map/np.nansum(trans_map, axis=0)  # TODO handle this with a switch?
+        if norm:
+            trans_maps.append(trans_map/np.nansum(trans_map, axis=0))  # TODO handle this with a switch?
+        else:
+            trans_maps.append(trans_map)
 
-    return trans_maps
+    return np.array(trans_maps)
 
 
 def write_to_file(stack, filename):
