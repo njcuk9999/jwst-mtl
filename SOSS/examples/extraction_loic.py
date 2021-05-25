@@ -69,7 +69,8 @@ trace_filename = '/genesis/jwst/jwst-ref-soss/trace_model/NIRISS_GR700_trace_ext
 pars = tp.get_tracepars(trace_filename, disable_rotation=False)
 w = np.linspace(0.7,3.0,10000)
 x, y, mask = tp.wavelength_to_pix(w, pars, m=1, subarray='SUBSTRIP256')
-x_index = np.linspace(0,2047,2048).astype(int)
+x_index = np.arange(512)*4
+x_index = np.arange(2048)
 # np.interp needs ordered x
 ind = np.argsort(x)
 x, w = x[ind], w[ind]
@@ -94,11 +95,15 @@ if False:
 Perform box aperture spectrum extraction
 '''
 
-box_aperture = soss.box_aperture(data, x_index, y_index, box_width=30.0)
+box_aperture = soss.box_aperture(data, x_index, y_index, box_width=35.0)
 hdu = fits.PrimaryHDU()
 hdu.data = box_aperture
 hdu.writeto('/genesis/jwst/userland-soss/loic_review/box_aperture.fits', overwrite=True)
 a = soss.aperture_extract(data, x_index, box_aperture, mask=None)
 
-print(a)
+plt.figure()
+plt.plot(a[0,:])
+plt.show()
+
+print(np.shape(a))
 print('Extraction example 1 completed successfully.')

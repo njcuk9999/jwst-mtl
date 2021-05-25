@@ -774,7 +774,8 @@ def write_dmsready_fits(image, filename, os=1, input_frame='sim', verbose=True, 
 
 def aperture_extract(exposure, x_input, aperture_map, mask=None):
     '''
-    Make a box extraction of exactly box_size
+    Make a box extraction of exactly box_size.
+    Author of original version: Antoine Darveau Bernier
     Parameters
     ----------
     data: 2d array of shape (n_row, n_columns)
@@ -831,9 +832,13 @@ def aperture_extract(exposure, x_input, aperture_map, mask=None):
         # Make a copy of arrays with only needed columns
         # so it is not modified outside of the function
         if exposure.ndim == 3:
-            data = np.copy(exposure[n, :, x])
+            #data = np.copy(exposure[n, :, x])
+            data = exposure[n][:,x]
         else:
-            data = np.copy(exposure[:, x])
+            #data = np.copy(exposure[:, x])
+            data = exposure[:,x]
+        print('exposure', np.shape(exposure))
+        print('exposure[]', np.shape(exposure[n,:,x]))
         print('data',np.shape(data))
         # Extract the aperture and mask for that same column
         box_weights = aperture_map[:, x].copy()
@@ -864,6 +869,18 @@ def aperture_extract(exposure, x_input, aperture_map, mask=None):
 
 
 def box_aperture(exposure, x_index, y_index, box_width=None):
+    '''
+    Creates a 2D image representing the box aperture. Normalized such that
+    each column adds to 1.
+    Author of original version: Antoine Darveau Bernier
+    :param exposure:
+    :param x_index:
+    :param y_index:
+    :param box_width:
+    :return:
+    '''
+
+    #TODO: Check that the output aperture is centered on the trace center, not 1 pixel off.
 
     if box_width is None:
         box_width = 30
@@ -912,4 +929,7 @@ def box_aperture(exposure, x_index, y_index, box_width=None):
     # with zeros where the aperture is not define
     out = np.zeros(shape, dtype=float)
     out[:, x] = weights
+    # Mirror about vertical axis
+    out = np.fliplr(out)
+
     return out
