@@ -9,7 +9,8 @@ import sys
 sys.path.insert(0, '/genesis/jwst/jwst-ref-soss/fortran_lib/')
 
 # TODO: Update all paths
-WORKING_DIR = '/home/kmorel/ongenesis/jwst-user-soss/'
+
+import glob
 
 import os
 # os.environ["OMP_NUM_THREADS"] = "24"
@@ -63,7 +64,9 @@ verbose = True
 ###############################################################################
 
 # Read in all paths used to locate reference files and directories
+WORKING_DIR = '/home/kmorel/ongenesis/jwst-user-soss/'
 config_paths_filename = os.path.join(WORKING_DIR, 'jwst-mtl_configpath_kim.txt')
+
 pathPars = soss.paths()
 soss.readpaths(config_paths_filename, pathPars)
 
@@ -87,12 +90,17 @@ print(simuPars.pmodeltype[0])
 
 # Instrument Throughput (Response)
 throughput = spgen.read_response(pathPars.throughputfile, verbose=verbose)
+throughput = throughput*0 + 1
 
 # Set up Trace (Position vs. Wavelength)
 tracePars = tp.get_tracepars(pathPars.tracefile)
 
 # Generate or read the star atmosphere model
 starmodel_angstrom, starmodel_flambda, ld_coeff = soss.starmodel(simuPars, pathPars)
+
+# Anchor star spectrum on a photometric band magnitude
+starmodel_flambda = smag.anchor_spectrum(starmodel_angstrom/10000., starmodel_flambda, simuPars.filter,
+                                    simuPars.magnitude, pathPars.path_filtertransmission)
 
 # Read Planet Atmosphere Model (wavelength in angstroms and radius_planet/radius_star ratio)
 planetmodel_angstrom, planetmodel_rprs = spgen.readplanetmodel(pathPars.path_planetmodelatm+simuPars.pmodelfile[0],
@@ -113,13 +121,14 @@ print('norders={:} dimy={:} dimx={:}'.format(norders,dimy,dimx))
 # The cube has all spectral orders in separate slices.
 # The list of such fits cube file names is returned.
 if True:
-    imagelist = soss.generate_traces(pathPars, simuPars, tracePars, throughput,
+    imagelist = soss.generate_traces(WORKING_DIR+'tmp/clear', pathPars, simuPars, tracePars, throughput,
                                    starmodel_angstrom, starmodel_flambda, ld_coeff,
                                    planetmodel_angstrom, planetmodel_rprs,
                                    timesteps, tintopen)
 else:
     SIMUDIR = '/home/kmorel/ongenesis/jwst-user-soss/tmp/'
-    imagelist = os.listdir(SIMUDIR)
+    imagelist = glob.glob(WORKING_DIR + 'tmp/clear*.fits')
+    #imagelist = os.listdir(SIMUDIR)
     for i in range(np.size(imagelist)):
         imagelist[i] = os.path.join(SIMUDIR,imagelist[i])
     print(imagelist)
@@ -157,16 +166,16 @@ data = soss.write_dmsready_fits_init(imagelist, normalization_scale,
                                      simuPars.frametime, simuPars.granularity)
 
 # All simulations (e-/sec) are converted to up-the-ramp images.
-soss.write_dmsready_fits(data[:,:,0:256,0:2048], os.path.join(WORKING_DIR,'test.fits'),
+soss.write_dmsready_fits(data[:,:,0:256,0:2048], os.path.join(WORKING_DIR,'test_clear.fits'),
                     os=simuPars.noversample, input_frame='sim')
 
 # Add detector noise to the noiseless data
-detector.add_noise(os.path.join(WORKING_DIR,'test.fits'),
-                   outputfilename=os.path.join(WORKING_DIR, 'test_noisy.fits'))
+detector.add_noise(os.path.join(WORKING_DIR,'test_clear.fits'),
+                   outputfilename=os.path.join(WORKING_DIR, 'test_clear_noisy.fits'))
 
 # Process the data through the DMS level 1 pipeline
-result = Detector1Pipeline.call(os.path.join(WORKING_DIR, 'test_noisy.fits'),
-                                output_file='test_noisy', output_dir=WORKING_DIR)
+result = Detector1Pipeline.call(os.path.join(WORKING_DIR, 'test_clear_noisy.fits'),
+                                output_file='test_clear_noisy', output_dir=WORKING_DIR)
 
 """
 SIMULATE THE F277W CALIBRATION EXPOSURE OBTAINED AFTER THE GR700XD EXPOSURE
@@ -195,13 +204,14 @@ print('nint_f277={:} nsteps={:} frametime={:}'.format(\
 print('F277W calibration generated time steps (in seconds): ', timesteps_f277)
 
 if True:
-    imagelist_f277 = soss.generate_traces(pathPars, simuPars, tracePars, throughput_f277,
+    imagelist_f277 = soss.generate_traces(WORKING_DIR+'tmp/f277', pathPars, simuPars, tracePars, throughput_f277,
                                    starmodel_angstrom, starmodel_flambda, ld_coeff,
                                    planetmodel_angstrom, planetmodel_rprs,
                                    timesteps_f277, tintopen)
 else:
     SIMUDIR = '/genesis/jwst/userland-soss/loic_review/tmp/'
-    imagelist_f277 = os.listdir(SIMUDIR)
+    imagelist_f277 = glob.glob(WORKING_DIR + 'tmp/f277*.fits')
+    #imagelist_f277 = os.listdir(SIMUDIR)
     for i in range(np.size(imagelist_f277)):
         imagelist_f277[i] = os.path.join(SIMUDIR,imagelist_f277[i])
     print(imagelist_f277)

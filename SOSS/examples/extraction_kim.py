@@ -43,8 +43,8 @@ dq = dq[0,:,:]
 i = np.where(dq %2 != 0)
 im[i[0],i[1]] = 0
 
-ynew = np.interp(x, xnew, y)    #Interpolation of y at integer values of x
-ynew = np.around(ynew)
+#ynew = np.interp(x, xnew, y)    #Interpolation of y at integer values of x
+#ynew = np.around(ynew)
 
 radius_pixel = 15   #"Rayon" de la boîte
 flux = np.zeros_like(x)   #Array extracted spectrum
