@@ -52,14 +52,13 @@ flux = np.zeros_like(x)   #Array extracted spectrum
 for x_i in x:
     x_i = int(x_i)
     i = int(ynew[x_i])
-    flux[x_i] = np.sum(im[i-radius_pixel:i+radius_pixel,x_i])
+    flux[x_i] = np.sum(im[i-radius_pixel:i+radius_pixel+1,x_i])
 
 gain = 1.6  #e⁻/adu
-phot_ener = sc_cst.Planck*sc_cst.speed_of_light/(w*10**(-6))
-area = 25  #m²
+phot_ener = sc_cst.Planck*sc_cst.speed_of_light/(w*1e-6)
+area = 25.  #m²
 
 dw = np.zeros_like(w)
-
 for i in range(len(w)):
     if i == 0:
         dw[i] = w[0]-w[1]
@@ -82,5 +81,3 @@ plt.figure(3)
 plt.plot(starmodel_angstrom, starmodel_flambda,color='Aqua')
 plt.xlabel(r"Wavelength [angstrom]"), plt.ylabel(r"Flux [J s⁻¹ m⁻² $\mu$m⁻¹]")
 plt.show()
-
-print(w)
