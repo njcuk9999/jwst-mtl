@@ -98,7 +98,7 @@ def rot_centroids(angle, xshift, yshift, xpix, ypix, bound=True, xgrid=None,
     rot_ypix = np.polyval(pp, rot_xpix)
 
     # Check to ensure all points are on the subarray. TODO for the use case we have here this isn't needed?
-    if bound is True:
+    if bound:
 
         # Get dimensions of the subarray
         if subarray == 'SUBSTRIP96':
@@ -122,8 +122,25 @@ def rot_centroids(angle, xshift, yshift, xpix, ypix, bound=True, xgrid=None,
 
 
 def _chi_squared(transform, xmod, ymod, xdat, ydat, subarray):
-    """"Definition of a modified Chi squared statistic to fit refrence centroid
-    to those extracted from the data.
+    """"Compute the chi-squared statistic for fitting the reference positions
+    to the true positions.
+
+    :param transform: The transformation parameters.
+    :param xmod: The reference x-positions.
+    :param ymod: The reference y-positions.
+    :param xdat: The data x-positions.
+    :param ydat: The data y-positions.
+    :param subarray: The subarray.  TODO do we need this?
+
+    :type transform: Tuple, List, Array
+    :type xmod: array[float]
+    :type ymod: array[float]
+    :type xdat: array[float]
+    :type ydat: array[float]
+    :type subarray: str
+
+    :returns: chisq - The chi-squared value of the model fit.
+    :rtype: float
     """
 
     angle, xshift, yshift = transform
