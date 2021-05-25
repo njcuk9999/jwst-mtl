@@ -9,7 +9,8 @@ import sys
 sys.path.insert(0, '/genesis/jwst/jwst-ref-soss/fortran_lib/')
 
 # TODO: Update all paths
-WORKING_DIR = '/genesis/jwst/jwst-user-soss/loic_review/'
+
+import glob
 
 import os
 # os.environ["OMP_NUM_THREADS"] = "24"
@@ -63,7 +64,10 @@ verbose = True
 ###############################################################################
 
 # Read in all paths used to locate reference files and directories
+WORKING_DIR = '/genesis/jwst/jwst-user-soss/loic_review/'
 config_paths_filename = os.path.join(WORKING_DIR, 'jwst-mtl_configpath.txt')
+#config_paths_filename = os.path.join(WORKING_DIR, 'jwst-mtl_configpath_runkim.txt')
+
 pathPars = soss.paths()
 soss.readpaths(config_paths_filename, pathPars)
 
@@ -95,7 +99,7 @@ tracePars = tp.get_tracepars(pathPars.tracefile)
 starmodel_angstrom, starmodel_flambda, ld_coeff = soss.starmodel(simuPars, pathPars)
 
 # Anchor star spectrum on a photometric band magnitude
-star_flambda = smag.anchor_spectrum(starmodel_angstrom/10000., starmodel_flambda, simuPars.filter,
+starmodel_flambda = smag.anchor_spectrum(starmodel_angstrom/10000., starmodel_flambda, simuPars.filter,
                                     simuPars.magnitude, pathPars.path_filtertransmission)
 
 # Read Planet Atmosphere Model (wavelength in angstroms and radius_planet/radius_star ratio)
@@ -117,18 +121,16 @@ print('norders={:} dimy={:} dimx={:}'.format(norders,dimy,dimx))
 # The cube has all spectral orders in separate slices.
 # The list of such fits cube file names is returned.
 if True:
-    imagelist = soss.generate_traces(pathPars, simuPars, tracePars, throughput,
-                                   starmodel_angstrom, starmodel_flambda, ld_coeff,
-                                   planetmodel_angstrom, planetmodel_rprs,
-                                   timesteps, tintopen)
+    imagelist = soss.generate_traces(pathPars.path_userland+'tmp/clear',
+                                     pathPars, simuPars, tracePars, throughput,
+                                     starmodel_angstrom, starmodel_flambda, ld_coeff,
+                                     planetmodel_angstrom, planetmodel_rprs,
+                                     timesteps, tintopen)
 else:
-    SIMUDIR = '/genesis/jwst/userland-soss/loic_review/tmp/'
-    imagelist = os.listdir(SIMUDIR)
+    imagelist = glob.glob(pathPars.path_userland+'tmp/clear*.fits')
     for i in range(np.size(imagelist)):
         imagelist[i] = os.path.join(SIMUDIR,imagelist[i])
     print(imagelist)
-
-
 
 # Here, a single out-of-transit simulation is used to establish the
 # normalization scale needed to flux calibrate our simulations.
@@ -161,16 +163,16 @@ data = soss.write_dmsready_fits_init(imagelist, normalization_scale,
                                      simuPars.frametime, simuPars.granularity)
 
 # All simulations (e-/sec) are converted to up-the-ramp images.
-soss.write_dmsready_fits(data[:,:,0:256,0:2048], os.path.join(WORKING_DIR,'test.fits'),
+soss.write_dmsready_fits(data[:,:,0:256,0:2048], os.path.join(pathPars.path_userland,'test_clear.fits'),
                     os=simuPars.noversample, input_frame='sim')
 
 # Add detector noise to the noiseless data
-detector.add_noise(os.path.join(WORKING_DIR,'test.fits'),
-                   outputfilename=os.path.join(WORKING_DIR, 'test_noisy.fits'))
+detector.add_noise(os.path.join(pathPars.path_userland,'test_clear.fits'),
+                   outputfilename=os.path.join(pathPars.path_userland, 'test_clear_noisy.fits'))
 
 # Process the data through the DMS level 1 pipeline
-result = Detector1Pipeline.call(os.path.join(WORKING_DIR, 'test_noisy.fits'),
-                                output_file='test_noisy', output_dir=WORKING_DIR)
+result = Detector1Pipeline.call(os.path.join(pathPars.path_userland, 'test_clear_noisy.fits'),
+                                output_file='test_clear_noisy', output_dir=pathPars.path_userland)
 
 """
 SIMULATE THE F277W CALIBRATION EXPOSURE OBTAINED AFTER THE GR700XD EXPOSURE
@@ -199,13 +201,13 @@ print('nint_f277={:} nsteps={:} frametime={:}'.format(\
 print('F277W calibration generated time steps (in seconds): ', timesteps_f277)
 
 if True:
-    imagelist_f277 = soss.generate_traces(pathPars, simuPars, tracePars, throughput_f277,
-                                   starmodel_angstrom, starmodel_flambda, ld_coeff,
-                                   planetmodel_angstrom, planetmodel_rprs,
-                                   timesteps_f277, tintopen)
+    imagelist_f277 = soss.generate_traces(pathPars.path_userland+'tmp/f277',
+                                          pathPars, simuPars, tracePars, throughput_f277,
+                                          starmodel_angstrom, starmodel_flambda, ld_coeff,
+                                          planetmodel_angstrom, planetmodel_rprs,
+                                          timesteps_f277, tintopen)
 else:
-    SIMUDIR = '/genesis/jwst/userland-soss/loic_review/tmp/'
-    imagelist_f277 = os.listdir(SIMUDIR)
+    imagelist_f277 = glob.glob(pathPars.path_userland+'tmp/f277*.fits')
     for i in range(np.size(imagelist_f277)):
         imagelist_f277[i] = os.path.join(SIMUDIR,imagelist_f277[i])
     print(imagelist_f277)
@@ -217,16 +219,16 @@ data_f277 = soss.write_dmsready_fits_init(imagelist_f277, normalization_scale,
                                           simuPars.frametime, simuPars.granularity, verbose=True)
 
 # All simulations (e-/sec) are converted to up-the-ramp images.
-soss.write_dmsready_fits(data_f277[:,:,0:256,0:2048], os.path.join(WORKING_DIR,'test_f277.fits'),
+soss.write_dmsready_fits(data_f277[:,:,0:256,0:2048], os.path.join(pathPars.path_userland,'test_f277.fits'),
                     os=simuPars.noversample, input_frame='sim', f277=True)
 
 # Add detector noise to the noiseless data
-detector.add_noise(os.path.join(WORKING_DIR,'test_f277.fits'),
-                   outputfilename=os.path.join(WORKING_DIR, 'test_f277_noisy.fits'))
+detector.add_noise(os.path.join(pathPars.path_userland,'test_f277.fits'),
+                   outputfilename=os.path.join(pathPars.path_userland, 'test_f277_noisy.fits'))
 
 # Process the data through the DMS level 1 pipeline
-result = Detector1Pipeline.call(os.path.join(WORKING_DIR, 'test_f277_noisy.fits'),
-                                output_file='test_f277_noisy', output_dir=WORKING_DIR)
+result = Detector1Pipeline.call(os.path.join(pathPars.path_userland, 'test_f277_noisy.fits'),
+                                output_file='test_f277_noisy', output_dir=pathPars.path_userland)
 
 print('The end of the simulation')
 

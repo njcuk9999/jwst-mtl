@@ -297,7 +297,7 @@ def generate_timesteps(simuPars, f277=False):
 
 
 
-def generate_traces(pathPars, simuPars, tracePars, throughput,
+def generate_traces(savingprefix, pathPars, simuPars, tracePars, throughput,
                     star_angstrom, star_flux, ld_coeff,
                     planet_angstrom, planet_rprs,
                     timesteps, granularitytime):
@@ -423,7 +423,7 @@ def generate_traces(pathPars, simuPars, tracePars, throughput,
             print('Actual counts measured on the simulation = {:} e-/sec'.format(actual_counts))
             print()
 
-        tmpfilename = write_intermediate_fits(convolved_image, pathPars.path_userland+'tmp.fits',t)
+        tmpfilename = write_intermediate_fits(convolved_image, savingprefix, t)
         filelist.append(tmpfilename)
 
     return(filelist)
@@ -475,14 +475,13 @@ def write_simu_fits(image, filename):
 
     return
 
-def write_intermediate_fits(image, filename, timestep_index):
+def write_intermediate_fits(image, savingprefix, timestep_index):
     # Write image for a single time step. Differents spectral orders stored in third dimension
     # of the array. filename is the name of the final product. Intermediate filenames will
     # be forged based on that.
 
-    name, suffix = os.path.splitext(filename)
-    directory_name = name+'/'
-    filename_current = directory_name+'tmp_{:06d}'.format(timestep_index)+suffix
+    directory_name = os.path.dirname(savingprefix)
+    filename_current = savingprefix+'_{:06d}'.format(timestep_index)+'.fits'
 
     # Create a list of HDU with primary and extension HDUs
     hdu = fits.PrimaryHDU(image)
@@ -773,4 +772,164 @@ def write_dmsready_fits(image, filename, os=1, input_frame='sim', verbose=True, 
     if verbose: print('write_dmsready_fits completed successfuly.')
 
 
+def aperture_extract(exposure, x_input, aperture_map, mask=None):
+    '''
+    Make a box extraction of exactly box_size.
+    Author of original version: Antoine Darveau Bernier
+    Parameters
+    ----------
+    data: 2d array of shape (n_row, n_columns)
+        scidata
+    lam_col: 1d array of shape (n_columns)
+        wavelength associated with each columns. If not given,
+        the column position is taken.
+    cols: numpy valid index
+        Which columns to extract
+    box_weights: 2d array, same shape as data
+        pre-computed weights for box extraction.
+        If not given, compute with `get_aperture_weights`
+        and `n_pix` and `aperture` will be needed.
+    box_size: scalar (float or integer)
+        length of the box in pixels
+    mask: 2d array, boolean, same shape as data
+        masked pixels
+    Output
+    ------
+    (flux)
+    '''
 
+
+
+    # Check that requested x position indices are integers
+    if all(i % 1 == 0 for i in x_input):
+        # Convert x to integer indices
+        x = x_input.astype(int)
+    else:
+        print('ERROR: x_input positions must be integer column indices, not floats')
+        sys.exit()
+
+    # Determine how many integrations and image size
+    if exposure.ndim == 3:
+        nintegration, dimy, dimx = np.shape(exposure)
+    elif exposure.ndim == 2:
+        nintegration = 1
+        dimy, dimx = np.shape(exposure)
+    else:
+        print('exposure has to be of 2 or 3 dimensions. Check.')
+        sys.exit()
+
+    # Define mask if not given
+    if mask is None:
+        # False everywhere
+        mask = np.zeros((dimy,dimx), dtype=bool)
+
+    print('mask', np.shape(mask))
+    print('x=',x)
+
+    flux = np.zeros((nintegration, dimx)) * np.nan
+    # Loop for all integrations
+    for n in range(nintegration):
+        # Make a copy of arrays with only needed columns
+        # so it is not modified outside of the function
+        if exposure.ndim == 3:
+            #data = np.copy(exposure[n, :, x])
+            data = exposure[n][:,x]
+        else:
+            #data = np.copy(exposure[:, x])
+            data = exposure[:,x]
+        print('exposure', np.shape(exposure))
+        print('exposure[]', np.shape(exposure[n,:,x]))
+        print('data',np.shape(data))
+        # Extract the aperture and mask for that same column
+        box_weights = aperture_map[:, x].copy()
+        mask = mask[:, x].copy()
+        # Initialize the output with nans
+        out = np.ones_like(x) * np.nan
+        # Mask potential nans in data
+        mask_nan = np.isnan(data)
+        # Combine with user specified mask
+        mask = (mask_nan | mask)
+        # Apply to weights
+        box_weights[mask_nan] = np.nan
+        # Normalize considering the masked pixels
+        norm = np.nansum(box_weights**2, axis=0)
+        # Valid columns index
+        idx = norm > 0
+        # Normalize only valid columns
+        out[idx] = np.nansum(box_weights*data, axis=0)[idx]
+        out[idx] /= norm[idx]
+
+        flux[n, :] = np.copy(out)
+
+    if exposure.ndim == 2:
+        flux = flux[0,:]
+
+    return flux
+
+
+
+def box_aperture(exposure, x_index, y_index, box_width=None):
+    '''
+    Creates a 2D image representing the box aperture. Normalized such that
+    each column adds to 1.
+    Author of original version: Antoine Darveau Bernier
+    :param exposure:
+    :param x_index:
+    :param y_index:
+    :param box_width:
+    :return:
+    '''
+
+    #TODO: Check that the output aperture is centered on the trace center, not 1 pixel off.
+
+    if box_width is None:
+        box_width = 30
+
+    # Check that requested x position indices are integers
+    if all(i % 1 == 0 for i in x_index):
+        # Convert x to integer indices
+        x = x_index.astype(int)
+    else:
+        print('ERROR: box_aperture - x_input positions must be integer column indices, not floats')
+        print(x_index)
+        for i in range(x_index):
+            print(i, x_index[i])
+        sys.exit()
+
+    # shape of the aperture map
+    shape = np.shape(exposure)
+    if np.size(shape) == 2:
+        dimy, dimx = shape
+    elif np.size(shape) == 3:
+        nint, dimy, dimx = shape
+    else:
+        print('ERROR: exposure should have 2 or 3 dimensions.')
+        sys.exit()
+    shape = (dimy, dimx)
+
+    # Box limits for all cols (+/- n_pix/2)
+    row_lims = [y_index - box_width / 2, y_index + box_width / 2]
+    row_lims = np.array(row_lims).T
+    # Compute weights
+    # For max lim:
+    # w = center + n_pix/2 - (rows - 0.5)
+    # For min lim:
+    # w = rows + 0.5 - center + n_pix/2
+    rows = np.indices(shape)[0]
+    weights = rows[:, :, None] - row_lims[None, :, :]
+    weights *= np.array([1, -1])
+    weights += 0.5
+    # Between 0 and 1
+    weights = np.clip(weights, 0, 1)
+    # Keep min weight
+    weights = weights.min(axis=-1)
+    # Normalize
+    weights /= weights.sum(axis=0)
+    # Return with the same shape as aperture and
+    # with zeros where the aperture is not define
+    out = np.zeros(shape, dtype=float)
+    out[:, x] = weights
+    # Mirror about vertical axis
+    out = np.fliplr(out)
+
+    return out
