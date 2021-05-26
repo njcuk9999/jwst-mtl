@@ -141,6 +141,26 @@ def solve_transform(scidata, scimask, xref, yref, subarray,
     result = minimize(_chi_squared, guess_transform, args=min_args)
     simple_transform = result.x
 
+    # Testing block.
+    angle, xshift, yshift = simple_transform
+    xrot, yrot = rot_centroids(angle, xshift, yshift, xref, yref)
+    sort = np.argsort(xrot)
+    ymod = np.interp(xdat, xrot[sort], yrot[sort])
+
+    ax = plt.subplot(211)
+
+    plt.plot(xdat, ydat, label='Image Centroids')
+    plt.plot(xref, yref, label='Rotated Reference')
+    plt.plot(xdat, ymod, label='Interpolated Reference')
+
+    plt.subplot(212, sharex=ax)
+
+    plt.plot(xdat, ydat - ymod)
+
+    plt.xlim(0, 2048)
+
+    plt.show()
+
     return simple_transform
 
 
@@ -218,9 +238,9 @@ def _do_transform(ref_map, angle, xshift, yshift, oversample, pad):
     ref_map_rot = rotate_image(ref_map, angle, [x_anch, y_anch])
 
     # Select the relevant area after shifting.
-    minrow = ovs*pad + int(ovs*yshift)
+    minrow = ovs*pad - int(ovs*yshift)
     maxrow = minrow + ovs*nat_ydim
-    mincol = ovs*pad + int(ovs*xshift)
+    mincol = ovs*pad - int(ovs*xshift)
     maxcol = mincol + ovs*nat_xdim
     ref_map_sub = ref_map_rot[minrow:maxrow, mincol:maxcol]
 
@@ -271,7 +291,7 @@ def apply_transform(simple_transform, ref_maps, oversample, pad, norm=False):
 
         # Renormalize the spatial profile so columns sum to one.
         if norm:
-            trans_maps.append(trans_map/np.nansum(trans_map, axis=0))  # TODO handle this with a switch?
+            trans_maps.append(trans_map/np.nansum(trans_map, axis=0))
         else:
             trans_maps.append(trans_map)
 
