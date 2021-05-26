@@ -16,50 +16,31 @@ warnings.simplefilter(action='ignore', category=RuntimeWarning)
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 
-def rot_centroids(angle, xshift, yshift, xpix, ypix, bound=True, xgrid=None,
-                  cenx=1024, ceny=50, subarray='SUBSTRIP256'):
+def rot_centroids(angle, xshift, yshift, xpix, ypix, cenx=1024, ceny=50):
     """Apply a rotation and shift to the trace centroids positions. This
     assumes that the trace centroids are already in the CV3 coordinate system.
 
-    Parameters
-    ----------
-    angle : float
-        The rotation angle in degrees CCW.
-    xshift : float
-        Offset in the X direction to be rigidly applied after rotation.
-    yshift : float
-        Offset in the Y direction to be rigidly applied after rotation.
-    xpix : float or np.array of float
-        Centroid pixel X values.
-    ypix : float or np.array of float
-        Centroid pixel Y values.
-    bound : bool
-        Whether to trim rotated solutions to fit within the specified subarray.
-    xgrid : list of float
-        Pixel values at which to calculate rotated centroids.
-    cenx : int
-        X-coordinate in pixels of the rotation center.
-    ceny : int
-        Y-coordinate in pixels of the rotation center.
-    subarray : str
-        Subarray identifier. One of SUBSTRIP96, SUBSTRIP256 or FULL.
+    :param angle: The angle by which to rotate the coordinates, in degrees.
+    :param xshift: The shift to apply to the x-coordinates after rotating.
+    :param yshift: The shift to apply to the y-coordinates after rotating.
+    :param xpix: The x-coordinates to be transformed.
+    :param ypix: The y-coordinates to be transformed.
+    :param cenx: The x-coordinate around which to rotate. TODO not needed?
+    :param ceny: The y-coordinate around which to rotate.
 
-    Returns
-    -------
-    rot_xpix : np.array of float
-        xval after the application of the rotation and translation
-        transformations.
-    rot_ypix : np.array of float
-        yval after the application of the rotation and translation
-        transformations.
+    :type angle: float
+    :type xshift: float
+    :type yshift: float
+    :type xpix: array[float]
+    :type ypix: array[float]
+    :type cenx:
+    :type ceny:
 
-    Raises
-    ------
-    ValueError
-        If bad subarray identifier is passed.
+    :returns: xrot, yrot - The rotated and shifted coordinates.
+    :rtype: Tuple(array[float], array[float])
     """
 
-    # Convert to numpy arrays
+    # Convert to numpy arrays.
     xpix = np.atleast_1d(xpix)
     ypix = np.atleast_1d(ypix)
 
@@ -68,76 +49,33 @@ def rot_centroids(angle, xshift, yshift, xpix, ypix, bound=True, xgrid=None,
     R = np.array([[np.cos(t), -np.sin(t)], [np.sin(t), np.cos(t)]])
 
     # Rotation center set to o1 trace centroid halfway along spectral axis.
-    points1 = np.array([xpix - cenx, ypix - ceny])
-    rot_pix = R @ points1
-    rot_pix[0] += cenx
-    rot_pix[1] += ceny
+    points = np.array([xpix - cenx, ypix - ceny])
+    rot_points = R @ points
+    rot_points[0] += cenx
+    rot_points[1] += ceny
 
-    # Apply the offsets
-    rot_pix[0] += xshift
-    rot_pix[1] += yshift
+    # Apply the offsets.
+    xrot = rot_points[0] + xshift
+    yrot = rot_points[1] + yshift
 
-    if xgrid is None:
-
-        # Ensure that there are no jumps of >1 pixel.
-        minval = int(round(np.amin(rot_pix[0]), 0))
-        maxval = int(round(np.amax(rot_pix[0]), 0))
-
-        # Same range as rotated pixels but with step of 1 pixel.
-        xgrid = np.linspace(minval, maxval, maxval-minval+1)
-
-    # Polynomial fit to ensure a centroid at each pixel in xgrid. # TODO do we need this for the use case? Might be safer?
-    pp = np.polyfit(rot_pix[0], rot_pix[1], 5)
-
-    # Warn user if xgrid extends beyond polynomial domain.
-    if np.amax(xgrid) > np.amax(rot_pix[0]) + 25 or np.amin(xgrid) < np.amin(rot_pix[0])-25:
-        warnmsg = 'xgrid extends beyond rot_xpix. Use with caution.'
-        warnings.warn(warnmsg)
-
-    rot_xpix = xgrid
-    rot_ypix = np.polyval(pp, rot_xpix)
-
-    # Check to ensure all points are on the subarray. TODO for the use case we have here this isn't needed?
-    if bound:
-
-        # Get dimensions of the subarray
-        if subarray == 'SUBSTRIP96':
-            yend = 96
-        elif subarray == 'SUBSTRIP256':
-            yend = 256
-        elif subarray == 'FULL':
-            yend = 2048
-        else:
-            errmsg = 'Unknown subarray. Allowed identifiers are "SUBSTRIP96",\
-             "SUBSTRIP256", or "FULL".'
-            raise ValueError(errmsg)
-
-        # Reject pixels which are not on the subarray.
-        inds = [(rot_ypix >= 0) & (rot_ypix < yend) & (rot_xpix >= 0) &
-                (rot_xpix < 2048)]
-        rot_xpix = rot_xpix[inds]
-        rot_ypix = rot_ypix[inds]
-
-    return rot_xpix, rot_ypix
+    return xrot, yrot
 
 
-def _chi_squared(transform, xmod, ymod, xdat, ydat, subarray):
+def _chi_squared(transform, xref, yref, xdat, ydat):
     """"Compute the chi-squared statistic for fitting the reference positions
     to the true positions.
 
     :param transform: The transformation parameters.
-    :param xmod: The reference x-positions.
-    :param ymod: The reference y-positions.
+    :param xref: The reference x-positions.
+    :param yref: The reference y-positions.
     :param xdat: The data x-positions.
     :param ydat: The data y-positions.
-    :param subarray: The subarray.  TODO do we need this?
 
     :type transform: Tuple, List, Array
-    :type xmod: array[float]
-    :type ymod: array[float]
+    :type xref: array[float]
+    :type xref: array[float]
     :type xdat: array[float]
     :type ydat: array[float]
-    :type subarray: str
 
     :returns: chisq - The chi-squared value of the model fit.
     :rtype: float
@@ -145,33 +83,38 @@ def _chi_squared(transform, xmod, ymod, xdat, ydat, subarray):
 
     angle, xshift, yshift = transform
 
-    # Calculate rotated model.
-    modelx, modely = rot_centroids(angle, xshift, yshift, xmod, ymod, bound=True,
-                                   subarray=subarray)
+    # Calculate rotated reference positions.
+    xrot, yrot = rot_centroids(angle, xshift, yshift, xref, yref)
+
+    # After rotation, need to resort the x-positions.
+    sort = np.argsort(xrot)
+    xrot, yrot = xrot[sort], yrot[sort]
 
     # Interpolate rotated model onto same x scale as data.
-    modely = np.interp(xdat, modelx, modely)
-    chisq = np.nansum((ydat - modely)**2)
+    ymod = np.interp(xdat, xrot, yrot)
+
+    # Compute the chi-square.
+    chisq = np.nansum((ydat - ymod)**2)
 
     return chisq
 
 
-def solve_transform(scidata, scimask, xcen_ref, ycen_ref, subarray,
+def solve_transform(scidata, scimask, xref, yref, subarray,
                     verbose=False):
     """Given a science image, determine the centroids and find the simple
     transformation needed to match xcen_ref and ycen_ref to the image.
 
     :param scidata: the image of the SOSS trace.
     :param scimask: a boolean mask of pixls to be excluded.
-    :param xcen_ref: a priori expectation of the trace x-positions.
-    :param ycen_ref: a priori expectation of the trace y-positions.
+    :param xref: a priori expectation of the trace x-positions.
+    :param yref: a priori expectation of the trace y-positions.
     :param subarray: the subarray of the observations.
     :param verbose: If set True provide diagnostic information.
 
     :type scidata: array[float]
     :type scimask: array[bool]
-    :type xcen_ref: array[float]
-    :type ycen_ref: array[float]
+    :type xref: array[float]
+    :type yref: array[float]
     :type subarray: str
     :type verbose: bool
 
@@ -180,22 +123,22 @@ def solve_transform(scidata, scimask, xcen_ref, ycen_ref, subarray,
     :rtype: array[float]
     """
 
-    # Extend centroids beyond edges of the subarray for more accurate fitting. TODO Actually removes points, no need to do this?
-    mask = (xcen_ref >= -50) & (xcen_ref < 2098)
-    xcen_ref = xcen_ref[mask]
-    ycen_ref = ycen_ref[mask]
+    # Remove any NaNs used to pad the xref, yref coordinates.
+    mask = np.isfinite(xref) & np.isfinite(yref)
+    xref = xref[mask]
+    yref = yref[mask]
 
     # Get centroids from data.
     centroids = ctd.get_soss_centroids(scidata, mask=scimask,
                                        subarray=subarray, verbose=verbose)
 
-    xcen_dat = centroids['order 1']['X centroid']
-    ycen_dat = centroids['order 1']['Y centroid']
+    xdat = centroids['order 1']['X centroid']
+    ydat = centroids['order 1']['Y centroid']
 
     # Fit the reference file centroids to the data.
     guess_transform = np.array([0.15, 1, 1])
-    lik_args = (xcen_ref, ycen_ref, xcen_dat, ycen_dat, subarray)
-    result = minimize(_chi_squared, guess_transform, args=lik_args)
+    min_args = (xref, yref, xdat, ydat)
+    result = minimize(_chi_squared, guess_transform, args=min_args)
     simple_transform = result.x
 
     return simple_transform
