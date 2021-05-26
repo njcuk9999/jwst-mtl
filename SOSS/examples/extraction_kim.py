@@ -32,27 +32,39 @@ w, tmp = tp.specpix_to_wavelength(x,pars,m=1)   #Returns wavelength for each x, 
 
 xnew, y, mask = tp.wavelength_to_pix(w, pars, m=1)   #Converts wavelenghths to pixel coordinate
 
-cube = fits.getdata("/home/kmorel/ongenesis/jwst-user-soss/test_noisy_rateints.fits")
-im = cube[0,:,:]
+#cube = fits.getdata("/home/kmorel/ongenesis/jwst-user-soss/test_noisy_rateints.fits")
+#im = cube[0,:,:]
 
-a = fits.open("/home/kmorel/ongenesis/jwst-user-soss/test_noisy_rateints.fits")
+a = fits.open("/home/kmorel/ongenesis/jwst-user-soss/test_clear_noisy_rateints.fits")
+im = a[1].data
+im = im[0,:,:]
 dq = a[3].data  #Data quality
 dq = dq[0,:,:]
+delta = a[2].data   #Error
+var = delta[0,:,:]**2   #Variance
 
 #VALEUR IMPAIRES DE DQ = PIXELS À NE PAS UTILISER
 i = np.where(dq %2 != 0)
 im[i[0],i[1]] = 0
+var[i[0],i[1]] = 0
 
 #ynew = np.interp(x, xnew, y)    #Interpolation of y at integer values of x
 #ynew = np.around(ynew)
 
-radius_pixel = 15   #"Rayon" de la boîte
+radius_pixel = 14   #"Rayon" de la boîte
+
 flux = np.zeros_like(x)   #Array extracted spectrum
+vari = np.zeros_like(x)   #Array variances
 
 for x_i in x:
     x_i = int(x_i)
-    i = int(ynew[x_i])
-    flux[x_i] = np.sum(im[i-radius_pixel:i+radius_pixel+1,x_i])
+    y_i = y[x_i]
+    first = y_i - radius_pixel
+    last = y_i + radius_pixel
+    flux[x_i] = im[int(first),x_i] * (1 - first%int(first)) + np.sum(im[int(first)+1:int(last)+1,x_i]) + im[int(last)+1,x_i] * (last%int(last))
+    vari[x_i] = var[int(first), x_i] * (1 - first%int(first)) + np.sum(var[int(first) + 1:int(last)+1, x_i]) + var[int(last) + 1, x_i] * (last%int(last))
+    #flux[x_i] = np.sum(im[y_i-radius_pixel:y_i+radius_pixel+1,x_i])
+
 
 gain = 1.6  #e⁻/adu
 phot_ener = sc_cst.Planck*sc_cst.speed_of_light/(w*1e-6)
@@ -79,5 +91,5 @@ plt.show()
 
 plt.figure(3)
 plt.plot(starmodel_angstrom, starmodel_flambda,color='Aqua')
-plt.xlabel(r"Wavelength [angstrom]"), plt.ylabel(r"Flux [J s⁻¹ m⁻² $\mu$m⁻¹]")
+plt.xlabel(r"Wavelength [angstrom]"), plt.ylabel(r"Flux")
 plt.show()

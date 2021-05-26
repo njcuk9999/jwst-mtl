@@ -90,7 +90,9 @@ print(simuPars.pmodeltype[0])
 
 # Instrument Throughput (Response)
 throughput = spgen.read_response(pathPars.throughputfile, verbose=verbose)
-throughput = throughput*0 + 1
+throughput.quantum_yield = throughput.quantum_yield*0 + 1
+for i in range(-1,3):
+    throughput.response[i] = throughput.response[i]*0 + 1
 
 # Set up Trace (Position vs. Wavelength)
 tracePars = tp.get_tracepars(pathPars.tracefile)
@@ -126,7 +128,7 @@ if True:
                                    planetmodel_angstrom, planetmodel_rprs,
                                    timesteps, tintopen)
 else:
-    SIMUDIR = '/home/kmorel/ongenesis/jwst-user-soss/tmp/'
+    #SIMUDIR = '/home/kmorel/ongenesis/jwst-user-soss/tmp/'
     imagelist = glob.glob(WORKING_DIR + 'tmp/clear*.fits')
     #imagelist = os.listdir(SIMUDIR)
     for i in range(np.size(imagelist)):
@@ -209,7 +211,7 @@ if True:
                                    planetmodel_angstrom, planetmodel_rprs,
                                    timesteps_f277, tintopen)
 else:
-    SIMUDIR = '/genesis/jwst/userland-soss/loic_review/tmp/'
+    #SIMUDIR = '/genesis/jwst/userland-soss/loic_review/tmp/'
     imagelist_f277 = glob.glob(WORKING_DIR + 'tmp/f277*.fits')
     #imagelist_f277 = os.listdir(SIMUDIR)
     for i in range(np.size(imagelist_f277)):
