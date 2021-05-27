@@ -22,6 +22,8 @@ import multiprocessing as mp
 import os.path
 from astropy.io import fits
 from astropy.io import ascii
+from astropy.table import Table
+
 from tqdm.notebook import tqdm as tqdm_notebook
 
 import sys
@@ -933,3 +935,45 @@ def box_aperture(exposure, x_index, y_index, box_width=None):
     out = np.fliplr(out)
 
     return out
+
+def write_spectrum(wavelength, delta_wave, MJD, integtime, flux, flux_err, fitsname):
+    '''
+    Writes a MEF FITS file containing the measured spectrum for a time-series.
+    :param wavelength: array of wavelengths (microns) for each of the flux measurements
+    :param delta_wave: array
+    :param MJD: Modified Julian date at the mid-time of each integration.
+    :param integtime:
+    :param flux: Measured flux at a given wavelength spanning a given delta_wave range. Units
+                 are electrons integrated over the full integration during integtime. flux has
+                 dimensions of n (wavelength) x m (BJD)
+    :param flux_err: Measured flux uncertainty. Same units and dimensions as flux.
+    :return:
+        The FITS file that contains as many extensions as there are time steps. The time
+        is captured in each extension header as MJD-OBS and the integration time in the header
+        as INTTIME in seconds.
+    '''
+    # Create a primary header with the JDOFFSET keyword
+    hdr = fits.Header()
+    hdr['JDOFFSET'] = 2459518
+    primary = fits.PrimaryHDU(header=hdr)
+    hdu = fits.HDUList([primary])
+    # Append the extensions (1 for each time stamp)
+    for i in range(np.size(MJD)):
+        h = fits.BinTableHDU(Table([wavelength, delta_wave, flux[i, :], flux_err[i, :]],
+                                   names=('wavelength', 'wavelength_width', 'flux', 'flux_err'),
+                                   #dtype=('F10.8', 'F10.8', 'F16.4', 'F16.4')))
+                                   dtype=(np.float, np.float, np.float, np.float)))
+        h.header['MJD-OBS'] = MJD[i]
+        h.header['INTTIME'] = integtime[i]
+        hdu.append(h)
+    hdu.writeto(fitsname, overwrite=True)
+    return
+
+def read_spectrum(fitsname):
+    '''
+    Reads a FITS spectrum created by write_spectrum()
+    :param fitsname:
+    :return:
+    '''
+
+    return MJD, integtime, wavelength, wavelength_delta, flux, flux_err

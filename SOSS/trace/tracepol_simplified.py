@@ -94,9 +94,9 @@ def trace_polynomial(trace, m=1, maxorder=15):
         order += 1
 
     # Compute the transform back to wavelength.
-    wavegrid = wavemin + (wavemax - wavemin) * np.linspace(0., 1., 501)
-    specgrid = specpol(np.log(wavegrid))
-    wavepol = Legendre.fit(specgrid, np.log(wavegrid), order)
+    #wavegrid = wavemin + (wavemax - wavemin) * np.linspace(0., 1., 501)
+    #specgrid = specpol(np.log(wavegrid))
+    #wavepol = Legendre.fit(specgrid, np.log(wavegrid), order)
 
     # Add the parameters to a dictionary.
     pars = dict()
@@ -104,8 +104,8 @@ def trace_polynomial(trace, m=1, maxorder=15):
     pars['spat_domain'] = spatpol.domain
     pars['spec_coef'] = specpol.coef
     pars['spec_domain'] = specpol.domain
-    pars['wave_coef'] = wavepol.coef
-    pars['wave_domain'] = wavepol.domain
+    #pars['wave_coef'] = wavepol.coef
+    #pars['wave_domain'] = wavepol.domain
 
     return pars
 
@@ -267,7 +267,7 @@ def wavelength_to_pix(wavelength, tracepars, m=1, subarray='SUBSTRIP256', oversa
     :rtype: Tuple(array[float], array[float], array[bool])
     """
 
-    # Convert wavelenght to nat pixel coordinates.
+    # Convert wavelength to nat pixel coordinates.
     w2spec = Legendre(tracepars[m]['spec_coef'], domain=tracepars[m]['spec_domain'])
     w2spat = Legendre(tracepars[m]['spat_coef'], domain=tracepars[m]['spat_domain'])
 
@@ -283,6 +283,40 @@ def wavelength_to_pix(wavelength, tracepars, m=1, subarray='SUBSTRIP256', oversa
     spatpix = spatpix_nat * oversample
 
     return specpix, spatpix, mask
+
+def specpix_to_wavelength_new(specpix, tracepars, m=1, oversample=1):
+    """Convert the spectral pixel coordinate to wavelength for order m.
+
+    :param specpix: the pixel values.
+    :param tracepars: the trace polynomial solutions returned by get_tracepars.
+    :param m: the spectral order.
+    :param oversample: the oversampling factor of the input coordinates.
+
+    :type specpix: array[float]
+    :type tracepars: dict
+    :type m: int
+    :type frame: str
+    :type oversample: int
+
+    :returns: wavelength - an array containing the wavelengths corresponding to specpix,
+    mask - an array that is True when the specpix values were within the valid range of the polynomial.
+    :rtype: Tuple(array[float], array[bool])
+    """
+    # Convert wavelength to nat pixel coordinates.
+    w2spec = Legendre(tracepars[m]['spec_coef'], domain=tracepars[m]['spec_domain'])
+    #w2spat = Legendre(tracepars[m]['spat_coef'], domain=tracepars[m]['spat_domain']) - not used
+
+    # Do the forward transformation on the widest range of wavelengths
+    wavelength_generic = np.linspace(0.4,5.5,51001)
+    # Apply the transformation on these wavelengths
+    specpix_nat = w2spec(np.log(wavelength_generic))
+    #spatpix_nat = w2spat(np.log(wavelength_generic)) - not used
+
+    # Interpolate the wide range of wavelengths to the ones actually requested
+    wavelength = np.interp(specpix / oversample, specpix_nat, wavelength_generic)
+    mask = bounds_check(np.log(wavelength), tracepars[m]['spec_domain'][0], tracepars[m]['spec_domain'][1])
+
+    return wavelength, mask
 
 
 def specpix_to_wavelength(specpix, tracepars, m=1, oversample=1):

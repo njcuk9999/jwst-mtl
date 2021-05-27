@@ -7,6 +7,7 @@ from astropy.io import fits
 import sys
 import numpy as np
 import matplotlib.pyplot as plt
+from astropy.table import Table
 import trace.tracepol as tp
 import itsosspipeline as soss
 
@@ -27,7 +28,12 @@ debug = False
 Read in the rateint exposure (processed through DMS)
 '''
 exposure_name = '/genesis/jwst/userland-soss/loic_review/test_noisy_rateints.fits'
-data = fits.getdata(exposure_name)
+handle = fits.open(exposure_name)
+data = handle['SCI'].data
+dataerr = handle['ERR'].data
+datavar = dataerr**2
+datadq = handle['DQ'].data
+nint, dimy, dimx = np.shape(data)
 
 
 '''
@@ -99,11 +105,25 @@ box_aperture = soss.box_aperture(data, x_index, y_index, box_width=35.0)
 hdu = fits.PrimaryHDU()
 hdu.data = box_aperture
 hdu.writeto('/genesis/jwst/userland-soss/loic_review/box_aperture.fits', overwrite=True)
-a = soss.aperture_extract(data, x_index, box_aperture, mask=None)
+flux = soss.aperture_extract(data, x_index, box_aperture, mask=None)
 
-plt.figure()
-plt.plot(a[0,:])
-plt.show()
 
-print(np.shape(a))
+#plt.figure()
+#plt.plot(flux[0,:])
+#plt.show()
+#print(np.shape(flux))
+
+'''
+Write extracted spectra on disk in the format readable by our light curve analysis tool.
+BJD, flux [e- or Flambda], flux_err, exptime [sec], wavelength [um], channel [integer for each sample]
+FITS header keyword JDOFFSET = 2459518 subtracted from BJD to retain good precision on our floats.
+'''
+
+MJD = np.ones(nint)
+dw = wavelength*0
+integtime = np.ones(nint)
+flux_err = flux*0.01
+soss.write_spectrum(wavelength, dw, MJD, integtime, flux, flux_err,
+                    '/genesis/jwst/userland-soss/loic_review/spectrum_order1.fits')
+
 print('Extraction example 1 completed successfully.')
