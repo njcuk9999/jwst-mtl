@@ -299,7 +299,8 @@ class instrument_response_class:
         self.response_order=[]
         self.quantum_yield=[]
 
-def read_response(throughput_file, verbose=True, f277w=False, path_filter_transmission=None):
+def read_response(throughput_file, verbose=True, f277w=False, path_filter_transmission=None,
+                  set_response_to_unity=False, set_qy_to_unity=False):
     """ Usage: response = read_response(throughput_file)
     throughput_file : FITS file for the instrument throughput.
 
@@ -325,6 +326,8 @@ def read_response(throughput_file, verbose=True, f277w=False, path_filter_transm
 
     # The quantum yield (e- produced per photon)
     response.quantum_yield = a[1].data['YIELD']
+    if set_qy_to_unity:
+        response.quantum_yield = response.quantum_yield * 0 + 1
 
     # Store each order's response in an array
     # Order -1 is not given in throughput file, use order * 10%
@@ -342,6 +345,10 @@ def read_response(throughput_file, verbose=True, f277w=False, path_filter_transm
     # Order 3
     response.response.append(np.array(a[1].data['SOSS_ORDER3']))
     response.response_order.append(3)
+
+    if set_response_to_unity:
+        for i in range(-1,3):
+            response.response[i] = response.responsee[i] * 0 + 1
 
     # Close FITS file
     a.close()
