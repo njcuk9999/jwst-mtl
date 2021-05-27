@@ -23,6 +23,8 @@ import os.path
 from astropy.io import fits
 from astropy.io import ascii
 from astropy.table import Table
+import scipy.constants as sc_cst
+
 
 from tqdm.notebook import tqdm as tqdm_notebook
 
@@ -113,10 +115,7 @@ def starlimbdarkening(wave_angstrom, ld_type='flat'):
 
     if ld_type == 'flat':
         # flat
-        a1234 = [0, 0, 0, 0]
         ld_coeff = np.zeros((np.size(wave_angstrom), 4))
-        #ld_coeff[]
-        #print(np.shape(ld_coeff))
     else:
         # no limb darkening - flat intensity
         ld_coeff = np.zeros((np.size(wave_angstrom), 4))
@@ -132,17 +131,17 @@ def starmodel(simuPars, pathPars, verbose=True):
     """
     if simuPars.modelfile == 'BLACKBODY' and simuPars.bbteff:
         if verbose: print('Star atmosphere model type: BLACKBODY')
-        model_angstrom = np.linspace(4000, 55000, 200001)
+        model_angstrom = np.linspace(4000, 55000, 2000001)
         model_flambda = planck(model_angstrom/10000, simuPars.bbteff)
         model_ldcoeff = starlimbdarkening(model_angstrom)
     elif simuPars.modelfile == 'CONSTANT_FLAMBDA':
         if verbose: print('Star atmosphere model type: CONSTANT_FLAMBDA')
-        model_angstrom = np.linspace(4000, 55000, 200001)
+        model_angstrom = np.linspace(4000, 55000, 2000001)
         model_flambda = np.ones(np.size(model_angstrom))
         model_ldcoeff = starlimbdarkening(model_angstrom)
     elif simuPars.modelfile == 'CONSTANT_FNU':
         if verbose: print('Star atmosphere model type: CONSTANT_FNU')
-        model_angstrom = np.linspace(4000, 55000, 200001)
+        model_angstrom = np.linspace(4000, 55000, 2000001)
         fnu = np.ones(np.size(model_angstrom))
         speedoflight = 3e+8
         model_flambda = speedoflight * fnu / (model_angstrom * 1e-10)**2
@@ -332,6 +331,11 @@ def generate_traces(savingprefix, pathPars, simuPars, tracePars, throughput,
     star_angstrom_bin, star_flux_bin, ld_coeff_bin, planet_angstrom_bin, planet_rprs_bin = \
         spgen.resample_models(dw, star_angstrom, star_flux, ld_coeff, planet_angstrom, planet_rprs, simuPars, tracePars)
 
+    # Convert star_flux to photon flux (which is what's expected for addflux2pix in gen_unconv_image)
+    h = sc_cst.Planck
+    c = sc_cst.speed_of_light
+    photon_energy = h * c / (star_angstrom_bin * 1e-10)
+    star_flux_bin = star_flux_bin / photon_energy
 
     # Transit model
     print('Setting up Transit Model Parameters')

@@ -87,10 +87,14 @@ print(simuPars.pmodeltype[0])
 #simuPars.noversample = 1  #example of changing a model parameter
 #simuPars.xout = 4000      #spectral axis
 #simuPars.yout = 300       #spatial (cross-dispersed axis)
+simuPars.modelfile = 'CONSTANT_FNU'
+#simuPars.modelfile = 'BLACKBODY'
+#simuPars.modelfile = 't6000g450p000_ldnl.dat'
 
 
 # Instrument Throughput (Response)
-throughput = spgen.read_response(pathPars.throughputfile, verbose=verbose)
+throughput = spgen.read_response(pathPars.throughputfile, set_response_to_unity=True,
+                                 set_qy_to_unity=True, verbose=verbose)
 
 # Set up Trace (Position vs. Wavelength)
 tracePars = tp.get_tracepars(pathPars.tracefile)
@@ -101,6 +105,12 @@ starmodel_angstrom, starmodel_flambda, ld_coeff = soss.starmodel(simuPars, pathP
 # Anchor star spectrum on a photometric band magnitude
 starmodel_flambda = smag.anchor_spectrum(starmodel_angstrom/10000., starmodel_flambda, simuPars.filter,
                                     simuPars.magnitude, pathPars.path_filtertransmission)
+
+#plt.figure()
+#plt.plot(starmodel_angstrom, starmodel_flambda)
+#plt.plot(throughput.wv, throughput.response[1])
+#plt.show()
+#sys.exit()
 
 # Read Planet Atmosphere Model (wavelength in angstroms and radius_planet/radius_star ratio)
 planetmodel_angstrom, planetmodel_rprs = spgen.readplanetmodel(pathPars.path_planetmodelatm+simuPars.pmodelfile[0],
@@ -173,6 +183,8 @@ detector.add_noise(os.path.join(pathPars.path_userland,'test_clear.fits'),
 # Process the data through the DMS level 1 pipeline
 result = Detector1Pipeline.call(os.path.join(pathPars.path_userland, 'test_clear_noisy.fits'),
                                 output_file='test_clear_noisy', output_dir=pathPars.path_userland)
+
+sys.exit()
 
 """
 SIMULATE THE F277W CALIBRATION EXPOSURE OBTAINED AFTER THE GR700XD EXPOSURE
