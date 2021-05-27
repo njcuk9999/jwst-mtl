@@ -12,7 +12,7 @@ from scipy.ndimage import shift, rotate
 
 from astropy.io import fits
 
-from SOSS.dms import soss_centroids as ctd  # TODO remove shorthand?
+from .soss_centroids import get_soss_centroids
 
 
 def transform_coords(angle, xshift, yshift, xpix, ypix, cenx=1024, ceny=50):
@@ -127,8 +127,8 @@ def solve_transform(scidata, scimask, xref, yref, subarray, verbose=False):
     yref = yref[mask]
 
     # Get centroids from data.
-    centroids = ctd.get_soss_centroids(scidata, mask=scimask,
-                                       subarray=subarray, verbose=verbose)
+    centroids = get_soss_centroids(scidata, mask=scimask, subarray=subarray,
+                                   verbose=verbose)
 
     xdat = centroids['order 1']['X centroid']
     ydat = centroids['order 1']['Y centroid']
