@@ -89,10 +89,10 @@ print(simuPars.pmodeltype[0])
 
 
 # Instrument Throughput (Response)
-throughput = spgen.read_response(pathPars.throughputfile, verbose=verbose)
-throughput.quantum_yield = throughput.quantum_yield*0 + 1
-for i in range(-1,3):
-    throughput.response[i] = throughput.response[i]*0 + 1
+throughput = spgen.read_response(pathPars.throughputfile, verbose=verbose)   #set_qy_to_unity=True, set_response_to_unity=True
+#throughput.quantum_yield = throughput.quantum_yield*0 + 1
+#for i in range(-1,3):
+#    throughput.response[i] = throughput.response[i]*0 + 1
 
 # Set up Trace (Position vs. Wavelength)
 tracePars = tp.get_tracepars(pathPars.tracefile)
@@ -178,6 +178,8 @@ detector.add_noise(os.path.join(WORKING_DIR,'test_clear.fits'),
 # Process the data through the DMS level 1 pipeline
 result = Detector1Pipeline.call(os.path.join(WORKING_DIR, 'test_clear_noisy.fits'),
                                 output_file='test_clear_noisy', output_dir=WORKING_DIR)
+
+sys.exit()
 
 """
 SIMULATE THE F277W CALIBRATION EXPOSURE OBTAINED AFTER THE GR700XD EXPOSURE

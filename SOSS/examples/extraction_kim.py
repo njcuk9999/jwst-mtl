@@ -31,8 +31,9 @@ pars = tp.get_tracepars(trace_file)   #Gives the middle position of trace
 w, tmp = tp.specpix_to_wavelength(x,pars,m=1)   #Returns wavelength for each x, order 1
 
 xnew, y, mask = tp.wavelength_to_pix(w, pars, m=1)   #Converts wavelenghths to pixel coordinate
+### x and xnew should be the same!...
 
-#cube = fits.getdata("/home/kmorel/ongenesis/jwst-user-soss/test_noisy_rateints.fits")
+#cube = fits.getdata("/home/kmorel/ongenesis/jwst-user-soss/test_clear_noisy_rateints.fits")
 #im = cube[0,:,:]
 
 a = fits.open("/home/kmorel/ongenesis/jwst-user-soss/test_clear_noisy_rateints.fits")
