@@ -5,7 +5,7 @@ import warnings
 
 import numpy as np
 from scipy.optimize import minimize
-from scipy.ndimage.interpolation import rotate
+from scipy.ndimage import shift, rotate
 
 from astropy.io import fits
 
@@ -16,7 +16,8 @@ warnings.simplefilter(action='ignore', category=RuntimeWarning)
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 
-def rot_centroids(angle, xshift, yshift, xpix, ypix, cenx=1024, ceny=50):
+
+def transform_coords(angle, xshift, yshift, xpix, ypix, cenx=1024, ceny=50):
     """Apply a rotation and shift to the trace centroids positions. This
     assumes that the trace centroids are already in the CV3 coordinate system.
 
@@ -84,7 +85,7 @@ def _chi_squared(transform, xref, yref, xdat, ydat):
     angle, xshift, yshift = transform
 
     # Calculate rotated reference positions.
-    xrot, yrot = rot_centroids(angle, xshift, yshift, xref, yref)
+    xrot, yrot = transform_coords(angle, xshift, yshift, xref, yref)
 
     # After rotation, need to resort the x-positions.
     sort = np.argsort(xrot)
@@ -143,7 +144,7 @@ def solve_transform(scidata, scimask, xref, yref, subarray,
 
     # Testing block.
     angle, xshift, yshift = simple_transform
-    xrot, yrot = rot_centroids(angle, xshift, yshift, xref, yref)
+    xrot, yrot = transform_coords(angle, xshift, yshift, xref, yref)
     sort = np.argsort(xrot)
     ymod = np.interp(xdat, xrot[sort], yrot[sort])
 
@@ -193,7 +194,7 @@ def rotate_image(image, angle, origin):
     return image_rot
 
 
-def _do_transform(ref_map, angle, xshift, yshift, oversample, pad):
+def transform_image(ref_map, angle, xshift, yshift, oversample, pad):  # TODO match call to transfrom_coordinates.
     """Apply the rotation and offset to a 2D reference map, and bin
     the map down the native size and resolution.
 
@@ -237,7 +238,7 @@ def _do_transform(ref_map, angle, xshift, yshift, oversample, pad):
     # Rotate the reference map.
     ref_map_rot = rotate_image(ref_map, angle, [x_anch, y_anch])
 
-    # Select the relevant area after shifting.
+    # Select the relevant area after shifting. TODO Change to use shift, move removal of padding and binning to apply_transform.
     minrow = ovs*pad - int(ovs*yshift)
     maxrow = minrow + ovs*nat_ydim
     mincol = ovs*pad - int(ovs*xshift)
@@ -286,8 +287,8 @@ def apply_transform(simple_transform, ref_maps, oversample, pad, norm=False):
 
         # Do the transformation for the reference 2D trace.
         # Pass negative rot_ang to convert from CCW to CW rotation
-        trans_map = _do_transform(ref_maps[i_ord], -angle, xshift, yshift,
-                                  pad=pad, oversample=oversample)
+        trans_map = transform_image(ref_maps[i_ord], -angle, xshift, yshift,
+                                    pad=pad, oversample=oversample)
 
         # Renormalize the spatial profile so columns sum to one.
         if norm:
