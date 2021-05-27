@@ -89,7 +89,7 @@ print(simuPars.pmodeltype[0])
 
 
 # Instrument Throughput (Response)
-throughput = spgen.read_response(pathPars.throughputfile, verbose=verbose) #, set_response_to_unity=True, set_qy_to_unity=True)
+throughput = spgen.read_response(pathPars.throughputfile, verbose=verbose, set_response_to_unity=True, set_qy_to_unity=True)
 #throughput.quantum_yield = throughput.quantum_yield*0 + 1
 #for i in range(-1,3):
 #    throughput.response[i] = throughput.response[i]*0 + 1
@@ -101,8 +101,8 @@ tracePars = tp.get_tracepars(pathPars.tracefile)
 starmodel_angstrom, starmodel_flambda, ld_coeff = soss.starmodel(simuPars, pathPars)
 
 # Anchor star spectrum on a photometric band magnitude
-#starmodel_flambda = smag.anchor_spectrum(starmodel_angstrom/10000., starmodel_flambda, simuPars.filter,
-                                    #simuPars.magnitude, pathPars.path_filtertransmission)
+starmodel_flambda = smag.anchor_spectrum(starmodel_angstrom/10000., starmodel_flambda, simuPars.filter,
+                                    simuPars.magnitude, pathPars.path_filtertransmission)
 
 # Read Planet A tmosphere Model (wavelength in angstroms and radius_planet/radius_star ratio)
 planetmodel_angstrom, planetmodel_rprs = spgen.readplanetmodel(pathPars.path_planetmodelatm+simuPars.pmodelfile[0],
@@ -128,7 +128,7 @@ if True:
                                    planetmodel_angstrom, planetmodel_rprs,
                                    timesteps, tintopen)
 else:
-    #SIMUDIR = '/home/kmorel/ongenesis/jwst-user-soss/tmp/'
+    SIMUDIR = '/home/kmorel/ongenesis/jwst-user-soss/tmp/'
     imagelist = glob.glob(WORKING_DIR + 'tmp/clear*.fits')
     #imagelist = os.listdir(SIMUDIR)
     for i in range(np.size(imagelist)):
@@ -179,7 +179,6 @@ detector.add_noise(os.path.join(WORKING_DIR,'test_clear.fits'),
 result = Detector1Pipeline.call(os.path.join(WORKING_DIR, 'test_clear_noisy.fits'),
                                 output_file='test_clear_noisy', output_dir=WORKING_DIR)
 
-sys.exit()
 
 """
 SIMULATE THE F277W CALIBRATION EXPOSURE OBTAINED AFTER THE GR700XD EXPOSURE
