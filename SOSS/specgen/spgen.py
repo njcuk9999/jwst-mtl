@@ -348,7 +348,7 @@ def read_response(throughput_file, verbose=True, f277w=False, path_filter_transm
 
     if set_response_to_unity:
         for i in range(-1,3):
-            response.response[i] = response.responsee[i] * 0 + 1
+            response.response[i] = response.response[i] * 0 + 1
 
     # Close FITS file
     a.close()

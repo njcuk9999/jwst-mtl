@@ -89,7 +89,7 @@ print(simuPars.pmodeltype[0])
 
 
 # Instrument Throughput (Response)
-throughput = spgen.read_response(pathPars.throughputfile, verbose=verbose)   #set_qy_to_unity=True, set_response_to_unity=True
+throughput = spgen.read_response(pathPars.throughputfile, verbose=verbose) #, set_response_to_unity=True, set_qy_to_unity=True)
 #throughput.quantum_yield = throughput.quantum_yield*0 + 1
 #for i in range(-1,3):
 #    throughput.response[i] = throughput.response[i]*0 + 1
@@ -101,10 +101,10 @@ tracePars = tp.get_tracepars(pathPars.tracefile)
 starmodel_angstrom, starmodel_flambda, ld_coeff = soss.starmodel(simuPars, pathPars)
 
 # Anchor star spectrum on a photometric band magnitude
-starmodel_flambda = smag.anchor_spectrum(starmodel_angstrom/10000., starmodel_flambda, simuPars.filter,
-                                    simuPars.magnitude, pathPars.path_filtertransmission)
+#starmodel_flambda = smag.anchor_spectrum(starmodel_angstrom/10000., starmodel_flambda, simuPars.filter,
+                                    #simuPars.magnitude, pathPars.path_filtertransmission)
 
-# Read Planet Atmosphere Model (wavelength in angstroms and radius_planet/radius_star ratio)
+# Read Planet A tmosphere Model (wavelength in angstroms and radius_planet/radius_star ratio)
 planetmodel_angstrom, planetmodel_rprs = spgen.readplanetmodel(pathPars.path_planetmodelatm+simuPars.pmodelfile[0],
                                                                simuPars.pmodeltype[0])
 
