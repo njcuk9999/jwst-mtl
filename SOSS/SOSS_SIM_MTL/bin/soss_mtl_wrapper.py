@@ -5,20 +5,22 @@
 
 # CODE DESCRIPTION HERE
 
-Created on 2020-05-21
+Created on 2021-05-27
 
 @author: cook
 """
-from soss_mtl.core.instrument import constants
 from soss_mtl.core.core import param_functions
 from soss_mtl.core.core import log_functions
+from soss_mtl.core.instrument import constants
+
 
 # =============================================================================
 # Define variables
 # =============================================================================
 # set name
-__NAME__ = 'paramtest.py'
-__DESCRIPTION__ = 'test script for SOSS_SIM_MTL'
+__NAME__ = 'soss_mtl_wrapper.py'
+__DESCRIPTION__ = ('wrapper around simulation + extraction + analysis codes '
+                   'for JWST AMI mode')
 # get default constants
 consts = constants.Consts
 # copy for update
@@ -28,14 +30,19 @@ __VERSION__ = lconsts.constants['PACKAGE_VERSION'].value
 __DATE__ = lconsts.constants['PACKAGE_VERSION_DATE'].value
 # set up the logger
 log = log_functions.Log()
-# add code specific arguments
+# define group name
+group = 'recipe'
 
-# Define the scene fits file
-lconsts.add_argument('SCENE', value=None, dtype=str,
+# =============================================================================
+# Define arguments
+# =============================================================================
+# Define the config file
+lconsts.add_argument('WCONFIG', value=None, dtype=str,
                      source=__NAME__, user=True, argument=True,
-                     group='code', description='Define the scene fits file',
-                     command=['--scene'])
-
+                     group=group,
+                     description='Define the target as it appears in the '
+                                 'APT file',
+                     command=['--config'])
 
 # =============================================================================
 # Define functions
@@ -55,7 +62,9 @@ def main(**kwargs):
                                        desc=__DESCRIPTION__, name=__NAME__)
         # run the __main__ to return products
         if not params['GENERATE_CONFIG_FILE']:
-            return __main__(params)
+            returns = __main__(params)
+            param_functions.success_end(params)
+            return returns
     except Exception as e:
         if hasattr(e, '__log__'):
             log.exception(e.__log__())
@@ -65,36 +74,28 @@ def main(**kwargs):
             log.exception(emsg.format(type(e), str(e)))
             log.error(emsg.format(type(e), str(e)))
         return params
-    except SystemExit as e:
+    except SystemExit as _:
         return params
 
 
 def __main__(params):
+    # =========================================================================
+    # we have params
+    # =========================================================================
+    print(params)
 
-    params.log.ldebug('run __main__', 7)
-    # main code here
-    for param in params:
-        params.info(param)
-
-    # test logging
-    params.log.info('This is a test of info')
-    params.log.warning('This is a test of warning')
-    params.log.error('This is a test of an error',
-                     raise_exception=False)
-
+    # =========================================================================
+    # End of code
+    # =========================================================================
     return params
+
 
 # =============================================================================
 # Start of code
 # =============================================================================
 if __name__ == "__main__":
-
     # test
-    import sys
-
-    # sys.argv = 'test.py --getconfig=True --config=loictest.ini'.split()
-    # run main code
-    ll = main()
+    main()
 
 # =============================================================================
 # End of code
