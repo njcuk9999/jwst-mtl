@@ -1,0 +1,8 @@
+# Define targets
+
+
+# Define parameters (that overwrite defaults)
+parameters:
+  general:
+    out_dir: /data/jwst_soss/data/neil_wrap
+
