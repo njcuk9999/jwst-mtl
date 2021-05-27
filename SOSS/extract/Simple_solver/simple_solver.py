@@ -26,7 +26,7 @@ def transform_coords(angle, xshift, yshift, xpix, ypix, cenx=1024, ceny=50):
     :param yshift: The shift to apply to the y-coordinates after rotating.
     :param xpix: The x-coordinates to be transformed.
     :param ypix: The y-coordinates to be transformed.
-    :param cenx: The x-coordinate around which to rotate. TODO not needed?
+    :param cenx: The x-coordinate around which to rotate.
     :param ceny: The y-coordinate around which to rotate.
 
     :type angle: float
@@ -34,8 +34,8 @@ def transform_coords(angle, xshift, yshift, xpix, ypix, cenx=1024, ceny=50):
     :type yshift: float
     :type xpix: array[float]
     :type ypix: array[float]
-    :type cenx:
-    :type ceny:
+    :type cenx: The x-coordinate around which to apply the rotation.
+    :type ceny: The y-coordinate around which to apply the rotation.
 
     :returns: xrot, yrot - The rotated and shifted coordinates.
     :rtype: Tuple(array[float], array[float])
@@ -100,8 +100,7 @@ def _chi_squared(transform, xref, yref, xdat, ydat):
     return chisq
 
 
-def solve_transform(scidata, scimask, xref, yref, subarray,
-                    verbose=False):
+def solve_transform(scidata, scimask, xref, yref, subarray, verbose=False):
     """Given a science image, determine the centroids and find the simple
     transformation needed to match xcen_ref and ycen_ref to the image.
 
@@ -136,31 +135,13 @@ def solve_transform(scidata, scimask, xref, yref, subarray,
     xdat = centroids['order 1']['X centroid']
     ydat = centroids['order 1']['Y centroid']
 
-    # Fit the reference file centroids to the data.
+    # Set up the optimization problem.
     guess_transform = np.array([0.15, 1, 1])
     min_args = (xref, yref, xdat, ydat)
+
+    # Find the best-fit transformation.
     result = minimize(_chi_squared, guess_transform, args=min_args)
     simple_transform = result.x
-
-    # Testing block.
-    angle, xshift, yshift = simple_transform
-    xrot, yrot = transform_coords(angle, xshift, yshift, xref, yref)
-    sort = np.argsort(xrot)
-    ymod = np.interp(xdat, xrot[sort], yrot[sort])
-
-    ax = plt.subplot(211)
-
-    plt.plot(xdat, ydat, label='Image Centroids')
-    plt.plot(xref, yref, label='Rotated Reference')
-    plt.plot(xdat, ymod, label='Interpolated Reference')
-
-    plt.subplot(212, sharex=ax)
-
-    plt.plot(xdat, ydat - ymod)
-
-    plt.xlim(0, 2048)
-
-    plt.show()
 
     return simple_transform
 
@@ -194,109 +175,98 @@ def rotate_image(image, angle, origin):
     return image_rot
 
 
-def transform_image(ref_map, angle, xshift, yshift, oversample, pad):  # TODO match call to transfrom_coordinates.
+def transform_image(angle, xshift, yshift, image, cenx=1024, ceny=50):
     """Apply the rotation and offset to a 2D reference map, and bin
     the map down the native size and resolution.
 
-    :param ref_map: A 2D reference file array such as a wavelength map or trace
-        profile.
     :param angle: The angle by which to rotate the file, in degrees.
     :param xshift: The x-shift to apply in native pixels, will be rounded to the
         nearest (oversampled) pixel.
     :param yshift: The y-shift to apply in native pixels, will be rounded to the
         nearest (oversampled) pixel.
-    :param oversample: The oversampling of the reference file array.
-    :param pad: The padding, in native pixels, on the reference file array.
+    :param image: An image to transform.
+    :param cenx: The x-coordinate around which to rotate.
+    :param ceny: The y-coordinate around which to rotate.
 
-    :type ref_map: array[float]
     :type angle: float
     :type xshift: float
     :type yshift: float
-    :type oversample: int
-    :type pad: int
+    :type image: array[float]
+    :type cenx: The x-coordinate around which to apply the rotation.
+    :type ceny: The y-coordinate around which to apply the rotation.
 
-    :returns: ref_map_nat - The data, after applying the shift and rotation and
-        binned down to the native size and resolution.
+    :returns: image_rot - The image, after applying the shift and rotation.
     :rtype: array[float]
     """
 
-    ovs = oversample
+    # Rotate the image.
+    image_rot = rotate_image(image, angle, [cenx, ceny])
 
-    if (xshift > pad) | (yshift > pad):
-        msg = 'The applied shift exceeds the padding.'  # TODO better message.
-        raise ValueError(msg)
+    # Shift the image.
+    image_rot = shift(image_rot, [yshift, xshift])
 
-    # Determine the native shape of the data.
-    pad_ydim, pad_xdim = np.shape(ref_map)
-    nat_xdim = int(round(pad_xdim/ovs - 2*pad, 0))
-    nat_ydim = int(round(pad_ydim/ovs - 2*pad, 0))
-
-    # Rotation anchor is o1 trace centroid halfway along the spectral axis.
-    x_anch = int((pad + 1024)*ovs)  # TODO hardcoded here, optional in rot_centroids.
-    y_anch = int((pad + 50)*ovs)
-
-    # Rotate the reference map.
-    ref_map_rot = rotate_image(ref_map, angle, [x_anch, y_anch])
-
-    # Select the relevant area after shifting. TODO Change to use shift, move removal of padding and binning to apply_transform.
-    minrow = ovs*pad - int(ovs*yshift)
-    maxrow = minrow + ovs*nat_ydim
-    mincol = ovs*pad - int(ovs*xshift)
-    maxcol = mincol + ovs*nat_xdim
-    ref_map_sub = ref_map_rot[minrow:maxrow, mincol:maxcol]
-
-    # Bin down to native resolution.
-    ref_map_nat = ref_map_sub.reshape(nat_ydim, ovs, nat_xdim, ovs)
-    ref_map_nat = ref_map_nat.mean(-1).mean(1)  # TODO needs to be different for wavelength and profile?
-
-    return ref_map_nat
+    return image_rot
 
 
-def apply_transform(simple_transform, ref_maps, oversample, pad, norm=False):
+def apply_transform(simple_transform, ref_map, oversample, pad, native=True,
+                    norm=False):
     """Apply the transformation found by solve_transform() to a 2D reference map.
 
     :param simple_transform: The transformation parameters returned by
         solve_transform().
-    :param ref_maps: Array of reference maps.
-    :param oversample: The oversampling factor the reference maps.
-    :param pad: The padding (in native pixels) on the reference maps.
+    :param ref_map: A reference map, e.g. a 2D Wavelength map or Trace Profile
+        map.
+    :param oversample: The oversampling factor the reference map.
+    :param pad: The padding (in native pixels) on the reference map.
+    :param native: If True bin down to native pixel sizes and remove padding.
+        Default is True
     :param norm: If True normalize columns to 1, used for trace profile
-        reference maps.
+        reference maps. Default is False.
 
     :type simple_transform: Tuple, List, Array
-    :type ref_maps: array[float]
+    :type ref_map: array[float]
     :type oversample: int
     :type pad: int
+    :type native: bool
     :type norm: bool
 
     :returns: trans_maps - the ref_maps after having the transformation applied.
     :rtype: array[float]
     """
 
+    ovs = oversample
+
     # Unpack the transformation.
     angle, xshift, yshift = simple_transform
 
-    # Get the dimensions of the reference map.
-    norders, dimy, dimx = ref_maps.shape
+    # Modify the transformation with the oversampling and padding.
+    xshift = ovs*xshift
+    yshift = ovs*yshift
+    cenx = ovs*(pad + 1024)
+    ceny = ovs*(pad + 50)
 
-    trans_maps = []
-    for i_ord in range(norders):
+    # Set NaN pixels to zero - the rotation doesn't handle NaNs well.
+    ref_map[np.isnan(ref_map)] = 0
 
-        # Set NaN pixels to zero - the rotation doesn't handle NaNs well.
-        ref_maps[np.isnan(ref_maps)] = 0
+    # Apply the transformation to the reference map.
+    trans_map = transform_image(-angle, xshift, yshift, ref_map, cenx, ceny)
 
-        # Do the transformation for the reference 2D trace.
-        # Pass negative rot_ang to convert from CCW to CW rotation
-        trans_map = transform_image(ref_maps[i_ord], -angle, xshift, yshift,
-                                    pad=pad, oversample=oversample)
+    if native:
 
-        # Renormalize the spatial profile so columns sum to one.
-        if norm:
-            trans_maps.append(trans_map/np.nansum(trans_map, axis=0))
-        else:
-            trans_maps.append(trans_map)
+        # Bin the transformed map down to native resolution.
+        nrows, ncols = trans_map.shape
+        trans_map = trans_map.reshape(nrows//ovs, ovs, ncols//ovs, ovs)
+        trans_map = trans_map.mean(1).mean(-1)
 
-    return np.array(trans_maps)
+        # Remove the padding.
+        trans_map = trans_map[pad:-pad, pad:-pad]
+
+    if norm:
+
+        # Normalize so that the columns sum to 1.
+        trans_map = trans_map/np.nansum(trans_map, axis=0)
+
+    return trans_map
 
 
 def write_to_file(stack, filename):
