@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# TODO I don't much like the way the rotation point is handled.
+# TODO Theoretically it could be removed entirely, but the way coords and image
+# TODO handle it are different by default (lower-left vs center).
 
 import warnings
 
@@ -9,12 +12,7 @@ from scipy.ndimage import shift, rotate
 
 from astropy.io import fits
 
-from . import plotting
 from SOSS.dms import soss_centroids as ctd  # TODO remove shorthand?
-
-warnings.simplefilter(action='ignore', category=RuntimeWarning)
-warnings.simplefilter(action='ignore', category=FutureWarning)
-
 
 
 def transform_coords(angle, xshift, yshift, xpix, ypix, cenx=1024, ceny=50):
@@ -264,12 +262,14 @@ def apply_transform(simple_transform, ref_map, oversample, pad, native=True,
     if norm:
 
         # Normalize so that the columns sum to 1.
-        trans_map = trans_map/np.nansum(trans_map, axis=0)
+        with warnings.catch_warnings():
+            warnings.simplefilter(action="ignore", category=RuntimeWarning)
+            trans_map = trans_map/np.nansum(trans_map, axis=0)
 
     return trans_map
 
 
-def write_to_file(stack, filename):
+def write_to_file(stack, filename):  # TODO function not needed?
     """Utility function to write transformed 2D trace profile or wavelength map
     files to disk. Data will be saved as a multi-extension fits file.
 
