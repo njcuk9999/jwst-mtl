@@ -115,15 +115,29 @@ var[i[0],i[1]] = 0
 #Extracted flux of im
 f_lamb_im = f_lambda(x,im,w,y)
 var_flamb_im = var_flambda(x,var,w,y)   #Its variance
+#delta_flamb_im = np.sqrt(var_flamb_im)   #problem
 
 
 b = fits.open("/home/kmorel/ongenesis/jwst-user-soss/tmp/clear_000000.fits")
+
+#Extract flux of clear, order 1 only
 m1_clear = b[0].data[m_order]  #adu/s
 m1_clear = np.flipud(m1_clear)  #Flip image
 
-#Extracted flux of m1_clear, order 1 only
-f_lamb_m1_clear = f_lambda(x,m1_clear,w,y)
+flamb_m1_clear = f_lambda(x,m1_clear,w,y)   #Extracted flux
 
+#Extract flux of order 1 of clear, all orders summed
+tot_clear = np.sum(b[0].data,axis=0)   #Sum all orders
+tot_clear = np.flipud(tot_clear)  #Flip image
+
+flamb_tot_clear = f_lambda(x,tot_clear,w,y)   #Extracted flux
+
+diff_m1 = flamb_tot_clear - flamb_m1_clear   #Difference between order 1 only and sum of orders
+diff_noise = flamb_tot_clear - f_lamb_im
+
+
+beg = 5
+end = -5
 
 plt.figure(1)
 plt.imshow(im, vmin=0, vmax=1000, origin="lower")
@@ -131,25 +145,39 @@ plt.plot(x, y, color="red")
 plt.show()
 
 plt.figure(2)
-plt.plot(w, f_lamb_im, color="HotPink")
-#plt.errorbar()
+plt.plot(w[beg:end], f_lamb_im[beg:end], color="HotPink")
+#plt.errorbar(w[beg:end],f_lamb_im[beg:end],yerr=delta_flamb_im[beg:end],fmt="None",ecolor='r')
 plt.xlabel(r"Wavelength [$\mu$m]"), plt.ylabel(r"Flux [J s⁻¹ m⁻² $\mu$m⁻¹]")
-plt.title("Extracted flux of noisy spectrum, order 1 from all orders")
+plt.title("Extracted flux of order 1 of noisy traces")
 plt.show()
 
+
+"""
 plt.figure(4)
-plt.imshow(m1_clear, vmin=0, vmax=1000, origin="lower")
-plt.plot(x, y, color="red")
-plt.show()
-
-plt.figure(2)
-plt.plot(w, f_lamb_m1_clear, color="HotPink")
-plt.xlabel(r"Wavelength [$\mu$m]"), plt.ylabel(r"Flux [J s⁻¹ m⁻² $\mu$m⁻¹]")
-plt.title("Extracted flux of clear spectrum, order 1 only")
-plt.show()
-
-plt.figure(3)
 plt.plot(starmodel_angstrom, starmodel_flambda,color='Aqua')
 plt.xlabel(r"Wavelength [angstrom]"), plt.ylabel(r"Flux")
 plt.title("Model")
 plt.show()
+"""
+plt.figure(5)
+plt.imshow(tot_clear, vmin=0, vmax=1000, origin="lower")
+plt.plot(x, y, color="red")
+plt.show()
+
+fig, (ax1,ax2) = plt.subplots(1,2,sharey=True)
+plt.ylabel(r"Flux [J s⁻¹ m⁻² $\mu$m⁻¹]")
+plt.xlabel(r"Wavelength [$\mu$m]")
+ax1.plot(w[beg:end], flamb_m1_clear[beg:end], color="HotPink")
+ax2.plot(w[beg:end], flamb_tot_clear[beg:end], color="b")
+ax1.set_title("Extracted flux of clear order 1 trace")
+ax2.set_title("Extracted flux of order 1 of all clear traces")
+plt.show()
+
+fig, (ax1,ax2) = plt.subplots(1,2)
+plt.xlabel(r"Wavelength [$\mu$m]"), plt.ylabel(r"Flux [J s⁻¹ m⁻² $\mu$m⁻¹]")
+ax1.plot(w[beg:end], diff_m1[beg:end], color="HotPink")
+ax2.plot(w[beg:end], diff_noise[beg:end], color='b')
+ax1.set_title("Difference between order 1 extracted from \nsum of clear traces and order 1 alone")
+ax2.set_title("Difference between order 1 extracted from clear \ntraces and order 1 extracted from noisy traces")
+plt.show()
+
