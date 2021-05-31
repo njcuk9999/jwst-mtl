@@ -30,7 +30,7 @@ def dispersion(wl):
     dw = np.zeros_like(wl)
     for i in range(len(wl)):
         if i == 0:
-            dw[i] = wl[0] - wl[1]
+            dw[i] = wl[0] - wl[1]   #The wl array has to be reversed
         else:
             dw[i] = wl[i - 1] - wl[i]
     return dw
@@ -46,7 +46,7 @@ def f_lambda(pixels, im_test, wl, y_trace, radius_pixel=radius_pixel, area=area,
     :param gain: Gain [e⁻/adu]
     :return: Extracted flux [J/s/m²/micron]
     """
-    flux = np.zeros_like(pixels)  # Array extracted spectrum
+    flux = np.zeros_like(pixels)  # Array for extracted spectrum
     for x_i in pixels:
         x_i = int(x_i)
         y_i = y_trace[x_i]
@@ -56,15 +56,24 @@ def f_lambda(pixels, im_test, wl, y_trace, radius_pixel=radius_pixel, area=area,
             im_test[int(first) + 1:int(last) + 1, x_i]) + im_test[int(last) + 1, x_i] * (last % int(last))
 
     # Calculate the flux in J/s/m²/um
-    phot_ener = photon_energy(wl)  # Energy of photons [J/s]
-
+    phot_ener = photon_energy(wl)  # Energy of each photon [J/photon]
     dw = dispersion(wl)   #Dispersion [microns]
 
-    # Flux
     return flux * gain * phot_ener / area / dw
 
 
-def var_flambda(pixels, variance, wl, y_trace, radius_pixel=14, area=25., gain=1.6):
+def sigma_flambda(pixels, error, wl, y_trace, radius_pixel=radius_pixel, area=area, gain=gain):
+    """
+    :param pixels: Array of pixels
+    :param variance: Variance of pixels [adu/s]
+    :param wl: Array of wavelengths (same size as pixels)  [microns]
+    :param y_trace: Array for the positions of the center of the trace for each column
+    :param radius_pixel: Radius of extraction box [pixels]
+    :param area: Area of photons collection surface [m²]
+    :param gain: Gain [e⁻/adu]
+    :return: Variance of extracted flux [J/s/m²/micron]
+    """
+    variance = error ** 2  # Variance of each pixel [adu²/s²]
 
     vari = np.zeros_like(pixels)  # Array for variances
     for x_i in pixels:
@@ -75,18 +84,13 @@ def var_flambda(pixels, variance, wl, y_trace, radius_pixel=14, area=25., gain=1
         vari[x_i] = variance[int(first), x_i] * (1 - first % int(first)) + np.sum(
             variance[int(first) + 1:int(last) + 1, x_i]) + variance[int(last) + 1, x_i] * (last % int(last))
 
-    # Calculate the total variance in J/s/m²/um
-    phot_ener = h * c / (wl * 1e-6)  # Energy of photons [J/s]
+    # Calculate the total error in J/s/m²/um
+    delta_flambda = np.sqrt(vari)   #Sigma of column [adu/s]
 
-    dw = np.zeros_like(wl)  # Dispersion [microns]
-    for i in range(len(wl)):
-        if i == 0:
-            dw[i] = wl[0] - wl[1]
-        else:
-            dw[i] = wl[i-1] - wl[i]
+    phot_ener = photon_energy(wl)  # Energy of each photon [J/photon]
+    dw = dispersion(wl)  # Dispersion [microns]
 
-    # Variance of flux
-    return vari * gain * phot_ener / area / dw
+    return delta_flambda * gain * phot_ener / area / dw
 
 
 WORKING_DIR = '/home/kmorel/ongenesis/jwst-user-soss/'
@@ -106,124 +110,126 @@ simuPars = spgen.read_pars(pathPars.simulationparamfile, simuPars) #read in para
 # Generate or read the star atmosphere model
 starmodel_angstrom, starmodel_flambda, ld_coeff = soss.starmodel(simuPars, pathPars)
 
-#Position of trace :
+# Position of trace
 trace_file = "/genesis/jwst/jwst-ref-soss/trace_model/NIRISS_GR700_trace_extended.csv"
-x = np.linspace(0,2047,2048)    #Array of pixels
-pars = tp.get_tracepars(trace_file)   #Gives the middle position of trace
-w, tmp = tp.specpix_to_wavelength(x,pars,m=1)   #Returns wavelength for each x, order 1
+x = np.linspace(0,2047,2048)    # Array of pixels
+pars = tp.get_tracepars(trace_file)   # Gives the middle position of trace
+w, tmp = tp.specpix_to_wavelength(x,pars,m=1)   # Returns wavelength for each x, order 1
 
-xnew, y, mask = tp.wavelength_to_pix(w, pars, m=1)   #Converts wavelenghths to pixel coordinate
+xnew, y, mask = tp.wavelength_to_pix(w, pars, m=1)   # Converts wavelenghths to pixel coordinates
 ### x and xnew should be the same!...
 
-m_order = 0  #Order - 1
-a = fits.open("/home/kmorel/ongenesis/jwst-user-soss/test_clear_noisy_rateints.fits")
-im = a[1].data[m_order]  #adu/s
-dq = a[3].data[m_order]  #Data quality
-delta = a[2].data   #Error
-var = delta[m_order]**2   #Variance
+m_order = 0  # Order - 1
 
-#VALEUR IMPAIRES DE DQ = PIXELS DO NOT USE
+noisy_rateints = fits.open("/home/kmorel/ongenesis/jwst-user-soss/test_clear_noisy_rateints.fits")
+im = noisy_rateints[1].data[m_order]  # Image of flux [adu/s]
+delta = noisy_rateints[2].data[m_order]   # Error [adu/s]
+dq = noisy_rateints[3].data[m_order]  # Data quality
+
+# Odd values of dq = DO NOT USE these pixels
 i = np.where(dq %2 != 0)
 im[i[0],i[1]] = 0
-var[i[0],i[1]] = 0
+delta[i[0],i[1]] = 0
 
 #ynew = np.interp(x, xnew, y)    #Interpolation of y at integer values of x
 #ynew = np.around(ynew)
 
+#EXTRACTIONS
 #Extracted flux of im
-f_lamb_im = f_lambda(x,im,w,y)
-var_flamb_im = var_flambda(x,var,w,y)   #Its variance
-#delta_flamb_im = np.sqrt(var_flamb_im)   #problem
+flamb_im = f_lambda(x,im,w,y)
+sig_flamb_im = sigma_flambda(x,delta,w,y)
 
+clear = fits.open("/home/kmorel/ongenesis/jwst-user-soss/tmp/clear_000000.fits")
 
-b = fits.open("/home/kmorel/ongenesis/jwst-user-soss/tmp/clear_000000.fits")
+#Extract flux of clear, order 1 trace only
+m1_clear = clear[0].data[m_order]  # [adu/s]
+m1_clear = np.flipud(m1_clear)  # Flip image
+#m1_clear[i[0],i[1]] = 0  # Data quality   #TO DO???
+flamb_m1_clear = f_lambda(x,m1_clear,w,y)   # Extracted flux [J/s/m²/micron]
 
-#Extract flux of clear, order 1 only
-m1_clear = b[0].data[m_order]  #adu/s
-m1_clear = np.flipud(m1_clear)  #Flip image
-#m1_clear[i[0],i[1]] = 0  #data quality
+#Extract flux of order 1 of clear, all orders added
+tot_clear = np.sum(clear[0].data,axis=0)   # Sum all traces
+tot_clear = np.flipud(tot_clear)  # Flip image
+#tot_clear[i[0],i[1]] = 0   # Data quality   #TO DO???
+flamb_tot_clear = f_lambda(x,tot_clear,w,y)   # Extracted flux [J/s/m²/micron]
 
-flamb_m1_clear = f_lambda(x,m1_clear,w,y)   #Extracted flux
+#Comparisons
+diff_m1 = flamb_tot_clear - flamb_m1_clear   # Difference between order 1 only and order 1 of sum of traces
+relat_flux = diff_m1 / flamb_m1_clear  # Relative flux
 
-#Extract flux of order 1 of clear, all orders summed
-tot_clear = np.sum(b[0].data,axis=0)   #Sum all orders
-tot_clear = np.flipud(tot_clear)  #Flip image
-#tot_clear[i[0],i[1]] = 0   #data quality
+diff_noisy = flamb_tot_clear - flamb_im   # Difference between order 1 of sum of traces and order 1 of noisy traces
 
-flamb_tot_clear = f_lambda(x,tot_clear,w,y)   #Extracted flux
+# Estimated photon noises
+ng = 3   # NGROUP
+t_read = 5.49   # Reading time [s]
+tint = (ng - 1) * t_read   # Integration time [s]
+dw = dispersion(w)   # Dispersion [microns]
+phot_ener = photon_energy(w)   # Energy of photon [J]
 
-diff_m1 = flamb_tot_clear - flamb_m1_clear   #Difference between order 1 only and sum of orders
-diff_noise = flamb_tot_clear - f_lamb_im
-
-relat_flux = (flamb_tot_clear - flamb_m1_clear) / flamb_m1_clear  #Relative flux
-
-ng = 3
-t_read = 5.49   #s
-tint = (ng - 1) * t_read   #s
-dw = dispersion(w)
-phot_ener = photon_energy(w)
 photon_noise_m1 = flamb_m1_clear * tint * dw * area / phot_ener
-sigma_noise_m1 = np.sqrt(photon_noise_m1)   #Photon noise (photon/column)
+sigma_noise_m1 = np.sqrt(photon_noise_m1)   # Photon noise for order 1 only trace [photons]
+sigma_noisem1_ener = sigma_noise_m1 * phot_ener / dw / area / tint   # Photon noise [J/s/m²/micron]
 
 photon_noise_tot = flamb_tot_clear * tint * dw * area / phot_ener
-sigma_noise_tot = np.sqrt(photon_noise_tot)   #Photon noise (photon/column)
+sigma_noise_tot = np.sqrt(photon_noise_tot)   # Photon noise for order 1 of sum of traces [photons]
+sigma_noisetot_ener = sigma_noise_tot * phot_ener / dw / area / tint   # Photon noise [J/s/m²/micron]
 
-#Graphs
+# GRAPHICS
+# To avoid problems with the extremities :
 beg = 5
 end = -5
 
 plt.figure(1)
-plt.imshow(im, vmin=0, vmax=1000, origin="lower")
-plt.plot(x, y, color="red")
-plt.show()
+plt.imshow(im, vmin=0, vmax=1000, origin="lower")   # Image of traces
+plt.plot(x, y, color="red", label="Order 1 trace's position")   # Middle position of order 1 trace
+plt.title("test_clear_noisy_rateints.fits")
+plt.legend(), plt.show()
 
 plt.figure(2)
-plt.plot(w[beg:end], f_lamb_im[beg:end], color="HotPink")
-#plt.errorbar(w[beg:end],f_lamb_im[beg:end],yerr=delta_flamb_im[beg:end],fmt="None",ecolor='r')
-plt.xlabel(r"Wavelength [$\mu$m]"), plt.ylabel(r"Flux [J s⁻¹ m⁻² $\mu$m⁻¹]")
-plt.title("Extracted flux of order 1 of noisy traces")
+plt.plot(w[beg:end], flamb_im[beg:end], lw=1, color="HotPink")
+plt.errorbar(w[beg:end], flamb_im[beg:end], yerr=sig_flamb_im[beg:end], fmt="None", elinewidth=1, ecolor='r')
+plt.xlabel(r"Wavelength [$\mu$m]")
+plt.ylabel(r"Flux [J s⁻¹ m⁻² $\mu$m⁻¹]")
+plt.title("Extracted flux of order 1 from noisy traces")
 plt.show()
-
-
 """
 plt.figure(4)
-plt.plot(starmodel_angstrom, starmodel_flambda,color='Aqua')
-plt.xlabel(r"Wavelength [angstrom]"), plt.ylabel(r"Flux")
+plt.plot(starmodel_angstrom, starmodel_flambda, color='Aqua')
+plt.xlabel(r"Wavelength [angstrom]")
+plt.ylabel(r"Flux")
 plt.title("Model")
 plt.show()
 """
 plt.figure(5)
 plt.imshow(tot_clear, vmin=0, vmax=1000, origin="lower")
-plt.plot(x, y, color="red")
-plt.show()
+plt.plot(x, y, color="red", label="Order 1 trace's position")
+plt.title("clear_000000.fits")
+plt.legend(), plt.show()
 
 plt.figure(6)
-plt.plot(w[beg:end], flamb_m1_clear[beg:end], color="r", label = "Extracted flux of clear order 1 trace")
-#plt.errorbar(w[beg:end],flamb_m1_clear[beg:end],yerr=sigma_noise_m1[beg:end],fmt="None",ecolor='r')
-plt.plot(w[beg:end], flamb_tot_clear[beg:end], color="b", label="Extracted flux of order 1 of all clear traces")
-#plt.errorbar(w[beg:end],flamb_tot_clear[beg:end],yerr=sigma_noise_tot[beg:end],fmt="None",ecolor='r')
+plt.plot(w[beg:end], flamb_m1_clear[beg:end], lw=1, color="r", label = "Extracted flux of clear order 1 trace")
+plt.errorbar(w[beg:end], flamb_m1_clear[beg:end], yerr=sigma_noisem1_ener[beg:end], fmt="None", elinewidth=1, ecolor='r')
+plt.plot(w[beg:end], flamb_tot_clear[beg:end], lw=1, color="b", label="Extracted flux of order 1 from all clear traces")
+plt.errorbar(w[beg:end], flamb_tot_clear[beg:end], yerr=sigma_noisetot_ener[beg:end], fmt="None", elinewidth=1, ecolor='b')
 plt.ylabel(r"Flux [J s⁻¹ m⁻² $\mu$m⁻¹]")
 plt.xlabel(r"Wavelength [$\mu$m]")
-plt.legend()
-plt.show()
+plt.legend(), plt.show()
 
 plt.figure(7)
 plt.plot(w[beg:end], diff_m1[beg:end], color="HotPink", label="Difference")
 plt.ylabel(r"Flux [J s⁻¹ m⁻² $\mu$m⁻¹]")
 plt.xlabel(r"Wavelength [$\mu$m]")
-plt.legend()
-plt.show()
+plt.legend(), plt.show()
 
 plt.figure(8)
 plt.plot(w[beg:end], relat_flux[beg:end], color="HotPink", label="Relative flux")
 plt.ylabel(r"Flux [J s⁻¹ m⁻² $\mu$m⁻¹]")
 plt.xlabel(r"Wavelength [$\mu$m]")
-plt.legend()
-plt.show()
+plt.legend(), plt.show()
 
 plt.figure(9)
-plt.plot(w[beg:end], diff_noise[beg:end], color='b')
+plt.plot(w[beg:end], diff_noisy[beg:end], lw=1, color='b')
 plt.title("Difference between order 1 extracted from clear \ntraces and order 1 extracted from noisy traces")
-plt.xlabel(r"Wavelength [$\mu$m]"), plt.ylabel(r"Flux [J s⁻¹ m⁻² $\mu$m⁻¹]")
+plt.xlabel(r"Wavelength [$\mu$m]")
+plt.ylabel(r"Flux [J s⁻¹ m⁻² $\mu$m⁻¹]")
 plt.show()
-
