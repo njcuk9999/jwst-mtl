@@ -168,8 +168,8 @@ data = soss.write_dmsready_fits_init(imagelist, normalization_scale,
                                      simuPars.frametime, simuPars.granularity)
 
 # All simulations (e-/sec) are converted to up-the-ramp images.
-soss.write_dmsready_fits(data[:,:,0:256,0:2048], os.path.join(WORKING_DIR,'test_clear.fits'),
-                    os=simuPars.noversample, input_frame='sim')
+soss.write_dmsready_fits(data, os.path.join(WORKING_DIR,'test_clear.fits'),
+                    os=simuPars.noversample, input_frame='sim')  #[:,:,0:256,0:2048]
 
 # Add detector noise to the noiseless data
 detector.add_noise(os.path.join(WORKING_DIR,'test_clear.fits'),
@@ -179,7 +179,7 @@ detector.add_noise(os.path.join(WORKING_DIR,'test_clear.fits'),
 result = Detector1Pipeline.call(os.path.join(WORKING_DIR, 'test_clear_noisy.fits'),
                                 output_file='test_clear_noisy', output_dir=WORKING_DIR)
 
-
+sys.exit()
 """
 SIMULATE THE F277W CALIBRATION EXPOSURE OBTAINED AFTER THE GR700XD EXPOSURE
 - throughput needs to be rest differently
