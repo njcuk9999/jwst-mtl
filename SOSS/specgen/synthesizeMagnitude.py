@@ -219,20 +219,20 @@ def measure_actual_flux(imagename, xbounds=[0,2048], ybounds=[0,256],
     images.
 
     :param imagename:
-    :param xbounds:
-    :param ybounds:
+    :param xbounds: assumes native pixels boundaries
+    :param ybounds: assumes native pixels boundaries
     :param noversample:
     :return:
     '''
 
-    # Convert to numpy arrays
-    xbounds = np.array(xbounds, dtype=np.int)
-    ybounds = np.array(ybounds, dtype=np.int)
+    # Convert to numpy arrays and oversampled coordinates
+    xbounds_os = np.array(xbounds, dtype=np.int)*noversample
+    ybounds_os = np.array(ybounds, dtype=np.int)*noversample
 
     # Read the cube on disk assuming a (norder, dimy, dimx) shape
     image = fits.getdata(imagename)
     norder, dimy, dimx = np.shape(image)
-    image_cropped = image[:, ybounds[0]:ybounds[1], xbounds[0]:xbounds[1]]
+    image_cropped = image[:, ybounds_os[0]:ybounds_os[1], xbounds_os[0]:xbounds_os[1]]
     print('shape of the image on which flux is measured:', np.shape(image_cropped))
 
     # Measure the flux on a single order at a time
