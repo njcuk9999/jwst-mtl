@@ -83,7 +83,7 @@ def _chi_squared(transform, xref, yref, xdat, ydat):
     # Calculate rotated reference positions.
     xrot, yrot = transform_coords(angle, xshift, yshift, xref, yref)
 
-    # After rotation, need to resort the x-positions.
+    # After rotation, need to re-sort the x-positions.
     sort = np.argsort(xrot)
     xrot, yrot = xrot[sort], yrot[sort]
 
