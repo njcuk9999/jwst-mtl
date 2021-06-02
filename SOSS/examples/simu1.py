@@ -90,9 +90,6 @@ print(simuPars.pmodeltype[0])
 
 # Instrument Throughput (Response)
 throughput = spgen.read_response(pathPars.throughputfile, verbose=verbose, set_response_to_unity=True, set_qy_to_unity=True)
-#throughput.quantum_yield = throughput.quantum_yield*0 + 1
-#for i in range(-1,3):
-#    throughput.response[i] = throughput.response[i]*0 + 1
 
 # Set up Trace (Position vs. Wavelength)
 tracePars = tp.get_tracepars(pathPars.tracefile)
@@ -122,7 +119,7 @@ print('norders={:} dimy={:} dimx={:}'.format(norders,dimy,dimx))
 # For each time step, a cube of simulated images is written to disk
 # The cube has all spectral orders in separate slices.
 # The list of such fits cube file names is returned.
-if True:
+if False:
     imagelist = soss.generate_traces(WORKING_DIR+'tmp/clear', pathPars, simuPars, tracePars, throughput,
                                    starmodel_angstrom, starmodel_flambda, ld_coeff,
                                    planetmodel_angstrom, planetmodel_rprs,
