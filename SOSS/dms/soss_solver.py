@@ -4,13 +4,11 @@
 # TODO Theoretically it could be removed entirely, but the way coords and image
 # TODO handle it are different by default (lower-left vs center).
 
-import warnings
-
-import numpy as np
-from scipy.optimize import minimize
-from scipy.ndimage import shift, rotate
-
 from astropy.io import fits
+import numpy as np
+from scipy.ndimage import shift, rotate
+from scipy.optimize import minimize
+import warnings
 
 from .soss_centroids import get_soss_centroids
 
@@ -129,7 +127,6 @@ def solve_transform(scidata, scimask, xref, yref, subarray, verbose=False):
     # Get centroids from data.
     centroids = get_soss_centroids(scidata, mask=scimask, subarray=subarray,
                                    verbose=verbose)
-
     xdat = centroids['order 1']['X centroid']
     ydat = centroids['order 1']['Y centroid']
 
@@ -250,7 +247,6 @@ def apply_transform(simple_transform, ref_map, oversample, pad, native=True,
     trans_map = transform_image(-angle, xshift, yshift, ref_map, cenx, ceny)
 
     if native:
-
         # Bin the transformed map down to native resolution.
         nrows, ncols = trans_map.shape
         trans_map = trans_map.reshape(nrows//ovs, ovs, ncols//ovs, ovs)
@@ -260,7 +256,6 @@ def apply_transform(simple_transform, ref_map, oversample, pad, native=True,
         trans_map = trans_map[pad:-pad, pad:-pad]
 
     if norm:
-
         # Normalize so that the columns sum to 1.
         with warnings.catch_warnings():
             warnings.simplefilter(action="ignore", category=RuntimeWarning)
