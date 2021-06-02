@@ -42,12 +42,13 @@ def transform_coords(angle, xshift, yshift, xpix, ypix, cenx=1024, ceny=50):
     ypix = np.atleast_1d(ypix)
 
     # Required rotation in the detector frame to match the data.
-    t = np.deg2rad(angle)
-    R = np.array([[np.cos(t), -np.sin(t)], [np.sin(t), np.cos(t)]])
+    angle = np.deg2rad(angle)
+    rot_mat = np.array([[np.cos(angle), -np.sin(angle)],
+                        [np.sin(angle), np.cos(angle)]])
 
     # Rotation center set to o1 trace centroid halfway along spectral axis.
     points = np.array([xpix - cenx, ypix - ceny])
-    rot_points = R @ points
+    rot_points = rot_mat @ points
     rot_points[0] += cenx
     rot_points[1] += ceny
 
@@ -288,6 +289,7 @@ def write_to_file(stack, filename):  # TODO function not needed?
 
     hdu = fits.HDUList(hdulist)
     hdu.writeto('{}.fits'.format(filename), overwrite=True)
+    hdu.close()
 
     return
 
