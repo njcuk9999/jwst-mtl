@@ -108,6 +108,7 @@ def planck(wave_micron, teff):
 
 
 def planetmodel():
+    return
 
 
 def starlimbdarkening(wave_angstrom, ld_type='flat'):
