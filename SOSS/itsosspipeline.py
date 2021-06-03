@@ -363,12 +363,13 @@ def generate_traces(savingprefix, pathPars, simuPars, tracePars, throughput,
     # dw = dw/100
     print("Wavelength spacing (angstroms): ", dw, dwflag)
 
-    # Generate a wavelength sampling grid with constant resolving power.
-    w, dw = constantR_samples(5000, 55000, resolving_power=64000)
+    if False:
+        # Generate a wavelength sampling grid with constant resolving power.
+        w, dw = constantR_samples(5000, 55000, resolving_power=64000)
 
-    print(np.size(w))
-    print(np.size(star_angstrom))
-    sys.exit()
+        print(np.size(w))
+        print(np.size(star_angstrom))
+        sys.exit()
 
     # TODO: resample on the new constant R grid rather than pseudo constant dw (it is not! --> bug)
     # Resample onto common grid.
