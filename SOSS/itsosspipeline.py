@@ -379,14 +379,15 @@ def generate_traces(savingprefix, pathPars, simuPars, tracePars, throughput,
     print(np.shape(star_angstrom_bin))
     print('dw',dw)
 
-    plt.figure()
-    #plt.scatter(star_angstrom, star_flux)
-    #plt.scatter(star_angstrom_bin, star_flux_bin)
-    #plt.scatter()
-    plt.scatter(star_angstrom_bin[1:], star_angstrom_bin[1:]-star_angstrom_bin[0:-1])
-    plt.show()
+    if False:
+        plt.figure()
+        #plt.scatter(star_angstrom, star_flux)
+        #plt.scatter(star_angstrom_bin, star_flux_bin)
+        #plt.scatter()
+        plt.scatter(star_angstrom_bin[1:], star_angstrom_bin[1:]-star_angstrom_bin[0:-1])
+        plt.show()
 
-    sys.exit()
+        sys.exit()
 
     # Convert star_flux to photon flux (which is what's expected for addflux2pix in gen_unconv_image)
     h = sc_cst.Planck
