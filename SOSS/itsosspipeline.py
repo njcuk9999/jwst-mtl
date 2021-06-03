@@ -24,7 +24,7 @@ from astropy.io import fits
 from astropy.io import ascii
 from astropy.table import Table
 import scipy.constants as sc_cst
-
+import matplotlib.pyplot as plt
 
 from tqdm.notebook import tqdm as tqdm_notebook
 
@@ -105,6 +105,10 @@ def planck(wave_micron, teff):
     intensity = a / ( (wave_meter**5) * (np.exp(b) - 1.0) )
 
     return intensity
+
+
+def planetmodel():
+    return
 
 
 def starlimbdarkening(wave_angstrom, ld_type='flat'):
@@ -297,6 +301,37 @@ def generate_timesteps(simuPars, f277=False):
         return tintopen, frametime, nint_f277, timesteps_f277
 
 
+def constantR_samples(wavelength_start, wavelength_end, resolving_power=100000):
+    '''
+    Generates an array of wavelengths at constant resolving power.
+    :param wavelength_start:
+    :param wavelength_end:
+    :param resolving_power: R = lambda / delta_lambda
+    :return:
+    '''
+
+    # One can show that wave_i+1 = wave_i * (2R+1)/(2R-1)
+    term = (2 * resolving_power + 1) / (2 * resolving_power - 1)
+    wavelength = []
+    w = np.copy(wavelength_start)
+    while w < wavelength_end:
+        w = w * term
+        wavelength.append(w)
+    # remove the last sample as it is past wavelength_end
+    wavelength = np.array(wavelength)
+    wavelength = wavelength[0:-1]
+
+    # The sample width is
+    delta_wavelength = wavelength / resolving_power
+
+    return wavelength, delta_wavelength
+
+def resample_models_pixelgrid():
+    # x et y pour chaque ordre spectral + dx(t), dy(t)
+
+
+    return
+
 
 def generate_traces(savingprefix, pathPars, simuPars, tracePars, throughput,
                     star_angstrom, star_flux, ld_coeff,
@@ -327,9 +362,30 @@ def generate_traces(savingprefix, pathPars, simuPars, tracePars, throughput,
     dw, dwflag = spgen.get_dw(star_angstrom, planet_angstrom, simuPars, tracePars)
     # dw = dw/100
     print("Wavelength spacing (angstroms): ", dw, dwflag)
+
+    # Generate a wavelength sampling grid with constant resolving power.
+    w, dw = constantR_samples(5000, 55000, resolving_power=64000)
+
+    print(np.size(w))
+    print(np.size(star_angstrom))
+    sys.exit()
+
+    # TODO: resample on the new constant R grid rather than pseudo constant dw (it is not! --> bug)
     # Resample onto common grid.
     star_angstrom_bin, star_flux_bin, ld_coeff_bin, planet_angstrom_bin, planet_rprs_bin = \
         spgen.resample_models(dw, star_angstrom, star_flux, ld_coeff, planet_angstrom, planet_rprs, simuPars, tracePars)
+
+    print(np.shape(star_angstrom_bin))
+    print('dw',dw)
+
+    plt.figure()
+    #plt.scatter(star_angstrom, star_flux)
+    #plt.scatter(star_angstrom_bin, star_flux_bin)
+    #plt.scatter()
+    plt.scatter(star_angstrom_bin[1:], star_angstrom_bin[1:]-star_angstrom_bin[0:-1])
+    plt.show()
+
+    sys.exit()
 
     # Convert star_flux to photon flux (which is what's expected for addflux2pix in gen_unconv_image)
     h = sc_cst.Planck
@@ -456,7 +512,7 @@ def flux_calibrate_simulation(parameters):
 
 
 
-def rebin(image2D, noversampling):
+def rebin(image, noversampling):
     """
     Takes an oversampled image and bins it down to native pixel size, taking
     the mean of the pixel values.
@@ -464,12 +520,26 @@ def rebin(image2D, noversampling):
     :param noversampling:
     :return:
     """
-    dimy, dimx = np.shape(image2D)
-    newdimy, newdimx = int(dimy/noversampling), int(dimx/noversampling)
-    shape = (newdimy, image2D.shape[0] // newdimy,
-             newdimx, image2D.shape[1] // newdimx)
-
-    return image2D.reshape(shape).mean(-1).mean(1)
+    ndim = image.ndim
+    if ndim == 2:
+        dimy, dimx = np.shape(image)
+        newdimy, newdimx = int(dimy/noversampling), int(dimx/noversampling)
+        shape = (newdimy, image.shape[0] // newdimy,
+                newdimx, image.shape[1] // newdimx)
+        return image.reshape(shape).mean(-1).mean(1)
+    elif ndim == 3:
+        dimz, dimy, dimx = np.shape(image2D)
+        newdimy, newdimx = int(dimy/noversampling), int(dimx/noversampling)
+        cube = np.zeros((dimz, newdimy, newdimx))
+        for i in range(dimz):
+            image2D = image[i,:,:]
+            shape = (newdimy, image2D.shape[0] // newdimy,
+                     newdimx, image2D.shape[1] // newdimx)
+            cube[i,:,:] = image2D.reshape(shape).mean(-1).mean(1)
+        return cube
+    else:
+        print('rebin accepts 2D or 3D arrays, nothing else!')
+        return 1
 
 
 def write_simu_fits(image, filename):
@@ -599,21 +669,24 @@ def write_dmsready_fits(image, filename, os=1, input_frame='sim', verbose=True, 
             # For each int and group, bin the image to native pixel size (handling flux properly)
             for i in range(nint):
                 for j in range(ngroup):
-                    data[i, j, :, :] = downscale_local_mean(image[i, j, :, :], (os, os)) * os**2
+                    #data[i, j, :, :] = downscale_local_mean(image[i, j, :, :], (os, os)) * os**2
+                    data[i, j, :, :] = rebin(image[i, j, :, :], os)
         elif len(size) == 3:
             if verbose: print('3 dimensional array')
             nint = 1
             ngroup, dimy, dimx = size
             data = np.zeros((nint, ngroup, int(dimy / os), int(dimx / os)))
             for j in range(ngroup):
-                data[0, j, :, :] = downscale_local_mean(image[j, :, :], (os, os)) * os**2
+                #data[0, j, :, :] = downscale_local_mean(image[j, :, :], (os, os)) * os**2
+                data[0, j, :, :] = rebin(image[j, :, :], os)
         elif len(size) == 2:
             if verbose: print('2 dimensional array')
             nint = 1
             ngroup = 1
             dimy, dimx = size
             data = np.zeros((nint, ngroup, int(dimy / os), int(dimx / os)))
-            data[0, 0, :, :] = downscale_local_mean(image, (os, os)) * os**2
+            #data[0, 0, :, :] = downscale_local_mean(image, (os, os)) * os**2
+            data[0, 0, :, :] = rebin(image, os)
         else:
             print('There is a problem with the image passed to write_dmsread_fits.')
             print('Needs to have 2 to 4 dimensions.')
@@ -981,3 +1054,144 @@ def read_spectrum(fitsname):
     '''
 
     return MJD, integtime, wavelength, wavelength_delta, flux, flux_err
+
+
+
+"""
+@author: caroline
+
+Utility functions for reading in spectra from a grid
+"""
+
+# import modules
+#import numpy as np
+#import matplotlib.pyplot as plt
+from astropy import io as aio
+from astropy.convolution import convolve, Box1DKernel, Gaussian1DKernel, Trapezoid1DKernel
+from copy import deepcopy
+
+# %%
+# Utilities functions
+
+class PlanetSpectrum:
+    def __init__(self, caselist=None, params_dict={"ComposType": "ChemEqui", "Metallicity": 1.,
+                                                   "CtoO": 0.54, "pCloud": 1e3, "cHaaze": 1e-10, "pQuench": 1e-99,
+                                                   "Tint": 100., "HeatDistFactor": 0.25, "BondAlbedo": 0.1},
+                 planet_name="HAT_P_1_b", path_files="./"):
+        """
+        Object that contains all info about a spectrum (wavelength, transit depth, planet name,
+        atmosphere model params)
+        """
+
+        spec_csv_path = get_spec_csv_path(caselist=caselist, params_dict=params_dict,
+                                          planet_name=planet_name, path_files=path_files)
+
+        f = aio.ascii.read(spec_csv_path)
+
+        self.spec_csv_path = spec_csv_path
+        self.params = params_dict
+        self.planet_name = planet_name
+
+        self.wavelength_um = np.array(f["wave"])
+        self.dppm = np.array(f["dppm"])
+        self.rprs = np.sqrt(np.array(f["dppm"]))
+
+        # define res_power the way it is in scarlet
+        ind = 3
+        self.res_power = self.wavelength_um[ind] / (self.wavelength_um[ind + 1] - self.wavelength_um[ind])
+
+    def plot(self, ax=None, res_power=None, lab=None,
+             RpRs_or_dppm="dppm", wavelim_um=None, **kwargs):
+        """
+        Plot the spectrum at a given resolving power (res_power, if None keep original resolving power)
+        ax: axis on which to plot (if None, making one)
+        RpRs_or_dppm: plot Rp/Rs if "RpRs" otherwise plot transit depth in ppm if "dppm"
+        lab: optional label
+        wavelim_um: limits of the wavelengths shown on the plots in microns. of the form [min, max]
+        kwargs: additional keyword arguments for plotting
+        """
+        if RpRs_or_dppm == "dppm":
+            spec = self.dppm
+            ylab = "Transit depth [ppm]"
+        elif RpRs_or_dppm == "RpRs":
+            spec = self.rprs
+            ylab = r"R$_p$/R$_s$"
+
+        if res_power is not None:
+            if res_power < self.res_power:
+                kernel = Gaussian1DKernel(self.res_power / res_power / 2.35)
+                l = int(kernel.shape[0] / 2)
+                wave = self.wavelength_um[l:-l]
+                spec = convolve(spec, kernel)[l:-l]
+            rp = str(res_power)
+        else:
+            wave = self.wavelength_um
+            rp = str(int(self.res_power * 10.) / 10.)
+
+        if lab is None:
+            lab = "met=" + str(self.params["Metallicity"])
+            lab = lab + "; C/O=" + str(self.params["CtoO"])
+            lab = lab + "; pcloud=" + str(self.params["pCloud"] / 100.) + " mbar"
+
+        ax.plot(wave, spec, label=lab + '; R=' + rp, **kwargs)
+        ax.set_ylabel(ylab)
+        ax.set_xlabel(r"Wavelength [$\mu$m]")
+        if wavelim_um is not None:
+            ax.set_xlim(wavelim_um)
+        ax.legend()
+
+        return ax
+
+
+def get_atmosphere_cases(planet_name, path_files="./", return_caselist=True, print_info=True):
+    """
+    Get list of cases (sets of atmospheric properties) available for a given planet
+    planet_name: str, name of the planet
+    path_files: str, path to the grid of models for all planets
+    return_caselist: if True, returns an astropy table containing the information on all models for this planet
+    print_info: if True, print sets of parameters covered by the grid
+    """
+
+    summary_file_path = path_files + planet_name + "/" + "CaseList.csv"
+
+    columns = ['ComposType', 'Metallicity', 'CtoO', 'pCloud', 'cHaaze', 'pQuench', 'Tint', 'HeatDistFactor',
+               'BondAlbedo']
+    summary = aio.ascii.read(summary_file_path)
+
+    if print_info:
+        print("\n** Cases for ", planet_name, ": **\n")
+        print(summary[columns])
+        print("\n** Grid span: **\n")
+        for col in columns:
+            print(col + ":", np.unique(np.array(summary[col])))
+
+    if return_caselist:
+        return summary
+
+
+def make_default_params_dict():
+    """
+    Make a default parameters dictionary
+    """
+    params_dict = {"ComposType": "ChemEqui", "Metallicity": 1.,
+                   "CtoO": 0.54, "pCloud": 1e3, "cHaaze": 1e-10, "pQuench": 1e-99,
+                   "Tint": 100., "HeatDistFactor": 0.25, "BondAlbedo": 0.1}
+    return params_dict
+
+
+def get_spec_csv_path(caselist=None, params_dict={"ComposType": "ChemEqui", "Metallicity": 1.,
+                                                  "CtoO": 0.54, "pCloud": 1e3, "cHaaze": 1e-10, "pQuench": 1e-99,
+                                                  "Tint": 100., "HeatDistFactor": 0.25, "BondAlbedo": 0.1},
+                      planet_name="HAT_P_1_b", path_files="./"):
+    """
+    Returns full path to the csv file that contains the planet's spectrum
+    """
+    if caselist is None:
+        caselist = ut.get_atmosphere_cases(planet_name, path_files=path_files, return_caselist=True,
+                                           print_info=False)
+    case = deepcopy(caselist)
+    for p in params_dict.keys():
+        case = case[case[p] == params_dict[p]]
+
+    spec_csv_path = path_files + planet_name + "/" + case["fileroot"].data[0] + "Spectrum_FullRes_dppm.csv"
+    return spec_csv_path

@@ -63,6 +63,8 @@ class ModelPars:
     magnitude = 10.0
     filter = 'J'
     f277wcal = True
+    flatthroughput = False
+    flatquantumyield = False
 
 def read_pars(filename,pars):
     """Usage:  pars=read_pars(filename,pars)
@@ -118,6 +120,10 @@ def read_pars(filename,pars):
                             pars.f277wcal = bool(columns[1])
                     elif command == 'subarray':
                         pars.subarray = columns[1]
+                    elif command == 'flatthroughput':
+                        pars.flatthroughput = bool(columns[1])
+                    elif command == 'flatquantumyield':
+                        pars.flatquantumyield = bool(columns[1])
                     elif command == 'granularity':
                         pars.granularity = columns[1]
                     elif command == 'xout':
@@ -803,7 +809,8 @@ def get_dw(starmodel_wv,planetmodel_wv,pars,tracePars):
 
     norder=1 #Order to use.
 
-    #get spectral resolution of star spectra
+    # Devise the wavelength dispersion (angstrom/sample) of the star spectrum.
+    # dw_star is assigned the largest wavelength interval found in the starmodel_wv.
     nstarmodel=len(starmodel_wv)
     dw_star_array=np.zeros(nstarmodel-1)
     sortidx=np.argsort(starmodel_wv)
@@ -813,6 +820,8 @@ def get_dw(starmodel_wv,planetmodel_wv,pars,tracePars):
     #print('dw_star',dw_star)
 
     #get spectral resolution of planet spectra
+    # Devise the wavelength dispersion (angstrom/sample) of the planet spectrum.
+    # dw_planet is assigned the largest wavelength interval found in the planetmodel_wv.
     nplanetmodel=len(planetmodel_wv)
     print(nplanetmodel)
     dw_planet_array=np.zeros(nplanetmodel-1)
@@ -822,12 +831,16 @@ def get_dw(starmodel_wv,planetmodel_wv,pars,tracePars):
     dw_planet=np.max(dw_planet_array)
     #print('dw_planet',dw_planet)    
 
-    #get spectra resolution needed to populate grid.
-    xmax=pars.xout*pars.noversample
+    # Determine what is the regularly spaced spectral dispersion that best represent
+    # the need for order 1.
+    xmax=pars.xout*pars.noversample # ~2048 * os
     dw_grid_array=np.zeros(xmax-1)
+    # At each x position, find wavelength and calculate dw for that pixel.
     for i in range(xmax-1):
         dw_grid_array[i]=p2w(tracePars,i+1,pars.noversample,norder)\
           -p2w(tracePars,i,pars.noversample,norder)
+    # Adopt a single dispersion grid with fixed width, that a the minimum dipersion value for our pixel grid.
+    # TODO: need to change that - to adopt a better grid.
     dw_grid=np.abs(np.min(dw_grid_array))
     #print('dw_grid',dw_grid)
 
