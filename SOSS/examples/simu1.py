@@ -119,7 +119,7 @@ print('norders={:} dimy={:} dimx={:}'.format(norders,dimy,dimx))
 # For each time step, a cube of simulated images is written to disk
 # The cube has all spectral orders in separate slices.
 # The list of such fits cube file names is returned.
-if False:
+if True:
     imagelist = soss.generate_traces(WORKING_DIR+'tmp/clear', pathPars, simuPars, tracePars, throughput,
                                    starmodel_angstrom, starmodel_flambda, ld_coeff,
                                    planetmodel_angstrom, planetmodel_rprs,
@@ -153,7 +153,7 @@ simulated_counts = smag.measure_actual_flux(imagelist[0], xbounds=[0,2048], ybou
                         noversample=simuPars.noversample)
 # Prints the expected/measured counts
 for i in range(np.size(imagelist)):
-    print(i, expected_counts, simulated_counts)
+    print("Hiiii",i, expected_counts, simulated_counts)
 # Apply flux scaling
 normalization_scale = expected_counts / simulated_counts
 print('Normalization scales = ',normalization_scale)

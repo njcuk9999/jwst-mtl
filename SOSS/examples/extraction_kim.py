@@ -13,7 +13,10 @@ h = sc_cst.Planck
 c = sc_cst.speed_of_light
 gain = 1.6
 area = 25.
-radius_pixel = 14
+radius_pixel = 13
+ng = 3   # NGROUP
+t_read = 5.49   # Reading time [s]
+tint = (ng - 1) * t_read   # Integration time [s]
 
 def photon_energy(wl):
     """
@@ -60,6 +63,26 @@ def f_lambda(pixels, im_test, wl, y_trace, radius_pixel=radius_pixel, area=area,
     dw = dispersion(wl)   #Dispersion [microns]
 
     return flux * gain * phot_ener / area / dw
+
+def flambda_elec(pixels, im_test, y_trace, radius_pixel=radius_pixel, gain=gain):
+    """
+    :param pixels: Array of pixels
+    :param im_test: Trace's image [adu/s]
+    :param y_trace: Array for the positions of the center of the trace for each column
+    :param radius_pixel: Radius of extraction box [pixels]
+    :param gain: Gain [e⁻/adu]
+    :return: Extracted flux [e⁻/s/colonne]
+    """
+    flux = np.zeros_like(pixels)  # Array for extracted spectrum
+    for x_i in pixels:
+        x_i = int(x_i)
+        y_i = y_trace[x_i]
+        first = y_i - radius_pixel
+        last = y_i + radius_pixel
+        flux[x_i] = im_test[int(first), x_i] * (1 - first % int(first)) + np.sum(
+            im_test[int(first) + 1:int(last) + 1, x_i]) + im_test[int(last) + 1, x_i] * (last % int(last))
+
+    return flux * gain
 
 def flambda_inf_radi(im_test, wl, area=area, gain=gain):
     flux = np.sum(im_test,axis=0)
@@ -122,18 +145,17 @@ m_order = 0  # Order - 1
 
 # CHOOSE oversample : Comment file not used
 # Oversample = 1
-#noisy_rateints = fits.open("/home/kmorel/ongenesis/jwst-user-soss/oversampling_1/test_clear_noisy_rateints.fits")
-#clear = fits.open("/home/kmorel/ongenesis/jwst-user-soss/tmp/oversampling_1/clear_000000.fits")
-#clear = clear[0].data
+noisy_rateints = fits.open("/home/kmorel/ongenesis/jwst-user-soss/oversampling_1/test_clear_noisy_rateints.fits")
+clear = fits.open("/home/kmorel/ongenesis/jwst-user-soss/tmp/oversampling_1/clear_000000.fits")
+clear = clear[0].data
 # Oversample = 10
-#"""
-noisy_rateints = fits.open("/home/kmorel/ongenesis/jwst-user-soss/test_clear_noisy_rateints.fits")  #/oversampling_10
-clear_00 = fits.open("/home/kmorel/ongenesis/jwst-user-soss/tmp/clear_000000.fits")   #/oversampling_10
-#clear = clear_00[0].data   #TEMPORARY
+"""
+noisy_rateints = fits.open("/home/kmorel/ongenesis/jwst-user-soss/oversampling_10/test_clear_noisy_rateints.fits")
+clear_00 = fits.open("/home/kmorel/ongenesis/jwst-user-soss/tmp/oversampling_10/clear_000000.fits")
 clear = np.empty(shape=(3,256,2048))
 for i in range(len(clear_00[0].data)):
     clear[i] = soss.rebin(clear_00[0].data[i],simuPars.noversample)
-#"""
+"""
 # With noise
 im = noisy_rateints[1].data[m_order]  # Image of flux [adu/s]
 delta = noisy_rateints[2].data[m_order]   # Error [adu/s]
@@ -168,30 +190,20 @@ flamb_im = f_lambda(x,im,w,y)
 sigma_flamb_im = sigma_flambda(x,delta,w,y)
 
 # Extract flux of clear, order 1 trace only
-flamb_m1_clear = f_lambda(x,m1_clear,w,y)   # Extracted flux [J/s/m²/micron]
+flamb_m1_clear = f_lambda(x,m1_clear,w,y)   # [J/s/m²/micron]
 m1_clear_inf_radi = flambda_inf_radi(m1_clear,w)   # With infinite radius
-
-# TEST
-tot_clear_inf_radi = np.sum(tot_clear,axis=0) * 1.6  #É/S  TEMPORARY
-plt.figure(20)
-plt.plot(x[10:-10], tot_clear_inf_radi[10:-10], lw=1, color="Violet")
-plt.ylabel(r"Flux [e$^{-}$/s]")
-plt.xlabel(r"Wavelength [$\mu$m]")
-plt.title("Infinite radius, order 1 only")
-plt.show()
+m1_clear_elec = flambda_elec(x,m1_clear,y) * tint  # [e⁻/colonne]
 
 # Extract flux of order 1 of clear, all orders added
-flamb_tot_clear = f_lambda(x,tot_clear,w,y)   # Extracted flux [J/s/m²/micron]
+flamb_tot_clear = f_lambda(x,tot_clear,w,y)   # [J/s/m²/micron]
+tot_clear_elec = flambda_elec(x,tot_clear,y) * tint  # [e⁻/colonne]
 
 # Estimated photon noises
-ng = 3   # NGROUP
-t_read = 5.49   # Reading time [s]
-tint = (ng - 1) * t_read   # Integration time [s]
 dw = dispersion(w)   # Dispersion [microns]
 phot_ener = photon_energy(w)   # Energy of photon [J]
 
 photon_noise_m1 = flamb_m1_clear * tint * dw * area / phot_ener
-sigma_noise_m1 = np.sqrt(photon_noise_m1)   # Photon noise for order 1 only trace [photons]
+sigma_noise_m1 = np.sqrt(photon_noise_m1)   # Photon noise for order 1 only trace [photons/colonne]
 sigma_noisem1_ener = sigma_noise_m1 * phot_ener / dw / area / tint   # Photon noise [J/s/m²/micron]
 
 photon_noise_tot = flamb_tot_clear * tint * dw * area / phot_ener
@@ -251,10 +263,12 @@ plt.title("clear_000000.fits")
 plt.legend(), plt.show()
 
 plt.figure(11)
-plt.plot(w[beg:end], m1_clear_inf_radi[beg:end], lw=1, color="Violet")
-plt.ylabel(r"Flux [J s⁻¹ m⁻² $\mu$m⁻¹]")
+#plt.plot(w[beg:end], m1_clear_inf_radi[beg:end], lw=1, color="Violet")
+plt.errorbar(w[beg:end], m1_clear_elec[beg:end], yerr=sigma_noise_m1[beg:end], lw=1, elinewidth=1, color="HotPink", ecolor='r')
+plt.ylabel(r"Flux [e$^-$/s]")
 plt.xlabel(r"Wavelength [$\mu$m]")
-plt.title("Infinite radius, order 1 only")
+plt.title("Flux in photons/s, clear order 1 only")
+#plt.title("Infinite radius, order 1 only")
 plt.legend(), plt.show()
 
 plt.figure(6)
