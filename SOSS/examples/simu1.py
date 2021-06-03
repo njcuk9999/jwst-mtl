@@ -153,7 +153,7 @@ simulated_counts = smag.measure_actual_flux(imagelist[0], xbounds=[0,2048], ybou
                         noversample=simuPars.noversample)
 # Prints the expected/measured counts
 for i in range(np.size(imagelist)):
-    print("Hiiii",i, expected_counts, simulated_counts)
+    print(i, expected_counts, simulated_counts)
 # Apply flux scaling
 normalization_scale = expected_counts / simulated_counts
 print('Normalization scales = ',normalization_scale)

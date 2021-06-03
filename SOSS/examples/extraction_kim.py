@@ -145,17 +145,19 @@ m_order = 0  # Order - 1
 
 # CHOOSE oversample : Comment file not used
 # Oversample = 1
-noisy_rateints = fits.open("/home/kmorel/ongenesis/jwst-user-soss/oversampling_1/test_clear_noisy_rateints.fits")
-clear = fits.open("/home/kmorel/ongenesis/jwst-user-soss/tmp/oversampling_1/clear_000000.fits")
-clear = clear[0].data
+#noisy_rateints = fits.open("/home/kmorel/ongenesis/jwst-user-soss/oversampling_1/test_clear_noisy_rateints.fits")
+#clear = fits.open("/home/kmorel/ongenesis/jwst-user-soss/tmp/oversampling_1/clear_000000.fits")
+#clear = clear[0].data
+#print(noisy_rateints[1].data[m_order][66,426])
 # Oversample = 10
-"""
+#"""
 noisy_rateints = fits.open("/home/kmorel/ongenesis/jwst-user-soss/oversampling_10/test_clear_noisy_rateints.fits")
 clear_00 = fits.open("/home/kmorel/ongenesis/jwst-user-soss/tmp/oversampling_10/clear_000000.fits")
 clear = np.empty(shape=(3,256,2048))
 for i in range(len(clear_00[0].data)):
     clear[i] = soss.rebin(clear_00[0].data[i],simuPars.noversample)
-"""
+#print(noisy_rateints[1].data[m_order][66,426])
+#"""
 # With noise
 im = noisy_rateints[1].data[m_order]  # Image of flux [adu/s]
 delta = noisy_rateints[2].data[m_order]   # Error [adu/s]
@@ -193,6 +195,7 @@ sigma_flamb_im = sigma_flambda(x,delta,w,y)
 flamb_m1_clear = f_lambda(x,m1_clear,w,y)   # [J/s/m²/micron]
 m1_clear_inf_radi = flambda_inf_radi(m1_clear,w)   # With infinite radius
 m1_clear_elec = flambda_elec(x,m1_clear,y) * tint  # [e⁻/colonne]
+sigma_noise_m1_elec = np.sqrt(m1_clear_elec)
 
 # Extract flux of order 1 of clear, all orders added
 flamb_tot_clear = f_lambda(x,tot_clear,w,y)   # [J/s/m²/micron]
@@ -264,8 +267,11 @@ plt.legend(), plt.show()
 
 plt.figure(11)
 #plt.plot(w[beg:end], m1_clear_inf_radi[beg:end], lw=1, color="Violet")
-plt.errorbar(w[beg:end], m1_clear_elec[beg:end], yerr=sigma_noise_m1[beg:end], lw=1, elinewidth=1, color="HotPink", ecolor='r')
-plt.ylabel(r"Flux [e$^-$/s]")
+plt.errorbar(w[beg:end], m1_clear_elec[beg:end], yerr=sigma_noise_m1_elec[beg:end], lw=1, elinewidth=1, color="HotPink",
+             ecolor='r')
+plt.errorbar(w[beg:end], m1_clear_elec[beg:end], yerr=sigma_noise_m1[beg:end], lw=1, elinewidth=1, color="HotPink",
+             ecolor='b')
+plt.ylabel(r"Flux [e$^-$/colonne]")
 plt.xlabel(r"Wavelength [$\mu$m]")
 plt.title("Flux in photons/s, clear order 1 only")
 #plt.title("Infinite radius, order 1 only")
