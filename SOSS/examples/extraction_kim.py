@@ -7,6 +7,7 @@ import sys
 import os
 import specgen.spgen as spgen
 import scipy.constants as sc_cst
+from scipy.interpolate import interp1d
 
 #Constants
 h = sc_cst.Planck
@@ -14,6 +15,7 @@ c = sc_cst.speed_of_light
 gain = 1.6
 area = 25.
 radius_pixel = 13
+length = 250
 ng = 3   # NGROUP
 t_read = 5.49   # Reading time [s]
 tint = (ng - 1) * t_read   # Integration time [s]
@@ -123,6 +125,28 @@ def sigma_flambda(pixels, error, wl, y_trace, radius_pixel=radius_pixel, area=ar
 
     return delta_flambda * gain * phot_ener / area / dw
 
+def median_window(flux, start, length):
+    list = flux[start : start + length]
+    return np.median(list)
+
+def median_filter(flux, length = length):
+    m = []
+    start = 0
+    while start + length < len(flux):
+        m.append(median_window(flux, start, length))
+        start += 1
+    return m
+
+def wl_median(wl, pixels, length=length):
+    if length%2==1:
+        w_median = wl[length//2:-length//2]
+    elif length%2==0:
+        pixels_new = pixels - 0.5
+        pixels_new[0] = 0
+        f = interp1d(pixels,wl)
+        w_median = f(pixels_new)
+        w_median = w_median[length//2:-length//2]
+    return w_median
 
 WORKING_DIR = '/home/kmorel/ongenesis/jwst-user-soss/'
 
@@ -196,6 +220,16 @@ flamb_m1_clear = f_lambda(x,m1_clear,w,y)   # [J/s/m²/micron]
 m1_clear_inf_radi = flambda_inf_radi(m1_clear,w)   # With infinite radius
 m1_clear_elec = flambda_elec(x,m1_clear,y) * tint  # [e⁻/colonne]
 sigma_noise_m1_elec = np.sqrt(m1_clear_elec)
+#m1_clear_median = median_filter(m1_clear_elec)  # Application of median filter [é//colonne]
+#w_m1_median = wl_median(w,x)  #[microns]
+p = np.polyfit(w, m1_clear_elec,50)
+m1_clear_poly = np.polyval(p,w)
+#m1_normalized = m1_clear_elec[length//2:-length//2] / m1_clear_median
+m1_normalized = m1_clear_elec / m1_clear_poly
+#m1_clear_poly = np.zeros_like(w)
+#for l in range(len(p)):
+ #   term = p[l] * w**(len(p)-1-l)
+  #  m1_clear_poly += term
 
 # Extract flux of order 1 of clear, all orders added
 flamb_tot_clear = f_lambda(x,tot_clear,w,y)   # [J/s/m²/micron]
@@ -235,9 +269,9 @@ flamb_tot_clear_plus = flamb_tot_clear + sigma_noisetot_ener
 
 # GRAPHICS
 # To avoid problems with the extremities :
-beg = 5
-end = -5
-
+beg = 10
+end = -10
+"""
 plt.figure(1)
 plt.plot(x, y, color="r", label="Order 1 trace's position")   # Middle position of order 1 trace
 plt.imshow(im, vmin=0, vmax=1000, origin="lower")   # Image of traces
@@ -264,16 +298,17 @@ plt.imshow(m1_clear, vmin=0, vmax=3000, origin="lower")
 plt.plot(x, y, color="r", label="Order 1 trace's position")
 plt.title("clear_000000.fits")
 plt.legend(), plt.show()
-
+"""
 plt.figure(11)
 #plt.plot(w[beg:end], m1_clear_inf_radi[beg:end], lw=1, color="Violet")
-plt.errorbar(w[beg:end], m1_clear_elec[beg:end], yerr=sigma_noise_m1_elec[beg:end], lw=1, elinewidth=1, color="HotPink",
-             ecolor='r')
-plt.errorbar(w[beg:end], m1_clear_elec[beg:end], yerr=sigma_noise_m1[beg:end], lw=1, elinewidth=1, color="HotPink",
-             ecolor='b')
+#plt.errorbar(w[beg:end], m1_clear_elec[beg:end], yerr=sigma_noise_m1_elec[beg:end], lw=1, elinewidth=1, color="HotPink",
+             #ecolor='r', label="Data", zorder=0)
+#plt.plot(w_m1_median, m1_clear_median, lw=1, color="Lime", label="Median filter applied", zorder=5)
+plt.plot(w[beg:end], m1_normalized[beg:end], lw=1, color="Lime", label="Normalized by polynmial", zorder=5)
+#plt.plot(w[beg:end], m1_clear_poly[beg:end], lw=1, color="Lime", zorder=5, label="Polynomial")
 plt.ylabel(r"Flux [e$^-$/colonne]")
 plt.xlabel(r"Wavelength [$\mu$m]")
-plt.title("Flux in photons/s, clear order 1 only")
+plt.title(r"Flux in e$^-$/colonne, clear order 1 only")
 #plt.title("Infinite radius, order 1 only")
 plt.legend(), plt.show()
 
