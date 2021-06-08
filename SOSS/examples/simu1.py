@@ -133,7 +133,6 @@ else:
     print(imagelist)
 
 
-
 # Here, a single out-of-transit simulation is used to establish the
 # normalization scale needed to flux calibrate our simulations.
 # To override the simpar parameters:

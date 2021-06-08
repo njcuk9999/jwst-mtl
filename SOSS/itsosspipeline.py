@@ -25,6 +25,7 @@ from astropy.io import ascii
 from astropy.table import Table
 import scipy.constants as sc_cst
 import matplotlib.pyplot as plt
+import examples.resample_kim as kim
 
 from tqdm.notebook import tqdm as tqdm_notebook
 
@@ -373,9 +374,12 @@ def generate_traces(savingprefix, pathPars, simuPars, tracePars, throughput,
 
     # TODO: resample on the new constant R grid rather than pseudo constant dw (it is not! --> bug)
     # Resample onto common grid.
+    #star_angstrom_bin, star_flux_bin, ld_coeff_bin, planet_angstrom_bin, planet_rprs_bin = \
+     #   spgen.resample_models(dw, star_angstrom, star_flux, ld_coeff, planet_angstrom, planet_rprs, simuPars, tracePars)
     star_angstrom_bin, star_flux_bin, ld_coeff_bin, planet_angstrom_bin, planet_rprs_bin = \
-        spgen.resample_models(dw, star_angstrom, star_flux, ld_coeff, planet_angstrom, planet_rprs, simuPars, tracePars)
+        kim.resample_models(dw, star_angstrom, star_flux, ld_coeff, planet_angstrom, planet_rprs, simuPars, tracePars)
 
+    sys.exit()
     print(np.shape(star_angstrom_bin))
     print('dw',dw)
 
@@ -490,7 +494,7 @@ def generate_traces(savingprefix, pathPars, simuPars, tracePars, throughput,
         tmpfilename = write_intermediate_fits(convolved_image, savingprefix, t)
         filelist.append(tmpfilename)
 
-    return(filelist)
+    return (filelist)
 
 
 
