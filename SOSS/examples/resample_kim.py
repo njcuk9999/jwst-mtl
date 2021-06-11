@@ -1,7 +1,9 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
-def resample_models(dw,starmodel_wv, starmodel_flux, ld_coeff, planetmodel_wv, planetmodel_rprs, pars, tracePars):
+def resample_models(dw, starmodel_wv, starmodel_flux, ld_coeff, planetmodel_wv, planetmodel_rprs, pars, tracePars,
+                    simuPars, gridtype = 'planet', wavelength_start = None, wavelength_end = None,
+                    resolving_power = None, dispersion = None) :
     """Resamples star and planet model onto common grid.
 
     Usage:
@@ -26,6 +28,51 @@ def resample_models(dw,starmodel_wv, starmodel_flux, ld_coeff, planetmodel_wv, p
         bin_planetmodel_wv - binned planet wavelength array (should be same size as bin_starmodel_wv)
         bin_planetmodel_rprs - binned Rp/R* array
     """
+    # TODO: Remove the following once dw becomes an option after testing
+    if dispersion is None: dispersion = dw
+    # Define the grid over which to resample models
+    if gridtype == 'planet':
+        # Resample on the same grid as the planet model grid
+        x_grid = np.copy(planetmodel_wv)
+        dx_grid = np.zeros_like(x_grid)
+        dx_grid[1:] = np.abs(x_grid[1:] - x_grid[0:-1])
+        dx_grid[0] = dx_grid[1]
+        # Resample star model and limb darkening matrix. But leave the planet model unchanged.
+        bin_starmodel_flux = bin_array(starmodel_wv, starmodel_flux, x_grid, dx_grid)
+        bin_starmodel_wv = np.copy(x_grid)
+        bin_planetmodel_wv = np.copy(x_grid)
+        bin_planetmodel_rprs = np.copy(planetmodel_rprs)
+        bin_ld_coeff = bin_limb_darkening(starmodel_wv, ld_coeff, x_grid, dx_grid)
+    elif gridtype == 'constant_dispersion':
+        # Resample on a constant dispersion grid
+        # wavelength_start, wavelength_end = 5000, 55000
+        # TODO: Check that wavelength_start/end are passed as input
+        nsample = 1 + int((wavelength_end - wavelength_start) / dispersion)
+        x_grid = np.arange(nsample) * dispersion + wavelength_start
+        dx_grid = np.ones_like(x_grid) * dispersion
+        # Resample the star model, the planet model as well as the LD coefficients.
+        bin_starmodel_flux = bin_array(starmodel_wv, starmodel_flux, x_grid, dx_grid)
+        bin_starmodel_wv = np.copy(x_grid)
+        bin_planetmodel_wv = np.copy(x_grid)
+        bin_planetmodel_rprs = bin_array(planetmodel_wv, planetmodel_rprs, x_grid, dx_grid)
+        bin_ld_coeff = bin_limb_darkening(starmodel_wv, ld_coeff, x_grid, dx_grid)
+    elif gridtype == 'constant_R':
+        # Resample on a constant resolving power grid
+        # TODO: Check that resolving+power is passed as input
+        # x_grid, dx_grid = constantR_samples(wavelength_start, wavelength_end, resolving_power=resolving_power)
+        x_grid = np.copy(planetmodel_wv)    # !!!
+        dx_grid = np.zeros_like(x_grid)    # !!!
+        dx_grid[1:] = np.abs(x_grid[1:] - x_grid[0:-1])   # !!!
+        dx_grid[0] = dx_grid[1]   # !!!
+        # Resample the star model, the planet model as well as the LD coefficients.
+        bin_starmodel_flux = bin_array_conv(starmodel_wv, starmodel_flux, x_grid, dx_grid)
+        bin_starmodel_wv = np.copy(planetmodel_wv)
+        bin_planetmodel_wv = np.copy(planetmodel_wv)
+        bin_planetmodel_rprs = np.copy(planetmodel_rprs)
+        bin_ld_coeff = bin_limb_darkening(starmodel_wv, ld_coeff, x_grid, dx_grid)
+    else:
+        print('Possible resample_models gridtype are: planet, constant_dispersion or constant_R.')
+        sys.exit()
 
     """
     # To get constant dispersion
@@ -40,17 +87,7 @@ def resample_models(dw,starmodel_wv, starmodel_flux, ld_coeff, planetmodel_wv, p
     """
 
     # Resample on the same grid as the planet model grid
-    x_grid = np.copy(planetmodel_wv)
-    dx_grid = np.zeros_like(planetmodel_wv)
-    dx_grid[1:] = np.abs(x_grid[1:] - x_grid[0:-1])
-    dx_grid[0] = dx_grid[1]
 
-    # Resample star model and limb darkening matrix. But leave the planet model unchanged.
-    bin_starmodel_flux = bin_array_conv(starmodel_wv, starmodel_flux, x_grid, dx_grid)
-    bin_starmodel_wv = np.copy(planetmodel_wv)
-    bin_planetmodel_wv = np.copy(planetmodel_wv)
-    bin_planetmodel_rprs = np.copy(planetmodel_rprs)
-    bin_ld_coeff = bin_limb_darkening(starmodel_wv, ld_coeff, x_grid, dx_grid)
 
     plt.figure()
     plt.plot(starmodel_wv, starmodel_flux, color='b')
