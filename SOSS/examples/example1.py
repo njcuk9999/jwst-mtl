@@ -187,7 +187,8 @@ data = soss.write_dmsready_fits_init(imagelist, normalization_scale,
 #soss.write_dmsready_fits(data[:,:,0:256,0:2048], os.path.join(pathPars.path_userland,'test_clear.fits'),
 #                    os=simuPars.noversample, input_frame='sim')
 soss.write_dmsready_fits(data, os.path.join(pathPars.path_userland,'test_clear.fits'),
-                    os=simuPars.noversample, input_frame='sim')
+                         os=simuPars.noversample, input_frame='sim',
+                         xpadding=simuPars.xpadding, ypadding=simuPars.ypadding)
 
 # Add detector noise to the noiseless data
 detector.add_noise(os.path.join(pathPars.path_userland,'test_clear.fits'),

@@ -9,7 +9,7 @@ import scipy.signal
 import tfit5 #Fortran routine for fastest transitmodel ever
 import binmodels_py as bm #Fortran routine for speedy resampling of data
 
-import tracepol as tp
+import trace.tracepol as tp
 
 import specgen.synthesizeMagnitude as smag
 

@@ -564,8 +564,8 @@ def loictrace(pars, response, bin_starmodel_wv, bin_starmodel_flux, bin_ld_coeff
     specmov, spatmov = 0.02, 0.02
 
     # Dimensions of the real (unpadded but oversampled) image
-    dimx = (pars.xout + 2 * pars.xpadding) * pars.noversample
-    dimy = (pars.yout + 2 * pars.ypadding) * pars.noversample
+    dimx = pars.xout * pars.noversample
+    dimy = pars.yout * pars.noversample
 
     # Dimensions of the 2D image on which we seed the trace
     paddimx = dimx + 2 * pars.xpadding * pars.noversample
@@ -579,17 +579,19 @@ def loictrace(pars, response, bin_starmodel_wv, bin_starmodel_flux, bin_ld_coeff
     posx = specpix + (specmov * pars.noversample)
     posy = spatpix + (spatmov * pars.noversample)
 
-    # The position on the padded image after adding padding
+    # The positions in the padded image after adding padding
     padposx = posx + pars.xpadding * pars.noversample
     padposy = posy + pars.ypadding * pars.noversample
 
     # Compute the wavelength borders of each image pixel,
     # as well as the width (in wavelength) of each pixel
-    x1, x2 = np.arange(dimx) - 0.5, np.arange(dimx) + 0.5
-    # independent array must be sorted for intep to work
-    ind = np.argsort(posx)
-    w1 = np.interp(x1, posx[ind], bin_starmodel_wv[ind])
-    w2 = np.interp(x2, posx[ind], bin_starmodel_wv[ind])
+    x1 = np.arange(paddimx) - 0.5
+    x2 = x1 + 1
+
+    # independent array must be sorted for np.interp to work
+    ind = np.argsort(padposx)
+    w1 = np.interp(x1, padposx[ind], bin_starmodel_wv[ind])
+    w2 = np.interp(x2, padposx[ind], bin_starmodel_wv[ind])
     # Wavelength and width of each pixel center.
     dw = np.abs(w2 - w1)
     w = (w1 + w2) / 2
@@ -597,20 +599,89 @@ def loictrace(pars, response, bin_starmodel_wv, bin_starmodel_flux, bin_ld_coeff
     #plt.figure()
     #plt.plot(w, dw)
     #plt.show()
+    #print(x1)
 
+
+    # Flux along x-axis pixels (in e-/column/s) for all columns
     pixelflux = bin_array(bin_starmodel_wv, bin_starmodel_flux, w, dw, debug=False)
-
     # Make sure that all flux are finite, or make Nans, zero
     pixelflux[~np.isfinite(pixelflux)] = 0.0
-    #print(np.shape(ind))
-    #sys.exit()
 
+    # Now need to distribute this flux along the y-axis using the trace centroid position
+    # still want to seed a 1-pixel high trace. But in regions where the curvature is strong,
+    # determine the center of mass of the flux (y * f) within a column as a better y position.
     seedtrace = np.zeros((paddimy, paddimx))
-    #seedtrace[pars.ypadding:-pars.ypadding, pars.xpadding:-pars.xpadding] = ...
     # for now just assign the value to all rows
-    seedtrace[int(paddimy/2)-spectral_order*50*pars.noversample, pars.xpadding:paddimx-pars.xpadding] = pixelflux
+    make_trace_straight = False
+
+    if make_trace_straight is False:
+        # Project along the spatial axis.
+        y1 = np.interp(x1, padposx[ind], padposy[ind])
+        y2 = np.interp(x2, padposx[ind], padposy[ind])
+        dy = np.abs(y2-y1) # should be 1 or slightly more than 1 spatial pixel
+        # Assume that the flux is uniformly distributed. If total flux is F
+        # then flux_per_pixel is F/dy
+        for i in range(paddimx):
+            density = pixelflux[i] / dy[i]
+            # full pixels
+            seedtrace[:,i] = np.copy(density)
+            # partial pixel bottom
+            seedtrace[:,i] = density
+            # partial pixel top
+            seedtrace[:,i] = density
+        seedtrace[int(paddimy / 2) - spectral_order * 50 * pars.noversample, :] = pixelflux
+
+
+    else:
+        # Generate horizontal straight traces without curvature.
+        # This can be useful for testing and debugging.
+        # Seed the 1, 2 3 traces so they are evenly spaced
+        if spectral_order == 1:
+            y = int(paddimy * 0.5)
+        elif spectral_order == 2:
+            y = int(paddimy * 0.25)
+        elif spectral_order == 3:
+            y = int(paddimy * 0.75)
+        else:
+            y = int(paddimy * 0.05)
+        seedtrace[y, :] = pixelflux
 
     return seedtrace
+
+
+def spread_spatially(dimy, y1, y2, flux):
+    '''
+    Spread the flux along a column, handling the partial pixels
+    at both ends of the y1 to y2 range. Total flux should equal 1.
+    :param dimy:
+    :param y1:
+    :param y2:
+    :param flux:
+    :return:
+    '''
+
+    # Make sure that y1 is the smallest
+    if y1 > y2:
+        tmp = y1
+        y1 = np.copy(y2)
+        y2 = np.copy(tmp)
+
+    # Determine the flux density. y2-y1 should be close to 1 or a bit larger
+    y_spread = y2 - y1
+    flux_density = flux / y_spread
+
+    # A y pixel runs from -0.5 to +0.5
+    yindmin = int(np.min(np.floor(y1+0.5)))
+    yindmax = int(np.max(np.ceil(y2+0.5)))
+    yind = np.arange(yindmax+1-yindmin)+yindmin
+
+    # Dispatch the flux and properly handle ends
+    column = np.zeros(dimy)
+    column[yindmin] = (1 - (y1+0.5)%1) * flux_density
+    column[yindmin+1:yindmax-1] = flux_density
+    column[yindmax-1] = ((y2+0.5)%1) * flux_density
+
+    return column
 
 
 def generate_traces(savingprefix, pathPars, simuPars, tracePars, throughput,
@@ -654,6 +725,7 @@ def generate_traces(savingprefix, pathPars, simuPars, tracePars, throughput,
         tracePars, gridtype='constant_dispersion', dispersion = 0.1, wavelength_start=5000, wavelength_end=55000)
 
     # Convert star_flux to photon flux (which is what's expected for addflux2pix in gen_unconv_image)
+    print('Converting F_lambda to photon fluxes (e-/s/m2/ang)')
     h = sc_cst.Planck
     c = sc_cst.speed_of_light
     photon_energy = h * c / (star_angstrom_bin * 1e-10)
@@ -690,9 +762,11 @@ def generate_traces(savingprefix, pathPars, simuPars, tracePars, throughput,
     # Don't worry, that 'cube' will be merged down later after flux normalization.
     #nframes = np.size(simuPars.orderlist)
 
-    # Defines the dimensions of the arrays, depends on the oversanmpling
-    xmax=simuPars.xout*simuPars.noversample
-    ymax=simuPars.yout*simuPars.noversample
+    # Defines the dimensions of the arrays, depends on the oversampling
+    xmax = (simuPars.xout + 2*simuPars.xpadding) * simuPars.noversample
+    ymax = (simuPars.yout + 2*simuPars.ypadding) * simuPars.noversample
+    #xmax =simuPars.xout*simuPars.noversample
+    #ymax =simuPars.yout*simuPars.noversample
 
     # Initialize the array that will contain all orders at a given time step
     nimage = len(simuPars.orderlist)
@@ -716,6 +790,7 @@ def generate_traces(savingprefix, pathPars, simuPars, tracePars, throughput,
 
                 pixels_t=np.copy(pixels.T)
             else:
+                print('     Seeding flux onto a narrow trace on a 2D image')
                 pixels_t = loictrace(simuPars, throughput, star_angstrom_bin, star_flux_bin,
                                       ld_coeff_bin, planet_rprs_bin,
                                       currenttime, exposetime, solin, spectral_order, tracePars)
@@ -727,6 +802,7 @@ def generate_traces(savingprefix, pathPars, simuPars, tracePars, throughput,
             #pyfftw.interfaces.cache.enable()
 
             #do the convolution
+            print('     Convolving trace with monochromatic PSFs')
             x=pixels_t*0+1.0e-10
 
             nwv=len(kernels_wv) #number of wavelengths to process
@@ -750,16 +826,20 @@ def generate_traces(savingprefix, pathPars, simuPars, tracePars, throughput,
 
             pixels_c=None #release Memory
 
-            trace_image[m,:,:] = np.copy(pixels_t)
-            convolved_image[m,:,:] = np.copy(x)
+            trace_image[m,:,:] = np.copy(pixels_t) - 1e-10
+            convolved_image[m,:,:] = np.copy(x) - 1e-10
 
             # Sum in the flux for that order
-            actual_counts = np.sum(convolved_image[m,:,:])
-            print('Actual counts measured on the simulation = {:} e-/sec'.format(actual_counts))
+            y1 = simuPars.ypadding * simuPars.noversample
+            y2 = y1 + simuPars.yout * simuPars.noversample
+            x1 = simuPars.xpadding * simuPars.noversample
+            x2 = x1 + simuPars.xout * simuPars.noversample
+            actual_counts = np.sum(convolved_image[m,y1:y2,x1:x2])
+            print('     Actual counts measured on the simulation = {:} e-/sec'.format(actual_counts))
             print()
 
-        tmp = write_intermediate_fits(trace_image, savingprefix+'_trace', t)
-        tmpfilename = write_intermediate_fits(convolved_image, savingprefix, t)
+        tmp = write_intermediate_fits(trace_image, savingprefix+'_trace', t, simuPars)
+        tmpfilename = write_intermediate_fits(convolved_image, savingprefix, t, simuPars)
         filelist.append(tmpfilename)
 
     return(filelist)
@@ -825,7 +905,7 @@ def write_simu_fits(image, filename):
 
     return
 
-def write_intermediate_fits(image, savingprefix, timestep_index):
+def write_intermediate_fits(image, savingprefix, timestep_index, simuPars):
     # Write image for a single time step. Differents spectral orders stored in third dimension
     # of the array. filename is the name of the final product. Intermediate filenames will
     # be forged based on that.
@@ -835,6 +915,10 @@ def write_intermediate_fits(image, savingprefix, timestep_index):
 
     # Create a list of HDU with primary and extension HDUs
     hdu = fits.PrimaryHDU(image)
+    # Add headers
+    hdu.header['XPADDING'] = simuPars.xpadding
+    hdu.header['YPADDING'] = simuPars.ypadding
+    hdu.header['NOVRSAMP'] = simuPars.noversample
 
     # create a directory if it does not yet exists
     if os.path.exists(directory_name) is False:
@@ -905,7 +989,8 @@ def write_dmsready_fits_init(imagelist, normalization_scale,
 
 
 
-def write_dmsready_fits(image, filename, os=1, input_frame='sim', verbose=True, f277=False):
+def write_dmsready_fits(image, filename, os=1, xpadding=0, ypadding=0,
+                        input_frame='sim', verbose=True, f277=False):
     '''
     This script writes DMS ready fits files. It uses as input a simulated
     noiseless image to which it adds the required minimum set of FITS keywords
@@ -965,7 +1050,9 @@ def write_dmsready_fits(image, filename, os=1, input_frame='sim', verbose=True, 
             print('There is a problem with the image passed to write_dmsread_fits.')
             print('Needs to have 2 to 4 dimensions.')
             sys.exit()
-        # Reset the dimx, dimy parameters now that all is in native pixel size
+        # Now that data is in native pixels, remove the padding
+        data = data[:,:,ypadding:-ypadding,xpadding:-xpadding]
+        # Reset the dimx, dimy parameters now that all is in native pixel size, unpadded
         nint, ngroup, dimy, dimx = np.shape(data)
     else:
         print('The oversampling of the input image should be 1 or higher integer. Stop')
@@ -1106,6 +1193,7 @@ def write_dmsready_fits(image, filename, os=1, input_frame='sim', verbose=True, 
     phdr.set('SUBSIZE2', subsize2, 'Number of pixels in axis 2 direction')
     phdr.set('FASTAXIS', -2, 'Fast readout axis direction')
     phdr.set('SLOWAXIS', -1, 'Slow readout axis direction')
+    phdr.set('SIMOVRSP', int(os), 'Oversampling used in the simulation')
 
     # Create extension HDU
     ext_hdu = fits.ImageHDU(data)
