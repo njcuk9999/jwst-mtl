@@ -155,6 +155,18 @@ def wl_median(wl, pixels, length=length):
         w_med = w_median[length//2:-length//2]
     return w_med
 
+wave = fits.open("/genesis/jwst/userland-soss/loic_review/refs/map_wave_2D_native.fits")
+wave = wave[0].data
+print(wave.shape)
+
+
+profile = fits.open("/genesis/jwst/userland-soss/loic_review/refs/map_profile_2D_native.fits")
+profile = profile[0].data
+profile = profile[0,-256:]
+
+plt.figure(20)
+plt.imshow(profile, origin="lower")
+plt.show()
 
 WORKING_DIR = '/home/kmorel/ongenesis/jwst-user-soss/'
 
@@ -313,7 +325,7 @@ std_totclear = np.array([std_totclear_os1, std_totclear_os2, std_totclear_os4, s
 
 ##########################
 # GRAPHICS
-
+"""
 # Images of traces
 plt.figure(1)
 plt.plot(x, y, color="r", label="Order 1 trace's position")   # Middle position of order 1 trace
@@ -441,7 +453,7 @@ plt.ylabel("Standard deviation")
 plt.title("Oscillations amplitude for noisy traces (standard deviations)")
 plt.show()
 
-"""
+
 plt.figure(7)
 plt.plot(w[start:end], diff_m1[start:end], lw=1, color="HotPink", label="Difference")
 #plt.errorbar(w[start:end], diff_m1[start:end], yerr=sigma_diff_m1[start:end], elinewidth=1, color="HotPink", ecolor='r',

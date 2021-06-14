@@ -20,7 +20,7 @@ def get_module_path(file):
 
 # Sepcify some default reference files (used in WebbKer)
 DEF_PATH = get_module_path(__file__) + "Ref_files/spectral_kernel_matrix/"
-DEF_PATH = "/genesis/jwst/jwst-ref-soss/spectral_conv_kernel/"   # KIM
+DEF_PATH = "/genesis/jwst/jwst-ref-soss/spectral_conv_kernels/"   # KIM
 DEF_FILE_FRAME = "spectral_kernel_matrix_os_{}_width_{}pixels.fits"
 
 
