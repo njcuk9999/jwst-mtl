@@ -8,7 +8,7 @@ import specgen.spgen as spgen
 import scipy.constants as sc_cst
 from scipy.interpolate import interp1d
 from sys import path
-from simu_utils import load_simu
+from Fake_data.simu_utils import load_simu
 
 # Imports from the extraction.
 from extract.overlap import TrpzOverlap
@@ -25,29 +25,151 @@ plt.rc('font', size=16)
 plt.rc('image', cmap='inferno')
 plt.rc('lines', lw=2)
 
-# Read relevant files
+#Constants
+h = sc_cst.Planck
+c = sc_cst.speed_of_light
+gain = 1.6
+area = 25.
+radius_pixel = 13
+length = 240
+ng = 3   # NGROUP
+t_read = 5.49   # Reading time [s]
+tint = (ng - 1) * t_read   # Integration time [s]
 
+def photon_energy(wl):
+    """
+    wl: Wavelength in microns
+    return: Photon energy in J
+    """
+    return h * c / (wl * 1e-6)
+
+def dispersion(wl):
+    """
+    wl: Wavelengths array [um]
+    return: Dispersion [um]
+    """
+    dw = np.zeros_like(wl)
+    for i in range(len(wl)):
+        if i == 0:
+            dw[i] = wl[0] - wl[1]   #The wl array has to be reversed
+        else:
+            dw[i] = wl[i - 1] - wl[i]
+    return dw
+
+def f_lambda(pixels, im_test, wl, y_trace, radius_pixel=radius_pixel, area=area, gain=gain):
+    """
+    pixels: Array of pixels
+    im_test: Trace's image [adu/s]
+    wl: Array of wavelengths (same size as pixels)  [um]
+    y_trace: Array for the positions of the center of the trace for each column
+    radius_pixel: Radius of extraction box [pixels]
+    area: Area of photons collection surface [m²]
+    gain: Gain [e⁻/adu]
+    return: Extracted flux [J/s/m²/um]
+    """
+    flux = np.zeros_like(pixels)  # Array for extracted spectrum
+    for x_i in pixels:
+        x_i = int(x_i)
+        y_i = y_trace[x_i]
+        first = y_i - radius_pixel
+        last = y_i + radius_pixel
+        flux[x_i] = im_test[int(first), x_i] * (1 - first % int(first)) + np.sum(
+            im_test[int(first) + 1:int(last) + 1, x_i]) + im_test[int(last) + 1, x_i] * (last % int(last))
+
+    # Calculate the flux in J/s/m²/um
+    phot_ener = photon_energy(wl)  # Energy of each photon [J/photon]
+    dw = dispersion(wl)   #Dispersion [um]
+
+    return flux * gain * phot_ener / area / dw
+
+def flambda_elec(pixels, im_test, y_trace, radius_pixel=radius_pixel, gain=gain):
+    """
+    pixels: Array of pixels
+    im_test: Trace's image [adu/s]
+    y_trace: Array for the positions of the center of the trace for each column
+    radius_pixel: Radius of extraction box [pixels]
+    gain: Gain [e⁻/adu]
+    return: Extracted flux [e⁻/s/colonne]
+    """
+    flux = np.zeros_like(pixels)  # Array for extracted spectrum
+    for x_i in pixels:
+        x_i = int(x_i)
+        y_i = y_trace[x_i]
+        first = y_i - radius_pixel
+        last = y_i + radius_pixel
+        flux[x_i] = im_test[int(first), x_i] * (1 - first % int(first)) + np.sum(
+            im_test[int(first) + 1:int(last) + 1, x_i]) + im_test[int(last) + 1, x_i] * (last % int(last))
+
+    return flux * gain
+
+
+WORKING_DIR = '/home/kmorel/ongenesis/jwst-user-soss/'
+
+#sys.path.insert(0,"/home/kmorel/ongenesis/github/jwst-mtl/SOSS/specgen/utils/")
+sys.path.insert(0,"/genesis/jwst/jwst-ref-soss/fortran_lib/")
+
+# Read in all paths used to locate reference files and directories
+config_paths_filename = os.path.join(WORKING_DIR, 'jwst-mtl_configpath_kim.txt')
+pathPars = soss.paths()
+soss.readpaths(config_paths_filename, pathPars)
+
+# Create and read the simulation parameters
+simuPars = spgen.ModelPars()              #Set up default parameters
+simuPars = spgen.read_pars(pathPars.simulationparamfile, simuPars) #read in parameter file
+
+
+# Read relevant files
 # List of orders to consider in the extraction
 order_list = [1, 2]
 
 #### Wavelength solution ####
-wave_maps = []
+wave_maps_adb = []
+wave_maps_la = []
 wave = fits.getdata("/genesis/jwst/userland-soss/loic_review/refs/map_wave_2D_native.fits")
-wave_maps.append(wave[0])
-wave_maps.append(wave[1])
+wave_maps_la.append(wave[0])
+wave_maps_la.append(wave[1])
+wave_maps_adb.append(fits.getdata("/home/kmorel/ongenesis/github/jwst-mtl/SOSS/extract/Ref_files/wavelengths_m1.fits"))
+wave_maps_adb.append(fits.getdata("/home/kmorel/ongenesis/github/jwst-mtl/SOSS/extract/Ref_files/wavelengths_m2.fits"))
+# Choose
+wave_maps = wave_maps_la
 
 #### Spatial profiles ####
-spat_pros = []
+spat_pros_adb = []
+spat_pros_la = []
 spat = fits.getdata("/genesis/jwst/userland-soss/loic_review/refs/map_profile_2D_native.fits").squeeze()
-spat_pros.append(spat[0,-256:])
-spat_pros.append(spat[1,-256:])
+spat_pros_la.append(spat[0,-256:])  #,-256:
+spat_pros_la.append(spat[1,-256:])  #,-256:
+spat_pros_adb.append(fits.getdata("/home/kmorel/ongenesis/github/jwst-mtl/SOSS/extract/Ref_files/spat_profile_m1.fits").squeeze())
+spat_pros_adb.append(fits.getdata("/home/kmorel/ongenesis/github/jwst-mtl/SOSS/extract/Ref_files/spat_profile_m2.fits").squeeze())
+# Choose
+
+#spat_pros = spat_pros_la
 
 # Convert data from fits files to float (fits precision is 1e-8)
 wave_maps = [wv.astype('float64') for wv in wave_maps]
-spat_pros = [p_ord.astype('float64') for p_ord in spat_pros]
+spat_pros_la = [p_ord.astype('float64') for p_ord in spat_pros_la]
+spat_pros_adb = [p_ord.astype('float64') for p_ord in spat_pros_adb]
+
+new_spat_la = np.zeros_like(spat_pros_la)
+new_spat_la[0][:155] = spat_pros_la[0][101:]
+new_spat_la[1][:155] = spat_pros_la[1][101:]
+
+spat_pros = new_spat_la
+
+subs = new_spat_la - spat_pros_adb
+
+plt.figure()
+plt.imshow(spat_pros_adb[0], origin="lower")
+plt.show()
+
+plt.figure()
+plt.imshow(subs[0], origin="lower")
+plt.colorbar()
+plt.show()
+
 
 #### Throughputs ####
-thrpt_list = [ThroughputSOSS(order) for order in order_list]   # Has been changed to 1 everywhere in throughput.py
+thrpt_list = [ThroughputSOSS(order) for order in order_list]   # Has been changed to 1 everywhere in throughput.py  K.M.
 
 #### Convolution kernels ####
 ker_list = [WebbKer(wv_map) for wv_map in wave_maps]
@@ -59,12 +181,23 @@ ref_files_args = [spat_pros, wave_maps, thrpt_list, ker_list]
 #path.append("Fake_data")
 
 # Load a simulation
-#simu = load_simu("Fake_data/phoenix_teff_02300_scale_1.0e+02.fits")
+simu = load_simu("/home/kmorel/ongenesis/github/jwst-mtl/SOSS/Fake_data/phoenix_teff_02300_scale_1.0e+02.fits")
 clear_00 = fits.open("/home/kmorel/ongenesis/jwst-user-soss/tmp/oversampling_2/clear_000000.fits")
-data = np.empty(shape=(3,256,2048))
-for i in range(len(clear_00[0].data)):
-    data[i] = soss.rebin(clear_00[0].data[i],simuPars.noversample)
+data_clear = np.empty(shape=(2,256,2048))
+for i in range(len(clear_00[0].data)-1):
+    data_clear[i] = soss.rebin(clear_00[0].data[i],simuPars.noversample)
+
 #data = simu["data"]
+# Orders 1 and 2 summed up
+data = np.sum(data_clear,axis=0)   # Sum all traces [adu/s]
+data = np.flipud(data)  # Flip image
+
+minus = new_spat_la[1] - data
+
+plt.figure()
+plt.imshow(minus, origin="lower")
+plt.colorbar()
+plt.show()
 
 # Extraction
 params = {}
@@ -73,14 +206,13 @@ params = {}
 bkgd_noise = 20.  # In counts?
 
 # Wavelength extraction grid oversampling.
-params["n_os"] = 5  # TODO explain a bit more how the grid is determined?
+params["n_os"] = 2  # TODO explain a bit more how the grid is determined?   #5
 # Answer: I was thinking of explaining all inputs in another notebook or text?
 #         Since this parameter is needed for every extraction, I didn't want
 #         to re-explain it in all examples. What do you think?
 
 # Threshold on the spatial profile.
-# Only pixels above this threshold will be used for extraction.
-# (for at least one order)
+# Only pixels above this threshold will be used for extraction. (for at least one order)
 params["thresh"] = 1e-4  # Same units as the spatial profiles
 
 # Initiate extraction object
@@ -125,6 +257,7 @@ f_k = extract.extract(data=data, sig=sig, tikhonov=True, factor=best_fac)
 # Could we make change this method to __call__?  # Very good idea!
 
 # Plot the extracted spectrum.
+plt.figure()
 plt.plot(extract.lam_grid, f_k)
 plt.xlabel("Wavelength [$\mu m$]")
 plt.ylabel("Oversampled Spectrum $f_k$ [energy$\cdot s^{-1} \cdot \mu m^{-1}$]")
@@ -167,7 +300,6 @@ for i_ord in range(extract.n_ord):
     ax[i_ord].plot(lam_bin_list[i_ord], f_bin_list[i_ord], label=label)
 
 ax[0].set_ylabel("Extracted signal [counts]")
-
 ax[1].set_xlabel("Wavelength [$\mu m$]")
 ax[1].set_ylabel("Extracted signal [counts]")
 
@@ -179,7 +311,7 @@ plt.show()
 def throughput(x):
     return np.ones_like(x)
 
-
+plt.figure()
 for i_ord in range(extract.n_ord):
     # TODO I think we can make it so we just get the order m=1,2 and never have to deal with an index as well.
 
