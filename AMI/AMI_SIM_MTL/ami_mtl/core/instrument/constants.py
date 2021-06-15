@@ -257,6 +257,19 @@ Consts.add('AMISIM-PATH', value=None, dtype=str, source=__NAME__,
                        'scenes from',
            path='ami-sim.path')
 
+# Define whether to create scene (if False will try to load from disk)
+Consts.add('AMISIM-CREATE_SCENE', value=True, dtype=bool, source=__NAME__,
+           user=True, argument=False, group=group,
+           description='Define whether to create scene (if False will try to '
+                       'load from disk)',
+           path='ami-sim.create_scene')
+
+# Define whether to create simulation (using AMI SIM)
+Consts.add('AMISIM-CREATE_SIM', value=True, dtype=bool, source=__NAME__,
+           user=True, argument=False, group=group,
+           description='Define whether to create simulation (using AMI SIM)',
+           path='ami-sim.create_simulation')
+
 # loop around filters
 for _filter in FILTERS:
     # Define ami-sim scene file to save scenes (only use this if

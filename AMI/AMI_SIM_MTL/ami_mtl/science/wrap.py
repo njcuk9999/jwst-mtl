@@ -691,6 +691,7 @@ class CompanionType:
         # get plot
         self.plot = barprops.get('plot', False)
 
+
 class XMLReader(read_apt_xml.ReadAPTXML):
 
     def read_xml_silent(self, infile: Union[Path, str]) -> dict:
@@ -786,6 +787,10 @@ def run_ami_sim(simname: str, observation: Observation):
     func_name = display_func('run_ami_sim', __NAME__)
     # get params
     params = observation.params
+    # get specific properties from observation
+    use_amisim = observation.params['AMISIM-USE']
+    create_scene = observation.params['AMISIM-CREATE_SCENE']
+    create_sim = observation.params['AMISIM-CREATE_SIM']
     # Process update
     msg = 'Processing Simulation: {0} Observation: {1}'
     margs = [simname, observation.name]
@@ -811,7 +816,7 @@ def run_ami_sim(simname: str, observation: Observation):
         # -----------------------------------------------------------------
         # step 1: make primary on image
         # -----------------------------------------------------------------
-        if observation.params['AMISIM-USE']:
+        if use_amisim and create_scene:
             # get properties for simple scene
             pkwargs = dict()
             pkwargs['fov_pixels'] = params['FOV_PIXELS']
@@ -832,7 +837,7 @@ def run_ami_sim(simname: str, observation: Observation):
         # -------------------------------------------------------------
         # step 2: add companion(s)
         # -------------------------------------------------------------
-        if observation.params['AMISIM-USE']:
+        if use_amisim and create_scene:
             # only do this for targets (calibrators do not have companions
             #     by definition)
             if isinstance(observation, Target):
@@ -904,7 +909,6 @@ def run_ami_sim(simname: str, observation: Observation):
                         ckwargs['num'] = it + 1
                         ckwargs['kind'] = 'bar'
                         ckwargs['roll'] = bar.roll
-                        ckwargs['inclination'] = bar.inclination
                         ckwargs['width'] = bar.width
                         ckwargs['radius'] = bar.radius
                         ckwargs['exponent'] = bar.exponent
@@ -922,7 +926,7 @@ def run_ami_sim(simname: str, observation: Observation):
         # -------------------------------------------------------------
         # step 3: save image to disk
         # -------------------------------------------------------------
-        if observation.params['AMISIM-USE']:
+        if use_amisim and create_scene:
             etienne.ami_sim_save_scene(params, scenepath, image, hdict)
 
         # -----------------------------------------------------------------
@@ -934,7 +938,7 @@ def run_ami_sim(simname: str, observation: Observation):
         # get psf path for this filter
         psfkwargs['path'] = params['PSF_{0}_PATH'.format(_filter)]
         # get whether we want to recomputer psf
-        if observation.params['AMISIM-USE']:
+        if use_amisim:
             rkey = 'PSF_{0}_RECOMPUTE'.format(_filter)
             psfkwargs['recompute'] = params[rkey]
         else:
@@ -957,7 +961,7 @@ def run_ami_sim(simname: str, observation: Observation):
         nint = observation.num_integrations[_filter]
         ngroups = observation.num_groups[_filter]
         # run ami-sim
-        if observation.params['AMISIM-USE']:
+        if use_amisim and create_sim:
             tag = etienne.ami_sim_run_code(params, target_dir, _filter,
                                            psf_filename, scenepath, count_rate,
                                            simname, target_name, nint, ngroups)

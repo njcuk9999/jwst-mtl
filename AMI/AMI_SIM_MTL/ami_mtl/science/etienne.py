@@ -160,7 +160,7 @@ def ami_sim_add_companion(params: ParamDict, image: np.ndarray,
     # -------------------------------------------------------------------------
     if plot:
         plt.imshow(image)
-        plt.show()
+        plt.show(block=True)
         plt.close()
     # -------------------------------------------------------------------------
     # Work out true separation and angle (given the rounding to the nearest
@@ -330,7 +330,8 @@ def ami_sim_add_disk(image: np.ndarray, hdict: ParamDict,
     # -------------------------------------------------------------------------
     if plot:
         plt.imshow(image)
-        plt.show()
+        plt.show(block=True)
+        plt.close()
     # -------------------------------------------------------------------------
     # return image and header
     return image, hdict
