@@ -11,10 +11,11 @@ Created on 2021-02-01
 """
 import importlib
 import numpy as np
+import matplotlib.pyplot as plt
 import os
 from pathlib import Path
 import sys
-from typing import Tuple, Union
+from typing import Tuple, Union, Optional
 import webbpsf
 
 from ami_mtl.io import drs_file
@@ -95,7 +96,8 @@ def ami_sim_observation(fov_pixels: float, oversample: int,
 def ami_sim_add_companion(params: ParamDict, image: np.ndarray,
                           hdict: ParamDict, num: int,
                           position_angle: float, separation: float,
-                          contrast: float) -> Tuple[np.ndarray, ParamDict]:
+                          contrast: float, plot: bool = False
+                          ) -> Tuple[np.ndarray, ParamDict]:
     """
     Add a companion to an image where the primary is assumed to be at the
     center of the image
@@ -109,6 +111,7 @@ def ami_sim_add_companion(params: ParamDict, image: np.ndarray,
     :param separation: float, separation between primary (assume to be at the
                        center or the detector) and companion in arcsec
     :param contrast: contrast of companion
+    :param plot: bool, if True plots
 
     :return: updated  image and header
     """
@@ -152,6 +155,13 @@ def ami_sim_add_companion(params: ParamDict, image: np.ndarray,
                 'Sep: {2} arcsec')
         eargs = [num, position_angle, separation]
         params.log.error(emsg.format(*eargs))
+    # -------------------------------------------------------------------------
+    # debug plot
+    # -------------------------------------------------------------------------
+    if plot:
+        plt.imshow(image)
+        plt.show()
+        plt.close()
     # -------------------------------------------------------------------------
     # Work out true separation and angle (given the rounding to the nearest
     #   pixel)
@@ -201,6 +211,130 @@ def ami_sim_add_companion(params: ParamDict, image: np.ndarray,
     return image, hdict
 
 
+def ami_sim_add_disk(image: np.ndarray, hdict: ParamDict,
+                     num: int, contrast: float, kind: str = 'disk',
+                     roll: float = 0.0, inclination: Optional[float] = None,
+                     width: float = 0.0, exponent: float = 2.0,
+                     radius: float = 0.0, plot: bool = False):
+    # set function name
+    func_name = display_func('ami_sim_add_disk', __NAME__)
+    # -------------------------------------------------------------------------
+    # set up
+    # -------------------------------------------------------------------------
+    # get parameters
+    pix_scale = float(hdict['PIXSCALE'][0])
+    oversample = float(hdict['OSAMPLE'][0])
+    count_rate = float(hdict['COUNT0'][0])
+    # -------------------------------------------------------------------------
+    # set up disk parameters
+    # -------------------------------------------------------------------------
+    # width of simulation iamge in pixels
+    imagewid = image.shape[1]
+    # get the x and y positions for each pixel and center it
+    xpos, ypos = np.indices([imagewid, imagewid]) - imagewid / 2.0 + 0.5
+    # scale these to the real size
+    xpos = xpos * (pix_scale / oversample)
+    ypos = ypos * (pix_scale / oversample)
+    # -------------------------------------------------------------------------
+    # rotate coords around "roll" degrees
+    x1 = np.cos(roll * np.pi / 180) * xpos + np.sin(roll * np.pi / 180) * ypos
+    y1 = -np.sin(roll * np.pi / 180) * xpos + np.cos(roll * np.pi / 180) * ypos
+    # -------------------------------------------------------------------------
+    # deal with a disk
+    # -------------------------------------------------------------------------
+    if kind == 'disk':
+        # include inclination
+        x2 = x1 / np.cos(inclination * np.pi / 180)
+        y2 = np.array(y1)
+        # get the radius
+        rr = np.sqrt(x2**2 + y2**2)
+        # work out the flux of the disk
+        flux = np.exp(-0.5 * np.abs(rr-radius) / width) ** exponent
+        # ---------------------------------------------------------------------
+        # add keys to hdict
+        # ---------------------------------------------------------------------
+        # text for comment
+        ctxt = 'companion {0}'.format(num)
+        # add roll
+        kw_in_roll = 'INROLL{0}'.format(num)
+        hdict[kw_in_roll] = (roll,
+                             'Input disk rotation on the sky plane [DEG]'
+                             ' {0}'.format(ctxt))
+        # add inclination
+        kw_in_incl = 'ININCL{0}'.format(num)
+        hdict[kw_in_incl] = (inclination,
+                             'Input disk tilt towardr line of sight [DEG]'
+                             ' {0}'.format(ctxt))
+        # add width
+        kw_in_wid = 'INWID{0}'.format(num)
+        hdict[kw_in_wid] = (width,
+                            'Input disk ewidth of annulus [ARCSEC]'
+                            ' {0}'.format(ctxt))
+        # add radius
+        kw_in_rad = 'INRAD{0}'.format(num)
+        hdict[kw_in_rad] = (radius,
+                            'Input disk long axis radius [ARCSEC]'
+                            ' {0}'.format(ctxt))
+        # exponent
+        kw_in_exp = 'INEXP{0}'.format(num)
+        hdict[kw_in_exp] = (exponent,
+                            'Input disk gaussian exponent')
+        # set sources
+        hkeys = [kw_in_roll, kw_in_incl, kw_in_wid, kw_in_rad, kw_in_exp]
+        hdict.set_sources(hkeys, func_name)
+    # -------------------------------------------------------------------------
+    # deal with a bar
+    # -------------------------------------------------------------------------
+    # deal with a bar
+    elif kind == 'bar':
+        # add mask for inner gap (i.e. ring not disk)
+        y1b = (np.abs(y1) - radius)/width
+        # mask the region
+        y1b[y1b < 0] = 0.0
+        # work out the flux of the disk
+        part1 = np.exp(-0.5 * np.abs((x1/width))**exponent)
+        part2 = np.exp(-0.5 * y1b**exponent)
+        # work out the flux of the bar
+        flux = part1 * part2
+        # ---------------------------------------------------------------------
+        # add keys to hdict
+        # ---------------------------------------------------------------------
+        # text for comment
+        ctxt = 'companion {0}'.format(num)
+        # add roll
+        kw_in_roll = 'INROLL{0}'.format(num)
+        hdict[kw_in_roll] = (roll,
+                             'Input bar rotation on the sky plane [DEG]'
+                             ' {0}'.format(ctxt))
+        # add width
+        kw_in_wid = 'INWID{0}'.format(num)
+        hdict[kw_in_wid] = (width,
+                            'Input thickness of bar [ARCSEC]  {0}'.format(ctxt))
+        # add radius
+        kw_in_rad = 'INRAD{0}'.format(num)
+        hdict[kw_in_rad] = (radius,
+                            'Input long axis of the bar [ARCSEC]'
+                            ' {0}'.format(ctxt))
+        # exponent
+        kw_in_exp = 'INEXP{0}'.format(num)
+        hdict[kw_in_exp] = (exponent,
+                            'Input bar gaussian exponent')
+        # set sources
+        hkeys = [kw_in_roll, kw_in_wid, kw_in_rad, kw_in_exp]
+        hdict.set_sources(hkeys, func_name)
+    else:
+        flux = np.zeros_like(image)
+    # -------------------------------------------------------------------------
+    # add to the image
+    image = image + (flux * count_rate * contrast)
+    # -------------------------------------------------------------------------
+    if plot:
+        plt.imshow(image)
+        plt.show()
+    # -------------------------------------------------------------------------
+    # return image and header
+    return image, hdict
+
 def ami_sim_save_scene(params: ParamDict, outpath: str,
                        image: np.ndarray, hdict: dict):
     """
@@ -216,11 +350,12 @@ def ami_sim_save_scene(params: ParamDict, outpath: str,
     # load hdict into header
     header = drs_file.Header()
     # loop around keys and add to header
-    for key in hdict:
-        if len(hdict[key]) == 1:
-            header[key] = hdict[key]
-        else:
-            header[key] = (hdict[key][0], hdict[key][1])
+    if hdict is not None:
+        for key in hdict:
+            if len(hdict[key]) == 1:
+                header[key] = hdict[key]
+            else:
+                header[key] = (hdict[key][0], hdict[key][1])
     # log that we are recomputing PSF
     params.log.info('AMI-SIM: Writing file: {0}'.format(outpath))
     # write file to disk

@@ -387,7 +387,7 @@ class Observation:
             emsg = 'ObservationError: Cannot get contrast for target {0}'
             emsg += '\n\tTarget {1} does not have magnitude "{2}"'
             eargs = [self.name, self.name, _filter]
-            self.params.log(emsg.format(*eargs))
+            self.params.log.error(emsg.format(*eargs))
         # get target magnitude
         target_mag = self.magnitudes[_filter]
         # make sure we have filter in companion
@@ -395,7 +395,7 @@ class Observation:
             emsg = 'ObservationError: Cannot get contrast for target {0}'
             emsg += '\n\tCompanion {1} does not have magnitude "{2}"'
             eargs = [self.name, companion.name, _filter]
-            self.params.log(emsg.format(*eargs))
+            self.params.log.error(emsg.format(*eargs))
         # get companion magnitude
         companion_mag = companion.magnitudes[_filter]
         # get delta magnitude
@@ -509,14 +509,187 @@ class Companion(Observation):
         self.name = general.clean_name(properties.get('name', 'Unknown'))
         # get kind (currently only support "planet")
         self.kind = properties.get('kind', 'planet')
-        # get separation in arc seconds (used for kind="planet")
-        self.separation = properties.get('separation', np.nan)
-        # get position angle in degrees (used for kind="planet")
-        self.position_angle = properties.get('pa', np.nan)
+        # get active
+        self.active = properties.get('active', True)
         # get magnitudes
         self.magnitudes = dict()
         self.get_magnitudes()
+        # set companion type storage
+        self.planet = None
+        self.disk = None
+        self.bar = None
+        # fill companion type
+        if self.kind == 'planet':
+            self.planet = CompanionType('planet', properties)
+        elif self.kind == 'disk':
+            self.disk = CompanionType('disk', properties)
+        elif self.kind == 'bar':
+            self.bar = CompanionType('bar', properties)
 
+
+class CompanionType:
+    def __init__(self, kind, properties):
+        # default values for all parameters (used or not)
+        self.kind = kind
+        self.separation = None
+        self.position_angle = None
+        self.plot = False
+        self.roll = None
+        self.inclination = None
+        self.width = None
+        self.radius = None
+        self.exponent = None
+        # fill companion type
+        if kind == 'planet':
+            self.planet(properties)
+        elif kind == 'disk':
+            self.disk(properties)
+        elif kind == 'bar':
+            self.bar(properties)
+
+    def __str__(self) -> str:
+        """
+        Return string representation of the CompanionType class
+
+        :return: str, the string representation
+        """
+        if self.kind == 'planet':
+            msg = 'CompanionType[planet]'
+            msg += '\n\tseparation: {0}'.format(self.separation)
+            msg += '\n\tpa: {0}'.format(self.position_angle)
+            msg += '\n\tplot: {0}'.format(self.plot)
+        elif self.kind == 'disk':
+            msg = 'CompanionType[disk]'
+            msg += '\n\troll: {0}'.format(self.roll)
+            msg += '\n\tinclination: {0}'.format(self.inclination)
+            msg += '\n\twidth: {0}'.format(self.width)
+            msg += '\n\tradius: {0}'.format(self.radius)
+            msg += '\n\texponent: {0}'.format(self.exponent)
+            msg += '\n\tplot: {0}'.format(self.plot)
+        elif self.kind == 'bar':
+            msg = 'CompanionType[bar]'
+            msg += '\n\troll: {0}'.format(self.roll)
+            msg += '\n\twidth: {0}'.format(self.width)
+            msg += '\n\tradius: {0}'.format(self.radius)
+            msg += '\n\texponent: {0}'.format(self.exponent)
+            msg += '\n\tplot: {0}'.format(self.plot)
+        else:
+            msg = ''
+        # return message
+        return msg
+
+    def __repr__(self) -> str:
+        return self.__str__()
+
+    def planet(self, properties):
+        """
+        Get and check planet settings
+
+        :param properties: ParamDict, the parameter dictionary of properties
+
+        :return: None
+        """
+        # get planet
+        planetprops = properties.get('planet', None)
+        # deal with no planet
+        if planetprops is None:
+            emsg = 'For companion kind "planet" must define planet properties'
+            emsg += '\n\tplanet:'
+            emsg += '\n\t\tseparation: 0.1 (required)'
+            emsg += '\n\t\tpa: 0.0 (optional)'
+            exceptions.DrsException(emsg, kind='error')
+            return
+        # get separation in arc seconds (used for kind="planet")
+        self.separation = planetprops.get('separation', None)
+        # deal with no separation
+        if self.separation is None:
+            emsg = 'For companion kind "planet" must define separation'
+            exceptions.DrsException(emsg, kind='error')
+        # get position angle in degrees (used for kind="planet")
+        self.position_angle = planetprops.get('pa', 0.0)
+        # get plot
+        self.plot = planetprops.get('plot', False)
+
+    def disk(self, properties):
+        """
+        Get and check disk settings
+
+        :param properties: ParamDict, the parameter dictionary of properties
+
+        :return: None
+        """
+        # get disk
+        diskprops = properties.get('disk', None)
+        # deal with no planet
+        if diskprops is None:
+            emsg = 'For companion kind "disk" must define disk properties'
+            emsg += '\n\tdisk:'
+            emsg += '\n\t\troll: 0.0 (optional)'
+            emsg += '\n\t\tinclination: 0.0 (optional)'
+            emsg += '\n\t\twidth: 0.1 (required)'
+            emsg += '\n\t\tradius: 0.1 (required)'
+            emsg += '\n\t\texponent: 2.0 (optional)'
+            exceptions.DrsException(emsg, kind='error')
+            return
+        # in degrees -> rotation on the sky plane
+        self.roll = diskprops.get('roll', 0.0)
+        # in degrees -> tilt toward the line of sight
+        self.inclination = diskprops.get('inclination', 0.0)
+        # e-width of annulus in arcsec for disk
+        self.width = diskprops.get('width', None)
+        # deal with no width
+        if self.width is None:
+            emsg = 'For companion kind "disk" must define width'
+            exceptions.DrsException(emsg, kind='error')
+        # long axis radius in arcsec for disk
+        self.radius = diskprops.get('radius', None)
+        # deal with no radius
+        if self.radius is None:
+            emsg = 'For companion kind "disk" must define radius'
+            exceptions.DrsException(emsg, kind='error')
+        # gaussian exponent
+        self.exponent = diskprops.get('exponent', 2.0)
+        # get plot
+        self.plot = diskprops.get('plot', False)
+
+    def bar(self, properties):
+        """
+        Get and check bar settings
+
+        :param properties: ParamDict, the parameter dictionary of properties
+
+        :return: None
+        """
+        # get bar
+        barprops = properties.get('bar', None)
+        # deal with no planet
+        if barprops is None:
+            emsg = 'For companion kind "bar" must define bar properties'
+            emsg += '\n\tbar:'
+            emsg += '\n\t\troll: 0.0 (optional)'
+            emsg += '\n\t\twidth: 0.1 (required)'
+            emsg += '\n\t\tradius: 0.1 (required)'
+            emsg += '\n\t\texponent: 2.0 (optional)'
+            exceptions.DrsException(emsg, kind='error')
+            return
+        # in degrees -> rotation on the sky plane
+        self.roll = barprops.get('roll', 0.0)
+        # thickness of bar
+        self.width = barprops.get('width', None)
+        # deal with no width
+        if self.width is None:
+            emsg = 'For companion kind "bar" must define width'
+            exceptions.DrsException(emsg, kind='error')
+        # long axis of the bar
+        self.radius = barprops.get('radius', None)
+        # deal with no radius
+        if self.radius is None:
+            emsg = 'For companion kind "bar" must define radius'
+            exceptions.DrsException(emsg, kind='error')
+        # gaussian exponent
+        self.exponent = barprops.get('exponent', 2.0)
+        # get plot
+        self.plot = barprops.get('plot', False)
 
 class XMLReader(read_apt_xml.ReadAPTXML):
 
@@ -665,16 +838,25 @@ def run_ami_sim(simname: str, observation: Observation):
             if isinstance(observation, Target):
                 # loop around all companions
                 for it, companion in enumerate(observation.companions):
+                    # deal with active skip
+                    if not companion.active:
+                        continue
                     # deal with planet companions
                     if companion.kind == 'planet':
+                        # deal with no planet added
+                        if companion.planet is None:
+                            continue
+                        else:
+                            planet = companion.planet
                         # get companion properties
                         ckwargs = dict()
                         ckwargs['params'] = params
                         ckwargs['image'] = image
                         ckwargs['hdict'] = hdict
                         ckwargs['num'] = it + 1
-                        ckwargs['position_angle'] = companion.position_angle
-                        ckwargs['separation'] = companion.separation
+                        ckwargs['position_angle'] = planet.position_angle
+                        ckwargs['separation'] = planet.separation
+                        ckwargs['plot'] = planet.plot
                         # get the contrast between observation and
                         #    companion
                         contrast = observation.get_contrast(companion,
@@ -682,6 +864,58 @@ def run_ami_sim(simname: str, observation: Observation):
                         ckwargs['contrast'] = contrast
                         # add companion
                         cout = etienne.ami_sim_add_companion(**ckwargs)
+                        image, hdict = cout
+                    elif companion.kind == 'disk':
+                        # deal with no disk added
+                        if companion.disk is None:
+                            continue
+                        else:
+                            disk = companion.disk
+                        # get companion properties
+                        ckwargs = dict()
+                        ckwargs['image'] = image
+                        ckwargs['hdict'] = hdict
+                        ckwargs['num'] = it + 1
+                        ckwargs['kind'] = 'disk'
+                        ckwargs['roll'] = disk.roll
+                        ckwargs['inclination'] = disk.inclination
+                        ckwargs['width'] = disk.width
+                        ckwargs['radius'] = disk.radius
+                        ckwargs['exponent'] = disk.exponent
+                        ckwargs['plot'] = disk.plot
+                        # get the contrast between observation and
+                        #    companion
+                        contrast = observation.get_contrast(companion,
+                                                            _filter)
+                        ckwargs['contrast'] = contrast
+                        # add the disk to the image
+                        cout = etienne.ami_sim_add_disk(**ckwargs)
+                        image, hdict = cout
+                    if companion.kind == 'bar':
+                        # deal with no bar added
+                        if companion.bar is None:
+                            continue
+                        else:
+                            bar = companion.bar
+                        # get companion properties
+                        ckwargs = dict()
+                        ckwargs['image'] = image
+                        ckwargs['hdict'] = hdict
+                        ckwargs['num'] = it + 1
+                        ckwargs['kind'] = 'bar'
+                        ckwargs['roll'] = bar.roll
+                        ckwargs['inclination'] = bar.inclination
+                        ckwargs['width'] = bar.width
+                        ckwargs['radius'] = bar.radius
+                        ckwargs['exponent'] = bar.exponent
+                        ckwargs['plot'] = bar.plot
+                        # get the contrast between observation and
+                        #    companion
+                        contrast = observation.get_contrast(companion,
+                                                            _filter)
+                        ckwargs['contrast'] = contrast
+                        # add the disk to the image
+                        cout = etienne.ami_sim_add_disk(**ckwargs)
                         image, hdict = cout
         else:
             image, hdict = None, None
