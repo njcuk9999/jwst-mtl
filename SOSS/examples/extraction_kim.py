@@ -359,7 +359,7 @@ plt.plot(w[start:end], flamb_totclear_energy[start:end], lw=1, color='b',
 plt.ylabel(r"Flux [J s⁻¹ m⁻² $\mu$m⁻¹]")
 plt.xlabel(r"Wavelength [$\mu$m]")
 plt.legend(), plt.show()
-
+"""
 plt.figure(6)
 plt.plot(w[start:end], flamb_m1_inf_radi_ener[start:end], lw=1, color="Violet")
 plt.ylabel(r"Flux [J s⁻¹ m⁻² $\mu$m⁻¹]")
@@ -375,7 +375,7 @@ plt.xlabel(r"Wavelength [angstrom]")
 plt.ylabel(r"Flux")
 plt.title("Model")
 plt.show()
-
+"""
 
 # Extracted flux [e⁻/colonne]
 plt.figure(8)

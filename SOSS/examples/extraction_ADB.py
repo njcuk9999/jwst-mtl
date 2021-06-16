@@ -20,8 +20,9 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm  # For displaying of FITS images.
 # TODO astropy has some nice functions for colorbars scaling of astronomical data, might be worth looking into.
 
-plt.rc('figure', figsize=(13,8))
-plt.rc('font', size=16)
+# Matplotlib defaults
+plt.rc('figure', figsize=(12,7))
+plt.rc('font', size=14)
 plt.rc('image', cmap='inferno')
 plt.rc('lines', lw=2)
 
@@ -123,49 +124,39 @@ simuPars = spgen.read_pars(pathPars.simulationparamfile, simuPars) #read in para
 order_list = [1, 2]
 
 #### Wavelength solution ####
-wave_maps_adb = []
-wave_maps_la = []
+wave_maps_adb = []   # _adb : Antoine's files
+wave_maps_la = []    # _la : Loic's files
 wave = fits.getdata("/genesis/jwst/userland-soss/loic_review/refs/map_wave_2D_native.fits")
-wave_maps_la.append(wave[0])
-wave_maps_la.append(wave[1])
+wave_maps_la.append(wave[0])  # Order 1
+wave_maps_la.append(wave[1])  # Order 2
 wave_maps_adb.append(fits.getdata("/home/kmorel/ongenesis/github/jwst-mtl/SOSS/extract/Ref_files/wavelengths_m1.fits"))
 wave_maps_adb.append(fits.getdata("/home/kmorel/ongenesis/github/jwst-mtl/SOSS/extract/Ref_files/wavelengths_m2.fits"))
-# Choose
-wave_maps = wave_maps_la
 
 #### Spatial profiles ####
-spat_pros_adb = []
-spat_pros_la = []
+spat_pros_adb = []   # _adb : Antoine's files
+spat_pros_la = []    # _la : Loic's files
 spat = fits.getdata("/genesis/jwst/userland-soss/loic_review/refs/map_profile_2D_native.fits").squeeze()
-spat_pros_la.append(spat[0,-256:])  #,-256:
-spat_pros_la.append(spat[1,-256:])  #,-256:
-spat_pros_adb.append(fits.getdata("/home/kmorel/ongenesis/github/jwst-mtl/SOSS/extract/Ref_files/spat_profile_m1.fits").squeeze())
-spat_pros_adb.append(fits.getdata("/home/kmorel/ongenesis/github/jwst-mtl/SOSS/extract/Ref_files/spat_profile_m2.fits").squeeze())
-# Choose
+spat_pros_la.append(spat[0,-256:])  # Order 1
+spat_pros_la.append(spat[1,-256:])  # Order 2
+spat_pros_adb.append(fits.getdata("/home/kmorel/ongenesis/github/jwst-mtl/SOSS/extract/Ref_files/"
+                                  "spat_profile_m1.fits").squeeze())
+spat_pros_adb.append(fits.getdata("/home/kmorel/ongenesis/github/jwst-mtl/SOSS/extract/Ref_files/"
+                                  "spat_profile_m2.fits").squeeze())
 
-#spat_pros = spat_pros_la
+# Shift Loic's trace image to fit with the simulation (data)
+new_spat_la = np.zeros_like(spat_pros_la)
+new_spat_la[0][:162] = spat_pros_la[0][94:]
+new_spat_la[1][:162] = spat_pros_la[1][94:]
+hdu = fits.PrimaryHDU(new_spat_la)
+hdu.writeto("/home/kmorel/ongenesis/jwst-user-soss/new_spat_pros.fits", overwrite = True)
+
+# Choose between Loic and Antoine
+wave_maps = wave_maps_la   # or wave_maps_adb
+spat_pros = new_spat_la    # or spat_pros_adb
 
 # Convert data from fits files to float (fits precision is 1e-8)
 wave_maps = [wv.astype('float64') for wv in wave_maps]
-spat_pros_la = [p_ord.astype('float64') for p_ord in spat_pros_la]
-spat_pros_adb = [p_ord.astype('float64') for p_ord in spat_pros_adb]
-
-new_spat_la = np.zeros_like(spat_pros_la)
-new_spat_la[0][:155] = spat_pros_la[0][101:]
-new_spat_la[1][:155] = spat_pros_la[1][101:]
-
-spat_pros = new_spat_la
-
-subs = new_spat_la - spat_pros_adb
-
-plt.figure()
-plt.imshow(spat_pros_adb[0], origin="lower")
-plt.show()
-
-plt.figure()
-plt.imshow(subs[0], origin="lower")
-plt.colorbar()
-plt.show()
+spat_pros = [p_ord.astype('float64') for p_ord in spat_pros]
 
 
 #### Throughputs ####
@@ -178,7 +169,7 @@ ker_list = [WebbKer(wv_map) for wv_map in wave_maps]
 ref_files_args = [spat_pros, wave_maps, thrpt_list, ker_list]
 
 # Load simulations
-#path.append("Fake_data")
+path.append("Fake_data")
 
 # Load a simulation
 simu = load_simu("/home/kmorel/ongenesis/github/jwst-mtl/SOSS/Fake_data/phoenix_teff_02300_scale_1.0e+02.fits")
@@ -189,13 +180,14 @@ for i in range(len(clear_00[0].data)-1):
 
 #data = simu["data"]
 # Orders 1 and 2 summed up
-data = np.sum(data_clear,axis=0)   # Sum all traces [adu/s]
+data = data_clear[0]   # Order 1 only
+#data = np.sum(data_clear,axis=0)   # Sum all traces [adu/s]
 data = np.flipud(data)  # Flip image
 
-minus = new_spat_la[1] - data
+minus = new_spat_la[0] - data
 
 plt.figure()
-plt.imshow(minus, origin="lower")
+plt.imshow(data, origin="lower")
 plt.colorbar()
 plt.show()
 
@@ -206,7 +198,7 @@ params = {}
 bkgd_noise = 20.  # In counts?
 
 # Wavelength extraction grid oversampling.
-params["n_os"] = 2  # TODO explain a bit more how the grid is determined?   #5
+params["n_os"] = 1  # TODO explain a bit more how the grid is determined?
 # Answer: I was thinking of explaining all inputs in another notebook or text?
 #         Since this parameter is needed for every extraction, I didn't want
 #         to re-explain it in all examples. What do you think?
