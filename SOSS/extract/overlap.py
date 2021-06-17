@@ -185,7 +185,7 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
         if wave_grid is None:
 
             if self.n_orders == 2:  # TODO should this be mandatory input.
-                wave_grid = utils.get_soss_grid(aperture, wave_map, n_os=n_os)  # TODO check difference between get_soss_grid and grid_from_map
+                wave_grid = utils.get_soss_grid(wave_map, aperture, n_os=n_os)  # TODO check difference between get_soss_grid and grid_from_map
             else:
                 wave_grid, _ = self.grid_from_map()
 

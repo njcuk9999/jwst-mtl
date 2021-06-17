@@ -5,7 +5,7 @@
 # General imports.
 import numpy as np
 from warnings import warn
-from scipy.integrate.quadrature import AccuracyWarning
+from scipy.integrate import AccuracyWarning
 
 
 def get_wave_p_or_m(wave_map):
