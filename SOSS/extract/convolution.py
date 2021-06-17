@@ -32,94 +32,234 @@ DEF_PATH = get_module_path(__file__) + "Ref_files/spectral_kernel_matrix/"
 DEF_FILE_FRAME = "spectral_kernel_matrix_os_{}_width_{}pixels.fits"
 
 
-def get_c_matrix(kernel, grid, bounds=None, i_bounds=None, norm=True,
-                 sparse=True, n_out=None, thresh_out=None, **kwargs):
+def gaussians(x, x0, sig, amp=None):
     """
-    Return a convolution matrix
-    Can return a sparse matrix (N_k_convolved, N_k)
-    or a matrix in the compact form (N_ker, N_k_convolved).
-    N_k is the length of the grid on which the convolution
-    will be applied, N_k_convolved is the length of the
-    grid after convolution and N_ker is the maximum length of
-    the kernel. If the default sparse matrix option is chosen,
-    the convolution can be apply on an array f | f = fct(grid)
-    by a simple matrix multiplication:
-    f_convolved = c_matrix.dot(f)
+    Gaussian function
+    """
+
+    # Amplitude term
+    if amp is None:
+        amp = 1/np.sqrt(2 * np.pi * sig**2)
+
+    values = amp * np.exp(-0.5 * ((x - x0) / sig) ** 2)
+
+    return values
+
+
+def fwhm2sigma(fwhm):
+    """
+    Convert a full width half max to a standard deviation, assuming a gaussian
+    """
+
+    sigma = fwhm / np.sqrt(8 * np.log(2))
+
+    return sigma
+
+
+def to_2d(kernel, grid, grid_range):  # TODO parameter grid unused, better name kernel_2d?
+    """ Build a 2d kernel array with a constant 1D kernel (input) """
+
+    # Assign range where the convolution is defined on the grid
+    a, b = grid_range
+
+    # Get length of the convolved axis
+    n_k_c = b - a
+
+    # Return a 2D array with this length
+    kernel_2d = np.tile(kernel, (n_k_c, 1)).T
+
+    return kernel_2d
+
+
+def _get_wings(fct, grid, h_len, i_a, i_b):
+    """
+    Compute values of the kernel at grid[+-h_len]
 
     Parameters
     ----------
-    kernel: ndarray (1D or 2D), callable
-        Convolution kernel. Can be already 2D (N_ker, N_k_convolved),
-        giving the kernel for each items of the convolved grid.
-        Can be 1D (N_ker), so the kernel is the same. Can be a callable
-        with the form f(x, x0) where x0 is the position of the center of
-        the kernel. Must return a 1D array (len(x)), so a kernel value
-        for each pairs of (x, x0). If kernel is callable, the additional
-        kwargs `thresh` and `length` will be used to project the kernel.
-    grid: one-d-array:
-        The grid on which the convolution will be applied.
-        For example, if C is the convolution matrix,
-        f_convolved = C.f(grid)
-    bounds: 2-elements object
-        The bounds of the grid on which the convolution is defined.
-        For example, if bounds = (a,b),
-        then grid_convolved = grid[a <= grid <= b].
-        It dictates also the dimension of f_convolved
-    sparse: bool, optional
-        return a sparse matrix (N_k_convolved, N_k) if True.
-        return a matrix (N_ker, N_k_convolved) if False.
-    n_out: integer or 2-integer object, optional
-        Specify how to deal with the ends of the convolved grid.
-        `n_out` points will be used outside from the convolved
-        grid. Can be different for each ends if 2-elements are given.
-    thresh_out: float, optional
-        Specify how to deal with the ends of the convolved grid.
-        Points with a kernel value less then `thresh_out` will
-        not be used outside from the convolved grid.
-    thresh: float, optional
-        Only used when `kernel` is callable to define the maximum
-        length of the kernel. Truncate when `kernel` < `thresh`
-    length: int, optional
-        Only used when `kernel` is callable to define the maximum
-        length of the kernel.
+    fct: callable
+        Function that returns the value of the kernel, given
+        a grid value and the center of the kernel.
+        fct(grid, center) = kernel
+        grid and center have the same length.
+    grid: 1d array
+        grid where the kernel is projected
+    i_a, i_b: int
+        index of the grid where to apply the convolution.
+        Once the convolution applied, the convolved grid will be
+        equal to grid[i_a:i_b].
     """
 
-    # Define range where the convolution is defined on the grid.
-    # If `i_bounds` is not specified, try with `bounds`.
-    if i_bounds is None:
-        if bounds is None:
-            a, b = 0, len(grid)
-        else:
-            a = np.min(np.where(grid >= bounds[0])[0])
-            b = np.max(np.where(grid <= bounds[1])[0]) + 1
+    # Save length of the non-convolved grid
+    n_k = len(grid)
+
+    # Get length of the convolved axis
+    n_k_c = i_b - i_a
+
+    # Init values
+    left, right = np.zeros(n_k_c), np.zeros(n_k_c)
+
+    # Add the left value on the grid
+    # Possibility that it falls out of the grid;
+    # take first value of the grid if so.
+    i_grid = np.max([0, i_a-h_len])
+
+    # Save the new grid
+    grid_new = grid[i_grid:i_b-h_len]
+
+    # Re-use dummy variable `i_grid`
+    i_grid = len(grid_new)
+
+    # Compute kernel at the left end.
+    # `i_grid` accounts for smaller length.
+    ker = fct(grid_new, grid[i_b-i_grid:i_b])
+    left[-i_grid:] = ker
+
+    # Add the right value on the grid
+    # Possibility that it falls out of the grid;
+    # take last value of the grid if so.
+    # Same steps as the left end (see above)
+    i_grid = np.min([n_k, i_b + h_len])
+    grid_new = grid[i_a+h_len:i_grid]
+    i_grid = len(grid_new)
+    ker = fct(grid_new, grid[i_a:i_a+i_grid])
+    right[:i_grid] = ker
+
+    return left, right
+
+
+def trpz_weight(grid, length, shape, i_a, i_b):
+    """
+    Compute weights due to trapeze integration
+
+    Parameters
+    ----------
+    grid: 1d array
+        grid where the integration is proojected
+    length: int
+        length of the kernel
+    shape: 2-elements tuple
+        shape of the compact convolution 2d array
+    i_a, i_b: int
+        index of the grid where to apply the convolution.
+        Once the convolution applied, the convolved grid will be
+        equal to grid[i_a:i_b].
+    """
+
+    # Index of each element on the convolution matrix
+    # with respect to the non-convolved grid
+    # `i_grid` has the shape (N_k_convolved, kernel_length - 1)
+    i_grid = np.indices(shape)[0] - (length // 2)
+    i_grid = np.arange(i_a, i_b)[None, :] + i_grid[:-1, :]
+
+    # Set values out of grid to -1
+    i_bad = (i_grid < 0) | (i_grid >= len(grid)-1)
+    i_grid[i_bad] = -1
+
+    # Delta lambda
+    d_grid = np.diff(grid)
+
+    # Compute weights from trapezoidal integration
+    weight = 1/2 * d_grid[i_grid]
+    weight[i_bad] = 0
+
+    # Fill output
+    out = np.zeros(shape)
+    out[:-1] += weight
+    out[1:] += weight
+
+    return out
+
+
+def fct_to_array(fct, grid, grid_range, thresh=1e-5, length=None):
+    """
+    Build a compact kernel 2d array based on a kernel function
+    and a grid to project the kernel
+
+    Parameters
+    ----------
+    fct: callable
+        Function that returns the value of the kernel, given
+        a grid value and the center of the kernel.
+        fct(grid, center) = kernel
+        grid and center have the same length.
+    grid: 1d array
+        grid where the kernel is projected
+    grid_range: 2 element list or tuple
+        index of the grid where to apply the convolution.
+        Once the convolution applied, the convolved grid will be
+        equal to grid[grid_range[0]:grid_range[1]].
+    thresh: float, optional
+        threshold to cut the kernel wings. If `length` is specified,
+        `thresh` will not be taken into account.
+    length: int, optional
+        length of the kernel. Needs to be odd.
+    """
+
+    # Assign range where the convolution is defined on the grid
+    i_a, i_b = grid_range
+
+    # Init with the value at kernel's center
+    out = fct(grid, grid)[i_a:i_b]
+
+    # Add wings
+    if length is None:
+        # Generate a 2D array of the grid iteratively until
+        # thresh is reached everywhere.
+
+        # Init parameters
+        length = 1
+        h_len = 0  # Half length
+
+        # Add value on each sides until thresh is reached
+        while True:
+            # Already update half-length
+            h_len += 1
+
+            # Compute next left and right ends of the kernel
+            left, right = _get_wings(fct, grid, h_len, i_a, i_b)
+
+            # Check if they are all below threshold.
+            if (left < thresh).all() and (right < thresh).all():
+                break  # Stop iteration
+            else:
+                # Update kernel length
+                length += 2
+
+                # Set value to zero if smaller than threshold
+                left[left < thresh] = 0.
+                right[right < thresh] = 0.
+
+                # add new values to output
+                out = np.vstack([left, out, right])
+
+        # Weights due to integration (from the convolution)
+        weights = trpz_weight(grid, length, out.shape, i_a, i_b)
+
+        return out * weights
+
+    elif (length % 2) == 1:  # length needs to be odd
+        # Generate a 2D array of the grid iteratively until
+        # specified length is reached.
+
+        # Compute number of half-length
+        n_h_len = (length - 1) // 2
+
+        # Simply iterate to compute needed wings
+        for h_len in range(1, n_h_len+1):
+            # Compute next left and right ends of the kernel
+            left, right = _get_wings(fct, grid, h_len, i_a, i_b)
+
+            # Add new kernel values
+            out = np.vstack([left, out, right])
+
+        # Weights due to integration (from the convolution)
+        weights = trpz_weight(grid, length, out.shape, i_a, i_b)
+
+        return out * weights
+
     else:
-        # Make sure it is absolute index, not relative
-        # So no negative index.
-        if i_bounds[1] < 0:
-            i_bounds[1] = len(grid) + i_bounds[1]
-        a, b = i_bounds
-
-    # Generate a 2D kernel depending on the input
-    if callable(kernel):
-        kernel = fct_to_array(kernel, grid, [a, b], **kwargs)
-    elif kernel.ndim == 1:
-        kernel = to_2d(kernel, grid, [a, b])
-
-    # Kernel should now be a 2-D array (N_kernel x N_kc)
-
-    # Normalize if specified
-    if norm:
-        kernel = kernel / np.nansum(kernel, axis=0)
-
-    # Apply cut for kernel at boundaries
-    kernel = cut_ker(kernel, n_out, thresh_out)
-
-    # Return sparse or not
-    if sparse:
-        # Convert to sparse matrix
-        return sparse_c(kernel, len(grid), a)
-    else:
-        return kernel
+        raise ValueError("`length` must be odd.")
 
 
 def cut_ker(ker, n_out=None, thresh=None):
@@ -239,210 +379,94 @@ def sparse_c(ker, n_k, i_zero=0):
     return matrix
 
 
-def to_2d(kernel, grid, grid_range):  # TODO parameter grid unused, better name kernel_2d?
-    """ Build a 2d kernel array with a constant 1D kernel (input) """
-
-    # Assign range where the convolution is defined on the grid
-    a, b = grid_range
-
-    # Get length of the convolved axis
-    n_k_c = b - a
-
-    # Return a 2D array with this length
-    kernel_2d = np.tile(kernel, (n_k_c, 1)).T
-
-    return kernel_2d
-
-
-def fct_to_array(fct, grid, grid_range, thresh=1e-5, length=None):
+def get_c_matrix(kernel, grid, bounds=None, i_bounds=None, norm=True,
+                 sparse=True, n_out=None, thresh_out=None, **kwargs):
     """
-    Build a compact kernel 2d array based on a kernel function
-    and a grid to project the kernel
+    Return a convolution matrix
+    Can return a sparse matrix (N_k_convolved, N_k)
+    or a matrix in the compact form (N_ker, N_k_convolved).
+    N_k is the length of the grid on which the convolution
+    will be applied, N_k_convolved is the length of the
+    grid after convolution and N_ker is the maximum length of
+    the kernel. If the default sparse matrix option is chosen,
+    the convolution can be apply on an array f | f = fct(grid)
+    by a simple matrix multiplication:
+    f_convolved = c_matrix.dot(f)
 
     Parameters
     ----------
-    fct: callable
-        Function that returns the value of the kernel, given
-        a grid value and the center of the kernel.
-        fct(grid, center) = kernel
-        grid and center have the same length.
-    grid: 1d array
-        grid where the kernel is projected
-    grid_range: 2 element list or tuple
-        index of the grid where to apply the convolution.
-        Once the convolution applied, the convolved grid will be
-        equal to grid[grid_range[0]:grid_range[1]].
+    kernel: ndarray (1D or 2D), callable
+        Convolution kernel. Can be already 2D (N_ker, N_k_convolved),
+        giving the kernel for each items of the convolved grid.
+        Can be 1D (N_ker), so the kernel is the same. Can be a callable
+        with the form f(x, x0) where x0 is the position of the center of
+        the kernel. Must return a 1D array (len(x)), so a kernel value
+        for each pairs of (x, x0). If kernel is callable, the additional
+        kwargs `thresh` and `length` will be used to project the kernel.
+    grid: one-d-array:
+        The grid on which the convolution will be applied.
+        For example, if C is the convolution matrix,
+        f_convolved = C.f(grid)
+    bounds: 2-elements object
+        The bounds of the grid on which the convolution is defined.
+        For example, if bounds = (a,b),
+        then grid_convolved = grid[a <= grid <= b].
+        It dictates also the dimension of f_convolved
+    sparse: bool, optional
+        return a sparse matrix (N_k_convolved, N_k) if True.
+        return a matrix (N_ker, N_k_convolved) if False.
+    n_out: integer or 2-integer object, optional
+        Specify how to deal with the ends of the convolved grid.
+        `n_out` points will be used outside from the convolved
+        grid. Can be different for each ends if 2-elements are given.
+    thresh_out: float, optional
+        Specify how to deal with the ends of the convolved grid.
+        Points with a kernel value less then `thresh_out` will
+        not be used outside from the convolved grid.
     thresh: float, optional
-        threshold to cut the kernel wings. If `length` is specified,
-        `thresh` will not be taken into account.
+        Only used when `kernel` is callable to define the maximum
+        length of the kernel. Truncate when `kernel` < `thresh`
     length: int, optional
-        length of the kernel. Needs to be odd.
+        Only used when `kernel` is callable to define the maximum
+        length of the kernel.
     """
 
-    # Assign range where the convolution is defined on the grid
-    i_a, i_b = grid_range
-
-    # Init with the value at kernel's center
-    out = fct(grid, grid)[i_a:i_b]
-
-    # Add wings
-    if length is None:
-        # Generate a 2D array of the grid iteratively until
-        # thresh is reached everywhere.
-
-        # Init parameters
-        length = 1
-        h_len = 0  # Half length
-
-        # Add value on each sides until thresh is reached
-        while True:
-            # Already update half-length
-            h_len += 1
-
-            # Compute next left and right ends of the kernel
-            left, right = _get_wings(fct, grid, h_len, i_a, i_b)
-
-            # Check if they are all below threshold.
-            if (left < thresh).all() and (right < thresh).all():
-                break  # Stop iteration
-            else:
-                # Update kernel length
-                length += 2
-
-                # Set value to zero if smaller than threshold
-                left[left < thresh] = 0.
-                right[right < thresh] = 0.
-
-                # add new values to output
-                out = np.vstack([left, out, right])
-
-        # Weights due to integration (from the convolution)
-        weights = trpz_weight(grid, length, out.shape, i_a, i_b)
-
-        return out * weights
-
-    elif (length % 2) == 1:  # length needs to be odd
-        # Generate a 2D array of the grid iteratively until
-        # specified length is reached.
-
-        # Compute number of half-length
-        n_h_len = (length - 1) // 2
-
-        # Simply iterate to compute needed wings
-        for h_len in range(1, n_h_len+1):
-            # Compute next left and right ends of the kernel
-            left, right = _get_wings(fct, grid, h_len, i_a, i_b)
-
-            # Add new kernel values
-            out = np.vstack([left, out, right])
-
-        # Weights due to integration (from the convolution)
-        weights = trpz_weight(grid, length, out.shape, i_a, i_b)
-
-        return out * weights
-
+    # Define range where the convolution is defined on the grid.
+    # If `i_bounds` is not specified, try with `bounds`.
+    if i_bounds is None:
+        if bounds is None:
+            a, b = 0, len(grid)
+        else:
+            a = np.min(np.where(grid >= bounds[0])[0])
+            b = np.max(np.where(grid <= bounds[1])[0]) + 1
     else:
-        raise ValueError("`length` must be odd.")
+        # Make sure it is absolute index, not relative
+        # So no negative index.
+        if i_bounds[1] < 0:
+            i_bounds[1] = len(grid) + i_bounds[1]
+        a, b = i_bounds
 
+    # Generate a 2D kernel depending on the input
+    if callable(kernel):
+        kernel = fct_to_array(kernel, grid, [a, b], **kwargs)
+    elif kernel.ndim == 1:
+        kernel = to_2d(kernel, grid, [a, b])
 
-def _get_wings(fct, grid, h_len, i_a, i_b):
-    """
-    Compute values of the kernel at grid[+-h_len]
+    # Kernel should now be a 2-D array (N_kernel x N_kc)
 
-    Parameters
-    ----------
-    fct: callable
-        Function that returns the value of the kernel, given
-        a grid value and the center of the kernel.
-        fct(grid, center) = kernel
-        grid and center have the same length.
-    grid: 1d array
-        grid where the kernel is projected
-    i_a, i_b: int
-        index of the grid where to apply the convolution.
-        Once the convolution applied, the convolved grid will be
-        equal to grid[i_a:i_b].
-    """
+    # Normalize if specified
+    if norm:
+        kernel = kernel / np.nansum(kernel, axis=0)
 
-    # Save length of the non-convolved grid
-    n_k = len(grid)
+    # Apply cut for kernel at boundaries
+    kernel = cut_ker(kernel, n_out, thresh_out)
 
-    # Get length of the convolved axis
-    n_k_c = i_b - i_a
-
-    # Init values
-    left, right = np.zeros(n_k_c), np.zeros(n_k_c)
-
-    # Add the left value on the grid
-    # Possibility that it falls out of the grid;
-    # take first value of the grid if so.
-    i_grid = np.max([0, i_a-h_len])
-
-    # Save the new grid
-    grid_new = grid[i_grid:i_b-h_len]
-
-    # Re-use dummy variable `i_grid`
-    i_grid = len(grid_new)
-
-    # Compute kernel at the left end.
-    # `i_grid` accounts for smaller length.
-    ker = fct(grid_new, grid[i_b-i_grid:i_b])
-    left[-i_grid:] = ker
-
-    # Add the right value on the grid
-    # Possibility that it falls out of the grid;
-    # take last value of the grid if so.
-    # Same steps as the left end (see above)
-    i_grid = np.min([n_k, i_b + h_len])
-    grid_new = grid[i_a+h_len:i_grid]
-    i_grid = len(grid_new)
-    ker = fct(grid_new, grid[i_a:i_a+i_grid])
-    right[:i_grid] = ker
-
-    return left, right
-
-
-def trpz_weight(grid, length, shape, i_a, i_b):
-    """
-    Compute weights due to trapeze integration
-
-    Parameters
-    ----------
-    grid: 1d array
-        grid where the integration is proojected
-    length: int
-        length of the kernel
-    shape: 2-elements tuple
-        shape of the compact convolution 2d array
-    i_a, i_b: int
-        index of the grid where to apply the convolution.
-        Once the convolution applied, the convolved grid will be
-        equal to grid[i_a:i_b].
-    """
-
-    # Index of each element on the convolution matrix
-    # with respect to the non-convolved grid
-    # `i_grid` has the shape (N_k_convolved, kernel_length - 1)
-    i_grid = np.indices(shape)[0] - (length // 2)
-    i_grid = np.arange(i_a, i_b)[None, :] + i_grid[:-1, :]
-
-    # Set values out of grid to -1
-    i_bad = (i_grid < 0) | (i_grid >= len(grid)-1)
-    i_grid[i_bad] = -1
-
-    # Delta lambda
-    d_grid = np.diff(grid)
-
-    # Compute weights from trapezoidal integration
-    weight = 1/2 * d_grid[i_grid]
-    weight[i_bad] = 0
-
-    # Fill output
-    out = np.zeros(shape)
-    out[:-1] += weight
-    out[1:] += weight
-
-    return out
+    # Return sparse or not
+    if sparse:
+        # Convert to sparse matrix
+        return sparse_c(kernel, len(grid), a)
+    else:
+        return kernel
 
 
 class WebbKer:
@@ -752,27 +776,3 @@ class NyquistKer:
         sig = self.fct_sig(x0)
 
         return gaussians(x, x0, sig)
-
-
-def gaussians(x, x0, sig, amp=None):  # TODO Move to top of file, move to utils.py?
-    """
-    Gaussian function
-    """
-
-    # Amplitude term
-    if amp is None:
-        amp = 1/np.sqrt(2 * np.pi * sig**2)
-
-    values = amp * np.exp(-0.5 * ((x - x0) / sig) ** 2)
-
-    return values
-
-
-def fwhm2sigma(fwhm):  # TODO Move to top of file, move to utils.py?
-    """
-    Convert a full width half max to a standard deviation, assuming a gaussian
-    """
-
-    sigma = fwhm / np.sqrt(8 * np.log(2))
-
-    return sigma
