@@ -24,6 +24,7 @@ from astropy.io import fits
 from astropy.io import ascii
 from astropy.table import Table
 import scipy.constants as sc_cst
+from scipy import interpolate #spline interpolation
 import matplotlib.pyplot as plt
 
 from tqdm.notebook import tqdm as tqdm_notebook
@@ -557,31 +558,51 @@ def do_not_use_bin_star_model(mod_w, mod_f, mod_ldcoeff, w_grid, dw_grid):
     return
 
 
-def loictrace(pars, response, bin_starmodel_wv, bin_starmodel_flux, bin_ld_coeff,
-    bin_planetmodel_rprs, time, itime, solin, spectral_order, tracePars):
+def seed_trace_geometry(simuPars, tracePars, spectral_order, models_grid_wv):
+    '''
+    Sets up the seed trace image dimensions, position of the trace, left and
+    right bounds of each spectral pixel, wavelength and width of each spectral
+    pixel.
+
+    :param simuPars:
+    :param tracePars:
+    :param spectral_order:
+    :param models_grid_wv:
+    :return:
+    x1, x2 : the left and right position bounds of a pixel in pixel coordinates
+             if pixel is 0, then x1 = -0.5 and x2 = 0.5
+    y1, y2 : the bottom and top boundaries of the spatial spread within a
+             spectral pixel.
+    w, dw : the wavelength in the center of the pixel and its width in wavelength
+    paddimy, paddimx : dimensions of the padded and oversampled image seed
+    padposx, padposy : the trace centroid positions in that padded image
+
+    '''
 
     # Will need to pass these down at the input line
     specmov, spatmov = 0.02, 0.02
 
     # Dimensions of the real (unpadded but oversampled) image
-    dimx = pars.xout * pars.noversample
-    dimy = pars.yout * pars.noversample
+    dimx = simuPars.xout * simuPars.noversample
+    dimy = simuPars.yout * simuPars.noversample
 
     # Dimensions of the 2D image on which we seed the trace
-    paddimx = dimx + 2 * pars.xpadding * pars.noversample
-    paddimy = dimy + 2 * pars.ypadding * pars.noversample
+    paddimx = dimx + 2 * simuPars.xpadding * simuPars.noversample
+    paddimy = dimy + 2 * simuPars.ypadding * simuPars.noversample
 
-    # Convert star model wavelengths to trace positions.Note that specpix is in range[0,2048]*noversample.
-    specpix, spatpix, mask = tp.wavelength_to_pix(bin_starmodel_wv / 10000, tracePars, m=spectral_order,
-                                                  frame='sim', oversample=pars.noversample, subarray='SUBSTRIP256')
+    # Convert star model wavelengths to trace positions.
+    # Note that specpix is in range[0,2048]*noversample.
+    specpix, spatpix, mask = tp.wavelength_to_pix(models_grid_wv / 10000, tracePars, m=spectral_order,
+                                                  frame='dms', oversample=simuPars.noversample,
+                                                  subarray=simuPars.subarray)
 
-    # The position on the real (unpadded but oversampled) image
-    posx = specpix + (specmov * pars.noversample)
-    posy = spatpix + (spatmov * pars.noversample)
+    # The trace position on the real (unpadded but oversampled) image
+    posx = specpix + (specmov * simuPars.noversample)
+    posy = spatpix + (spatmov * simuPars.noversample)
 
-    # The positions in the padded image after adding padding
-    padposx = posx + pars.xpadding * pars.noversample
-    padposy = posy + pars.ypadding * pars.noversample
+    # The trace positions in the padded image after adding padding
+    padposx = posx + simuPars.xpadding * simuPars.noversample
+    padposy = posy + simuPars.ypadding * simuPars.noversample
 
     # Compute the wavelength borders of each image pixel,
     # as well as the width (in wavelength) of each pixel
@@ -590,20 +611,53 @@ def loictrace(pars, response, bin_starmodel_wv, bin_starmodel_flux, bin_ld_coeff
 
     # independent array must be sorted for np.interp to work
     ind = np.argsort(padposx)
-    w1 = np.interp(x1, padposx[ind], bin_starmodel_wv[ind])
-    w2 = np.interp(x2, padposx[ind], bin_starmodel_wv[ind])
+    w1 = np.interp(x1, padposx[ind], models_grid_wv[ind])
+    w2 = np.interp(x2, padposx[ind], models_grid_wv[ind])
     # Wavelength and width of each pixel center.
     dw = np.abs(w2 - w1)
     w = (w1 + w2) / 2
 
-    #plt.figure()
-    #plt.plot(w, dw)
-    #plt.show()
-    #print(x1)
+    # Project along the spatial axis. y1 and y2 are the limits of the
+    # spatial extent of the trace, in pixels.
+    y1 = np.interp(x1, padposx[ind], padposy[ind])
+    y2 = np.interp(x2, padposx[ind], padposy[ind])
+
+    return x1, x2, y1, y2, w, dw, paddimy, paddimx, padposx, padposy
+
+
+def loictrace(simuPars, response, bin_models_wv, bin_starmodel_flux, bin_ld_coeff,
+    bin_planetmodel_rprs, time, itime, solin, spectral_order, tracePars):
+
+    # Get the pixel bounds, central wavelength and seed image dimensions
+    x1, x2, y1, y2, w, dw, paddimy, paddimx, padposx, padposy = seed_trace_geometry(
+                simuPars, tracePars, spectral_order, bin_models_wv)
+
+
+    # Create functions to interpolate over response and quantum yield
+    quantum_yield_spline_function = interpolate.splrep(response.wv, response.quantum_yield, s=0)
+    # -- Index of the spectral order of interest in the response class.
+    # -- (response_order is of type 'list')
+    order_index = np.where(np.array(response.response_order) == spectral_order)[0][0]
+    response_spline_function = interpolate.splrep(response.wv, response.response[order_index], s=0)
+    # Interpolate response and quantum yield on the same wavelength grid as models
+    bin_response = interpolate.splev(bin_models_wv, response_spline_function, der=0)
+    bin_quantum_yield = interpolate.splev(bin_models_wv, quantum_yield_spline_function, der=0)
+
+    # Generate Transit Model
+    npt = len(bin_models_wv)  # number of wavelengths in model
+    time_array = np.ones(npt) * time  # Transit model expects array
+    itime_array = np.ones(npt) * itime  # Transit model expects array
+    rdr_array = np.ones((1, npt)) * bin_planetmodel_rprs  # r/R* -- can be multi-planet
+    tedarray = np.zeros((1, npt))  # secondary eclipse -- can be multi-planet
+    planet_flux_ratio = spgen.transitmodel(solin, time_array, \
+                                     bin_ld_coeff[:, 0], bin_ld_coeff[:, 1], bin_ld_coeff[:, 2], bin_ld_coeff[:, 3], \
+                                     rdr_array, tedarray, itime=itime_array)
+
+    bin_models_flux = planet_flux_ratio * bin_starmodel_flux * bin_response * bin_quantum_yield
 
 
     # Flux along x-axis pixels (in e-/column/s) for all columns
-    pixelflux = bin_array(bin_starmodel_wv, bin_starmodel_flux, w, dw, debug=False)
+    pixelflux = bin_array(bin_models_wv, bin_models_flux, w, dw, debug=False)
     # Make sure that all flux are finite, or make Nans, zero
     pixelflux[~np.isfinite(pixelflux)] = 0.0
 
@@ -615,23 +669,16 @@ def loictrace(pars, response, bin_starmodel_wv, bin_starmodel_flux, bin_ld_coeff
     make_trace_straight = False
 
     if make_trace_straight is False:
-        # Project along the spatial axis.
-        y1 = np.interp(x1, padposx[ind], padposy[ind])
-        y2 = np.interp(x2, padposx[ind], padposy[ind])
-        dy = np.abs(y2-y1) # should be 1 or slightly more than 1 spatial pixel
-        # Assume that the flux is uniformly distributed. If total flux is F
-        # then flux_per_pixel is F/dy
+        # Assume that the flux is uniformly distributed.
         for i in range(paddimx):
-            density = pixelflux[i] / dy[i]
-            # full pixels
-            seedtrace[:,i] = np.copy(density)
-            # partial pixel bottom
-            seedtrace[:,i] = density
-            # partial pixel top
-            seedtrace[:,i] = density
-        seedtrace[int(paddimy / 2) - spectral_order * 50 * pars.noversample, :] = pixelflux
-
-
+            if True:
+                # Grey pixels
+                seedtrace[:, i] = np.transpose(spread_spatially(paddimy, y1[i], y2[i], pixelflux[i]))
+            else:
+                # Black or white pixels - was proven to produce large flux
+                # oscillations - do not use
+                ycenter = (y1[i]+y2[i])/2
+                seedtrace[int(np.round(ycenter)), i] = pixelflux[i]
     else:
         # Generate horizontal straight traces without curvature.
         # This can be useful for testing and debugging.
@@ -666,20 +713,46 @@ def spread_spatially(dimy, y1, y2, flux):
         y1 = np.copy(y2)
         y2 = np.copy(tmp)
 
-    # Determine the flux density. y2-y1 should be close to 1 or a bit larger
-    y_spread = y2 - y1
-    flux_density = flux / y_spread
+    # Determine the flux density. y2-y1 should be >=1
+    y_spread = (y2 - y1)
+    # Make sure that spread is at least 1 pixel
+    if y_spread < 1: y_spread = 1
 
-    # A y pixel runs from -0.5 to +0.5
-    yindmin = int(np.min(np.floor(y1+0.5)))
-    yindmax = int(np.max(np.ceil(y2+0.5)))
-    yind = np.arange(yindmax+1-yindmin)+yindmin
+    if y_spread > 1:
+        # Case where the trace curvature is large (and/or os large)
+        flux_density = flux / y_spread
+        # A y pixel runs from -0.5 to +0.5 (center at 0)
+        yindmin = int(np.floor(y1+0.5))
 
-    # Dispatch the flux and properly handle ends
-    column = np.zeros(dimy)
-    column[yindmin] = (1 - (y1+0.5)%1) * flux_density
-    column[yindmin+1:yindmax-1] = flux_density
-    column[yindmax-1] = ((y2+0.5)%1) * flux_density
+        # Dispatch the flux and properly handle ends
+        column = np.zeros(dimy)
+        yrange_bot = 1 - (y1+0.5)%1
+        yrange_top = (y2+0.5)%1
+        yrange_int = int(np.round(y_spread - yrange_bot - yrange_top))
+        column[yindmin] =  yrange_bot * flux_density
+        column[yindmin+1:yindmin+yrange_int+1] = flux_density
+        column[yindmin+yrange_int+1] = yrange_top * flux_density
+
+    else:
+        # case for most pixels, seed a 1-pixel wide seed
+        flux_density = flux / 1.0
+        ycenter = (y1+y2)/2
+        y1 = ycenter-0.5
+        y2 = ycenter+0.5
+
+        # A y pixel runs from -0.5 to +0.5
+        yindmin = int(np.floor(y1 + 0.5))
+        yindmax = yindmin + 1
+        #print(yindmin, yindmax)
+        #if yindmin < 0: yindmin = 0
+        #if yindmax > dimy: yindmax = dimy
+
+        # Dispatch the flux and properly handle ends
+        column = np.zeros(dimy)
+        if (yindmin >= 0) & (yindmin < dimy):
+            column[yindmin] = (1 - (y1 + 0.5) % 1) * flux_density
+        if (yindmax <= dimy-1) & (yindmax >= 0):
+            column[yindmax] = ((y2 + 0.5) % 1) * flux_density
 
     return column
 
@@ -1374,6 +1447,22 @@ def box_aperture(exposure, x_index, y_index, box_width=None, os=1):
     out = np.fliplr(out)
 
     return out
+
+def elecflux_to_flambda(flux, wavelength, area=25.0, gain=1.6):
+
+    # From flux [adu/pixel/sec] to Flambda [J/sec/m2/um]
+    h = 6.62606957e-34
+    c = 3e+8
+    #gain = 1.6 # e-/adu
+    #Area = 25.0 # m2
+    Eph = h * c / (wavelength*1e-6) # J/photon
+    dispersion = np.zeros_like(wavelength) # um/pixel
+    dispersion[1:] = np.abs(wavelength[1:]-wavelength[0:-1])
+    dispersion[0] = dispersion[1]
+    Flambda = flux * gain * Eph / area / dispersion
+
+    return Flambda
+
 
 def write_spectrum(wavelength, delta_wave, MJD, integtime, flux, flux_err, fitsname):
     '''

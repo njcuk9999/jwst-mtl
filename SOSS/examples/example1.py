@@ -90,6 +90,7 @@ simuPars.noversample = 4  #example of changing a model parameter
 #simuPars.modelfile = 'CONSTANT_FNU'
 #simuPars.modelfile = 'BLACKBODY'
 #simuPars.modelfile = 't6000g450p000_ldnl.dat'
+simuPars.modelfile = 'lte06900-5.00-0.0.PHOENIX-ACES-AGSS-COND-2011.JWST-RF.simu-SOSS.dat'
 simuPars.f277wcal = False
 simuPars.flatthroughput = True
 simuPars.flatquantumyield = True
@@ -107,7 +108,7 @@ starmodel_angstrom, starmodel_flambda, ld_coeff = soss.starmodel(simuPars, pathP
 
 # Anchor star spectrum on a photometric band magnitude
 starmodel_flambda = smag.anchor_spectrum(starmodel_angstrom/10000., starmodel_flambda, simuPars.filter,
-                                    simuPars.magnitude, pathPars.path_filtertransmission)
+                                    simuPars.magnitude, pathPars.path_filtertransmission, verbose=True)
 
 #plt.figure()
 #plt.plot(starmodel_angstrom, starmodel_flambda)
@@ -187,7 +188,7 @@ data = soss.write_dmsready_fits_init(imagelist, normalization_scale,
 #soss.write_dmsready_fits(data[:,:,0:256,0:2048], os.path.join(pathPars.path_userland,'test_clear.fits'),
 #                    os=simuPars.noversample, input_frame='sim')
 soss.write_dmsready_fits(data, os.path.join(pathPars.path_userland,'test_clear.fits'),
-                         os=simuPars.noversample, input_frame='sim',
+                         os=simuPars.noversample, input_frame='dms',
                          xpadding=simuPars.xpadding, ypadding=simuPars.ypadding)
 
 # Add detector noise to the noiseless data
@@ -247,7 +248,7 @@ if simuPars.f277wcal is True:
 
     # All simulations (e-/sec) are converted to up-the-ramp images.
     soss.write_dmsready_fits(data_f277, os.path.join(pathPars.path_userland,'test_f277.fits'),
-                        os=simuPars.noversample, input_frame='sim', f277=True)
+                        os=simuPars.noversample, input_frame='dms', f277=True)
 
     # Add detector noise to the noiseless data
     detector.add_noise(os.path.join(pathPars.path_userland,'test_f277.fits'),
