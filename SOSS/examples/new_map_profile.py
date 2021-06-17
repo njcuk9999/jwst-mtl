@@ -20,6 +20,7 @@ soss.readpaths(config_paths_filename, pathPars)
 simuPars = spgen.ModelPars()              #Set up default parameters
 simuPars = spgen.read_pars(pathPars.simulationparamfile, simuPars) #read in parameter file
 
+
 clear_00 = fits.open("/home/kmorel/ongenesis/jwst-user-soss/tmp/oversampling_2/clear_000000.fits")
 clear = np.empty(shape=(3,256,2048))
 map_clear = np.empty_like(clear)
@@ -27,6 +28,7 @@ for i in range(len(clear_00[0].data)):
     clear[i] = soss.rebin(clear_00[0].data[i],simuPars.noversample)
     sum_col = np.sum(clear[i], axis=0)
     map_clear[i] = clear[i] / sum_col
+    map_clear[i,:,1790:] = 0
     map_clear[i] = np.flipud(map_clear[i])  # Flip image
 
 # Save map_profile
@@ -34,8 +36,8 @@ hdu = fits.PrimaryHDU(map_clear)
 hdu.writeto("/home/kmorel/ongenesis/jwst-user-soss/new_map_profile_clear.fits", overwrite = True)
 
 plt.figure()
-plt.imshow(map_clear[0], origin="lower")
+plt.imshow(map_clear[1], origin="lower")
 plt.colorbar()
 plt.show()
 
-
+# TODO problem with the end of order 2 trace in map_clear

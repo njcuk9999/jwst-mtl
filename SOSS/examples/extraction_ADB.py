@@ -18,7 +18,6 @@ from extract.convolution import WebbKer
 # Imports for plots
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm  # For displaying of FITS images.
-# TODO astropy has some nice functions for colorbars scaling of astronomical data, might be worth looking into.
 
 # Matplotlib defaults
 plt.rc('figure', figsize=(12,7))
@@ -121,38 +120,42 @@ simuPars = spgen.read_pars(pathPars.simulationparamfile, simuPars) #read in para
 
 # Read relevant files
 # List of orders to consider in the extraction
-order_list = [1, 2]
+order_list = [1,2]
 
 #### Wavelength solution ####
-wave_maps_adb = []   # _adb : Antoine's files
-wave_maps_la = []    # _la : Loic's files
-wave = fits.getdata("/genesis/jwst/userland-soss/loic_review/refs/map_wave_2D_native.fits")
-wave_maps_la.append(wave[0])  # Order 1
-wave_maps_la.append(wave[1])  # Order 2
+# _adb : Antoine's files
+wave_maps_adb = []
 wave_maps_adb.append(fits.getdata("/home/kmorel/ongenesis/github/jwst-mtl/SOSS/extract/Ref_files/wavelengths_m1.fits"))
 wave_maps_adb.append(fits.getdata("/home/kmorel/ongenesis/github/jwst-mtl/SOSS/extract/Ref_files/wavelengths_m2.fits"))
+i_zero = np.where(wave_maps_adb[1][0] == 0.)[0][0]
+# _la : Loic's files
+wave = fits.getdata("/genesis/jwst/userland-soss/loic_review/refs/map_wave_2D_native.fits")
+wave[1,:,i_zero:] = 0.
+wave_maps_la = wave[:2]
+
 
 #### Spatial profiles ####
-spat_pros_adb = []   # _adb : Antoine's files
-spat_pros_la = []    # _la : Loic's files
-spat = fits.getdata("/genesis/jwst/userland-soss/loic_review/refs/map_profile_2D_native.fits").squeeze()
-spat_pros_la.append(spat[0,-256:])  # Order 1
-spat_pros_la.append(spat[1,-256:])  # Order 2
+# _adb : Antoine's files
+spat_pros_adb = []
 spat_pros_adb.append(fits.getdata("/home/kmorel/ongenesis/github/jwst-mtl/SOSS/extract/Ref_files/"
                                   "spat_profile_m1.fits").squeeze())
 spat_pros_adb.append(fits.getdata("/home/kmorel/ongenesis/github/jwst-mtl/SOSS/extract/Ref_files/"
                                   "spat_profile_m2.fits").squeeze())
-
+# _la : Loic's files
+spat = fits.getdata("/genesis/jwst/userland-soss/loic_review/refs/map_profile_2D_native.fits").squeeze()
+spat_pros_la = spat[:2,-256:]
 # Shift Loic's trace image to fit with the simulation (data)
 new_spat_la = np.zeros_like(spat_pros_la)
-new_spat_la[0][:162] = spat_pros_la[0][94:]
-new_spat_la[1][:162] = spat_pros_la[1][94:]
+new_spat_la[:,:162] = spat_pros_la[:,94:]
 hdu = fits.PrimaryHDU(new_spat_la)
 hdu.writeto("/home/kmorel/ongenesis/jwst-user-soss/new_spat_pros.fits", overwrite = True)
+# _clear : map created with clear000000.fits directly
+new_spat = fits.getdata("/home/kmorel/ongenesis/jwst-user-soss/new_map_profile_clear.fits")
+spat_pros_clear = new_spat[:2]
 
 # Choose between Loic and Antoine
 wave_maps = wave_maps_la   # or wave_maps_adb
-spat_pros = new_spat_la    # or spat_pros_adb
+spat_pros = spat_pros_clear  # or new_spat_la    # or spat_pros_adb
 
 # Convert data from fits files to float (fits precision is 1e-8)
 wave_maps = [wv.astype('float64') for wv in wave_maps]
@@ -180,11 +183,9 @@ for i in range(len(clear_00[0].data)-1):
 
 #data = simu["data"]
 # Orders 1 and 2 summed up
-data = data_clear[0]   # Order 1 only
-#data = np.sum(data_clear,axis=0)   # Sum all traces [adu/s]
+#data = data_clear[0]   # Order 1 only
+data = np.sum(data_clear,axis=0)   # Sum all traces [adu/s]
 data = np.flipud(data)  # Flip image
-
-minus = new_spat_la[0] - data
 
 plt.figure()
 plt.imshow(data, origin="lower")
@@ -198,10 +199,7 @@ params = {}
 bkgd_noise = 20.  # In counts?
 
 # Wavelength extraction grid oversampling.
-params["n_os"] = 1  # TODO explain a bit more how the grid is determined?
-# Answer: I was thinking of explaining all inputs in another notebook or text?
-#         Since this parameter is needed for every extraction, I didn't want
-#         to re-explain it in all examples. What do you think?
+params["n_os"] = 1
 
 # Threshold on the spatial profile.
 # Only pixels above this threshold will be used for extraction. (for at least one order)
@@ -223,7 +221,6 @@ sig = np.sqrt(data + bkgd_noise**2)
 
 # Tests all these factors.
 tests = extract.get_tikho_tests(factors, data=data, sig=sig)
-# TODO sig is the uncertainty on the date here so it might be good to call it that?
 
 # Find the best factor.
 best_fac = extract.best_tikho_factor(tests=tests, i_plot=True)
@@ -232,13 +229,6 @@ best_fac = extract.best_tikho_factor(tests=tests, i_plot=True)
 best_fac = np.log10(best_fac)
 factors = np.logspace(best_fac-2, best_fac+2, 20)
 
-# No need to specify `data` and `sig` again.
-# TODO: why not? Wouldn't it be better to require that to avoid confusion?
-# Answer: When a reference file or science file is specified, the class keeps it
-#         as an attribute. When an extraction is called, it is updated if specified.
-#         It is done to save some text when iterating on the spatial profile, for
-#         example, and to save time (some matrix multiplications don't need to be
-#         re-computed). But I'm open to discuss it!
 tests = extract.get_tikho_tests(factors, data=data, sig=sig)
 best_fac = extract.best_tikho_factor(tests=tests, i_plot=True)
 
@@ -264,7 +254,8 @@ plt.show()
 # bin𝑖=∫𝜆+𝑛𝑖𝜆−𝑛𝑖𝑇𝑛(𝜆)𝑓̃ 𝑛(𝜆)𝜆𝑑𝜆,
 # where 𝑛 is a given order, 𝑇𝑛 is the throughput of the order and 𝑓̃ 𝑛 is the underlying flux convolved to the order 𝑛
 #
-# resolution. The result of this integral will be in fake counts (it is not directly the sum of the counts so that's why I call it fake).
+# resolution. The result of this integral will be in fake counts (it is not directly the sum of the counts
+# so that's why I call it fake).
 #
 # One could directly extract the integrated flux by setting the throughput to 𝑇𝑛(𝜆)=1
 # (see second example). The result would then be in flux units instead of counts.
@@ -276,7 +267,6 @@ f_bin_list = []  # Integrated flux.
 lam_bin_list = []  # Wavelength grid.
 
 for i_ord in range(extract.n_ord):
-    # TODO I think we can make it so we just get the order m=1,2 and never have to deal with an index as well.
 
     # Integrate.
     lam_bin, f_bin = extract.bin_to_pixel(f_k=f_k, i_ord=i_ord)
@@ -285,15 +275,16 @@ for i_ord in range(extract.n_ord):
     f_bin_list.append(f_bin)
     lam_bin_list.append(lam_bin)
 
-fig, ax = plt.subplots(2, 1, sharex=True, figsize=(12, 6))
+fig, ax = plt.subplots(1, 1, sharex=True, figsize=(12, 6))
 
-for i_ord in range(extract.n_ord):
-    label = extract.orders[i_ord]
-    ax[i_ord].plot(lam_bin_list[i_ord], f_bin_list[i_ord], label=label)
+#for i_ord in range(extract.n_ord):
+ #   label = extract.orders[i_ord]
+  #  ax[i_ord].plot(lam_bin_list[i_ord], f_bin_list[i_ord], label=label)
+ax.plot(lam_bin_list[0], f_bin_list[0])
 
-ax[0].set_ylabel("Extracted signal [counts]")
-ax[1].set_xlabel("Wavelength [$\mu m$]")
-ax[1].set_ylabel("Extracted signal [counts]")
+ax.set_ylabel("Extracted signal [counts]")
+ax.set_xlabel("Wavelength [$\mu m$]")
+#ax[1].set_ylabel("Extracted signal [counts]")
 
 plt.tight_layout()
 plt.show()
@@ -305,7 +296,6 @@ def throughput(x):
 
 plt.figure()
 for i_ord in range(extract.n_ord):
-    # TODO I think we can make it so we just get the order m=1,2 and never have to deal with an index as well.
 
     # Integrate.
     lam_bin, f_bin = extract.bin_to_pixel(f_k=f_k, i_ord=i_ord, throughput=throughput)

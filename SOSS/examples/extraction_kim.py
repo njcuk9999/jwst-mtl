@@ -84,7 +84,7 @@ def flambda_elec(pixels, im_test, y_trace, radius_pixel=radius_pixel, gain=gain)
         flux[x_i] = im_test[int(first), x_i] * (1 - first % int(first)) + np.sum(
             im_test[int(first) + 1:int(last) + 1, x_i]) + im_test[int(last) + 1, x_i] * (last % int(last))
 
-    return flux * gain
+    return flux #* gain
 
 def flambda_inf_radi(im_test, wl, area=area, gain=gain):
     """
