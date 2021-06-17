@@ -25,6 +25,7 @@ def get_module_path(file):
 
     return dir_path
 
+
 # Sepcify some default reference files (used in WebbKer)
 # TODO replace this with better system and the new reference files.
 DEF_PATH = get_module_path(__file__) + "Ref_files/spectral_kernel_matrix/"
@@ -144,6 +145,7 @@ def cut_ker(ker, n_out=None, thresh=None):
     ------
     the same kernel matrix has the input ker, but with the cut applied.
     """
+
     # Assign kernel length and number of kernels
     n_ker, n_k_c = ker.shape
 
@@ -152,6 +154,7 @@ def cut_ker(ker, n_out=None, thresh=None):
 
     # Determine n_out with thresh if not given
     if n_out is None:
+
         if thresh is None:
             # No cut to apply
             return ker
@@ -159,6 +162,7 @@ def cut_ker(ker, n_out=None, thresh=None):
             # Find where to cut the kernel according to thresh
             i_left = np.where(ker[:, 0] >= thresh)[0][0]
             i_right = np.where(ker[:, -1] >= thresh)[0][-1]
+
             # Make sure it is on the good wing. Take center if not.
             i_left = np.min([i_left, h_len])
             i_right = np.max([i_right, h_len])
@@ -170,6 +174,7 @@ def cut_ker(ker, n_out=None, thresh=None):
             i_left, i_right = n_out
         except TypeError:
             i_left, i_right = n_out, n_out
+
         # Find the position where to cut the kernel
         # Make sure it is not out of the kernel grid,
         # so i_left >= 0 and i_right <= len(kernel)
@@ -182,6 +187,7 @@ def cut_ker(ker, n_out=None, thresh=None):
         # than the grid where it's projected.
         if i_k < n_k_c:
             ker[:i_left-i_k, i_k] = 0
+
     for i_k in range(i_right + 1 - n_ker, 0):
         # Add condition in case the kernel is larger
         # than the grid where it's projected.
@@ -206,6 +212,7 @@ def sparse_c(ker, n_k, i_zero=0):
         position of the first element of the convolved grid
         in the original grid.
     """
+
     # Assign kernel length and convolved axis length
     n_ker, n_k_c = ker.shape
 
@@ -227,7 +234,9 @@ def sparse_c(ker, n_k, i_zero=0):
         offset.append(i_k)
 
     # Build convolution matrix
-    return diags(diag_val, offset, shape=(n_k_c, n_k), format="csr")
+    matrix = diags(diag_val, offset, shape=(n_k_c, n_k), format="csr")
+
+    return matrix
 
 
 def to_2d(kernel, grid, grid_range):  # TODO parameter grid unused, better name kernel_2d?
@@ -240,7 +249,9 @@ def to_2d(kernel, grid, grid_range):  # TODO parameter grid unused, better name 
     n_k_c = b - a
 
     # Return a 2D array with this length
-    return np.tile(kernel, (n_k_c, 1)).T
+    kernel_2d = np.tile(kernel, (n_k_c, 1)).T
+
+    return kernel_2d
 
 
 def fct_to_array(fct, grid, grid_range, thresh=1e-5, length=None):
@@ -267,6 +278,7 @@ def fct_to_array(fct, grid, grid_range, thresh=1e-5, length=None):
     length: int, optional
         length of the kernel. Needs to be odd.
     """
+
     # Assign range where the convolution is defined on the grid
     i_a, i_b = grid_range
 
@@ -296,9 +308,11 @@ def fct_to_array(fct, grid, grid_range, thresh=1e-5, length=None):
             else:
                 # Update kernel length
                 length += 2
+
                 # Set value to zero if smaller than threshold
                 left[left < thresh] = 0.
                 right[right < thresh] = 0.
+
                 # add new values to output
                 out = np.vstack([left, out, right])
 
@@ -363,10 +377,13 @@ def _get_wings(fct, grid, h_len, i_a, i_b):
     # Possibility that it falls out of the grid;
     # take first value of the grid if so.
     i_grid = np.max([0, i_a-h_len])
+
     # Save the new grid
     grid_new = grid[i_grid:i_b-h_len]
+
     # Re-use dummy variable `i_grid`
     i_grid = len(grid_new)
+
     # Compute kernel at the left end.
     # `i_grid` accounts for smaller length.
     ker = fct(grid_new, grid[i_b-i_grid:i_b])
@@ -415,6 +432,7 @@ def trpz_weight(grid, length, shape, i_a, i_b):
 
     # Delta lambda
     d_grid = np.diff(grid)
+
     # Compute weights from trapezoidal integration
     weight = 1/2 * d_grid[i_grid]
     weight[i_bad] = 0
@@ -464,6 +482,7 @@ class WebbKer:
 
         # Mask where wv_map is equal to 0
         wv_map = np.ma.array(wv_map, mask=(wv_map == 0))
+
         # Force wv_map to have the red wavelengths
         # at the end of the detector
         if np.diff(wv_map, axis=-1).mean() < 0:
@@ -482,6 +501,7 @@ class WebbKer:
 
         # Where is the blue and red end of the kernel
         i_blue, i_red = header["BLUINDEX"], header["REDINDEX"]
+
         # Flip `ker` to put the red part of the kernel at the end
         if i_blue > i_red:
             ker = np.flip(ker, axis=0)
@@ -526,6 +546,7 @@ class WebbKer:
         poly = []
         for i_cen, wv_c in enumerate(wv_center):
             wv = np.ma.masked_all(i_surround.shape)
+
             # Closest pixel wv
             i_row, i_col = np.unravel_index(
                 np.argmin(np.abs(wv_map-wv_c)), wv_map.shape
@@ -533,16 +554,22 @@ class WebbKer:
             # Update wavelength center value
             # (take the nearest pixel center value)
             wv_center[i_cen] = wv_map[i_row, i_col]
+
             # Surrounding columns
             index = i_col + i_surround
+
             # Make sure it's on the detector
             i_good = (index >= 0) & (index < n_col)
+
             # Assign wv values
             wv[i_good] = wv_map[i_row, index[i_good]]
+
             # Fit n=1 polynomial
             poly_i = np.polyfit(i_surround[~wv.mask], wv[~wv.mask], 1)
+
             # Project on os pixel grid
             wv_ker[:, i_cen] = np.poly1d(poly_i)(pixels)
+
             # Save coeffs
             poly.append(poly_i)
 
@@ -556,6 +583,7 @@ class WebbKer:
         self.poly = np.array(poly)
         self.fill_value = fill_value
         self.bounds_error = bounds_error
+
         # 2d Interpolate
         self.f_ker = RectBivariateSpline(pixels, wv_center, ker, bbox=bbox)
 
@@ -571,6 +599,7 @@ class WebbKer:
         wv_c: 1d array (same shape as `wv`)
             center wavelength of the kernel
         """
+
         wv_center = self.wv_center
         poly = self.poly
         fill_value = self.fill_value
@@ -620,6 +649,7 @@ class WebbKer:
         out = f_ker(pix, wv_c, grid=False)
         # Make sure it's not negative
         out[out < 0] = 0
+
         # and put values out of pixel range
         # to zero
         out[pix > n_pix//2] = 0
@@ -634,12 +664,16 @@ class WebbKer:
         The second figure is a 1d image of the kernels
         in the wavelength space.
         """
+
         # 2D figure of the kernels
         fig1 = plt.figure(figsize=(4, 4))
+
         # Log plot, so clip values <= 0
         image = np.clip(self.ker, np.min(self.ker[self.ker > 0]), np.inf)
+
         # plot
         plt.pcolormesh(self.wv_center, self.pixels,  image, norm=LogNorm())
+
         # Labels and others
         plt.colorbar(label="Kernel")
         plt.ylabel("Position relative to center [pixel]")
@@ -649,6 +683,7 @@ class WebbKer:
         # 1D figure of all kernels
         fig2 = plt.figure()
         plt.plot(self.wv_ker, self.ker)
+
         # Labels and others
         plt.ylabel("Kernel")
         plt.xlabel(r"Wavelength [$\mu m$]")
@@ -681,6 +716,7 @@ class NyquistKer:
         bounds_error, fill_value and kwargs:
             `interp1d` kwargs used to get FWHM as a function of the grid.
         """
+
         # Delta grid
         d_grid = np.diff(grid)
 
@@ -727,11 +763,16 @@ def gaussians(x, x0, sig, amp=None):  # TODO Move to top of file, move to utils.
     if amp is None:
         amp = 1/np.sqrt(2 * np.pi * sig**2)
 
-    return amp * np.exp(-0.5*((x - x0) / sig)**2)
+    values = amp * np.exp(-0.5 * ((x - x0) / sig) ** 2)
+
+    return values
 
 
 def fwhm2sigma(fwhm):  # TODO Move to top of file, move to utils.py?
     """
     Convert a full width half max to a standard deviation, assuming a gaussian
     """
-    return fwhm / np.sqrt(8 * np.log(2))
+
+    sigma = fwhm / np.sqrt(8 * np.log(2))
+
+    return sigma
