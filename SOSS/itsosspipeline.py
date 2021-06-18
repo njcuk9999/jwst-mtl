@@ -24,14 +24,15 @@ from astropy.io import fits
 from astropy.io import ascii
 from astropy.table import Table
 import scipy.constants as sc_cst
+from scipy import interpolate #spline interpolation
 import matplotlib.pyplot as plt
-import examples.resample_kim as kim
 
 from tqdm.notebook import tqdm as tqdm_notebook
 
 import sys
 #sys.path.insert(0, '/genesis/jwst/github/jwst-mtl/')
 import specgen.spgen as spgen
+import trace.tracepol as tp
 
 class paths():
     # PATHS
@@ -327,11 +328,433 @@ def constantR_samples(wavelength_start, wavelength_end, resolving_power=100000):
 
     return wavelength, delta_wavelength
 
-def resample_models_pixelgrid():
-    # x et y pour chaque ordre spectral + dx(t), dy(t)
+def resample_models(star_angstrom, star_flux, ld_coeff,
+                    planet_angstrom, planet_rprs, simuPars, tracePars,
+                    gridtype='planet', wavelength_start=None,
+                    wavelength_end=None, resolving_power=None,
+                    dispersion=None):
+
+    '''
+
+    :param star_angstrom:
+    :param star_flux:
+    :param ld_coeff:
+    :param planet_angstrom:
+    :param planet_rprs:
+    :param simuPars:
+    :param tracePars:
+    :param gridtype:
+    :param wavelength_start: angstrom
+    :param wavelength_end: angstrom
+    :param resolving_power: R = lambda/delta_lambda
+    :param dispersion: angstrom per pixel
+    :return:
+
+    Note: An alternative is using bin_array instead of bin_array_conv . It is exact but much much slower.
+    '''
+    # Check that appropriate optional parameters are passed.
+    if gridtype == 'constant_dispersion':
+        if (dispersion is None) | (wavelength_start is None) | (wavelength_end is None):
+            print('When using gridtype=constant_dispersion, need to specify dispersion,')
+            print('wavelength_start and wavelength_end. One of these currently None.')
+            sys.exit()
+    if gridtype == 'constant_R':
+        if (resolving_power is None) | (wavelength_start is None) | (wavelength_end is None):
+            print('When using gridtype=constant_R, need to specify resolving_power,')
+            print('wavelength_start and wavelength_end. One of these currently None.')
+            sys.exit()
+
+    # Define the grid over which to resample models
+    if gridtype == 'planet':
+        # Resample on the same grid as the planet model grid
+        x_grid = np.copy(planet_angstrom)
+        dx_grid = np.zeros_like(planet_angstrom)
+        dx_grid[1:] = np.abs(x_grid[1:] - x_grid[0:-1])
+        dx_grid[0] = dx_grid[1]
+        # Resample star model and limb darkening matrix. But leave the planet model unchanged.
+        bin_starmodel_flux = bin_array_conv(star_angstrom, star_flux, x_grid, dx_grid)
+        bin_starmodel_wv = np.copy(planet_angstrom)
+        bin_planetmodel_wv = np.copy(planet_angstrom)
+        bin_planetmodel_rprs = np.copy(planet_rprs)
+        bin_ld_coeff = bin_limb_darkening(star_angstrom, ld_coeff, x_grid, dx_grid)
+
+    elif gridtype == 'constant_dispersion':
+        # Resample on a constant dispersion grid
+        #wavelength_start, wavelength_end = 5000, 55000
+        #TODO: Check that wavelength_start/end are passed as input
+        nsample = 1 + int((wavelength_end - wavelength_start) / dispersion)
+        x_grid = np.arange(nsample) * dispersion + wavelength_start
+        dx_grid = np.ones_like(x_grid) * dispersion
+        # Resample the star model, the planet model as well as the LD coefficients.
+        bin_starmodel_flux = bin_array_conv(star_angstrom, star_flux, x_grid, dx_grid)
+        bin_starmodel_wv = np.copy(x_grid)
+        bin_planetmodel_wv = np.copy(x_grid)
+        bin_planetmodel_rprs = bin_array_conv(planet_angstrom, planet_rprs, x_grid, dx_grid)
+        bin_ld_coeff = bin_limb_darkening(star_angstrom, ld_coeff, x_grid, dx_grid)
+
+    elif gridtype == 'constant_R':
+        # Resample on a constant resolving power grid
+        #TODO: Check that resolving+power is passed as input
+        x_grid, dx_grid = constantR_samples(wavelength_start, wavelength_end, resolving_power=resolving_power)
+        # Resample the star model, the planet model as well as the LD coefficients.
+        bin_starmodel_flux = bin_array_conv(star_angstrom, star_flux, x_grid, dx_grid)
+        bin_starmodel_wv = np.copy(x_grid)
+        bin_planetmodel_wv = np.copy(x_grid)
+        bin_planetmodel_rprs = bin_array_conv(planet_angstrom, planet_rprs, x_grid, dx_grid)
+        bin_ld_coeff = bin_limb_darkening(star_angstrom, ld_coeff, x_grid, dx_grid)
+    else:
+        print('Possible resample_models gridtype are: planet. constant_dispersion or constant_R.')
+        sys.exit()
+
+    return bin_starmodel_wv, bin_starmodel_flux, bin_ld_coeff, bin_planetmodel_wv, bin_planetmodel_rprs
+
+
+def bin_limb_darkening(x, ld_coeff, x_grid, dx_grid):
+    '''
+    Bin down each parameter of the limb darkening coefficient
+    on the new x_grid using the function bin_array()
+    :param x:
+    :param ld_coeff:
+    :param x_grid:
+    :param dx_grid:
+    :return:
+    '''
+
+    # Shape of the ld_coeff input: (200001,4)
+    # Shape of the output bin_ld_coeff: (n,4)
+    bin_ld_coeff = np.zeros((len(x_grid), 4))
+    for i in range(4):
+        param_i = ld_coeff[:,i]
+        bin_param_i = bin_array_conv(x, param_i, x_grid, dx_grid)
+        bin_ld_coeff[:,i] = np.copy(bin_param_i)
+
+    return bin_ld_coeff
+
+
+def bin_array(x, fx, x_grid, dx_grid, debug=False):
+    '''
+
+    :param x:
+    :param dx: width of the original array
+    :param fx: represents the array values at each x sample
+    :param x_grid: represents the sample center of the binned array
+    :param dx_grid: represents the sample width of the bined array
+    :return:
+    '''
+
+    # Arrays of the starting and ending x_grid values for each grid sample
+    xgrid_left = x_grid - dx_grid/2
+    xgrid_right = x_grid + dx_grid/2
+
+    # Arrays of resampled fx at the position of the left and right x_grid
+    fx_resampleft = np.interp(xgrid_left, x, fx)
+    fx_resampright = np.interp(xgrid_right, x, fx)
+
+    # Initialize the binned flux output array
+    fx_grid = np.zeros_like(x_grid)
+
+    # Sum up each original bin (fx * dx)
+    grid_nsample = len(x_grid)
+    for i in range(grid_nsample):
+        if debug: print(i, grid_nsample)
+        sum = 0.0
+        # Original sample points fully included in new grid current bin
+        ind = np.where((x >= xgrid_left[i]) & (x <= xgrid_right[i]))[0]
+        # Integral for those full original samples
+        for j in range(len(ind)-1):
+            sum = sum + (fx[ind[j+1]] + fx[ind[j]])/2 * (x[ind[j+1]] - x[ind[j]])
+        # Partial sample on the left
+        sum = sum + (fx[ind[0]]+fx_resampleft[i])/2 * (x[ind[0]] - xgrid_left[i])
+        # Partial sample on the right
+        sum = sum + (fx[ind[-1]]+fx_resampright[i])/2 * (xgrid_right[i] - x[ind[-1]])
+        #To get fx_grid, need to divide sum by the width of that binned grid
+        fx_grid[i] = sum / dx_grid[i]
+
+    return fx_grid
+
+def bin_array_conv(x, fx, x_grid, dx_grid, debug=False):
+    '''
+
+    :param x:
+    :param dx: width of the original array
+    :param fx: represents the array values at each x sample
+    :param x_grid: represents the sample center of the binned array
+    :param dx_grid: represents the sample width of the bined array
+    :return: fx on the new x_grid
+    '''
+
+    # Convert fx to constant resolving power. Find maximum R and resample at that R.
+    R_max = np.max(x[:-1] / np.diff(x))
+    x_Rcst, dx_Rcst = constantR_samples(np.min(x), np.max(x), resolving_power=R_max)
+    fx_Rcst = np.interp(x_Rcst, x, fx)
+
+    # Find what is the maximum resolving power of the new grid, x_grid
+    R_max_newgrid = np.max(x_grid/dx_grid)
+
+    # Sampling fwhm
+    fwhm = R_max / R_max_newgrid
+    # Convert FWHM to sigma for gaussian
+    sigma = fwhm / np.sqrt(8*np.log(2))
+    # Length of gaussian array
+    length = int(5 * fwhm)
+    # Make length an odd size
+    if length%2 == 0: length = length + 1
+
+    # x grid for gaussian
+    x_gauss = np.mgrid[-length//2: length//2+1]
+    # gaussian
+    gauss = np.exp(-(x_gauss**2) / 2 / sigma**2)
+    # normalization of gaussian
+    gauss = gauss / np.sum(gauss)
+
+    # Convolve the original flux by the gaussian
+    fx_Rcst_conv = np.convolve(fx_Rcst, gauss, mode='same')
+
+    # Interpolate at the desired x_grid position
+    fx_grid = np.interp(x_grid, x_Rcst, fx_Rcst_conv)
+
+    if debug is True:
+        plt.figure()
+        plt.scatter(x, fx, label='fx')
+        plt.scatter(x_Rcst, fx_Rcst_conv, label='fx_Rcst_conv')
+        plt.scatter(x_grid, fx_grid, label='fx_grid')
+        plt.legend()
+        plt.show()
+        sys.exit()
+
+    return fx_grid
+
+
+def do_not_use_bin_star_model(mod_w, mod_f, mod_ldcoeff, w_grid, dw_grid):
+    '''
+    Bin high resolution stellar model down to a grid of wavelengths bins and its associated
+    bin width. The limb darkening coefficients must be handled properly. We can't just average
+    the LD parameters. We need to average the intensities then recover the new LD parameters.
+    If, for example, we were averaging 3 high-resolution samples together, then:
+    Ibin(mu) = (I(mu)_A + I(mu)_B + I(mu)_C)/3
+               where I(mu)_A/Io_A = 1 - a1_A(1-mu^1/2) - a2_A() - a3_A() - a4_A()
+    Then a1_bin = [ Io_A*a1_B + Io_B*a1_B + Io_C*a1_C ] / [Io_A + Io_B + Io_C]
+    and so on for all 4 parameters.
+    For partial samples then linear interpolation is used, in other words, a weight is assigned to each sample.
+    :param mod_w:
+    :param mod_f:
+    :param mod_ldcoeff:
+    :param w_grid: Assumes same units as input mod_w and sorted in increasing order
+    :param dw_grid:
+    :return:
+    '''
+
+    for i in range(len(w_grid)):
+        w_start = w_grid[i] - dw_grid[i]/2
+        w_end = w_grid[i] + dw_grid[i]/2
+
+        #intensity_mu_bin = mod_ldcoeff[]
+
+    # Arrays of the starting and ending wavelength values for each grid sample
+    w_leftbound = w_grid - dw_grid/2
+    w_rightbound = w_grid + dw_grid/2
 
 
     return
+
+
+def seed_trace_geometry(simuPars, tracePars, spectral_order, models_grid_wv):
+    '''
+    Sets up the seed trace image dimensions, position of the trace, left and
+    right bounds of each spectral pixel, wavelength and width of each spectral
+    pixel.
+
+    :param simuPars:
+    :param tracePars:
+    :param spectral_order:
+    :param models_grid_wv:
+    :return:
+    x1, x2 : the left and right position bounds of a pixel in pixel coordinates
+             if pixel is 0, then x1 = -0.5 and x2 = 0.5
+    y1, y2 : the bottom and top boundaries of the spatial spread within a
+             spectral pixel.
+    w, dw : the wavelength in the center of the pixel and its width in wavelength
+    paddimy, paddimx : dimensions of the padded and oversampled image seed
+    padposx, padposy : the trace centroid positions in that padded image
+
+    '''
+
+    # Will need to pass these down at the input line
+    specmov, spatmov = 0.02, 0.02
+
+    # Dimensions of the real (unpadded but oversampled) image
+    dimx = simuPars.xout * simuPars.noversample
+    dimy = simuPars.yout * simuPars.noversample
+
+    # Dimensions of the 2D image on which we seed the trace
+    paddimx = dimx + 2 * simuPars.xpadding * simuPars.noversample
+    paddimy = dimy + 2 * simuPars.ypadding * simuPars.noversample
+
+    # Convert star model wavelengths to trace positions.
+    # Note that specpix is in range[0,2048]*noversample.
+    specpix, spatpix, mask = tp.wavelength_to_pix(models_grid_wv / 10000, tracePars, m=spectral_order,
+                                                  frame='dms', oversample=simuPars.noversample,
+                                                  subarray=simuPars.subarray)
+
+    # The trace position on the real (unpadded but oversampled) image
+    posx = specpix + (specmov * simuPars.noversample)
+    posy = spatpix + (spatmov * simuPars.noversample)
+
+    # The trace positions in the padded image after adding padding
+    padposx = posx + simuPars.xpadding * simuPars.noversample
+    padposy = posy + simuPars.ypadding * simuPars.noversample
+
+    # Compute the wavelength borders of each image pixel,
+    # as well as the width (in wavelength) of each pixel
+    x1 = np.arange(paddimx) - 0.5
+    x2 = x1 + 1
+
+    # independent array must be sorted for np.interp to work
+    ind = np.argsort(padposx)
+    w1 = np.interp(x1, padposx[ind], models_grid_wv[ind])
+    w2 = np.interp(x2, padposx[ind], models_grid_wv[ind])
+    # Wavelength and width of each pixel center.
+    dw = np.abs(w2 - w1)
+    w = (w1 + w2) / 2
+
+    # Project along the spatial axis. y1 and y2 are the limits of the
+    # spatial extent of the trace, in pixels.
+    y1 = np.interp(x1, padposx[ind], padposy[ind])
+    y2 = np.interp(x2, padposx[ind], padposy[ind])
+
+    return x1, x2, y1, y2, w, dw, paddimy, paddimx, padposx, padposy
+
+
+def loictrace(simuPars, response, bin_models_wv, bin_starmodel_flux, bin_ld_coeff,
+    bin_planetmodel_rprs, time, itime, solin, spectral_order, tracePars):
+
+    # Get the pixel bounds, central wavelength and seed image dimensions
+    x1, x2, y1, y2, w, dw, paddimy, paddimx, padposx, padposy = seed_trace_geometry(
+                simuPars, tracePars, spectral_order, bin_models_wv)
+
+
+    # Create functions to interpolate over response and quantum yield
+    quantum_yield_spline_function = interpolate.splrep(response.wv, response.quantum_yield, s=0)
+    # -- Index of the spectral order of interest in the response class.
+    # -- (response_order is of type 'list')
+    order_index = np.where(np.array(response.response_order) == spectral_order)[0][0]
+    response_spline_function = interpolate.splrep(response.wv, response.response[order_index], s=0)
+    # Interpolate response and quantum yield on the same wavelength grid as models
+    bin_response = interpolate.splev(bin_models_wv, response_spline_function, der=0)
+    bin_quantum_yield = interpolate.splev(bin_models_wv, quantum_yield_spline_function, der=0)
+
+    # Generate Transit Model
+    npt = len(bin_models_wv)  # number of wavelengths in model
+    time_array = np.ones(npt) * time  # Transit model expects array
+    itime_array = np.ones(npt) * itime  # Transit model expects array
+    rdr_array = np.ones((1, npt)) * bin_planetmodel_rprs  # r/R* -- can be multi-planet
+    tedarray = np.zeros((1, npt))  # secondary eclipse -- can be multi-planet
+    planet_flux_ratio = spgen.transitmodel(solin, time_array, \
+                                     bin_ld_coeff[:, 0], bin_ld_coeff[:, 1], bin_ld_coeff[:, 2], bin_ld_coeff[:, 3], \
+                                     rdr_array, tedarray, itime=itime_array)
+
+    bin_models_flux = planet_flux_ratio * bin_starmodel_flux * bin_response * bin_quantum_yield
+
+
+    # Flux along x-axis pixels (in e-/column/s) for all columns
+    pixelflux = bin_array(bin_models_wv, bin_models_flux, w, dw, debug=False)
+    # Make sure that all flux are finite, or make Nans, zero
+    pixelflux[~np.isfinite(pixelflux)] = 0.0
+
+    # Now need to distribute this flux along the y-axis using the trace centroid position
+    # still want to seed a 1-pixel high trace. But in regions where the curvature is strong,
+    # determine the center of mass of the flux (y * f) within a column as a better y position.
+    seedtrace = np.zeros((paddimy, paddimx))
+    # for now just assign the value to all rows
+    make_trace_straight = False
+
+    if make_trace_straight is False:
+        # Assume that the flux is uniformly distributed.
+        for i in range(paddimx):
+            if True:
+                # Grey pixels
+                seedtrace[:, i] = np.transpose(spread_spatially(paddimy, y1[i], y2[i], pixelflux[i]))
+            else:
+                # Black or white pixels - was proven to produce large flux
+                # oscillations - do not use
+                ycenter = (y1[i]+y2[i])/2
+                seedtrace[int(np.round(ycenter)), i] = pixelflux[i]
+    else:
+        # Generate horizontal straight traces without curvature.
+        # This can be useful for testing and debugging.
+        # Seed the 1, 2 3 traces so they are evenly spaced
+        if spectral_order == 1:
+            y = int(paddimy * 0.5)
+        elif spectral_order == 2:
+            y = int(paddimy * 0.25)
+        elif spectral_order == 3:
+            y = int(paddimy * 0.75)
+        else:
+            y = int(paddimy * 0.05)
+        seedtrace[y, :] = pixelflux
+
+    return seedtrace
+
+
+def spread_spatially(dimy, y1, y2, flux):
+    '''
+    Spread the flux along a column, handling the partial pixels
+    at both ends of the y1 to y2 range. Total flux should equal 1.
+    :param dimy:
+    :param y1:
+    :param y2:
+    :param flux:
+    :return:
+    '''
+
+    # Make sure that y1 is the smallest
+    if y1 > y2:
+        tmp = y1
+        y1 = np.copy(y2)
+        y2 = np.copy(tmp)
+
+    # Determine the flux density. y2-y1 should be >=1
+    y_spread = (y2 - y1)
+    # Make sure that spread is at least 1 pixel
+    if y_spread < 1: y_spread = 1
+
+    if y_spread > 1:
+        # Case where the trace curvature is large (and/or os large)
+        flux_density = flux / y_spread
+        # A y pixel runs from -0.5 to +0.5 (center at 0)
+        yindmin = int(np.floor(y1+0.5))
+
+        # Dispatch the flux and properly handle ends
+        column = np.zeros(dimy)
+        yrange_bot = 1 - (y1+0.5)%1
+        yrange_top = (y2+0.5)%1
+        yrange_int = int(np.round(y_spread - yrange_bot - yrange_top))
+        column[yindmin] =  yrange_bot * flux_density
+        column[yindmin+1:yindmin+yrange_int+1] = flux_density
+        column[yindmin+yrange_int+1] = yrange_top * flux_density
+
+    else:
+        # case for most pixels, seed a 1-pixel wide seed
+        flux_density = flux / 1.0
+        ycenter = (y1+y2)/2
+        y1 = ycenter-0.5
+        y2 = ycenter+0.5
+
+        # A y pixel runs from -0.5 to +0.5
+        yindmin = int(np.floor(y1 + 0.5))
+        yindmax = yindmin + 1
+        #print(yindmin, yindmax)
+        #if yindmin < 0: yindmin = 0
+        #if yindmax > dimy: yindmax = dimy
+
+        # Dispatch the flux and properly handle ends
+        column = np.zeros(dimy)
+        if (yindmin >= 0) & (yindmin < dimy):
+            column[yindmin] = (1 - (y1 + 0.5) % 1) * flux_density
+        if (yindmax <= dimy-1) & (yindmax >= 0):
+            column[yindmax] = ((y2 + 0.5) % 1) * flux_density
+
+    return column
 
 
 def generate_traces(savingprefix, pathPars, simuPars, tracePars, throughput,
@@ -357,43 +780,25 @@ def generate_traces(savingprefix, pathPars, simuPars, tracePars, throughput,
     # output is a cube (1 slice per spectral order) at the requested
     # pixel oversampling.
 
-    # Resample star and planet models to common uniform in wavelength grid.
+    # Resample star and planet models to common wavelength grid.
     print('Resampling star and planet model')
-    # Get wavelength spacing to use for resampling
-    dw, dwflag = spgen.get_dw(star_angstrom, planet_angstrom, simuPars, tracePars)
-    # dw = dw/100
-    print("Wavelength spacing (angstroms): ", dw, dwflag)
-
-    if False:
-        # Generate a wavelength sampling grid with constant resolving power.
-        w, dw = constantR_samples(5000, 55000, resolving_power=64000)
-
-        print(np.size(w))
-        print(np.size(star_angstrom))
-        sys.exit()
-
-    # TODO: resample on the new constant R grid rather than pseudo constant dw (it is not! --> bug)
-    # Resample onto common grid.
-    #star_angstrom_bin, star_flux_bin, ld_coeff_bin, planet_angstrom_bin, planet_rprs_bin = \
-     #   spgen.resample_models(dw, star_angstrom, star_flux, ld_coeff, planet_angstrom, planet_rprs, simuPars, tracePars)
-    star_angstrom_bin, star_flux_bin, ld_coeff_bin, planet_angstrom_bin, planet_rprs_bin = \
-        kim.resample_models(dw, star_angstrom, star_flux, ld_coeff, planet_angstrom, planet_rprs, simuPars, tracePars)
-
-    sys.exit()
-    print(np.shape(star_angstrom_bin))
-    print('dw',dw)
-
-    if False:
-        plt.figure()
-        #plt.scatter(star_angstrom, star_flux)
-        #plt.scatter(star_angstrom_bin, star_flux_bin)
-        #plt.scatter()
-        plt.scatter(star_angstrom_bin[1:], star_angstrom_bin[1:]-star_angstrom_bin[0:-1])
-        plt.show()
-
-        sys.exit()
+    # Old Jason method which contains a bug where the specing is not actually uniform but
+    # is rather binomial.
+    #if False:
+    #    # Get wavelength spacing to use for resampling
+    #    dw, dwflag = spgen.get_dw(star_angstrom, planet_angstrom, simuPars, tracePars)
+    #    # dw = dw/100
+    #    print("Wavelength spacing (angstroms): ", dw, dwflag)
+    #    star_angstrom_bin, star_flux_bin, ld_coeff_bin, planet_angstrom_bin, planet_rprs_bin = \
+    #        spgen.resample_models(dw, star_angstrom, star_flux, ld_coeff, planet_angstrom, planet_rprs, simuPars,
+    #        tracePars)
+    # New rewritten function for resampling
+    star_angstrom_bin, star_flux_bin, ld_coeff_bin, planet_angstrom_bin, planet_rprs_bin = resample_models(
+        star_angstrom, star_flux, ld_coeff, planet_angstrom, planet_rprs, simuPars,
+        tracePars, gridtype='constant_dispersion', dispersion = 0.1, wavelength_start=5000, wavelength_end=55000)
 
     # Convert star_flux to photon flux (which is what's expected for addflux2pix in gen_unconv_image)
+    print('Converting F_lambda to photon fluxes (e-/s/m2/ang)')
     h = sc_cst.Planck
     c = sc_cst.speed_of_light
     photon_energy = h * c / (star_angstrom_bin * 1e-10)
@@ -430,13 +835,16 @@ def generate_traces(savingprefix, pathPars, simuPars, tracePars, throughput,
     # Don't worry, that 'cube' will be merged down later after flux normalization.
     #nframes = np.size(simuPars.orderlist)
 
-    # Defines the dimensions of the arrays, depends on the oversanmpling
-    xmax=simuPars.xout*simuPars.noversample
-    ymax=simuPars.yout*simuPars.noversample
+    # Defines the dimensions of the arrays, depends on the oversampling
+    xmax = (simuPars.xout + 2*simuPars.xpadding) * simuPars.noversample
+    ymax = (simuPars.yout + 2*simuPars.ypadding) * simuPars.noversample
+    #xmax =simuPars.xout*simuPars.noversample
+    #ymax =simuPars.yout*simuPars.noversample
 
     # Initialize the array that will contain all orders at a given time step
     nimage = len(simuPars.orderlist)
     convolved_image=np.zeros((nimage,ymax,xmax))
+    trace_image=np.zeros((nimage,ymax,xmax))
 
     # list of temporary filenames
     filelist = []
@@ -448,11 +856,17 @@ def generate_traces(savingprefix, pathPars, simuPars, tracePars, throughput,
             currenttime = second2day(timesteps[t])
             exposetime = second2day(granularitytime)
             print('Time step {:} minutes - Order {:}'.format(currenttime/60, spectral_order))
-            pixels=spgen.gen_unconv_image(simuPars, throughput, star_angstrom_bin, star_flux_bin,
+            if False:
+                pixels=spgen.gen_unconv_image(simuPars, throughput, star_angstrom_bin, star_flux_bin,
                                       ld_coeff_bin, planet_rprs_bin,
                                       currenttime, exposetime, solin, spectral_order, tracePars)
 
-            pixels_t=np.copy(pixels.T)
+                pixels_t=np.copy(pixels.T)
+            else:
+                print('     Seeding flux onto a narrow trace on a 2D image')
+                pixels_t = loictrace(simuPars, throughput, star_angstrom_bin, star_flux_bin,
+                                      ld_coeff_bin, planet_rprs_bin,
+                                      currenttime, exposetime, solin, spectral_order, tracePars)
 
             #Enable threads (not working?!?!)
             #pyfftw.config.NUM_THREADS = 1 #do not need multi-cpu for pools
@@ -461,6 +875,7 @@ def generate_traces(savingprefix, pathPars, simuPars, tracePars, throughput,
             #pyfftw.interfaces.cache.enable()
 
             #do the convolution
+            print('     Convolving trace with monochromatic PSFs')
             x=pixels_t*0+1.0e-10
 
             nwv=len(kernels_wv) #number of wavelengths to process
@@ -484,17 +899,23 @@ def generate_traces(savingprefix, pathPars, simuPars, tracePars, throughput,
 
             pixels_c=None #release Memory
 
-            convolved_image[m,:,:] = np.copy(x)
+            trace_image[m,:,:] = np.copy(pixels_t) - 1e-10
+            convolved_image[m,:,:] = np.copy(x) - 1e-10
 
             # Sum in the flux for that order
-            actual_counts = np.sum(convolved_image[m,:,:])
-            print('Actual counts measured on the simulation = {:} e-/sec'.format(actual_counts))
+            y1 = simuPars.ypadding * simuPars.noversample
+            y2 = y1 + simuPars.yout * simuPars.noversample
+            x1 = simuPars.xpadding * simuPars.noversample
+            x2 = x1 + simuPars.xout * simuPars.noversample
+            actual_counts = np.sum(convolved_image[m,y1:y2,x1:x2])
+            print('     Actual counts measured on the simulation = {:} e-/sec'.format(actual_counts))
             print()
 
-        tmpfilename = write_intermediate_fits(convolved_image, savingprefix, t)
+        tmp = write_intermediate_fits(trace_image, savingprefix+'_trace', t, simuPars)
+        tmpfilename = write_intermediate_fits(convolved_image, savingprefix, t, simuPars)
         filelist.append(tmpfilename)
 
-    return (filelist)
+    return(filelist)
 
 
 
@@ -557,7 +978,7 @@ def write_simu_fits(image, filename):
 
     return
 
-def write_intermediate_fits(image, savingprefix, timestep_index):
+def write_intermediate_fits(image, savingprefix, timestep_index, simuPars):
     # Write image for a single time step. Differents spectral orders stored in third dimension
     # of the array. filename is the name of the final product. Intermediate filenames will
     # be forged based on that.
@@ -567,6 +988,10 @@ def write_intermediate_fits(image, savingprefix, timestep_index):
 
     # Create a list of HDU with primary and extension HDUs
     hdu = fits.PrimaryHDU(image)
+    # Add headers
+    hdu.header['XPADDING'] = simuPars.xpadding
+    hdu.header['YPADDING'] = simuPars.ypadding
+    hdu.header['NOVRSAMP'] = simuPars.noversample
 
     # create a directory if it does not yet exists
     if os.path.exists(directory_name) is False:
@@ -637,7 +1062,8 @@ def write_dmsready_fits_init(imagelist, normalization_scale,
 
 
 
-def write_dmsready_fits(image, filename, os=1, input_frame='sim', verbose=True, f277=False):
+def write_dmsready_fits(image, filename, os=1, xpadding=0, ypadding=0,
+                        input_frame='sim', verbose=True, f277=False):
     '''
     This script writes DMS ready fits files. It uses as input a simulated
     noiseless image to which it adds the required minimum set of FITS keywords
@@ -697,7 +1123,9 @@ def write_dmsready_fits(image, filename, os=1, input_frame='sim', verbose=True, 
             print('There is a problem with the image passed to write_dmsread_fits.')
             print('Needs to have 2 to 4 dimensions.')
             sys.exit()
-        # Reset the dimx, dimy parameters now that all is in native pixel size
+        # Now that data is in native pixels, remove the padding
+        data = data[:,:,ypadding:-ypadding,xpadding:-xpadding]
+        # Reset the dimx, dimy parameters now that all is in native pixel size, unpadded
         nint, ngroup, dimy, dimx = np.shape(data)
     else:
         print('The oversampling of the input image should be 1 or higher integer. Stop')
@@ -838,6 +1266,7 @@ def write_dmsready_fits(image, filename, os=1, input_frame='sim', verbose=True, 
     phdr.set('SUBSIZE2', subsize2, 'Number of pixels in axis 2 direction')
     phdr.set('FASTAXIS', -2, 'Fast readout axis direction')
     phdr.set('SLOWAXIS', -1, 'Slow readout axis direction')
+    phdr.set('SIMOVRSP', int(os), 'Oversampling used in the simulation')
 
     # Create extension HDU
     ext_hdu = fits.ImageHDU(data)
@@ -922,27 +1351,27 @@ def aperture_extract(exposure, x_input, aperture_map, mask=None):
         else:
             #data = np.copy(exposure[:, x])
             data = exposure[:,x]
-        print('exposure', np.shape(exposure))
-        print('exposure[]', np.shape(exposure[n,:,x]))
-        print('data',np.shape(data))
-        # Extract the aperture and mask for that same column
-        box_weights = aperture_map[:, x].copy()
-        mask = mask[:, x].copy()
-        # Initialize the output with nans
-        out = np.ones_like(x) * np.nan
-        # Mask potential nans in data
-        mask_nan = np.isnan(data)
-        # Combine with user specified mask
-        mask = (mask_nan | mask)
-        # Apply to weights
-        box_weights[mask_nan] = np.nan
-        # Normalize considering the masked pixels
-        norm = np.nansum(box_weights**2, axis=0)
-        # Valid columns index
-        idx = norm > 0
-        # Normalize only valid columns
-        out[idx] = np.nansum(box_weights*data, axis=0)[idx]
-        out[idx] /= norm[idx]
+        if False:
+            # Extract the aperture and mask for that same column
+            box_weights = aperture_map[:, x].copy()
+            mask = mask[:, x].copy()
+            # Initialize the output with nans
+            out = np.ones_like(x) * np.nan
+            # Mask potential nans in data
+            mask_nan = np.isnan(data)
+            # Combine with user specified mask
+            mask = (mask_nan | mask)
+            # Apply to weights
+            box_weights[mask_nan] = np.nan
+            # Normalize considering the masked pixels
+            norm = np.nansum(box_weights**2, axis=0)
+            # Valid columns index
+            idx = norm > 0
+            # Normalize only valid columns
+            out[idx] = np.nansum(box_weights*data, axis=0)[idx]
+            out[idx] /= norm[idx]
+        else:
+            out = np.sum(data * aperture_map, axis=0)
 
         flux[n, :] = np.copy(out)
 
@@ -953,7 +1382,7 @@ def aperture_extract(exposure, x_input, aperture_map, mask=None):
 
 
 
-def box_aperture(exposure, x_index, y_index, box_width=None):
+def box_aperture(exposure, x_index, y_index, box_width=None, os=1):
     '''
     Creates a 2D image representing the box aperture. Normalized such that
     each column adds to 1.
@@ -968,7 +1397,7 @@ def box_aperture(exposure, x_index, y_index, box_width=None):
     #TODO: Check that the output aperture is centered on the trace center, not 1 pixel off.
 
     if box_width is None:
-        box_width = 30
+        box_width = 30*os
 
     # Check that requested x position indices are integers
     if all(i % 1 == 0 for i in x_index):
@@ -1009,7 +1438,7 @@ def box_aperture(exposure, x_index, y_index, box_width=None):
     # Keep min weight
     weights = weights.min(axis=-1)
     # Normalize
-    weights /= weights.sum(axis=0)
+    #weights /= weights.sum(axis=0)
     # Return with the same shape as aperture and
     # with zeros where the aperture is not define
     out = np.zeros(shape, dtype=float)
@@ -1018,6 +1447,22 @@ def box_aperture(exposure, x_index, y_index, box_width=None):
     out = np.fliplr(out)
 
     return out
+
+def elecflux_to_flambda(flux, wavelength, area=25.0, gain=1.6):
+
+    # From flux [adu/pixel/sec] to Flambda [J/sec/m2/um]
+    h = 6.62606957e-34
+    c = 3e+8
+    #gain = 1.6 # e-/adu
+    #Area = 25.0 # m2
+    Eph = h * c / (wavelength*1e-6) # J/photon
+    dispersion = np.zeros_like(wavelength) # um/pixel
+    dispersion[1:] = np.abs(wavelength[1:]-wavelength[0:-1])
+    dispersion[0] = dispersion[1]
+    Flambda = flux * gain * Eph / area / dispersion
+
+    return Flambda
+
 
 def write_spectrum(wavelength, delta_wave, MJD, integtime, flux, flux_err, fitsname):
     '''
@@ -1100,7 +1545,7 @@ class PlanetSpectrum:
 
         self.wavelength_um = np.array(f["wave"])
         self.dppm = np.array(f["dppm"])
-        self.rprs = np.sqrt(np.array(f["dppm"]))
+        self.rprs = np.sqrt(np.array(f["dppm"]) * 1e-6)
 
         # define res_power the way it is in scarlet
         ind = 3

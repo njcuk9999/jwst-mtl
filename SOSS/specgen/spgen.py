@@ -10,7 +10,7 @@ import scipy.signal
 import tfit5 #Fortran routine for fastest transitmodel ever
 import binmodels_py as bm #Fortran routine for speedy resampling of data
 
-import tracepol as tp
+import trace.tracepol as tp
 
 import specgen.synthesizeMagnitude as smag
 
@@ -41,6 +41,8 @@ class ModelPars:
     granularity='FRAME' # FRAME or INTEGRATION, an image is created at each XXX
     xout=2048  #dispersion axis
     yout=256   #spatial axis
+    xpadding=0 # padding in native pixels on left and right of actual image
+    ypadding=0 # padding above and below
     noversample=1 #oversampling
     gain=1.6 # electronic gain [e-/adu]
     saturation=65536.0 #saturation
@@ -130,6 +132,10 @@ def read_pars(filename,pars):
                         pars.xout = int(np.float(columns[1]))
                     elif command == 'yout':
                         pars.yout = int(np.float(columns[1]))
+                    elif command == 'xpadding':
+                        pars.xpadding = int(np.float(columns[1]))
+                    elif command == 'ypadding':
+                        pars.ypadding = int(np.float(columns[1]))
                     elif command == 'xcoo':
                         pars.xcoo = np.float(columns[1])
                     elif command == 'ycoo':
@@ -858,8 +864,8 @@ def get_dw(starmodel_wv,planetmodel_wv,pars,tracePars):
     
     return dw,dwflag
 
-def resample_models(dw,starmodel_wv,starmodel_flux,ld_coeff,\
-    planetmodel_wv,planetmodel_rprs,pars,tracePars):
+def resample_models(dw, starmodel_wv, starmodel_flux, ld_coeff,
+                    planetmodel_wv, planetmodel_rprs, pars, tracePars):
     """Resamples star and planet model onto common grid.
 
     Usage:
@@ -919,11 +925,11 @@ def resample_models(dw,starmodel_wv,starmodel_flux,ld_coeff,\
     bin_planetmodel_rprs = bin_planetmodel_rprs[ind]
     bin_ld_coeff = bin_ld_coeff[ind]
 
-    return bin_starmodel_wv,bin_starmodel_flux,bin_ld_coeff,bin_planetmodel_wv,bin_planetmodel_rprs
+    return bin_starmodel_wv, bin_starmodel_flux, bin_ld_coeff, bin_planetmodel_wv, bin_planetmodel_rprs
 
 
-def resample_models_old(dw,starmodel_wv,starmodel_flux,ld_coeff,\
-    planetmodel_wv,planetmodel_rprs,pars,tracePars):
+def resample_models_old(dw, starmodel_wv, starmodel_flux, ld_coeff,
+                        planetmodel_wv, planetmodel_rprs, pars, tracePars):
 
     wv1=p2w(tracePars,pars.xout+1,1,1)
     wv2=p2w(tracePars,0,1,1)
@@ -977,7 +983,8 @@ def resample_models_old(dw,starmodel_wv,starmodel_flux,ld_coeff,\
     #bin_planetmodel_wv=np.array(bin_planetmodel_wv)
     #bin_planetmodel_rprs=np.array(bin_planetmodel_rprs)
     
-    return bin_starmodel_wv,bin_starmodel_flux,bin_ld_coeff,bin_planetmodel_wv,bin_planetmodel_rprs
+    return bin_starmodel_wv, bin_starmodel_flux, bin_ld_coeff, bin_planetmodel_wv, bin_planetmodel_rprs
+
 
 def readkernels(psfdir, wls=0.5, wle=5.2, dwl=0.05, os=1):
     """ kernels=readkernels(wls=0.5,wle=5.2,dwl=0.05,Kerneldir='Kernel',os=1)
@@ -1070,8 +1077,15 @@ def gen_unconv_image(pars,response,bin_starmodel_wv,bin_starmodel_flux,bin_ld_co
     for k in range(bin_starmodel_wv.shape[0]):
 
         w=bin_starmodel_wv[k]
-        i=w2p(tracePars,w,pars.noversample,spectral_order)
-        j=ptrace(tracePars,i,pars.noversample,spectral_order)
+        #i=w2p(tracePars,w,pars.noversample,spectral_order)
+        #j=ptrace(tracePars,i,pars.noversample,spectral_order)
+        i, j, mask = tp.wavelength_to_pix(w / 10000, tracePars, m=spectral_order, frame='sim',
+                                          oversample=pars.noversample, subarray='SUBSTRIP256')
+
+        # ipad,jpad are the coordinates in the padded image (dimy+2*spatpad, dimx+2*specpad)
+        specpad, spatpad = 20, 35
+        ipad = i + specpad
+        jpad = j + spatpad
 
         if (i<=xmax+1) & (i>=0) & (j<=ymax+1) & (j>=0): #check if pixel is on grid
 
@@ -1085,6 +1099,7 @@ def gen_unconv_image(pars,response,bin_starmodel_wv,bin_starmodel_flux,bin_ld_co
             pixels=addflux2pix(i,j,pixels,flux)
             
     return pixels
+
 
 
 def convolve_1wv(pixels_t,kernel_resize,kernels_wv,wv_idx,pars,norder,tracePars,dwl=0.05):

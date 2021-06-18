@@ -457,6 +457,47 @@ def wavelength_to_pix(wavelength, tracepars, m=1, frame='dms', subarray='SUBSTRI
     return specpix, spatpix, mask
 
 
+
+
+
+def specpix_to_wavelength_new(specpix, tracepars, m=1, frame='dms', oversample=1):
+    """Convert the spectral pixel coordinate to wavelength for order m.
+
+    :param specpix: the pixel values.
+    :param tracepars: the trace polynomial solutions returned by get_tracepars.
+    :param m: the spectral order.
+    :param oversample: the oversampling factor of the input coordinates.
+
+    :type specpix: array[float]
+    :type tracepars: dict
+    :type m: int
+    :type frame: str
+    :type oversample: int
+
+    :returns: wavelength - an array containing the wavelengths corresponding to specpix,
+    mask - an array that is True when the specpix values were within the valid range of the polynomial.
+    :rtype: Tuple(array[float], array[bool])
+    """
+    # Convert wavelength to nat pixel coordinates.
+    w2spec = Legendre(tracepars[m]['spec_coef'], domain=tracepars[m]['spec_domain'])
+    #w2spat = Legendre(tracepars[m]['spat_coef'], domain=tracepars[m]['spat_domain']) - not used
+
+    # Do the forward transformation on the widest range of wavelengths
+    wavelength_generic = np.linspace(0.4,5.5,51001)
+    # Apply the transformation on these wavelengths
+    specpix_nat = w2spec(np.log(wavelength_generic))
+    #spatpix_nat = w2spat(np.log(wavelength_generic)) - not used
+
+    # Interpolate the wide range of wavelengths to the ones actually requested
+    wavelength = np.interp(specpix / oversample, specpix_nat, wavelength_generic)
+    mask = bounds_check(np.log(wavelength), tracepars[m]['spec_domain'][0], tracepars[m]['spec_domain'][1])
+
+    return wavelength, mask
+
+
+
+
+
 def specpix_to_wavelength(specpix, tracepars, m=1, frame='dms', oversample=1):
     """Convert the spectral pixel coordinate to wavelength for order m.
 
