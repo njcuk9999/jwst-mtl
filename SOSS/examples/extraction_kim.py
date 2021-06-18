@@ -188,7 +188,7 @@ m_order = 0  # Order - 1
 # CHOOSE oversample : Comment files not used
 """
 #oversample = 1
-noisy_rateints = fits.open("/home/kmorel/ongenesis/jwst-user-soss/oversampling_1/test_clear_noisy_rateints.fits")
+#noisy_rateints = fits.open("/home/kmorel/ongenesis/jwst-user-soss/oversampling_1/test_clear_noisy_rateints.fits")
 clear = fits.open("/home/kmorel/ongenesis/jwst-user-soss/tmp/oversampling_1/clear_000000.fits")
 clear = clear[0].data
 """
@@ -200,7 +200,7 @@ clear = clear[0].data
 #noisy_rateints = fits.open("/home/kmorel/ongenesis/jwst-user-soss/oversampling_4/test_clear_noisy_rateints.fits")
 #clear_00 = fits.open("/home/kmorel/ongenesis/jwst-user-soss/tmp/oversampling_4/clear_000000.fits")
 #oversample = 2
-noisy_rateints = fits.open("/home/kmorel/ongenesis/jwst-user-soss/oversampling_2/test_clear_noisy_rateints.fits")
+#noisy_rateints = fits.open("/home/kmorel/ongenesis/jwst-user-soss/oversampling_2/test_clear_noisy_rateints.fits")
 clear_00 = fits.open("/home/kmorel/ongenesis/jwst-user-soss/tmp/oversampling_2/clear_000000.fits")
 clear = np.empty(shape=(3,256,2048))
 for i in range(len(clear_00[0].data)):
@@ -209,6 +209,7 @@ for i in range(len(clear_00[0].data)):
 
 # Images
 # With noise
+"""
 im_adu_noisy = noisy_rateints[1].data[m_order]  # Image of flux [adu/s]
 delta = noisy_rateints[2].data[m_order]   # Error [adu/s]
 dq = noisy_rateints[3].data[m_order]  # Data quality
@@ -216,29 +217,29 @@ dq = noisy_rateints[3].data[m_order]  # Data quality
 i = np.where(dq %2 != 0)
 im_adu_noisy[i[0],i[1]] = 0
 delta[i[0],i[1]] = 0
-
+"""
 # Without noise
 # Order 1 only
 m1_clear_adu = clear[m_order]  # [adu/s]
-m1_clear_adu = np.flipud(m1_clear_adu)  # Flip image
+#m1_clear_adu = np.flipud(m1_clear_adu)  # Flip image
 
 # Order 1 from all orders added
 tot_clear_adu = np.sum(clear,axis=0)   # Sum all traces [adu/s]
-tot_clear_adu = np.flipud(tot_clear_adu)  # Flip image
+#tot_clear_adu = np.flipud(tot_clear_adu)  # Flip image
 
 
 # EXTRACTIONS
 # Extracted flux of noisy image
+"""
 flamb_noisy_energy = f_lambda(x, im_adu_noisy, w, y)   # [J/s/m²/um]
 sigma_flamb_noisy_ener = sigma_flambda(x, delta, w, y)   # [J/s/m²/um]
 flamb_noisy_elec = flambda_elec(x, im_adu_noisy, y) * tint  # [e⁻/colonne]
-w_median = wl_median(w, x)  # Array of wavelengths when using median filter [um]
 flamb_noisy_median = median_filter(flamb_noisy_elec)  # Application of median filter [e⁻/colonne]
 flamb_noisy_normal = flamb_noisy_elec[length//2:-length//2] / flamb_noisy_median   # Normalization
 std_noisy_normal = np.std(flamb_noisy_normal)   # Standard deviation
 print("Standard deviation (noisy, normalized) =", std_noisy_normal)
-
-
+"""
+w_median = wl_median(w, x)  # Array of wavelengths when using median filter [um]
 # Extracted flux of clear, order 1 trace only
 flamb_m1clear_energy = f_lambda(x, m1_clear_adu, w, y)   # [J/s/m²/um]
 flamb_m1_inf_radi_ener = flambda_inf_radi(m1_clear_adu, w)   # With infinite radius [J/s/m²/um]
@@ -315,12 +316,13 @@ std_totclear = np.array([std_totclear_os1, std_totclear_os2, std_totclear_os4, s
 # GRAPHICS
 
 # Images of traces
+"""
 plt.figure(1)
 plt.plot(x, y, color="r", label="Order 1 trace's position")   # Middle position of order 1 trace
 plt.imshow(im_adu_noisy, vmin=0, vmax=1000, origin="lower")   # Image of traces
 plt.title("test_clear_noisy_rateints.fits")
 plt.legend(), plt.show()
-
+"""
 plt.figure(2)
 plt.imshow(m1_clear_adu, vmin=0, vmax=3000, origin="lower")
 plt.plot(x, y, color="r", label="Order 1 trace's position")
@@ -336,7 +338,7 @@ plt.legend(), plt.show()
 
 # Extracted flux [J/s/m²/um]
 start, end = 7, -7   # To avoid problems with the extremities
-
+"""
 plt.figure(4)
 plt.errorbar(w[start:end], flamb_noisy_energy[start:end], yerr=sigma_flamb_noisy_ener[start:end], lw=1, elinewidth=1,
              color="HotPink", ecolor='r')
@@ -344,7 +346,7 @@ plt.xlabel(r"Wavelength [$\mu$m]")
 plt.ylabel(r"Flux [J s⁻¹ m⁻² $\mu$m⁻¹]")
 plt.title("Extracted flux of order 1 from noisy traces")
 plt.show()
-
+"""
 plt.figure(5)
 plt.plot(w[start:end], flamb_m1clear_energy[start:end], lw=1, color='r',
          label = "Extracted flux of clear order 1 trace")
@@ -410,7 +412,7 @@ plt.ylabel(r"Flux [e$^-$/colonne]")
 plt.xlabel(r"Wavelength [$\mu$m]")
 plt.title(r"Flux in e$^-$/colonne normalized by median filter \n(clear_000000.fits, order 1 from total)")
 plt.show()
-
+"""
 plt.figure(12)
 plt.plot(w[start:end], flamb_noisy_elec[start:end], lw=1, color="HotPink", label="Data", zorder=0)
 plt.plot(w_median, flamb_noisy_median, lw=1, color="Lime", label="Median filter applied", zorder=5)
@@ -425,7 +427,7 @@ plt.ylabel(r"Flux [e$^-$/colonne]")
 plt.xlabel(r"Wavelength [$\mu$m]")
 plt.title(r"Flux in e$^-$/colonne normalized by median filter (test_clear_noisy_rateints.fits)")
 plt.show()
-"""
+
 plt.figure(14)
 plt.scatter(os, std_m1clear, color='b')
 #plt.scatter(os, std_totclear, s=5, color='r', label = "Order 1 from total clear traces")
