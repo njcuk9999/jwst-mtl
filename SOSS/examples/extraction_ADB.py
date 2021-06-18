@@ -120,7 +120,7 @@ simuPars = spgen.read_pars(pathPars.simulationparamfile, simuPars) #read in para
 
 # Read relevant files
 # List of orders to consider in the extraction
-order_list = [1,2]
+order_list = [1] #,2]
 
 #### Wavelength solution ####
 # _adb : Antoine's files
@@ -161,7 +161,6 @@ spat_pros = spat_pros_clear  # or new_spat_la    # or spat_pros_adb
 wave_maps = [wv.astype('float64') for wv in wave_maps]
 spat_pros = [p_ord.astype('float64') for p_ord in spat_pros]
 
-
 #### Throughputs ####
 thrpt_list = [ThroughputSOSS(order) for order in order_list]   # Has been changed to 1 everywhere in throughput.py  K.M.
 
@@ -199,7 +198,7 @@ params = {}
 bkgd_noise = 20.  # In counts?
 
 # Wavelength extraction grid oversampling.
-params["n_os"] = 1
+params["n_os"] = 5
 
 # Threshold on the spatial profile.
 # Only pixels above this threshold will be used for extraction. (for at least one order)
