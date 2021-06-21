@@ -232,7 +232,7 @@ def _validate_inputs(etrace):
         subarray = 'SUBSTRIP96'
         # Fail if user wants to create reference files with a SUBSTRIP96
         # exposure. Use a SUBSTRIP256 for this.
-        if etrace.oversample != 1 or etrace.pad != 0:
+        if etrace.oversample != 1 or etrace.pad != (0, 0):
             errmsg = 'The creation of reference files is not supported for \
 SUBSTRIP96. Please use a SUBSTRIP256 observation instead.'
             raise NotImplementedError(errmsg)

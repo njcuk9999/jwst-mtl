@@ -50,7 +50,7 @@ class Empirical_Trace():
         Uncontaminated second order trace profile.
     '''
 
-    def __init__(self, clear, F277W, badpix_mask, pad=0, oversample=1,
+    def __init__(self, clear, F277W, badpix_mask, pad=(0, 0), oversample=1,
                  verbose=0):
 
         # Initialize input attributes.

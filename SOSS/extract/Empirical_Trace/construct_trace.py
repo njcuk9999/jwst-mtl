@@ -15,12 +15,12 @@ import numpy.ma as ma
 from scipy.optimize import minimize
 from tqdm import tqdm
 import warnings
+from SOSS.dms.soss_solver import _chi_squared, transform_coords
+from SOSS.dms.soss_centroids import get_soss_centroids
 from SOSS.extract import soss_read_refs
 from SOSS.extract.empirical_trace import plotting
 from SOSS.extract.empirical_trace import _calc_interp_coefs
 from SOSS.extract.empirical_trace import utils
-from SOSS.extract.simple_solver import simple_solver as ss
-from SOSS.trace import contaminated_centroids as ctd
 
 warnings.simplefilter(action='ignore', category=RuntimeWarning)
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -114,7 +114,7 @@ def build_empirical_trace(clear, F277W, badpix_mask, subarray, pad, oversample,
     # edgetrig method.
     if verbose != 0:
         print('  Getting trace centroids...')
-    centroids = ctd.get_soss_centroids(clear, subarray=subarray)
+    centroids = get_soss_centroids(clear, mask=badpix_mask, subarray=subarray)
     # For SUBSTRIP96, the edgetrig method cannot find the second and third
     # order centroids. Use the simple solver method instead.
     if subarray == 'SUBSTRIP96':
@@ -904,8 +904,8 @@ def get_substrip96_centroids(centroids):
     # Fit reference file centroids to the data to determine necessary rotation
     # and offsets.
     guess_params = (0.15, 1, 1)
-    lik_args = (xcen_ref, ycen_ref, xcen_dat, ycen_dat, 'SUBSTRIP96')
-    fit = minimize(ss._chi_squared, guess_params, lik_args).x
+    lik_args = (xcen_ref, ycen_ref, xcen_dat, ycen_dat)
+    fit = minimize(_chi_squared, guess_params, lik_args).x
     rot_ang, x_shift, y_shift = fit
 
     # Transform centroids to detector frame for orders 2 and 3.
@@ -918,13 +918,14 @@ def get_substrip96_centroids(centroids):
         xcen_ref = xcen_ref[inds]
         ycen_ref = ttab_file('Y', subarray='SUBSTRIP96', order=2)[1][inds]
         # Transform reference centroids to the data frame.
-        # Bound using the SUBSTRIP256 such that the centroids are bounded in
-        # the spectral direction, but extend beyond the spatial axis.
-        rot_x, rot_y = ss.rot_centroids(rot_ang, x_shift, y_shift, xcen_ref,
-                                        ycen_ref, subarray='SUBSTRIP256')
+        rot_x, rot_y = transform_coords(rot_ang, x_shift, y_shift, xcen_ref,
+                                        ycen_ref)
+        # Ensure there is a y-centroid for every x-pixel (even if they extend
+        # off of the detector).
+        rot_y = np.interp(np.arange(2048), rot_x[::-1], rot_y[::-1])
         # Add the transformed centroids to the centroid dict.
         tmp = {}
-        tmp['X centroid'], tmp['Y centroid'] = rot_x, rot_y
+        tmp['X centroid'], tmp['Y centroid'] = np.arange(2048), rot_y
         centroids['order {}'.format(order)] = tmp
 
     return centroids
