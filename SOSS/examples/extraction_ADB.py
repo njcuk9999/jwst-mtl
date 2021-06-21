@@ -120,7 +120,7 @@ simuPars = spgen.read_pars(pathPars.simulationparamfile, simuPars) #read in para
 
 # Read relevant files
 # List of orders to consider in the extraction
-order_list = [1] #,2]
+order_list = [1]  #,2]
 
 #### Wavelength solution ####
 # _adb : Antoine's files
@@ -175,7 +175,7 @@ path.append("Fake_data")
 
 # Load a simulation
 simu = load_simu("/home/kmorel/ongenesis/github/jwst-mtl/SOSS/Fake_data/phoenix_teff_02300_scale_1.0e+02.fits")
-clear_00 = fits.open("/home/kmorel/ongenesis/jwst-user-soss/tmp/oversampling_2/clear_000000.fits")
+clear_00 = fits.open("/home/kmorel/ongenesis/jwst-user-soss/tmp/oversampling_10/clear_000000.fits")
 data_clear = np.empty(shape=(2,256,2048))
 for i in range(len(clear_00[0].data)-1):
     data_clear[i] = soss.rebin(clear_00[0].data[i],simuPars.noversample)
@@ -184,7 +184,7 @@ for i in range(len(clear_00[0].data)-1):
 # Orders 1 and 2 summed up
 #data = data_clear[0]   # Order 1 only
 data = np.sum(data_clear,axis=0)   # Sum all traces [adu/s]
-data = np.flipud(data)  # Flip image
+#data = np.flipud(data)  # Flip image
 
 plt.figure()
 plt.imshow(data, origin="lower")

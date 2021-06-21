@@ -195,13 +195,13 @@ clear = clear[0].data
 #"""
 #oversample = 10
 #noisy_rateints = fits.open("/home/kmorel/ongenesis/jwst-user-soss/oversampling_10/test_clear_noisy_rateints.fits")
-#clear_00 = fits.open("/home/kmorel/ongenesis/jwst-user-soss/tmp/oversampling_10/clear_000000.fits")
+clear_00 = fits.open("/home/kmorel/ongenesis/jwst-user-soss/tmp/oversampling_10/clear_000000.fits")
 #oversample = 4
 #noisy_rateints = fits.open("/home/kmorel/ongenesis/jwst-user-soss/oversampling_4/test_clear_noisy_rateints.fits")
 #clear_00 = fits.open("/home/kmorel/ongenesis/jwst-user-soss/tmp/oversampling_4/clear_000000.fits")
 #oversample = 2
 #noisy_rateints = fits.open("/home/kmorel/ongenesis/jwst-user-soss/oversampling_2/test_clear_noisy_rateints.fits")
-clear_00 = fits.open("/home/kmorel/ongenesis/jwst-user-soss/tmp/oversampling_2/clear_000000.fits")
+#clear_00 = fits.open("/home/kmorel/ongenesis/jwst-user-soss/tmp/oversampling_2/clear_000000.fits")
 clear = np.empty(shape=(3,256,2048))
 for i in range(len(clear_00[0].data)):
     clear[i] = soss.rebin(clear_00[0].data[i],simuPars.noversample)

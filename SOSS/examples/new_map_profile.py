@@ -21,15 +21,15 @@ simuPars = spgen.ModelPars()              #Set up default parameters
 simuPars = spgen.read_pars(pathPars.simulationparamfile, simuPars) #read in parameter file
 
 
-clear_00 = fits.open("/home/kmorel/ongenesis/jwst-user-soss/tmp/oversampling_2/clear_000000.fits")
+clear_00 = fits.open("/home/kmorel/ongenesis/jwst-user-soss/tmp/oversampling_10/clear_000000.fits")
 clear = np.empty(shape=(3,256,2048))
 map_clear = np.empty_like(clear)
 for i in range(len(clear_00[0].data)):
     clear[i] = soss.rebin(clear_00[0].data[i],simuPars.noversample)
     sum_col = np.sum(clear[i], axis=0)
     map_clear[i] = clear[i] / sum_col
-    map_clear[i,:,1790:] = 0
-    map_clear[i] = np.flipud(map_clear[i])  # Flip image
+    #map_clear[i] = np.flipud(map_clear[i])  # Flip image
+map_clear[1,:,1790:] = 0
 
 # Save map_profile
 hdu = fits.PrimaryHDU(map_clear)
