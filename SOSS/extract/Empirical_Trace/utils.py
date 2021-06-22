@@ -193,6 +193,34 @@ def _robust_polyfit(x, y, p0):
     return res.x
 
 
+def _sigma_clip(xdata, ydata):
+    '''Perform rough sigma clipping on data top remove 5-sigma outliers.
+
+    Parameters
+    ----------
+    xdata : list
+        Independent varible.
+    ydata : list
+        Dependent variable.
+
+    Returns
+    -------
+    xdata : np.array
+        Independent variable, sigma clipped.
+    ydata : np.array
+        Dependent variable, sigma clipped.
+    '''
+
+    xdata, ydata = np.atleast_1d(xdata), np.atleast_1d(ydata)
+    # Get mean and standard deviation.
+    mean = np.mean(ydata)
+    std = np.std(ydata)
+    # Points which are >5-sigma deviant.
+    inds = np.where(np.abs(ydata - mean) < 5*std)
+
+    return xdata[inds], ydata[inds]
+
+
 def _validate_inputs(etrace):
     '''Validate the input parameters for the empirical trace construction
     module, and determine the correct subarray for the data.

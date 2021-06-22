@@ -590,7 +590,7 @@ def construct_order2(clear, order1_rescale, ycens, pad=0, verbose=0):
     o2frame = np.zeros((dimy, dimx))
 
     # ========= RECONSTRUCT SECOND ORDER WINGS =========
-    # Determine a coeficient to rescale the first order profile to the flux
+    # Determine a coefficient to rescale the first order profile to the flux
     # level of the second order at the same wavelength. Since the
     # wavelengths are the same, we can assume that the spatial profiles are
     # also the same. Thus, use the first order wings to reconstruct the
@@ -599,7 +599,7 @@ def construct_order2(clear, order1_rescale, ycens, pad=0, verbose=0):
         print('   Reconstructing oversubtracted wings...', flush=True)
     disable = utils._verbose_to_bool(verbose)
     for o2pix in tqdm(range(dimx), disable=disable):
-        # Get the wavelenegth for to each column in order 2.
+        # Get the wavelength for each column in order 2.
         o2wave = np.polyval(pp_w2, o2pix)
         # Find the corresponding column in order 1.
         o1pix = int(round(np.polyval(pp_p, o2wave), 0))
@@ -656,7 +656,7 @@ def construct_order2(clear, order1_rescale, ycens, pad=0, verbose=0):
         # Rescale the first order profile to the flux level of order 2.
         o1prof = order1_rescale[:, o1pix]*k
         if marker is True:
-            ks.append(k)
+            ks.append(k[0])
             pixs.append(o2pix)
 
         # === RECONSTRUCT SPATIAL PROFILE ===
@@ -689,9 +689,13 @@ def construct_order2(clear, order1_rescale, ycens, pad=0, verbose=0):
     # ========= CORRECT OVERSUBTRACTED COLUMNS =========
     # Deal with notdone columns: columns who's scaling coef was <= 0 due to
     # oversubtraction of the first order.
+    pixs, ks = np.array(pixs), np.array(ks)
+    # Rough sigma clip of huge outliers.
+    pixs, ks = utils._sigma_clip(pixs, ks)
     # Fit a polynomial to all positive scaling coefficients, and use the fit to
     # interpolate the correct scaling for notdone columns.
     pp_k = np.polyfit(pixs, ks, 11)
+    pp_k = utils._robust_polyfit(pixs, ks, pp_k)
     # Plot the results if necessary.
     if verbose == 3:
         plotting._plot_scaling_coefs(pixs, ks, pp_k)
@@ -702,6 +706,9 @@ def construct_order2(clear, order1_rescale, ycens, pad=0, verbose=0):
         # Get the order 2 wavelength and corresponding order 1 column.
         o2wave = np.polyval(pp_w2, o2pix)
         o1pix = int(round(np.polyval(pp_p, o2wave), 0))
+        # If order 1 pixel is off of the detector, use trailing blue profile.
+        if o1pix >= 2048:
+            o1pix = o1pix_r
         # Interpolate the appropriate scaling coefficient.
         k = np.polyval(pp_k, o2pix)
         # Rescale the order 1 profile to the flux level of order 2.
