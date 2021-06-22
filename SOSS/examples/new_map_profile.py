@@ -1,3 +1,5 @@
+# Creates a map profile from clear_000000.fits image
+
 import numpy as np
 from astropy.io import fits
 import itsosspipeline as soss
@@ -8,7 +10,6 @@ import matplotlib.pyplot as plt
 
 WORKING_DIR = '/home/kmorel/ongenesis/jwst-user-soss/'
 
-#sys.path.insert(0,"/home/kmorel/ongenesis/github/jwst-mtl/SOSS/specgen/utils/")
 sys.path.insert(0,"/genesis/jwst/jwst-ref-soss/fortran_lib/")
 
 # Read in all paths used to locate reference files and directories
@@ -17,27 +18,37 @@ pathPars = soss.paths()
 soss.readpaths(config_paths_filename, pathPars)
 
 # Create and read the simulation parameters
-simuPars = spgen.ModelPars()              #Set up default parameters
-simuPars = spgen.read_pars(pathPars.simulationparamfile, simuPars) #read in parameter file
+simuPars = spgen.ModelPars()              # Set up default parameters
+simuPars = spgen.read_pars(pathPars.simulationparamfile, simuPars) # Read in parameter file
 
 
-clear_00 = fits.open("/home/kmorel/ongenesis/jwst-user-soss/tmp/oversampling_10/clear_000000.fits")
-clear = np.empty(shape=(3,256,2048))
+###############################
+# CHOOSE OVERSAMPLE  !!!
+simuPars.noversample = 10
+###############################
+
+
+clear_00 = fits.open(WORKING_DIR + "tmp/oversampling_{}/clear_000000.fits".format(simuPars.noversample))
+clear = np.empty(shape=(3, 256, 2048))
 map_clear = np.empty_like(clear)
+
 for i in range(len(clear_00[0].data)):
-    clear[i] = soss.rebin(clear_00[0].data[i],simuPars.noversample)
+    if simuPars.noversample == 1:
+        clear[i] = clear_00[0].data[i, 10:266, 10:2058]  # Because of x_padding and y_padding
+    else:
+        clear_i = soss.rebin(clear_00[0].data[i], simuPars.noversample)
+        clear[i] = clear_i[10:266,10:2058]   # Because of x_padding and y_padding
     sum_col = np.sum(clear[i], axis=0)
     map_clear[i] = clear[i] / sum_col
-    #map_clear[i] = np.flipud(map_clear[i])  # Flip image
-map_clear[1,:,1790:] = 0
+
+map_clear[1,:,1790:] = 0  # Problem with end of order 2 trace
+
 
 # Save map_profile
 hdu = fits.PrimaryHDU(map_clear)
-hdu.writeto("/home/kmorel/ongenesis/jwst-user-soss/new_map_profile_clear.fits", overwrite = True)
+hdu.writeto(WORKING_DIR + "new_map_profile_clear_{}.fits".format(simuPars.noversample), overwrite = True)
 
 plt.figure()
 plt.imshow(map_clear[1], origin="lower")
 plt.colorbar()
 plt.show()
-
-# TODO problem with the end of order 2 trace in map_clear

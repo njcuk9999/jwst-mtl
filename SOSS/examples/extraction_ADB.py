@@ -25,16 +25,17 @@ plt.rc('font', size=14)
 plt.rc('image', cmap='inferno')
 plt.rc('lines', lw=2)
 
-#Constants
+# Constants
 h = sc_cst.Planck
 c = sc_cst.speed_of_light
 gain = 1.6
 area = 25.
-radius_pixel = 13
-length = 240
 ng = 3   # NGROUP
 t_read = 5.49   # Reading time [s]
 tint = (ng - 1) * t_read   # Integration time [s]
+
+radius_pixel = 30
+length = 240   # Length of window for median filter  # For oscillations
 
 def photon_energy(wl):
     """
@@ -105,7 +106,6 @@ def flambda_elec(pixels, im_test, y_trace, radius_pixel=radius_pixel, gain=gain)
 
 WORKING_DIR = '/home/kmorel/ongenesis/jwst-user-soss/'
 
-#sys.path.insert(0,"/home/kmorel/ongenesis/github/jwst-mtl/SOSS/specgen/utils/")
 sys.path.insert(0,"/genesis/jwst/jwst-ref-soss/fortran_lib/")
 
 # Read in all paths used to locate reference files and directories
@@ -118,9 +118,18 @@ simuPars = spgen.ModelPars()              #Set up default parameters
 simuPars = spgen.read_pars(pathPars.simulationparamfile, simuPars) #read in parameter file
 
 
+#####################################
+# CHOOSE ORDER   !!!
+m_order = 1  # For now, only option is 1.
+
+# CHOOSE OVERSAMPLE  !!!
+simuPars.noversample = 10
+#####################################
+
+
 # Read relevant files
 # List of orders to consider in the extraction
-order_list = [1]  #,2]
+order_list = [1,2]
 
 #### Wavelength solution ####
 # _adb : Antoine's files
@@ -148,9 +157,9 @@ spat_pros_la = spat[:2,-256:]
 new_spat_la = np.zeros_like(spat_pros_la)
 new_spat_la[:,:162] = spat_pros_la[:,94:]
 hdu = fits.PrimaryHDU(new_spat_la)
-hdu.writeto("/home/kmorel/ongenesis/jwst-user-soss/new_spat_pros.fits", overwrite = True)
+hdu.writeto(WORKING_DIR + "new_spat_pros.fits", overwrite = True)
 # _clear : map created with clear000000.fits directly
-new_spat = fits.getdata("/home/kmorel/ongenesis/jwst-user-soss/new_map_profile_clear.fits")
+new_spat = fits.getdata(WORKING_DIR + "new_map_profile_clear_10.fits")
 spat_pros_clear = new_spat[:2]
 
 # Choose between Loic and Antoine
