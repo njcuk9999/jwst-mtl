@@ -605,7 +605,7 @@ def construct_order2(clear, order1_rescale, ycens, pad=0, verbose=0):
         o1pix = int(round(np.polyval(pp_p, o2wave), 0))
 
         # === FIND CORRECT COLUMNS ===
-        if o1pix < dimx - 1:
+        if o1pix < dimx - 5:
             # Region where wavelengths in order 1 and order 2 overlap.
             # Get throughput for order 1.
             thpt_1i = np.where(thpt_o1[0] >= o2wave)[0][0]
