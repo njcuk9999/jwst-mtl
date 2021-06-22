@@ -236,8 +236,6 @@ def fct_to_array(fct, grid, grid_range, thresh=1e-5, length=None):
         # Weights due to integration (from the convolution)
         weights = trpz_weight(grid, length, out.shape, i_a, i_b)
 
-        return out * weights
-
     elif (length % 2) == 1:  # length needs to be odd
         # Generate a 2D array of the grid iteratively until
         # specified length is reached.
@@ -256,10 +254,10 @@ def fct_to_array(fct, grid, grid_range, thresh=1e-5, length=None):
         # Weights due to integration (from the convolution)
         weights = trpz_weight(grid, length, out.shape, i_a, i_b)
 
-        return out * weights
-
     else:
         raise ValueError("`length` must be odd.")
+
+    return out*weights
 
 
 def cut_ker(ker, n_out=None, thresh=None):
@@ -304,8 +302,8 @@ def cut_ker(ker, n_out=None, thresh=None):
             i_right = np.where(ker[:, -1] >= thresh)[0][-1]
 
             # Make sure it is on the good wing. Take center if not.
-            i_left = np.min([i_left, h_len])
-            i_right = np.max([i_right, h_len])
+            i_left = np.minimum(i_left, h_len)
+            i_right = np.maximum(i_right, h_len)
 
     # Else, unpack n_out
     else:
@@ -318,8 +316,8 @@ def cut_ker(ker, n_out=None, thresh=None):
         # Find the position where to cut the kernel
         # Make sure it is not out of the kernel grid,
         # so i_left >= 0 and i_right <= len(kernel)
-        i_left = np.max([h_len - i_left, 0])
-        i_right = np.min([h_len + i_right, n_ker - 1])
+        i_left = np.maximum(h_len - i_left, 0)
+        i_right = np.minimum(h_len + i_right, n_ker - 1)
 
     # Apply the cut
     for i_k in range(0, i_left):
@@ -366,11 +364,14 @@ def sparse_c(ker, n_k, i_zero=0):
     # Define each diagonal of the sparse convolution matrix
     diag_val, offset = [], []
     for i_ker, i_k_c in enumerate(range(-h_len, h_len+1)):
+
         i_k = i_zero + i_k_c
+
         if i_k < 0:
             diag_val.append(ker[i_ker, -i_k:])
         else:
             diag_val.append(ker[i_ker, :])
+
         offset.append(i_k)
 
     # Build convolution matrix
@@ -434,16 +435,19 @@ def get_c_matrix(kernel, grid, bounds=None, i_bounds=None, norm=True,
     # Define range where the convolution is defined on the grid.
     # If `i_bounds` is not specified, try with `bounds`.
     if i_bounds is None:
+
         if bounds is None:
             a, b = 0, len(grid)
         else:
             a = np.min(np.where(grid >= bounds[0])[0])
             b = np.max(np.where(grid <= bounds[1])[0]) + 1
+
     else:
         # Make sure it is absolute index, not relative
         # So no negative index.
         if i_bounds[1] < 0:
             i_bounds[1] = len(grid) + i_bounds[1]
+
         a, b = i_bounds
 
     # Generate a 2D kernel depending on the input
@@ -451,6 +455,9 @@ def get_c_matrix(kernel, grid, bounds=None, i_bounds=None, norm=True,
         kernel = fct_to_array(kernel, grid, [a, b], **kwargs)
     elif kernel.ndim == 1:
         kernel = to_2d(kernel, grid, [a, b])
+    else:
+        # TODO add other options.
+        pass
 
     # Kernel should now be a 2-D array (N_kernel x N_kc)
 
@@ -461,12 +468,11 @@ def get_c_matrix(kernel, grid, bounds=None, i_bounds=None, norm=True,
     # Apply cut for kernel at boundaries
     kernel = cut_ker(kernel, n_out, thresh_out)
 
-    # Return sparse or not
     if sparse:
-        # Convert to sparse matrix
-        return sparse_c(kernel, len(grid), a)
-    else:
-        return kernel
+        # Convert to a sparse matrix.
+        kernel = sparse_c(kernel, len(grid), a)
+
+    return kernel
 
 
 class WebbKer:
@@ -480,12 +486,12 @@ class WebbKer:
     path = DEF_PATH
     file_frame = DEF_FILE_FRAME
 
-    def __init__(self, wv_map, n_os=10, n_pix=21,
+    def __init__(self, wave_map, n_os=10, n_pix=21,
                  bounds_error=False, fill_value="extrapolate"):
         """
         Parameters
         ----------
-        wv_map: 2d array
+        wave_map: 2d array
             Wavelength map of the detector. Since WebbPSF returns
             kernels in the pixel space, we need a wv_map to convert
             to wavelength space.
@@ -505,45 +511,45 @@ class WebbKer:
         """
 
         # Mask where wv_map is equal to 0
-        wv_map = np.ma.array(wv_map, mask=(wv_map == 0))
+        wave_map = np.ma.array(wave_map, mask=(wave_map == 0))
 
         # Force wv_map to have the red wavelengths
         # at the end of the detector
-        if np.diff(wv_map, axis=-1).mean() < 0:
-            wv_map = np.flip(wv_map, axis=-1)
+        if np.diff(wave_map, axis=-1).mean() < 0:
+            wave_map = np.flip(wave_map, axis=-1)
 
         # Number of columns
-        n_col = wv_map.shape[-1]
+        ncols = wave_map.shape[-1]
 
-        # Create filename
+        # Create filename  # TODO change to CRDS/manual input.
         file = self.file_frame.format(n_os, n_pix)
 
         # Read file
         hdu = fits.open(self.path + file)
         header = hdu[0].header
-        ker, wv_ker = hdu[0].data
+        kernel, wave_kernel = hdu[0].data
 
         # Where is the blue and red end of the kernel
         i_blue, i_red = header["BLUINDEX"], header["REDINDEX"]
 
-        # Flip `ker` to put the red part of the kernel at the end
+        # Flip `ker` to put the red part of the kernel at the end.
         if i_blue > i_red:
-            ker = np.flip(ker, axis=0)
+            kernel = np.flip(kernel, axis=0)
 
-        # Create oversampled pixel position array
+        # Create oversampled pixel position array  # TODO easier to read form?
         pixels = np.arange(-(n_pix//2), n_pix//2 + 1/n_os, 1/n_os)
 
-        # `wv_ker` has only the value of the central wavelength
+        # `wave_kernel` has only the value of the central wavelength
         # of the kernel at each points because it's a function
         # of the pixels (so depends on wv solution).
-        wv_center = wv_ker[0, :]
+        wave_center = wave_kernel[0, :]
 
-        # Let's use the wavelength solution to create a mapping
-        # First find which kernels that falls on the detector
-        wv_min = np.min(wv_map[wv_map > 0])
-        wv_max = np.max(wv_map[wv_map > 0])
-        i_min = np.searchsorted(wv_center, wv_min)
-        i_max = np.searchsorted(wv_center, wv_max) - 1
+        # Use the wavelength solution to create a mapping.
+        # First find the kernels that fall on the detector.
+        wave_min = np.amin(wave_map[wave_map > 0])
+        wave_max = np.amax(wave_map[wave_map > 0])
+        i_min = np.searchsorted(wave_center, wave_min)  # TODO searchsorted has offsets?
+        i_max = np.searchsorted(wave_center, wave_max) - 1
 
         # SAVE FOR LATER ###########
         # Use the next kernels at each extremities to define the
@@ -551,13 +557,13 @@ class WebbKer:
         # RectBivariateSpline (at the end)
         # bbox = [min pixel, max pixel, min wv_center, max wv_center]
         bbox = [None, None,
-                wv_center[np.max([i_min-1, 0])],
-                wv_center[np.min([i_max+1, len(wv_center)-1])]]
+                wave_center[np.maximum(i_min-1, 0)],
+                wave_center[np.minimum(i_max+1, len(wave_center)-1)]]
         #######################
 
-        # Keep only kernels that falls on the detector
-        ker, wv_ker = ker[:, i_min:i_max+1], wv_ker[:, i_min:i_max+1]
-        wv_center = np.array(wv_ker[0, :])
+        # Keep only kernels that fall on the detector.
+        kernel, wave_kernel = kernel[:, i_min:i_max+1], wave_kernel[:, i_min:i_max+1]
+        wave_center = np.array(wave_kernel[0, :])
 
         # Then find the pixel closest to each kernel center
         # and use the surrounding pixels (columns)
@@ -568,31 +574,31 @@ class WebbKer:
         # for oversampling.
         i_surround = np.arange(-(n_pix//2), n_pix//2 + 1)
         poly = []
-        for i_cen, wv_c in enumerate(wv_center):
+        for i_cen, wv_c in enumerate(wave_center):
             wv = np.ma.masked_all(i_surround.shape)
 
             # Closest pixel wv
             i_row, i_col = np.unravel_index(
-                np.argmin(np.abs(wv_map-wv_c)), wv_map.shape
+                np.argmin(np.abs(wave_map - wv_c)), wave_map.shape
             )
             # Update wavelength center value
             # (take the nearest pixel center value)
-            wv_center[i_cen] = wv_map[i_row, i_col]
+            wave_center[i_cen] = wave_map[i_row, i_col]
 
             # Surrounding columns
             index = i_col + i_surround
 
             # Make sure it's on the detector
-            i_good = (index >= 0) & (index < n_col)
+            i_good = (index >= 0) & (index < ncols)
 
             # Assign wv values
-            wv[i_good] = wv_map[i_row, index[i_good]]
+            wv[i_good] = wave_map[i_row, index[i_good]]
 
             # Fit n=1 polynomial
             poly_i = np.polyfit(i_surround[~wv.mask], wv[~wv.mask], 1)
 
             # Project on os pixel grid
-            wv_ker[:, i_cen] = np.poly1d(poly_i)(pixels)
+            wave_kernel[:, i_cen] = np.poly1d(poly_i)(pixels)
 
             # Save coeffs
             poly.append(poly_i)
@@ -600,35 +606,35 @@ class WebbKer:
         # Save attributes
         self.n_pix = n_pix
         self.n_os = n_os
-        self.wv_ker = wv_ker
-        self.ker = ker
+        self.wave_kernel = wave_kernel
+        self.kernel = kernel
         self.pixels = pixels
-        self.wv_center = wv_center
+        self.wave_center = wave_center
         self.poly = np.array(poly)
         self.fill_value = fill_value
         self.bounds_error = bounds_error
 
         # 2d Interpolate
-        self.f_ker = RectBivariateSpline(pixels, wv_center, ker, bbox=bbox)
+        self.f_ker = RectBivariateSpline(pixels, wave_center, kernel, bbox=bbox)
 
-    def __call__(self, wv, wv_c):
+    def __call__(self, wave, wave_c):
         """
         Returns the kernel value, given the wavelength
         and the kernel center wavelength.
 
         Parameters
         ----------
-        wv: 1d array
+        wave: 1d array
             wavelenght where the kernel is projected.
-        wv_c: 1d array (same shape as `wv`)
+        wave_c: 1d array (same shape as `wv`)
             center wavelength of the kernel
         """
 
-        wv_center = self.wv_center
+        wave_center = self.wave_center
         poly = self.poly
         fill_value = self.fill_value
         bounds_error = self.bounds_error
-        n_wv_c = len(wv_center)
+        n_wv_c = len(wave_center)
         f_ker = self.f_ker
         n_pix = self.n_pix
 
@@ -638,7 +644,7 @@ class WebbKer:
         # #################################
 
         # Find corresponding interval
-        i_wv_c = np.searchsorted(wv_center, wv_c) - 1
+        i_wv_c = np.searchsorted(wave_center, wave_c) - 1
 
         # Deal with values out of bounds
         if bounds_error:
@@ -652,9 +658,9 @@ class WebbKer:
             raise ValueError(message.format(fill_value))
 
         # Compute coefficients that interpolate along wv_centers
-        d_wv_c = wv_center[i_wv_c + 1] - wv_center[i_wv_c]
-        a_c = (wv_center[i_wv_c + 1] - wv_c) / d_wv_c
-        b_c = (wv_c - wv_center[i_wv_c]) / d_wv_c
+        d_wv_c = wave_center[i_wv_c + 1] - wave_center[i_wv_c]
+        a_c = (wave_center[i_wv_c + 1] - wave_c) / d_wv_c
+        b_c = (wave_c - wave_center[i_wv_c]) / d_wv_c
 
         # Compute a_pix and b_pix from the equation:
         # pix = a_pix * lambda + b_pix
@@ -663,14 +669,14 @@ class WebbKer:
         b_pix /= (a_c * poly[i_wv_c, 0] + b_c * poly[i_wv_c+1, 0])
 
         # Compute pixel values
-        pix = a_pix * wv + b_pix
+        pix = a_pix * wave + b_pix
 
         # ######################################
         # Second, compute kernel value on the
         # interpolation grid (pixel x wv_center)
         # ######################################
 
-        out = f_ker(pix, wv_c, grid=False)
+        out = f_ker(pix, wave_c, grid=False)
         # Make sure it's not negative
         out[out < 0] = 0
 
@@ -690,13 +696,13 @@ class WebbKer:
         """
 
         # 2D figure of the kernels
-        fig1 = plt.figure(figsize=(4, 4))
+        fig1 = plt.figure()
 
         # Log plot, so clip values <= 0
-        image = np.clip(self.ker, np.min(self.ker[self.ker > 0]), np.inf)
+        image = np.clip(self.kernel, np.min(self.kernel[self.kernel > 0]), np.inf)
 
         # plot
-        plt.pcolormesh(self.wv_center, self.pixels,  image, norm=LogNorm())
+        plt.pcolormesh(self.wave_center, self.pixels,  image, norm=LogNorm())
 
         # Labels and others
         plt.colorbar(label="Kernel")
@@ -706,7 +712,7 @@ class WebbKer:
 
         # 1D figure of all kernels
         fig2 = plt.figure()
-        plt.plot(self.wv_ker, self.ker)
+        plt.plot(self.wave_kernel, self.kernel)
 
         # Labels and others
         plt.ylabel("Kernel")
