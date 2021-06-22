@@ -88,7 +88,7 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
     methods get_w which computes the 'k' associated to each pixel 'i'.
     These depends of the type of interpolation used.
     """
-    def __init__(self, aperture, wave_map, throughput, kernels,
+    def __init__(self, wave_map, aperture, throughput, kernels,  # TODO rename aperture
                  orders=None, global_mask=None,
                  wave_grid=None, wave_bounds=None, n_os=2,
                  threshold=1e-5, c_kwargs=None,
@@ -96,13 +96,13 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
         """
         Parameters
         ----------
-        aperture : (N_ord, N, M) list or array of 2-D arrays
-            A list or array of the spatial profile for each order
-            on the detector. It has to have the same (N, M) as `data`.
         wave_map : (N_ord, N, M) list or array of 2-D arrays
             A list or array of the central wavelength position for each
             order on the detector.
             It has to have the same (N, M) as `data`.
+        aperture : (N_ord, N, M) list or array of 2-D arrays
+            A list or array of the spatial profile for each order
+            on the detector. It has to have the same (N, M) as `data`.
         throughput : (N_ord [, N_k]) list of array or callable
             A list of functions or array of the throughput at each order.
             If callable, the functions depend on the wavelength.
@@ -1637,7 +1637,7 @@ class TrpzOverlap(_BaseOverlap):  # TODO Merge with _BaseOverlap, rename SOSSExt
     of diffraction.
     """
 
-    def __init__(self, aperture, wave_map, *args, **kwargs):
+    def __init__(self, wave_map, aperture, *args, **kwargs):
         """
         Parameters
         ----------
@@ -1699,7 +1699,7 @@ class TrpzOverlap(_BaseOverlap):  # TODO Merge with _BaseOverlap, rename SOSSExt
         self.wave_p, self.wave_m = wave_p, wave_m  # Save values
 
         # Init upper class
-        super().__init__(aperture, wave_map, *args, **kwargs)
+        super().__init__(wave_map, aperture, *args, **kwargs)
 
     def _get_lo_hi(self, grid, i_order):
         """
