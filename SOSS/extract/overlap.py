@@ -10,7 +10,7 @@ from scipy.interpolate import interp1d, Akima1DInterpolator
 from scipy.optimize import minimize_scalar
 
 # Local imports.
-from . import utils, custom_numpy, convolution, regularisation
+from . import utils, convolution, regularisation
 
 # Plotting.
 import matplotlib.pyplot as plt
@@ -1828,7 +1828,7 @@ class TrpzOverlap(_BaseOverlap):  # TODO Merge with _BaseOverlap, rename SOSSExt
         k_last[~cond & ~ma] = hi[~cond & ~ma] + 1
 
         # Generate array of all k_i. Set to -1 if not valid
-        k_n, bad = custom_numpy.arange_2d(k_first, k_last+1, dtype=int)
+        k_n, bad = utils.arange_2d(k_first, k_last+1, dtype=int)
         k_n[bad] = -1
 
         # Number of valid k per pixel
