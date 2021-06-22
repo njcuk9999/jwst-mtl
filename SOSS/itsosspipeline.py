@@ -656,10 +656,19 @@ def loictrace(simuPars, response, bin_models_wv, bin_starmodel_flux, bin_ld_coef
     bin_models_flux = planet_flux_ratio * bin_starmodel_flux * bin_response * bin_quantum_yield
 
 
+
     # Flux along x-axis pixels (in e-/column/s) for all columns
     pixelflux = bin_array(bin_models_wv, bin_models_flux, w, dw, debug=False)
     # Make sure that all flux are finite, or make Nans, zero
     pixelflux[~np.isfinite(pixelflux)] = 0.0
+
+    plt.figure()
+    plt.scatter(bin_models_wv, bin_starmodel_flux, label="bin_starmodel_flux")
+    plt.scatter(bin_models_wv, bin_models_flux, label="bin_models_flux")
+    plt.scatter(np.arange(len(pixelflux)), pixelflux, label="pixelflux")
+    plt.legend()
+    plt.show()
+    sys.exit()
 
     # Now need to distribute this flux along the y-axis using the trace centroid position
     # still want to seed a 1-pixel high trace. But in regions where the curvature is strong,
@@ -797,12 +806,22 @@ def generate_traces(savingprefix, pathPars, simuPars, tracePars, throughput,
         star_angstrom, star_flux, ld_coeff, planet_angstrom, planet_rprs, simuPars,
         tracePars, gridtype='constant_dispersion', dispersion = 0.1, wavelength_start=5000, wavelength_end=55000)
 
+    # Checked and this is absolutely flat, as expected for constant F_lambda
+    # plt.figure()
+    # plt.scatter(star_angstrom_bin, star_flux_bin)
+    # plt.show()
+
     # Convert star_flux to photon flux (which is what's expected for addflux2pix in gen_unconv_image)
     print('Converting F_lambda to photon fluxes (e-/s/m2/ang)')
     h = sc_cst.Planck
     c = sc_cst.speed_of_light
     photon_energy = h * c / (star_angstrom_bin * 1e-10)
     star_flux_bin = star_flux_bin / photon_energy
+
+    # plt.figure()
+    # plt.scatter(star_angstrom_bin, star_flux_bin)
+    # plt.show()
+    # sys.exit()
 
     # Transit model
     print('Setting up Transit Model Parameters')

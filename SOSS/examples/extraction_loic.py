@@ -96,9 +96,9 @@ flux4 = soss.aperture_extract(data4, x4, box_aperture, mask=None)
 Flambda4 = soss.elecflux_to_flambda(flux4, w4)
 
 # convolve binned to native
-data5 = soss.rebin(data1, os1)*12
+data5 = soss.rebin(data1, os1)
 os5 = 1
-method_label5 = 'Noiseless Convolved Trace, grey pixels, rebin from os={:} to native'.format(os5)
+method_label5 = 'Noiseless Convolved Trace, grey pixels, rebin from os={:} to native'.format(os1)
 x5, y5, w5 = readtrace(os5)
 box_aperture = soss.box_aperture(data5, x5, y5, os=os5, box_width=75.0)
 hdu = fits.PrimaryHDU()
@@ -137,8 +137,8 @@ Flambda7 = soss.elecflux_to_flambda(flux7, w7)
 plt.figure()
 plt.plot(w1, Flambda1, label=method_label1)
 plt.plot(w2, Flambda2, label=method_label2)
-plt.plot(w3, Flambda3, label=method_label3)
-plt.plot(w4, Flambda4, label=method_label4)
+#plt.plot(w3, Flambda3, label=method_label3)
+#plt.plot(w4, Flambda4, label=method_label4)
 plt.plot(w5, Flambda5, label=method_label5)
 plt.plot(w6, Flambda6, label=method_label6)
 plt.plot(w7, Flambda7, label=method_label7)
