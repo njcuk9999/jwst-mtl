@@ -7,9 +7,7 @@ from scipy.sparse import diags, identity
 from scipy.sparse.linalg import spsolve
 
 # Local imports.
-from .engine_utils import grid_from_map
 from .convolution import get_c_matrix, NyquistKer
-from .engine_legacy import WebbKer
 
 # Plotting.
 import matplotlib.pyplot as plt
@@ -146,84 +144,6 @@ def get_nyquist_matrix(grid, integrate=True, n_sampling=2,
         t_mat = diags(np.sqrt(d_grid)).dot(t_mat)
 
     return t_mat
-
-
-class TikhoConvMatrix:
-    """
-    Convolution matrix to be used as
-    Tikhonov regularisation matrix.
-    This way, the solution of the system can be
-    deviated towards solutions closed to a solution
-    at a resolution close to `n_os` times the resolution
-    given by the `wv_map`.
-    """
-    def __init__(self, wv_map, psf, n_os=2, thresh=1e-5):
-        """
-        Parameters
-        ----------
-        wv_map : (N, M) 2-D arrays
-            array of the central wavelength position each pixels
-            on the detector. It has to have the same (N, M) as the detector.
-        psf : (N, M) 2-D array
-            array of the spatial profile on the detector.
-            It has to have the same (N, M) as the detector.
-        n_os: int, optional
-            Dictates the resolution of the convolution kernel.
-            The resolution will be `n_os` times the resolution
-            of order 2. Default is 2 times (n_os=2).
-        thresh: float, optional
-            Used to define the maximum length of the kernel.
-            Truncate when kernel < `thresh`. Default is 1e-5
-        """
-        # Save attributes
-        self.wv_map = wv_map
-        self.psf = psf
-        self.n_os = n_os
-        self.thresh = thresh
-
-    def __call__(self, grid):
-        """
-        Return the tikhonov regularisation matrix given
-        a grid (to project the convolution kernels).
-        grid is a 1d array.
-        Returns a sparse matrix.
-        """
-
-        # Get needed attributes
-        gargs = ['wv_map', 'psf', 'n_os', 'thresh']
-        wv_map, psf, n_os, thresh = self.getattrs(*gargs)
-
-        # Generate a fake wv_map to cover all wv_range with a
-        # resolution `t_mat_n_os` times the resolution
-        # of wv_map (generally order 2).
-        wv_range = [grid.min(), grid.max()]
-        wv_map = grid_from_map(wv_map, psf, wv_range=wv_range, n_os=n_os)
-
-        # Build convolution matrix
-        conv_ord2 = get_c_matrix(WebbKer(wv_map[None, :]),
-                                 grid, thresh=thresh)
-
-        # Build tikhonov matrix
-        t_mat = conv_ord2 - identity(conv_ord2.shape[0])
-
-        # The grid may not be evenly spaced, so
-        # add an integration weight
-        d_grid = np.diff(grid)
-        d_grid = np.concatenate([d_grid, [d_grid[-1]]])
-        t_mat = diags(np.sqrt(d_grid)).dot(t_mat)
-
-        return t_mat
-
-    def getattrs(self, *args):
-        """
-        Return list of attributes
-
-        Parameters
-        ----------
-        args: str
-            All attributes to return.
-        """
-        return [getattr(self, arg) for arg in args]
 
 
 def tikho_solve(a_mat, b_vec, t_mat=None, grid=None,
