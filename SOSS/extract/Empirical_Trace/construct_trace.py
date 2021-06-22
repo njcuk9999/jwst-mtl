@@ -18,7 +18,7 @@ from SOSS.trace import tracepol as tp
 from SOSS.extract.empirical_trace import centroid as ctd
 from SOSS.extract.empirical_trace import plotting as plotting
 from SOSS.extract.soss_engine import TrpzOverlap, TrpzBox
-from SOSS.extract.throughput import ThroughputSOSS
+from SOSS.extract.engine_legacy import ThroughputSOSS
 from SOSS.extract.convolution import WebbKer
 
 
