@@ -7,7 +7,7 @@ from scipy.sparse import diags, identity
 from scipy.sparse.linalg import spsolve
 
 # Local imports.
-from .utils import grid_from_map
+from .engine_utils import grid_from_map
 from .convolution import get_c_matrix, NyquistKer
 from .engine_legacy import WebbKer
 

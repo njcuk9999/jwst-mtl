@@ -10,7 +10,7 @@ from scipy.interpolate import interp1d, Akima1DInterpolator, RectBivariateSpline
 from scipy.optimize import minimize_scalar
 
 # Local imports.
-from . import utils, convolution, regularisation
+from . import engine_utils, convolution, regularisation
 
 # Plotting.
 import matplotlib.pyplot as plt
@@ -371,7 +371,7 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
         if wave_grid is None:
 
             if self.n_orders == 2:  # TODO should this be mandatory input.
-                wave_grid = utils.get_soss_grid(wave_map, aperture, n_os=n_os)  # TODO check difference between get_soss_grid and grid_from_map
+                wave_grid = engine_utils.get_soss_grid(wave_map, aperture, n_os=n_os)  # TODO check difference between get_soss_grid and grid_from_map
             else:
                 wave_grid, _ = self.grid_from_map()
 
@@ -695,7 +695,7 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
             n_kc = np.diff(self.i_bounds[i_order]).astype(int)[0]
 
             # Then convert to sparse
-            weights_n = utils.sparse_k(weights_n, k_idx_n, n_kc)
+            weights_n = engine_utils.sparse_k(weights_n, k_idx_n, n_kc)
             weights.append(weights_n), weights_k_idx.append(k_idx_n)
 
         return weights, weights_k_idx
@@ -723,7 +723,7 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
         attrs = ['wave_map', 'aperture']
         wave_map, aperture = self.get_attributes(*attrs, i_order=i_order)
 
-        wave_grid, icol = utils._grid_from_map(wave_map, aperture, out_col=True)
+        wave_grid, icol = engine_utils._grid_from_map(wave_map, aperture, out_col=True)
 
         return wave_grid, icol
 
@@ -781,14 +781,14 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
             fct = interp1d(grid_ord, convolved_spectrum, kind='cubic')
 
             # Find number of nodes to reach the precision
-            n_oversample, _ = utils.get_n_nodes(grid_ord, fct, **kwargs)
+            n_oversample, _ = engine_utils.get_n_nodes(grid_ord, fct, **kwargs)
 
             # Make sure n_oversample is not greater than
             # user's define `n_max`
             n_oversample = np.clip(n_oversample, 0, n_max)
 
             # Generate oversampled grid
-            grid_ord = utils.oversample_grid(grid_ord, n_os=n_oversample)
+            grid_ord = engine_utils.oversample_grid(grid_ord, n_os=n_oversample)
 
             # Keep only wavelength that are not already
             # covered by os_grid.
@@ -1610,7 +1610,7 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
             pix_center, _ = self.grid_from_map(i_order)
 
             # Get pixels borders (plus and minus)
-            pix_p, pix_m = utils.get_wave_p_or_m(pix_center)
+            pix_p, pix_m = engine_utils.get_wave_p_or_m(pix_center)
 
         else:  # Else, unpack grid_pix
 
@@ -1629,7 +1629,7 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
                 pix_center = grid_pix
 
                 # Need to compute the borders
-                pix_p, pix_m = utils.get_wave_p_or_m(pix_center)
+                pix_p, pix_m = engine_utils.get_wave_p_or_m(pix_center)
 
         # Set the throughput to object attribute
         # if not given
@@ -1879,7 +1879,7 @@ class ExtractionEngine(_BaseOverlap):  # TODO Merge with _BaseOverlap?
         # TODO Could also be an input??
         wave_p, wave_m = [], []
         for wave in wave_map:  # For each order
-            lp, lm = utils.get_wave_p_or_m(wave)  # Lambda plus or minus
+            lp, lm = engine_utils.get_wave_p_or_m(wave)  # Lambda plus or minus
             wave_p.append(lp), wave_m.append(lm)
 
         self.wave_p, self.wave_m = wave_p, wave_m  # Save values
@@ -2014,7 +2014,7 @@ class ExtractionEngine(_BaseOverlap):  # TODO Merge with _BaseOverlap?
         k_last[~cond & ~ma] = hi[~cond & ~ma] + 1
 
         # Generate array of all k_i. Set to -1 if not valid
-        k_n, bad = utils.arange_2d(k_first, k_last+1, dtype=int)
+        k_n, bad = engine_utils.arange_2d(k_first, k_last + 1, dtype=int)
         k_n[bad] = -1
 
         # Number of valid k per pixel

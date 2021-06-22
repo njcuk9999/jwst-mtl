@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# TODO rename to extraction_utils.py?
 
 # General imports.
 import numpy as np
