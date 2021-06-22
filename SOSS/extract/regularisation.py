@@ -8,7 +8,8 @@ from scipy.sparse.linalg import spsolve
 
 # Local imports.
 from .utils import grid_from_map
-from .convolution import get_c_matrix, WebbKer, NyquistKer
+from .convolution import get_c_matrix, NyquistKer
+from .engine_legacy import WebbKer
 
 # Plotting.
 import matplotlib.pyplot as plt
