@@ -156,7 +156,6 @@ def build_empirical_trace(clear, F277W, badpix_mask, subarray, pad, oversample,
                                     verbose=verbose)
         if verbose != 0:
             print(' First pass models complete.')
-        return order1_rescale_1, order2_1
 
         # ========= REFINE FIRST PASS MODELS =========
         # Iterate with first estimate solutions to refine cores of each order.
@@ -1440,8 +1439,8 @@ def smooth_spat_discont(o2frame, ycens):
 
 
 def smooth_spec_discont(o2frame, verbose):
-    '''Smooth over streaks (especially in the contaminated region). If the mean
-    flux value of a column is >10% deviant from that of the surrounding
+    '''Smooth over streaks (especially in the contaminated region). If the
+    median flux value of a column is >10% deviant from that of the surrounding
     columns, replace it with the median of its neighbours.
 
     Parameters
@@ -1459,7 +1458,7 @@ def smooth_spec_discont(o2frame, verbose):
     '''
 
     # Get mean flux values for each column.
-    col_mean = np.nanmean(o2frame, axis=0)
+    col_mean = np.nanmedian(o2frame, axis=0)
     # Find where order 2 ends.
     end = np.where(col_mean == 0)[0][0] - 5
     # For each column, find the local mean of the surrounding 6 columns.
