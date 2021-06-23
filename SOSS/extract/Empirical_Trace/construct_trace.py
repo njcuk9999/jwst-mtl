@@ -710,8 +710,10 @@ def construct_order2(clear, order1_rescale, ycens, pad=0, verbose=0):
         # If order 1 pixel is off of the detector, use trailing blue profile.
         if o1pix >= 2048:
             o1pix = o1pix_r
-        # Interpolate the appropriate scaling coefficient.
-        k = np.polyval(pp_k, o2pix)
+            k = ks[-1]
+        else:
+            # Interpolate the appropriate scaling coefficient.
+            k = np.polyval(pp_k, o2pix)
         # Rescale the order 1 profile to the flux level of order 2.
         o1prof = order1_rescale[:, o1pix]*k
         # Get bounds of the order 1 trace core.
