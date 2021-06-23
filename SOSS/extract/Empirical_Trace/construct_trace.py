@@ -695,7 +695,7 @@ def construct_order2(clear, order1_rescale, ycens, pad=0, verbose=0):
     pixs, ks = utils._sigma_clip(pixs, ks)
     # Fit a polynomial to all positive scaling coefficients, and use the fit to
     # interpolate the correct scaling for notdone columns.
-    pp_k = np.polyfit(pixs, ks, 11)
+    pp_k = np.polyfit(pixs, ks, 6)
     pp_k = utils._robust_polyfit(pixs, ks, pp_k)
     # Plot the results if necessary.
     if verbose == 3:
