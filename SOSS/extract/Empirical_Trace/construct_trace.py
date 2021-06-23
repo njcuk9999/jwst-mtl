@@ -156,6 +156,7 @@ def build_empirical_trace(clear, F277W, badpix_mask, subarray, pad, oversample,
                                     verbose=verbose)
         if verbose != 0:
             print(' First pass models complete.')
+        return order1_rescale_1, order2_1
 
         # ========= REFINE FIRST PASS MODELS =========
         # Iterate with first estimate solutions to refine cores of each order.
@@ -1146,9 +1147,11 @@ def reconstruct_wings256(profile, ycens=None, contamination=[2, 3], pad=0,
             newprof = np.concatenate([newprof[:start],
                                       10**np.polyval(pp_r, axis_r)[start:end],
                                       newprof[end:]])
-    # Interpolate nan pixels and negatives.
-    inds5 = np.isnan(newprof)
-    newprof[inds5] = 10**np.polyval(pp_r, axis_r)[inds5]
+    # Interpolate nans and negatives with median of surrounding pixels.
+    for pixel in np.where(np.isnan(newprof))[0]:
+        minp = np.max([pixel-5, 0])
+        maxp = np.min([pixel+5, dimy])
+        newprof[pixel] = np.nanmedian(newprof[minp:maxp])
 
     if smooth is True:
         # Replace highly deviant pixels throughout the wings.
