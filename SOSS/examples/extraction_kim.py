@@ -180,7 +180,7 @@ def wl_median(wl, pixels, length=length):
 WORKING_DIR = '/home/kmorel/ongenesis/jwst-user-soss/'
 
 #sys.path.insert(0,"/home/kmorel/ongenesis/github/jwst-mtl/SOSS/specgen/utils/")
-sys.path.insert(0,"/genesis/jwst/jwst-ref-soss/fortran_lib/")
+sys.path.insert(0, "/genesis/jwst/jwst-ref-soss/fortran_lib/")
 
 # Read in all paths used to locate reference files and directories
 config_paths_filename = os.path.join(WORKING_DIR, 'jwst-mtl_configpath_kim.txt')
@@ -220,12 +220,12 @@ xnew, y, mask = tp.wavelength_to_pix(w, pars, m=1)   # Converts wavelenghths to 
 noisy_rateints = fits.open(WORKING_DIR + "oversampling_{}/test_clear_noisy_rateints.fits".format(simuPars.noversample))
 clear_00 = fits.open(WORKING_DIR + "tmp/oversampling_{}/clear_000000.fits".format(simuPars.noversample))
 if simuPars.noversample == 1:
-    clear = clear_00[0].data[:,10:266, 10:2058]  # Because of x_padding and y_padding
+    clear = clear_00[0].data[:, 10:266, 10:2058]  # Because of x_padding and y_padding
 else:
     clear = np.empty(shape=(3,256,2048))
     for i in range(len(clear_00[0].data)):
         clear_i = soss.rebin(clear_00[0].data[i], simuPars.noversample)
-        clear[i] = clear_i[10:266,10:2058]  # Because of x_padding and y_padding
+        clear[i] = clear_i[10:266, 10:2058]  # Because of x_padding and y_padding
 
 
 # Images

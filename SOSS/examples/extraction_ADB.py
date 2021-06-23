@@ -119,11 +119,11 @@ simuPars = spgen.read_pars(pathPars.simulationparamfile, simuPars) #read in para
 
 
 #####################################
-# CHOOSE ORDER   !!!
+# CHOOSE ORDER (for box extraction)   !!!
 m_order = 1  # For now, only option is 1.
 
 # CHOOSE OVERSAMPLE  !!!
-simuPars.noversample = 10
+simuPars.noversample = 4
 #####################################
 
 
@@ -136,11 +136,11 @@ order_list = [1,2]
 wave_maps_adb = []
 wave_maps_adb.append(fits.getdata("/home/kmorel/ongenesis/github/jwst-mtl/SOSS/extract/Ref_files/wavelengths_m1.fits"))
 wave_maps_adb.append(fits.getdata("/home/kmorel/ongenesis/github/jwst-mtl/SOSS/extract/Ref_files/wavelengths_m2.fits"))
-i_zero = np.where(wave_maps_adb[1][0] == 0.)[0][0]
+i_zero = np.where(wave_maps_adb[1][0] == 0.)[0][0]   # Where Antoine put 0 in his 2nd order wl map
 # _la : Loic's files
 wave = fits.getdata("/genesis/jwst/userland-soss/loic_review/refs/map_wave_2D_native.fits")
-wave[1,:,i_zero:] = 0.
-wave_maps_la = wave[:2]
+wave[1,:,i_zero:] = 0.  # Also set to 0 the same points as Antoine in Loic's 2nd order wl map
+wave_maps_la = wave[:2]   # Consider only order 1 & 2
 
 
 #### Spatial profiles ####
@@ -152,17 +152,17 @@ spat_pros_adb.append(fits.getdata("/home/kmorel/ongenesis/github/jwst-mtl/SOSS/e
                                   "spat_profile_m2.fits").squeeze())
 # _la : Loic's files
 spat = fits.getdata("/genesis/jwst/userland-soss/loic_review/refs/map_profile_2D_native.fits").squeeze()
-spat_pros_la = spat[:2,-256:]
+spat_pros_la = spat[:2,-256:]   # Consider only order 1 & 2 and set to same size as data
 # Shift Loic's trace image to fit with the simulation (data)
 new_spat_la = np.zeros_like(spat_pros_la)
 new_spat_la[:,:162] = spat_pros_la[:,94:]
 hdu = fits.PrimaryHDU(new_spat_la)
 hdu.writeto(WORKING_DIR + "new_spat_pros.fits", overwrite = True)
 # _clear : map created with clear000000.fits directly
-new_spat = fits.getdata(WORKING_DIR + "new_map_profile_clear_10.fits")
+new_spat = fits.getdata(WORKING_DIR + "new_map_profile_clear_{}.fits".format(simuPars.noversample))
 spat_pros_clear = new_spat[:2]
 
-# Choose between Loic and Antoine
+# Choose between Loic's and Antoine's maps
 wave_maps = wave_maps_la   # or wave_maps_adb
 spat_pros = spat_pros_clear  # or new_spat_la    # or spat_pros_adb
 
@@ -182,22 +182,27 @@ ref_files_args = [spat_pros, wave_maps, thrpt_list, ker_list]
 # Load simulations
 path.append("Fake_data")
 
-# Load a simulation
-simu = load_simu("/home/kmorel/ongenesis/github/jwst-mtl/SOSS/Fake_data/phoenix_teff_02300_scale_1.0e+02.fits")
-clear_00 = fits.open("/home/kmorel/ongenesis/jwst-user-soss/tmp/oversampling_10/clear_000000.fits")
-data_clear = np.empty(shape=(2,256,2048))
-for i in range(len(clear_00[0].data)-1):
-    data_clear[i] = soss.rebin(clear_00[0].data[i],simuPars.noversample)
-
+# ADB
+#simu = load_simu("/home/kmorel/ongenesis/github/jwst-mtl/SOSS/Fake_data/phoenix_teff_02300_scale_1.0e+02.fits")
 #data = simu["data"]
-# Orders 1 and 2 summed up
-#data = data_clear[0]   # Order 1 only
-data = np.sum(data_clear,axis=0)   # Sum all traces [adu/s]
-#data = np.flipud(data)  # Flip image
+# LA
+clear_00 = fits.open(WORKING_DIR + "tmp/oversampling_{}/clear_000000.fits".format(simuPars.noversample))
+if simuPars.noversample == 1:
+    data_clear = clear_00[0].data[:2, 10:266, 10:2058]  # Because of x_padding and y_padding
+else:
+    data_clear = np.empty(shape=(2,256,2048))
+    for i in range(len(clear_00[0].data)-1):
+        clear_i = soss.rebin(clear_00[0].data[i], simuPars.noversample)
+        data_clear[i] = clear_i[10:266, 10:2058]  # Because of x_padding and y_padding
+
+# CHOOSE between order 1 only or sum of orders 1 & 2
+#data = data_clear[0]   # Order 1 only [adu/s]
+data = np.sum(data_clear, axis=0)   # Sum all traces 1 & 2 [adu/s]
 
 plt.figure()
 plt.imshow(data, origin="lower")
 plt.colorbar()
+plt.title('Data')
 plt.show()
 
 # Extraction
@@ -210,12 +215,15 @@ bkgd_noise = 20.  # In counts?
 params["n_os"] = 5
 
 # Threshold on the spatial profile.
-# Only pixels above this threshold will be used for extraction. (for at least one order)
+# Only pixels above this threshold will be used for extraction. (for at least one order) # Will create a mask
 params["thresh"] = 1e-4  # Same units as the spatial profiles
+
+# List of orders considered
+params["orders"] = order_list
 
 # Initiate extraction object
 # (This needs to be done only once unless the oversampling (n_os) changes.)
-extract = TrpzOverlap(*ref_files_args, **params)
+extract = TrpzOverlap(*ref_files_args, **params)  # Precalculate matrices
 
 # Find the best tikhonov factor
 # This takes some time, so it's better to do it once if the exposures are part of a time series observation,
@@ -253,6 +261,7 @@ plt.xlabel("Wavelength [$\mu m$]")
 plt.ylabel("Oversampled Spectrum $f_k$ [energy$\cdot s^{-1} \cdot \mu m^{-1}$]")
 # For now, arbitrairy units, but it should be the flux that hits the detector, so energy/time/wavelength
 plt.tight_layout()
+plt.savefig(WORKING_DIR + "oversampling_{}/oversampled_spectrum_adb.png".format(simuPars.noversample))
 plt.show()
 
 # Bin to pixel native sampling
@@ -283,18 +292,19 @@ for i_ord in range(extract.n_ord):
     f_bin_list.append(f_bin)
     lam_bin_list.append(lam_bin)
 
-fig, ax = plt.subplots(1, 1, sharex=True, figsize=(12, 6))
+fig, ax = plt.subplots(2, 1, sharex=True, figsize=(12, 6))
 
-#for i_ord in range(extract.n_ord):
- #   label = extract.orders[i_ord]
-  #  ax[i_ord].plot(lam_bin_list[i_ord], f_bin_list[i_ord], label=label)
-ax.plot(lam_bin_list[0], f_bin_list[0])
+for i_ord in range(extract.n_ord):
+    label = extract.orders[i_ord]
+    ax[i_ord].plot(lam_bin_list[i_ord], f_bin_list[i_ord], label=label)
+#ax.plot(lam_bin_list[0], f_bin_list[0])
 
-ax.set_ylabel("Extracted signal [counts]")
-ax.set_xlabel("Wavelength [$\mu m$]")
-#ax[1].set_ylabel("Extracted signal [counts]")
+ax[0].set_ylabel("Extracted signal [counts]")
+ax[1].set_xlabel("Wavelength [$\mu m$]")
+ax[1].set_ylabel("Extracted signal [counts]")
 
 plt.tight_layout()
+plt.savefig(WORKING_DIR + "oversampling_{}/extracted_signal_adb.png".format(simuPars.noversample))
 plt.show()
 
 # Bin in flux units
@@ -316,6 +326,7 @@ plt.ylabel(r"Convolved flux $\tilde{f_k}$ [energy$\cdot s^{-1} \cdot \mu m^{-1}$
 plt.xlabel("Wavelength [$\mu m$]")
 plt.tight_layout()
 plt.legend(title="Order")
+plt.savefig(WORKING_DIR + "oversampling_{}/convolved_flux_adb.png".format(simuPars.noversample))
 plt.show()
 
 # Quality estimate
@@ -326,6 +337,7 @@ plt.subplot(111, aspect='equal')
 plt.pcolormesh((rebuilt - data)/sig, vmin=-3, vmax=3)
 plt.colorbar(label="Error relative to noise", orientation='horizontal', aspect=40)
 plt.tight_layout()
+plt.savefig(WORKING_DIR + "oversampling_{}/rebuild_adb.png".format(simuPars.noversample))
 plt.show()
 # We can see that we are very close to the photon noise limit in this case. There are some small
 # structures in the 2nd order in the overlap region, but the extracted spectrum is dominated by the

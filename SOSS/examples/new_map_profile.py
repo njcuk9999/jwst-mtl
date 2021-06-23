@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 
 WORKING_DIR = '/home/kmorel/ongenesis/jwst-user-soss/'
 
-sys.path.insert(0,"/genesis/jwst/jwst-ref-soss/fortran_lib/")
+sys.path.insert(0, "/genesis/jwst/jwst-ref-soss/fortran_lib/")
 
 # Read in all paths used to locate reference files and directories
 config_paths_filename = os.path.join(WORKING_DIR, 'jwst-mtl_configpath_kim.txt')
