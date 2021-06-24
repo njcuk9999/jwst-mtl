@@ -17,7 +17,7 @@ import webbpsf
 from SOSS.trace import tracepol as tp
 from SOSS.extract.empirical_trace import centroid as ctd
 from SOSS.extract.empirical_trace import plotting as plotting
-from SOSS.extract.soss_engine import ExtractionEngine
+from SOSS.dms.soss_engine import ExtractionEngine
 from SOSS.extract.engine_legacy import ThroughputSOSS, WebbKer
 
 
