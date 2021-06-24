@@ -10,7 +10,7 @@ from scipy.interpolate import interp1d, Akima1DInterpolator, RectBivariateSpline
 from scipy.optimize import minimize_scalar
 
 # Local imports.
-from . import engine_utils, convolution, regularisation
+from . import engine_utils
 
 # Plotting.
 import matplotlib.pyplot as plt
@@ -516,9 +516,9 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
         for i_order, kernel_n in enumerate(kernels):
 
             if not issparse(kernel_n):
-                kernel_n = convolution.get_c_matrix(kernel_n, self.wave_grid,
-                                                    i_bounds=self.i_bounds[i_order],
-                                                    **c_kwargs[i_order])
+                kernel_n = engine_utils.get_c_matrix(kernel_n, self.wave_grid,
+                                                     i_bounds=self.i_bounds[i_order],
+                                                     **c_kwargs[i_order])
 
             kernels_new.append(kernel_n)
 
@@ -1129,7 +1129,7 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
             if t_mat_func is None:
 
                 # Use the nyquist sampled gaussian kernel
-                t_mat_func = regularisation.get_nyquist_matrix
+                t_mat_func = engine_utils.get_nyquist_matrix
 
             # Default args
             if fargs is None:
@@ -1211,7 +1211,7 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
             if tikho_kwargs is None:
                 tikho_kwargs = {}
             tikho_kwargs = {**default_kwargs, **tikho_kwargs}
-            tikho = regularisation.Tikhonov(matrix, result, **tikho_kwargs)
+            tikho = engine_utils.Tikhonov(matrix, result, **tikho_kwargs)
             self.tikho = tikho
 
         # Test all factors
@@ -1439,7 +1439,7 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
         """Solve system using Tikhonov regularisation"""
 
         # Note that the indexing is applied inside the function
-        return regularisation.tikho_solve(matrix, result, index=index, **kwargs)
+        return engine_utils.tikho_solve(matrix, result, index=index, **kwargs)
 
     def extract(self, tikhonov=False, tikho_kwargs=None,  # TODO merge with __call__.
                 factor=None, **kwargs):

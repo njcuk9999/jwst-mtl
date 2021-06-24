@@ -5,7 +5,17 @@
 import numpy as np
 from warnings import warn
 from scipy.integrate import AccuracyWarning
-from scipy.sparse import find, csr_matrix
+from scipy.sparse import find, diags, identity, csr_matrix
+from scipy.sparse.linalg import spsolve
+from scipy.interpolate import interp1d
+
+# Plotting.
+import matplotlib.pyplot as plt
+
+
+# ==============================================================================
+# Code for generating indices on the oversampled wavelength grid.
+# ==============================================================================
 
 
 def _vrange(starts, stops, dtype=None):
@@ -121,6 +131,11 @@ def arange_2d(starts, stops, dtype=None):
     return out, mask
 
 
+# ==============================================================================
+# Code for converting to a sparse matrix and back.
+# ==============================================================================
+
+
 def sparse_k(val, k, n_k):
     """
     Transform a 2D array `val` to a sparse matrix.
@@ -176,6 +191,11 @@ def unsparse(matrix, fill_value=np.nan):
     out[row, i_col] = val
 
     return out, col_out
+
+
+# ==============================================================================
+# Code for building wavelength grids.
+# ==============================================================================
 
 
 def get_wave_p_or_m(wave_map):
@@ -702,6 +722,1006 @@ def get_n_nodes(grid, fct, divmax=10, tol=1.48e-4, rtol=1.48e-4):
         raise ValueError(msg.format(np.where(n_grid == -1)))
 
     return n_grid, residual
+
+
+# ==============================================================================
+# Code for building the convolution matrix (c matrix).
+# ==============================================================================
+
+
+def gaussians(x, x0, sig, amp=None):
+    """
+    Gaussian function
+    """
+
+    # Amplitude term
+    if amp is None:
+        amp = 1/np.sqrt(2 * np.pi * sig**2)
+
+    values = amp * np.exp(-0.5 * ((x - x0) / sig) ** 2)
+
+    return values
+
+
+def fwhm2sigma(fwhm):
+    """
+    Convert a full width half max to a standard deviation, assuming a gaussian
+    """
+
+    sigma = fwhm / np.sqrt(8 * np.log(2))
+
+    return sigma
+
+
+def to_2d(kernel, grid, grid_range):  # TODO parameter grid unused, better name kernel_2d?
+    """ Build a 2d kernel array with a constant 1D kernel (input) """
+
+    # Assign range where the convolution is defined on the grid
+    a, b = grid_range
+
+    # Get length of the convolved axis
+    n_k_c = b - a
+
+    # Return a 2D array with this length
+    kernel_2d = np.tile(kernel, (n_k_c, 1)).T
+
+    return kernel_2d
+
+
+def _get_wings(fct, grid, h_len, i_a, i_b):
+    """
+    Compute values of the kernel at grid[+-h_len]
+
+    Parameters
+    ----------
+    fct: callable
+        Function that returns the value of the kernel, given
+        a grid value and the center of the kernel.
+        fct(grid, center) = kernel
+        grid and center have the same length.
+    grid: 1d array
+        grid where the kernel is projected
+    i_a, i_b: int
+        index of the grid where to apply the convolution.
+        Once the convolution applied, the convolved grid will be
+        equal to grid[i_a:i_b].
+    """
+
+    # Save length of the non-convolved grid
+    n_k = len(grid)
+
+    # Get length of the convolved axis
+    n_k_c = i_b - i_a
+
+    # Init values
+    left, right = np.zeros(n_k_c), np.zeros(n_k_c)
+
+    # Add the left value on the grid
+    # Possibility that it falls out of the grid;
+    # take first value of the grid if so.
+    i_grid = np.max([0, i_a-h_len])
+
+    # Save the new grid
+    grid_new = grid[i_grid:i_b-h_len]
+
+    # Re-use dummy variable `i_grid`
+    i_grid = len(grid_new)
+
+    # Compute kernel at the left end.
+    # `i_grid` accounts for smaller length.
+    ker = fct(grid_new, grid[i_b-i_grid:i_b])
+    left[-i_grid:] = ker
+
+    # Add the right value on the grid
+    # Possibility that it falls out of the grid;
+    # take last value of the grid if so.
+    # Same steps as the left end (see above)
+    i_grid = np.min([n_k, i_b + h_len])
+    grid_new = grid[i_a+h_len:i_grid]
+    i_grid = len(grid_new)
+    ker = fct(grid_new, grid[i_a:i_a+i_grid])
+    right[:i_grid] = ker
+
+    return left, right
+
+
+def trpz_weight(grid, length, shape, i_a, i_b):
+    """
+    Compute weights due to trapeze integration
+
+    Parameters
+    ----------
+    grid: 1d array
+        grid where the integration is proojected
+    length: int
+        length of the kernel
+    shape: 2-elements tuple
+        shape of the compact convolution 2d array
+    i_a, i_b: int
+        index of the grid where to apply the convolution.
+        Once the convolution applied, the convolved grid will be
+        equal to grid[i_a:i_b].
+    """
+
+    # Index of each element on the convolution matrix
+    # with respect to the non-convolved grid
+    # `i_grid` has the shape (N_k_convolved, kernel_length - 1)
+    i_grid = np.indices(shape)[0] - (length // 2)
+    i_grid = np.arange(i_a, i_b)[None, :] + i_grid[:-1, :]
+
+    # Set values out of grid to -1
+    i_bad = (i_grid < 0) | (i_grid >= len(grid)-1)
+    i_grid[i_bad] = -1
+
+    # Delta lambda
+    d_grid = np.diff(grid)
+
+    # Compute weights from trapezoidal integration
+    weight = 1/2 * d_grid[i_grid]
+    weight[i_bad] = 0
+
+    # Fill output
+    out = np.zeros(shape)
+    out[:-1] += weight
+    out[1:] += weight
+
+    return out
+
+
+def fct_to_array(fct, grid, grid_range, thresh=1e-5, length=None):
+    """
+    Build a compact kernel 2d array based on a kernel function
+    and a grid to project the kernel
+
+    Parameters
+    ----------
+    fct: callable
+        Function that returns the value of the kernel, given
+        a grid value and the center of the kernel.
+        fct(grid, center) = kernel
+        grid and center have the same length.
+    grid: 1d array
+        grid where the kernel is projected
+    grid_range: 2 element list or tuple
+        index of the grid where to apply the convolution.
+        Once the convolution applied, the convolved grid will be
+        equal to grid[grid_range[0]:grid_range[1]].
+    thresh: float, optional
+        threshold to cut the kernel wings. If `length` is specified,
+        `thresh` will not be taken into account.
+    length: int, optional
+        length of the kernel. Needs to be odd.
+    """
+
+    # Assign range where the convolution is defined on the grid
+    i_a, i_b = grid_range
+
+    # Init with the value at kernel's center
+    out = fct(grid, grid)[i_a:i_b]
+
+    # Add wings
+    if length is None:
+        # Generate a 2D array of the grid iteratively until
+        # thresh is reached everywhere.
+
+        # Init parameters
+        length = 1
+        h_len = 0  # Half length
+
+        # Add value on each sides until thresh is reached
+        while True:
+            # Already update half-length
+            h_len += 1
+
+            # Compute next left and right ends of the kernel
+            left, right = _get_wings(fct, grid, h_len, i_a, i_b)
+
+            # Check if they are all below threshold.
+            if (left < thresh).all() and (right < thresh).all():
+                break  # Stop iteration
+            else:
+                # Update kernel length
+                length += 2
+
+                # Set value to zero if smaller than threshold
+                left[left < thresh] = 0.
+                right[right < thresh] = 0.
+
+                # add new values to output
+                out = np.vstack([left, out, right])
+
+        # Weights due to integration (from the convolution)
+        weights = trpz_weight(grid, length, out.shape, i_a, i_b)
+
+    elif (length % 2) == 1:  # length needs to be odd
+        # Generate a 2D array of the grid iteratively until
+        # specified length is reached.
+
+        # Compute number of half-length
+        n_h_len = (length - 1) // 2
+
+        # Simply iterate to compute needed wings
+        for h_len in range(1, n_h_len+1):
+            # Compute next left and right ends of the kernel
+            left, right = _get_wings(fct, grid, h_len, i_a, i_b)
+
+            # Add new kernel values
+            out = np.vstack([left, out, right])
+
+        # Weights due to integration (from the convolution)
+        weights = trpz_weight(grid, length, out.shape, i_a, i_b)
+
+    else:
+        raise ValueError("`length` must be odd.")
+
+    return out*weights
+
+
+def cut_ker(ker, n_out=None, thresh=None):
+    """
+    Apply a cut on the convolution matrix boundaries.
+
+    Parameters
+    ----------
+    ker: 2d array
+        convolution kernel in compact form, so
+        shape = (N_ker, N_k_convolved)
+    n_out: int or 2-element int object (list, tuple, etc.)
+        Number of kernel's grid point to keep on the boundaries.
+        If an int is given, the same number of points will be
+        kept on each boundaries of the kernel (left and right).
+        If 2 elements are given, it corresponds to the left and right
+        boundaries.
+    thresh: float
+        threshold used to determine the boundaries cut.
+        If n_out is specified, this has no effect.
+
+    Returns
+    ------
+    the same kernel matrix has the input ker, but with the cut applied.
+    """
+
+    # Assign kernel length and number of kernels
+    n_ker, n_k_c = ker.shape
+
+    # Assign half-length of the kernel
+    h_len = (n_ker - 1) // 2
+
+    # Determine n_out with thresh if not given
+    if n_out is None:
+
+        if thresh is None:
+            # No cut to apply
+            return ker
+        else:
+            # Find where to cut the kernel according to thresh
+            i_left = np.where(ker[:, 0] >= thresh)[0][0]
+            i_right = np.where(ker[:, -1] >= thresh)[0][-1]
+
+            # Make sure it is on the good wing. Take center if not.
+            i_left = np.minimum(i_left, h_len)
+            i_right = np.maximum(i_right, h_len)
+
+    # Else, unpack n_out
+    else:
+        # Could be a scalar or a 2-elements object)
+        try:
+            i_left, i_right = n_out
+        except TypeError:
+            i_left, i_right = n_out, n_out
+
+        # Find the position where to cut the kernel
+        # Make sure it is not out of the kernel grid,
+        # so i_left >= 0 and i_right <= len(kernel)
+        i_left = np.maximum(h_len - i_left, 0)
+        i_right = np.minimum(h_len + i_right, n_ker - 1)
+
+    # Apply the cut
+    for i_k in range(0, i_left):
+        # Add condition in case the kernel is larger
+        # than the grid where it's projected.
+        if i_k < n_k_c:
+            ker[:i_left-i_k, i_k] = 0
+
+    for i_k in range(i_right + 1 - n_ker, 0):
+        # Add condition in case the kernel is larger
+        # than the grid where it's projected.
+        if -i_k <= n_k_c:
+            ker[i_right-n_ker-i_k:, i_k] = 0
+
+    return ker
+
+
+def sparse_c(ker, n_k, i_zero=0):
+    """
+    Convert a convolution kernel in compact form (N_ker, N_k_convolved)
+    to sparse form (N_k_convolved, N_k)
+
+    Parameters
+    ----------
+    ker : 2d array, (N_kernel, N_kc)
+        Convolution kernel in compact form.
+    n_k: int
+        length of the original grid
+    i_zero: int
+        position of the first element of the convolved grid
+        in the original grid.
+    """
+
+    # Assign kernel length and convolved axis length
+    n_ker, n_k_c = ker.shape
+
+    # Algorithm works for odd kernel grid
+    if n_ker % 2 != 1:
+        raise ValueError("length of the convolution kernel should be odd.")
+
+    # Assign half-length
+    h_len = (n_ker - 1) // 2
+
+    # Define each diagonal of the sparse convolution matrix
+    diag_val, offset = [], []
+    for i_ker, i_k_c in enumerate(range(-h_len, h_len+1)):
+
+        i_k = i_zero + i_k_c
+
+        if i_k < 0:
+            diag_val.append(ker[i_ker, -i_k:])
+        else:
+            diag_val.append(ker[i_ker, :])
+
+        offset.append(i_k)
+
+    # Build convolution matrix
+    matrix = diags(diag_val, offset, shape=(n_k_c, n_k), format="csr")
+
+    return matrix
+
+
+def get_c_matrix(kernel, grid, bounds=None, i_bounds=None, norm=True,
+                 sparse=True, n_out=None, thresh_out=None, **kwargs):
+    """
+    Return a convolution matrix
+    Can return a sparse matrix (N_k_convolved, N_k)
+    or a matrix in the compact form (N_ker, N_k_convolved).
+    N_k is the length of the grid on which the convolution
+    will be applied, N_k_convolved is the length of the
+    grid after convolution and N_ker is the maximum length of
+    the kernel. If the default sparse matrix option is chosen,
+    the convolution can be apply on an array f | f = fct(grid)
+    by a simple matrix multiplication:
+    f_convolved = c_matrix.dot(f)
+
+    Parameters
+    ----------
+    kernel: ndarray (1D or 2D), callable
+        Convolution kernel. Can be already 2D (N_ker, N_k_convolved),
+        giving the kernel for each items of the convolved grid.
+        Can be 1D (N_ker), so the kernel is the same. Can be a callable
+        with the form f(x, x0) where x0 is the position of the center of
+        the kernel. Must return a 1D array (len(x)), so a kernel value
+        for each pairs of (x, x0). If kernel is callable, the additional
+        kwargs `thresh` and `length` will be used to project the kernel.
+    grid: one-d-array:
+        The grid on which the convolution will be applied.
+        For example, if C is the convolution matrix,
+        f_convolved = C.f(grid)
+    bounds: 2-elements object
+        The bounds of the grid on which the convolution is defined.
+        For example, if bounds = (a,b),
+        then grid_convolved = grid[a <= grid <= b].
+        It dictates also the dimension of f_convolved
+    sparse: bool, optional
+        return a sparse matrix (N_k_convolved, N_k) if True.
+        return a matrix (N_ker, N_k_convolved) if False.
+    n_out: integer or 2-integer object, optional
+        Specify how to deal with the ends of the convolved grid.
+        `n_out` points will be used outside from the convolved
+        grid. Can be different for each ends if 2-elements are given.
+    thresh_out: float, optional
+        Specify how to deal with the ends of the convolved grid.
+        Points with a kernel value less then `thresh_out` will
+        not be used outside from the convolved grid.
+    thresh: float, optional
+        Only used when `kernel` is callable to define the maximum
+        length of the kernel. Truncate when `kernel` < `thresh`
+    length: int, optional
+        Only used when `kernel` is callable to define the maximum
+        length of the kernel.
+    """
+
+    # Define range where the convolution is defined on the grid.
+    # If `i_bounds` is not specified, try with `bounds`.
+    if i_bounds is None:
+
+        if bounds is None:
+            a, b = 0, len(grid)
+        else:
+            a = np.min(np.where(grid >= bounds[0])[0])
+            b = np.max(np.where(grid <= bounds[1])[0]) + 1
+
+    else:
+        # Make sure it is absolute index, not relative
+        # So no negative index.
+        if i_bounds[1] < 0:
+            i_bounds[1] = len(grid) + i_bounds[1]
+
+        a, b = i_bounds
+
+    # Generate a 2D kernel depending on the input
+    if callable(kernel):
+        kernel = fct_to_array(kernel, grid, [a, b], **kwargs)
+    elif kernel.ndim == 1:
+        kernel = to_2d(kernel, grid, [a, b])
+    else:
+        # TODO add other options.
+        pass
+
+    # Kernel should now be a 2-D array (N_kernel x N_kc)
+
+    # Normalize if specified
+    if norm:
+        kernel = kernel / np.nansum(kernel, axis=0)
+
+    # Apply cut for kernel at boundaries
+    kernel = cut_ker(kernel, n_out, thresh_out)
+
+    if sparse:
+        # Convert to a sparse matrix.
+        kernel = sparse_c(kernel, len(grid), a)
+
+    return kernel
+
+
+class NyquistKer:
+    """
+    Define a gaussian convolution kernel at the nyquist
+    sampling. For a given point on the grid x_i, the kernel
+    is given by a gaussian with
+    FWHM = n_sampling * (dx_(i-1) + dx_i) / 2.
+    The FWHM is computed for each elements of the grid except
+    the extremities (not defined). We can then generate FWHM as
+    a function of thegrid and interpolate/extrapolate to get
+    the kernel as a function of its position relative to the grid.
+    """
+    def __init__(self, grid, n_sampling=2, bounds_error=False,
+                 fill_value="extrapolate", **kwargs):
+        """
+        Parameters
+        ----------
+        grid : 1d array
+            Grid used to define the kernels
+        n_sampling: int, optional
+            sampling of the grid. Default is 2, so we assume that
+            the grid is Nyquist sampled.
+        bounds_error, fill_value and kwargs:
+            `interp1d` kwargs used to get FWHM as a function of the grid.
+        """
+
+        # Delta grid
+        d_grid = np.diff(grid)
+
+        # The full width half max is n_sampling
+        # times the mean of d_grid
+        fwhm = (d_grid[:-1] + d_grid[1:]) / 2
+        fwhm *= n_sampling
+
+        # What we really want is sigma, not FWHM
+        sig = fwhm2sigma(fwhm)
+
+        # Now put sigma as a function of the grid
+        sig = interp1d(grid[1:-1], sig, bounds_error=bounds_error,
+                       fill_value=fill_value, **kwargs)
+
+        self.fct_sig = sig
+
+    def __call__(self, x, x0):
+        """
+        Parameters
+        ----------
+        x: 1d array
+            position where the kernel is evaluated
+        x0: 1d array (same shape as x)
+            position of the kernel center for each x.
+
+        Returns
+        -------
+        Value of the gaussian kernel for each sets of (x, x0)
+        """
+
+        # Get the sigma of each gaussians
+        sig = self.fct_sig(x0)
+
+        return gaussians(x, x0, sig)
+
+
+# ==============================================================================
+# Code for doing Tikhonov regularisation.
+# ==============================================================================
+
+
+def finite_diff(x):
+    """
+    Returns the finite difference matrix operator based on x.
+    Input:
+        x: array-like
+    Output:
+        sparse matrix. When apply to x `diff_matrix.dot(x)`,
+        the result is the same as np.diff(x)
+    """
+    n_x = len(x)
+
+    # Build matrix
+    diff_matrix = diags([-1.], shape=(n_x-1, n_x))
+    diff_matrix += diags([1.], 1, shape=(n_x-1, n_x))
+
+    return diff_matrix
+
+
+def finite_second_d(grid):
+    """
+    Returns the second derivative operator based on grid
+    Inputs:
+    -------
+    grid: 1d array-like
+        grid where the second derivative will be compute.
+    Ouputs:
+    -------
+    second_d: matrix
+        Operator to compute the second derivative, so that
+        f" = second_d.dot(f), where f is a function
+        projected on `grid`.
+    """
+
+    # Finite difference operator
+    d_matrix = finite_diff(grid)
+
+    # Delta lambda
+    d_grid = d_matrix.dot(grid)
+
+    # First derivative operator
+    first_d = diags(1./d_grid).dot(d_matrix)
+
+    # Second derivative operator
+    second_d = finite_diff(grid[:-1]).dot(first_d)
+
+    # don't forget the delta labda
+    second_d = diags(1./d_grid[:-1]).dot(second_d)
+
+    return second_d
+
+
+def finite_first_d(grid):
+    """
+    Returns the first derivative operator based on grid
+    Inputs:
+    -------
+    grid: 1d array-like, optional
+        grid where the first derivative will be compute.
+    Ouputs:
+    -------
+    first_d: matrix
+        Operator to compute the second derivative, so that
+        f' = first_d.dot(f), where f is a function
+        projected on `grid`.
+    """
+
+    # Finite difference operator
+    d_matrix = finite_diff(grid)
+
+    # Delta lambda
+    d_grid = d_matrix.dot(grid)
+
+    # First derivative operator
+    first_d = diags(1./d_grid).dot(d_matrix)
+
+    return first_d
+
+
+def finite_zeroth_d(grid):
+    """
+    Gives the zeroth derivative operator on the function
+    f(grid), so simply returns the identity matrix... XD
+    """
+    return identity(len(grid))
+
+
+def get_nyquist_matrix(grid, integrate=True, n_sampling=2,
+                       thresh=1e-5, **kwargs):
+    """
+    Get the tikhonov regularisation matrix based on
+    a Nyquist convolution matrix (convolution with
+    a kernel with a resolution given by the sampling
+    of a grid). The Tikhonov matrix will be given by
+    the difference of the nominal solution and
+    the convolved solution.
+
+    Parameters
+    ----------
+    grid: 1d-array
+        Grid to project the kernel
+    integrate: bool, optional
+        If True, add integration weights to the tikhonov matrix, so
+        when the squared norm is computed, the result is equivalent
+        to the integral of the integrand squared.
+    n_sampling: int, optional
+        sampling of the grid. Default is 2, so we assume that
+        the grid is Nyquist sampled.
+    thresh: float, optional
+        Used to define the maximum length of the kernel.
+        Truncate when `kernel` < `thresh`
+    kwargs:
+        `interp1d` kwargs used to get FWHM as a function of the grid.
+    """
+
+    # Get nyquist kernel function
+    ker = NyquistKer(grid, n_sampling=n_sampling, **kwargs)
+
+    # Build convolution matrix
+    conv_matrix = get_c_matrix(ker, grid, thresh=thresh)
+
+    # Build tikhonov matrix
+    t_mat = conv_matrix - identity(conv_matrix.shape[0])
+
+    if integrate:
+        # The grid may not be evenly spaced, so
+        # add an integration weight
+        d_grid = np.diff(grid)
+        d_grid = np.concatenate([d_grid, [d_grid[-1]]])
+        t_mat = diags(np.sqrt(d_grid)).dot(t_mat)
+
+    return t_mat
+
+
+def tikho_solve(a_mat, b_vec, t_mat=None, grid=None,
+                verbose=True, factor=1.0, estimate=None, index=None):
+    """
+    Tikhonov solver to use as a function instead of a class.
+
+    Parameters
+    ----------
+    a_mat: matrix-like object (2d)
+        matrix A in the system to solve A.x = b
+    b_vec: vector-like object (1d)
+        vector b in the system to solve A.x = b
+    t_mat: matrix-like object (2d), optional
+        Tikhonov regularisation matrix to be applied on b_vec.
+        Default is the default of the Tikhonov class. (Identity matrix)
+    grid: array-like 1d, optional
+        grid on which b-vec is projected. Used to compute derivative
+    verbose: bool
+        Print details or not
+    factor: float, optional
+        multiplicative constant of the regularisation matrix
+    estimate: vector-like object (1d)
+        Estimate oof the solution of the system.
+    index: indexable, optional
+        index of the valid row of the b_vec.
+
+    Returns
+    ------
+    Solution of the system (1d array)
+    """
+    tikho = Tikhonov(a_mat, b_vec, t_mat=t_mat,
+                     grid=grid, verbose=verbose, index=index)
+
+    return tikho.solve(factor=factor, estimate=estimate)
+
+
+class Tikhonov:
+    """
+    Tikhonov regularisation to solve the ill-condition problem:
+    A.x = b, where A is accidently singular or close to singularity.
+    Tikhonov regularisation adds a regularisation term in
+    the equation and aim to minimize the equation:
+    ||A.x - b||^2 + ||gamma.x||^2
+    Where gamma is the Tikhonov regularisation matrix.
+    """
+    default_mat = {'zeroth': finite_zeroth_d,
+                   'first': finite_first_d,
+                   'second': finite_second_d}
+
+    def __init__(self, a_mat, b_vec, t_mat=None,
+                 grid=None, verbose=True, index=None):
+        """
+        Parameters
+        ----------
+        a_mat: matrix-like object (2d)
+            matrix A in the system to solve A.x = b
+        b_vec: vector-like object (1d)
+            vector b in the system to solve A.x = b
+        t_mat: matrix-like object (2d), optional
+            Tikhonov regularisation matrix to be applied on b_vec.
+            Default is the default of the Tikhonov class. (Identity matrix)
+        grid: array-like 1d, optional
+            grid on which b-vec is projected. Used to compute derivative
+        verbose: bool
+            Print details or not
+        index: indexable, optional
+            index of the valid row of the b_vec.
+        """
+
+        # b_vec will be passed to default_mat functions
+        # if grid not given.
+        if grid is None and t_mat is None:
+            grid = b_vec
+
+        # If string, search in the default Tikhonov matrix
+        if t_mat is None:
+            self.type = 'zeroth'
+            t_mat = self.default_mat['zeroth'](grid)
+        elif callable(t_mat):
+            t_mat = t_mat(grid)
+            self.type = 'custom'
+        else:
+            self.type = 'custom'
+
+        # Take all indices by default
+        if index is None:
+            index = slice(None)
+
+        self.a_mat = a_mat[index, :][:, index]
+        self.b_vec = b_vec[index]
+        self.t_mat = t_mat[index, :][:, index]
+        self.index = index
+        self.verbose = verbose
+        self.test = None
+
+        return
+
+    def verbose_print(self, *args, **kwargs):
+        """Print if verbose is True. Same as `print` function."""
+
+        if self.verbose:
+            print(*args, **kwargs)
+
+        return
+
+    def solve(self, factor=1.0, estimate=None):
+        """
+        Minimize the equation ||A.x - b||^2 + ||gamma.x||^2
+        by solving (A_T.A + gamma_T.gamma).x = A_T.b
+        gamma is the Tikhonov matrix multiplied by a scale factor
+
+        Parameters
+        ----------
+        factor: float, optional
+            multiplicative constant of the regularisation matrix
+        estimate: vector-like object (1d)
+            Estimate oof the solution of the system.
+
+        Returns
+        ------
+        Solution of the system (1d array)
+        """
+        # Get needed attributes
+        a_mat = self.a_mat
+        b_vec = self.b_vec
+        index = self.index
+
+        # Matrix gamma (with scale factor)
+        gamma = factor * self.t_mat
+
+        # Build system
+        gamma_2 = (gamma.T).dot(gamma)  # Gamma square
+        matrix = a_mat.T.dot(a_mat) + gamma_2
+        result = (a_mat.T).dot(b_vec.T)
+
+        # Include solution estimate if given
+        if estimate is not None:
+            result += gamma_2.dot(estimate[index].T)
+
+        # Solve
+        return spsolve(matrix, result)
+
+    def test_factors(self, factors, estimate=None):
+        """
+        test multiple factors
+
+        Parameters
+        ----------
+        factors: 1d array-like
+            factors to test
+        estimate: array like
+            estimate of the solution
+
+        Returns
+        ------
+        dictionnary of test results
+        """
+
+        self.verbose_print('Testing factors...')
+
+        # Get relevant attributes
+        b_vec = self.b_vec
+        a_mat = self.a_mat
+        t_mat = self.t_mat
+
+        # Init outputs
+        sln, err, reg = [], [], []
+
+        # Test all factors
+        for i_fac, factor in enumerate(factors):
+
+            # Save solution
+            sln.append(self.solve(factor, estimate))
+
+            # Save error A.x - b
+            err.append(a_mat.dot(sln[-1]) - b_vec)
+
+            # Save regulatisation term
+            reg.append(t_mat.dot(sln[-1]))
+
+            # Print
+            message = '{}/{}'.format(i_fac, len(factors))
+            self.verbose_print(message, end='\r')
+
+        # Final print
+        message = '{}/{}'.format(i_fac + 1, len(factors))
+        self.verbose_print(message)
+
+        # Convert to arrays
+        sln = np.array(sln)
+        err = np.array(err)
+        reg = np.array(reg)
+
+        # Save in a dictionnary
+        self.test = {'factors': factors,
+                     'solution': sln,
+                     'error': err,
+                     'reg': reg}
+
+        return self.test
+
+    def _check_plot_inputs(self, fig, ax, label, factors, test):
+        """
+        Method to manage inputs for plots methods.
+        """
+
+        # Use ax or fig if given. Else, init the figure
+        if (fig is None) and (ax is None):
+            fig, ax = plt.subplots(1, 1, sharex=True)
+        elif ax is None:
+            ax = fig.subplots(1, 1, sharex=True)
+
+        # Use the type of regularisation as label if None is given
+        if label is None:
+            label = self.type
+
+        if test is None:
+
+            # Run tests with `factors` if not done already.
+            if self.test is None:
+                self.test_factors(factors)
+
+            test = self.test
+
+        return fig, ax, label, test
+
+    def error_plot(self, fig=None, ax=None, factors=None,
+                   label=None, test=None, test_key=None, y_val=None):
+        """
+        Plot error as a function of factors
+
+        Parameters
+        ----------
+        fig: matplotlib figure, optional
+            Figure to use for plot
+            If not given and ax is None, new figure is initiated
+        ax: matplotlib axis, optional
+            axis to use for plot. If not given, a new axis is initiated.
+        factors: 1d array-like
+            factors to test
+        label: str, optional
+            label too put in legend
+        test: dictionnary, optional
+            dictionnary of tests (output of Tikhonov.test_factors)
+        test_key: str, optional
+            which test result to plot. If not specified,
+            the euclidian norm of the 'error' key will be used.
+        y_val: array-like, optional
+            y values to plot. Same length as factors.
+
+        Returns
+        ------
+        fig, ax
+        """
+
+        # Manage method's inputs
+        args = (fig, ax, label, factors, test)
+        fig, ax, label, test = self._check_plot_inputs(*args)
+
+        # What y value do we plot?
+        if y_val is None:
+
+            # Use tests to plot y_val
+            if test_key is None:
+
+                # Default is euclidian norm of error.
+                # Similar to the chi^2.
+                y_val = (test['error']**2).sum(axis=-1)
+            else:
+                y_val = test[test_key]
+
+        # Plot
+        ax.loglog(test['factors'], y_val, label=label)
+
+        # Mark minimum value
+        i_min = np.argmin(y_val)
+        min_coord = test['factors'][i_min], y_val[i_min]
+        ax.scatter(*min_coord, marker="x")
+        text = '{:2.1e}'.format(min_coord[0])
+        ax.text(*min_coord, text, va="top", ha="center")
+
+        # Show legend
+        ax.legend()
+
+        # Labels
+        ax.set_xlabel("Scale factor")
+        ylabel = r'System error '
+        ylabel += r'$\left(||\mathbf{Ax-b}||^2_2\right)$'
+        ax.set_ylabel(ylabel)
+
+        return fig, ax
+
+    def l_plot(self, fig=None, ax=None, factors=None, label=None,
+               test=None, text_label=True, factor_norm=False):
+        """
+        make an 'l plot'
+
+        Parameters
+        ----------
+        fig: matplotlib figure, optional
+            Figure to use for plot
+            If not given and ax is None, new figure is initiated
+        ax: matplotlib axis, optional
+            axis to use for plot. If not given, a new axis is initiated.
+        factors: 1d array-like
+            factors to test
+        label: str, optional
+            label too put in legend
+        test: dictionnary, optional
+            dictionnary of tests (output of Tikhonov.test_factors)
+        text_label: bool, optional
+            Add label of the factor value to each points in the plot.
+
+        Returns
+        ------
+        fig, ax
+        """
+
+        # Manage method's inputs
+        args = (fig, ax, label, factors, test)
+        fig, ax, label, test = self._check_plot_inputs(*args)
+
+        # Compute euclidian norm of error (||A.x - b||).
+        # Similar to the chi^2.
+        err_norm = (test['error']**2).sum(axis=-1)
+
+        # Compute norm of regularisation term
+        reg_norm = (test['reg']**2).sum(axis=-1)
+
+        # Factors
+        if factor_norm:
+            reg_norm *= test['factors']**2
+
+        # Plot
+        ax.loglog(err_norm, reg_norm, '.:', label=label)
+
+        # Add factor values as text
+        if text_label:
+            for f, x, y in zip(test['factors'], err_norm, reg_norm):
+                plt.text(x, y, "{:2.1e}".format(f), va="center", ha="right")
+
+        # Legend
+        ax.legend()
+
+        # Labels
+        xlabel = r'$\left(||\mathbf{Ax-b}||^2_2\right)$'
+        ylabel = r'$\left(||\mathbf{\Gamma.x}||^2_2\right)$'
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
+
+        return fig, ax
 
 
 def main():
