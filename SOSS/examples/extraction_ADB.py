@@ -129,7 +129,7 @@ simuPars.noversample = 4
 
 # Read relevant files
 # List of orders to consider in the extraction
-order_list = [1,2]
+order_list = [1]  #,2]
 
 #### Wavelength solution ####
 # _adb : Antoine's files
@@ -163,8 +163,8 @@ new_spat = fits.getdata(WORKING_DIR + "new_map_profile_clear_{}.fits".format(sim
 spat_pros_clear = new_spat[:2]
 
 # Choose between Loic's and Antoine's maps
-wave_maps = wave_maps_la   # or wave_maps_adb
-spat_pros = spat_pros_clear  # or new_spat_la    # or spat_pros_adb
+wave_maps = wave_maps_la[0]   # or wave_maps_adb
+spat_pros = spat_pros_clear[0]  # or new_spat_la    # or spat_pros_adb
 
 # Convert data from fits files to float (fits precision is 1e-8)
 wave_maps = [wv.astype('float64') for wv in wave_maps]
@@ -196,8 +196,8 @@ else:
         data_clear[i] = clear_i[10:266, 10:2058]  # Because of x_padding and y_padding
 
 # CHOOSE between order 1 only or sum of orders 1 & 2
-#data = data_clear[0]   # Order 1 only [adu/s]
-data = np.sum(data_clear, axis=0)   # Sum all traces 1 & 2 [adu/s]
+data = data_clear[0]   # Order 1 only [adu/s]
+#data = np.sum(data_clear, axis=0)   # Sum all traces 1 & 2 [adu/s]
 
 plt.figure()
 plt.imshow(data, origin="lower")
@@ -261,7 +261,7 @@ plt.xlabel("Wavelength [$\mu m$]")
 plt.ylabel("Oversampled Spectrum $f_k$ [energy$\cdot s^{-1} \cdot \mu m^{-1}$]")
 # For now, arbitrairy units, but it should be the flux that hits the detector, so energy/time/wavelength
 plt.tight_layout()
-plt.savefig(WORKING_DIR + "oversampling_{}/oversampled_spectrum_adb.png".format(simuPars.noversample))
+plt.savefig(WORKING_DIR + "oversampling_{}/oversampled_spectrum_adb_order1.png".format(simuPars.noversample))
 plt.show()
 
 # Bin to pixel native sampling
@@ -292,7 +292,8 @@ for i_ord in range(extract.n_ord):
     f_bin_list.append(f_bin)
     lam_bin_list.append(lam_bin)
 
-fig, ax = plt.subplots(2, 1, sharex=True, figsize=(12, 6))
+#fig, ax = plt.subplots(2, 1, sharex=True, figsize=(12, 6))
+fig, ax = plt.subplots(1, 1, sharex=True, figsize=(12, 6))
 
 for i_ord in range(extract.n_ord):
     label = extract.orders[i_ord]
@@ -300,11 +301,12 @@ for i_ord in range(extract.n_ord):
 #ax.plot(lam_bin_list[0], f_bin_list[0])
 
 ax[0].set_ylabel("Extracted signal [counts]")
-ax[1].set_xlabel("Wavelength [$\mu m$]")
-ax[1].set_ylabel("Extracted signal [counts]")
+ax[0].set_xlabel("Wavelength [$\mu m$]")
+#ax[1].set_xlabel("Wavelength [$\mu m$]")
+#ax[1].set_ylabel("Extracted signal [counts]")
 
 plt.tight_layout()
-plt.savefig(WORKING_DIR + "oversampling_{}/extracted_signal_adb.png".format(simuPars.noversample))
+plt.savefig(WORKING_DIR + "oversampling_{}/extracted_signal_adb_order1.png".format(simuPars.noversample))
 plt.show()
 
 # Bin in flux units
@@ -326,7 +328,7 @@ plt.ylabel(r"Convolved flux $\tilde{f_k}$ [energy$\cdot s^{-1} \cdot \mu m^{-1}$
 plt.xlabel("Wavelength [$\mu m$]")
 plt.tight_layout()
 plt.legend(title="Order")
-plt.savefig(WORKING_DIR + "oversampling_{}/convolved_flux_adb.png".format(simuPars.noversample))
+plt.savefig(WORKING_DIR + "oversampling_{}/convolved_flux_adb_order1.png".format(simuPars.noversample))
 plt.show()
 
 # Quality estimate
@@ -337,7 +339,7 @@ plt.subplot(111, aspect='equal')
 plt.pcolormesh((rebuilt - data)/sig, vmin=-3, vmax=3)
 plt.colorbar(label="Error relative to noise", orientation='horizontal', aspect=40)
 plt.tight_layout()
-plt.savefig(WORKING_DIR + "oversampling_{}/rebuild_adb.png".format(simuPars.noversample))
+plt.savefig(WORKING_DIR + "oversampling_{}/rebuild_adb_order1.png".format(simuPars.noversample))
 plt.show()
 # We can see that we are very close to the photon noise limit in this case. There are some small
 # structures in the 2nd order in the overlap region, but the extracted spectrum is dominated by the
