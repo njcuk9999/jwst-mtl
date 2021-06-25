@@ -21,12 +21,12 @@ class EmpiricalTrace:
 
     Attributes
     ----------
-    clear : np.array of float (2D)
+    clear : np.array
         SOSS CLEAR exposure data frame.
-    f277w : np.array of float (2D)
+    f277w : np.array
         SOSS exposure data frame using the F277W filter. Pass None if no F277W
         exposure is available.
-    badpix_mask : np.array (2D) of bool
+    badpix_mask : np.array
         Bad pixel mask, values of True represent bad pixels. Must be the same
         shape as the CLEAR dataframe.
     subarray : str
@@ -44,9 +44,9 @@ class EmpiricalTrace:
          2 - show progress prints and bars.
          1 - show only progress prints.
          0 - show nothing.
-    order1 : np.array of float (2D)
+    order1 : np.array
         Uncontaminated first order trace profile.
-    order2 : np.array of float (2D)
+    order2 : np.array
         Uncontaminated second order trace profile.
     """
 
@@ -66,7 +66,7 @@ class EmpiricalTrace:
         self.order1 = None
         self.order2 = None
 
-    def build_empirical_trace(self, normalize=True):
+    def build_empirical_trace(self, normalize=True, max_iter=1):
         """Run the empirical trace construction module.
 
         Parameters
@@ -74,11 +74,23 @@ class EmpiricalTrace:
         normalize : bool
             if True, column normalize the final spatial profiles such that the
             flux in each column sums to one.
+        max_iter : int
+            Number of refinement iterations to complete.
         """
 
+        # Warn user that not iterating will yield inaccurate solutions.
+        if max_iter < 1:
+            warn_msg = 'max_iter has been set to 0 - not iterating is' \
+                'unadvisable, and will lead to inaccurate solutions for the' \
+                'trace profiles.'
+            warnings.warn(warn_msg)
+            print('', flush=True)
+
         # Run the empirical trace construction.
-        o1, o2 = tm.build_empirical_trace(self.clear, self.f277w, self.badpix_mask, self.subarray, self.pad,
-                                          self.oversample, normalize, self.verbose)
+        o1, o2 = tm.build_empirical_trace(self.clear, self.f277w,
+                                          self.badpix_mask, self.subarray,
+                                          self.pad, self.oversample, normalize,
+                                          max_iter, self.verbose)
         # Store the uncontaminated profiles as attributes.
         self.order1, self.order2 = o1, o2
 
@@ -105,7 +117,8 @@ class EmpiricalTrace:
             warnings.warn(msg)
 
         # Write trace profiles to disk.
-        utils.write_to_file(self.order1, self.order2, self.subarray, filename, self.pad, self.oversample)
+        utils.write_to_file(self.order1, self.order2, self.subarray, filename,
+                            self.pad, self.oversample)
 
     def validate_inputs(self):
         """Validate the input parameters.

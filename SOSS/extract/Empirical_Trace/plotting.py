@@ -142,9 +142,11 @@ def plot_width_cal(fit_widths, fit_waves, width_poly):
     """
 
     plt.figure(figsize=(8, 5))
-    plt.scatter(fit_waves[0][::10], fit_widths[0][::10], label='trace widths', c='blue', s=12,
+    plt.scatter(fit_waves[0][::10], fit_widths[0][::10], label='trace widths',
+                c='blue', s=12,
                 alpha=0.75)
-    plt.scatter(fit_waves[1][::10], fit_widths[1][::10], c='blue', s=12, alpha=0.75)
+    plt.scatter(fit_waves[1][::10], fit_widths[1][::10], c='blue', s=12,
+                alpha=0.75)
     plt.plot(fit_waves[0], np.polyval(width_poly[0], fit_waves[0]), c='red',
              ls='--', label='width relation')
     plt.plot(fit_waves[1], np.polyval(width_poly[1], fit_waves[1]), c='red',
@@ -156,7 +158,8 @@ def plot_width_cal(fit_widths, fit_waves, width_poly):
     plt.show()
 
 
-def plot_wing_reconstruction(profile, ycens, axis_r, prof_r2, pp_r, newprof, pad, text=None):
+def plot_wing_reconstruction(profile, ycens, axis_r, prof_r2, pp_r, newprof,
+                             pad, text=None):
     """Do diagnostic plotting for wing reconstruction.
     """
 

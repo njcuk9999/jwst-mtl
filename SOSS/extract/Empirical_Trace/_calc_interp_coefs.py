@@ -102,7 +102,8 @@ def calc_interp_coefs(f277w=True, verbose=0):
         newr = np.interp(np.arange(1280), rnger - offsetr,
                          np.sum(psf_list[E][6][600:700, :], axis=0))
 
-        # Loop over all monochromatic PSFs to determine interpolation coefficients.
+        # Loop over all monochromatic PSFs to determine interpolation
+        # coefficients.
         for f, wave in enumerate(wave_range):
             # Lists for running counts of indices and model residuals.
             resid, ind_i, ind_j = [], [], []
