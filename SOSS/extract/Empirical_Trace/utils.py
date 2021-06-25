@@ -20,8 +20,8 @@ from SOSS.extract.empirical_trace import _calc_interp_coefs
 path = '/Users/michaelradica/Documents/GitHub/jwst-mtl/SOSS/extract/empirical_trace/'
 
 
-def _gen_ImageHDU_header(hdu, order, pad, oversample):
-    '''Generate the appropriate fits header for reference file image HDUs.
+def _gen_imagehdu_header(hdu, order, pad, oversample):
+    """Generate the appropriate fits header for reference file image HDUs.
 
     Parameters
     ----------
@@ -38,7 +38,7 @@ def _gen_ImageHDU_header(hdu, order, pad, oversample):
     -------
     hdu : HDU object
         Image HDU object with appropriate header added.
-    '''
+    """
 
     hdu.header['ORDER'] = order
     hdu.header.comments['ORDER'] = 'Spectral order'
@@ -52,8 +52,8 @@ def _gen_ImageHDU_header(hdu, order, pad, oversample):
     return hdu
 
 
-def _gen_PrimaryHDU_header(hdu, subarray, filename):
-    '''Generate the appropriate header for the reference file primary HDU.
+def _gen_primaryhdu_header(hdu, subarray, filename):
+    """Generate the appropriate header for the reference file primary HDU.
 
     Parameters
     ----------
@@ -61,19 +61,19 @@ def _gen_PrimaryHDU_header(hdu, subarray, filename):
         Primary HDU object.
     subarray : str
         Subarray identifier.
-    filname : str
+    filename : str
         Output filename.
 
     Returns
     -------
     hdu : HDU object
         Primary HDU object with appropriate header added.
-    '''
+    """
 
     hdu.header['DATE'] = str(datetime.utcnow())
     hdu.header.comments['DATE'] = 'Date this file was created (UTC)'
     hdu.header['ORIGIN'] = 'SOSS Team MTL'
-    hdu.header.comments['ORIGIN'] = 'Orginization responsible for creating file'
+    hdu.header.comments['ORIGIN'] = 'Organization responsible for creating file'
     hdu.header['TELESCOP'] = 'JWST    '
     hdu.header.comments['TELESCOP'] = 'Telescope used to acquire the data'
     hdu.header['INSTRUME'] = 'NIRISS  '
@@ -85,9 +85,9 @@ def _gen_PrimaryHDU_header(hdu, subarray, filename):
     hdu.header['REFTYPE'] = 'SPECPROFILE'
     hdu.header.comments['REFTYPE'] = 'Reference file type'
     hdu.header['PEDIGREE'] = 'GROUND  '
-    hdu.header.comments['PEDIGREE'] = 'The pedigree of the refernce file'
+    hdu.header.comments['PEDIGREE'] = 'The pedigree of the reference file'
     hdu.header['DESCRIP'] = '2D trace profile'
-    hdu.header.comments['DESCRIP'] = 'Desription of the reference file'
+    hdu.header.comments['DESCRIP'] = 'Description of the reference file'
     hdu.header['AUTHOR'] = 'Michael Radica'
     hdu.header.comments['AUTHOR'] = 'Author of the reference file'
     hdu.header['USEAFTER'] = '2000-01-01T00:00:00'
@@ -98,31 +98,31 @@ def _gen_PrimaryHDU_header(hdu, subarray, filename):
     return hdu
 
 
-def _read_interp_coefs(F277W=True, verbose=0):
-    '''Read the interpolation coefficients from the appropriate reference file.
+def read_interp_coefs(f277w=True, verbose=0):
+    """Read the interpolation coefficients from the appropriate reference file.
     If the reference file does not exist, or the correct coefficients cannot be
-    found, they will be reclaculated.
+    found, they will be recalculated.
 
     Parameters
     ----------
-    F277W : bool
+    f277w : bool
         If True, selects the coefficients with a 2.45µm red anchor.
     verbose : int
         Level of verbosity.
 
     Returns
     -------
-    coef_b : np.ndarray
+    coef_b : np.array
         Blue anchor coefficients.
-    coef_r : np.ndarray
+    coef_r : np.array
         Red anchor coefficients.
-    '''
+    """
 
-    # Attemot to read interpolation coefficients from reference file.
+    # Attempt to read interpolation coefficients from reference file.
     try:
         df = pd.read_csv(path+'Ref_files/interpolation_coefficients.csv')
         # If there is an F277W exposure, get the coefficients to 2.45µm.
-        if F277W is True:
+        if f277w is True:
             coef_b = np.array(df['F_blue'])
             coef_r = np.array(df['F_red'])
         # For no F277W exposure, get the coefficients out to 2.9µm.
@@ -133,24 +133,23 @@ def _read_interp_coefs(F277W=True, verbose=0):
     # have not yet been generated, call the _calc_interp_coefs function to
     #  calculate them.
     except (FileNotFoundError, KeyError):
-        print('No interpolation coefficients found. \
-They will be calculated now.')
-        coef_b, coef_r = _calc_interp_coefs.calc_interp_coefs(F277W=F277W,
+        print('No interpolation coefficients found. They will be calculated now.')
+        coef_b, coef_r = _calc_interp_coefs.calc_interp_coefs(f277w=f277w,
                                                               verbose=verbose)
 
     return coef_b, coef_r
 
 
 def _lik(k, data, model):
-    '''Utility likelihood function for flux rescaling. Esssentially a Chi^2
+    """Utility likelihood function for flux rescaling. Essentially a Chi^2
     multiplied by the data such that wing values don't carry too much weight.
-    '''
+    """
     return np.nansum((data - k*model)**2)
 
 
 def _local_mean(array, step):
-    '''Calculate the mean of an array in chunks of 2*step.
-    '''
+    """Calculate the mean of an array in chunks of 2*step.
+    """
     running_means = []
     for i in range(-step, step):
         if i == 0:
@@ -162,13 +161,13 @@ def _local_mean(array, step):
 
 
 def _poly_res(p, x, y):
-    '''Residuals from a polynomial.
-    '''
+    """Residuals from a polynomial.
+    """
     return np.polyval(p, x) - y
 
 
-def _robust_polyfit(x, y, p0):
-    '''Wrapper around scipy's least_squares fitting routine implementing the
+def robust_polyfit(x, y, p0):
+    """Wrapper around scipy's least_squares fitting routine implementing the
      Huber loss function - to be more resistant to outliers.
 
     Parameters
@@ -176,7 +175,7 @@ def _robust_polyfit(x, y, p0):
     x : list
         Data describing dependant variable.
     y : list
-        Data describing independant variable.
+        Data describing independent variable.
     p0 : tuple
         Initial guess straight line parameters. The length of p0 determines the
         polynomial order to be fit - i.e. a length 2 tuple will fit a 1st order
@@ -186,20 +185,20 @@ def _robust_polyfit(x, y, p0):
     -------
     res.x : list
         Best fitting parameters of the desired polynomial order.
-    '''
+    """
 
     # Preform outlier resistant fitting.
     res = least_squares(_poly_res, p0, loss='huber', f_scale=0.1, args=(x, y))
     return res.x
 
 
-def _sigma_clip(xdata, ydata):
-    '''Perform rough sigma clipping on data top remove 5-sigma outliers.
+def sigma_clip(xdata, ydata):
+    """Perform rough sigma clipping on data to remove 5-sigma outliers.
 
     Parameters
     ----------
     xdata : list
-        Independent varible.
+        Independent variable.
     ydata : list
         Dependent variable.
 
@@ -209,7 +208,7 @@ def _sigma_clip(xdata, ydata):
         Independent variable, sigma clipped.
     ydata : np.array
         Dependent variable, sigma clipped.
-    '''
+    """
 
     xdata, ydata = np.atleast_1d(xdata), np.atleast_1d(ydata)
     # Get mean and standard deviation.
@@ -221,8 +220,8 @@ def _sigma_clip(xdata, ydata):
     return xdata[inds], ydata[inds]
 
 
-def _validate_inputs(etrace):
-    '''Validate the input parameters for the empirical trace construction
+def validate_inputs(etrace):
+    """Validate the input parameters for the empirical trace construction
     module, and determine the correct subarray for the data.
 
     Parameters
@@ -235,7 +234,7 @@ def _validate_inputs(etrace):
     subarray : str
         The correct NIRISS/SOSS subarray identifier corresponding to the CLEAR
         dataframe.
-    '''
+    """
 
     # Ensure F277W and CLEAR have the same dimensions.
     if etrace.F277W is not None:
@@ -279,9 +278,9 @@ SUBSTRIP96.\nPlease use a reference file for the second order.'
     return subarray
 
 
-def _verbose_to_bool(verbose):
-    '''Convert integer verbose to bool to disable or enable progress bars.
-    '''
+def verbose_to_bool(verbose):
+    """Convert integer verbose to bool to disable or enable progress bars.
+    """
 
     if verbose in [2, 3]:
         verbose_bool = False
@@ -291,15 +290,15 @@ def _verbose_to_bool(verbose):
     return verbose_bool
 
 
-def _write_to_file(order1, order2, subarray, filename, pad, oversample):
-    '''Utility function to write the 2D trace profile to disk. Data will be
+def write_to_file(order1, order2, subarray, filename, pad, oversample):
+    """Utility function to write the 2D trace profile to disk. Data will be
     saved as a multi-extension fits file.
 
     Parameters
     ----------
-    order1 : np.ndarray (2D)
+    order1 : np.array (2D)
         Uncontaminated first order data frame.
-    order2 : np.ndarray (2D)
+    order2 : np.array (2D)
         Uncontaminated first order data frame. Pass None to only write the
         first order profile to file.
     subarray : str
@@ -310,20 +309,20 @@ def _write_to_file(order1, order2, subarray, filename, pad, oversample):
         Amount of padding in native pixels.
     oversample : int
         Oversampling factor.
-    '''
+    """
 
     # Generate the primary HDU with appropriate header keywords.
     hdu_p = fits.PrimaryHDU()
-    hdu_p = _gen_PrimaryHDU_header(hdu_p, subarray, filename)
+    hdu_p = _gen_primaryhdu_header(hdu_p, subarray, filename)
     hdulist = [hdu_p]
     # Generate an ImageHDU for the first order profile.
     hdu_1 = fits.ImageHDU(data=order1)
-    hdu_1 = _gen_ImageHDU_header(hdu_1, 1, pad, oversample)
+    hdu_1 = _gen_imagehdu_header(hdu_1, 1, pad, oversample)
     hdulist.append(hdu_1)
     # Generate an ImageHDU for the second order profile.
     if order2 is not None:
         hdu_2 = fits.ImageHDU(data=order2)
-        hdu_2 = _gen_ImageHDU_header(hdu_2, 2, pad, oversample)
+        hdu_2 = _gen_imagehdu_header(hdu_2, 2, pad, oversample)
         hdulist.append(hdu_2)
 
     # Write the file to disk.

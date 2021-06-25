@@ -121,7 +121,7 @@ def build_empirical_trace(clear, F277W, badpix_mask, subarray, pad, oversample,
         centroids = get_substrip96_centroids(centroids)
     # Overplot the data centroids on the CLEAR exposure if desired.
     if verbose == 3:
-        plotting._plot_centroid(clear, centroids)
+        plotting.plot_centroid(clear, centroids)
 
     # ========= CONSTRUCT FIRST PASS MODELS =========
     # Build a first estimate of the first and second order spatial profiles
@@ -200,7 +200,7 @@ def build_empirical_trace(clear, F277W, badpix_mask, subarray, pad, oversample,
                                        pad[1]:(dimx+pad[1])]
             o2_unpad = order2_uncontam[pad[0]:(dimy+pad[0]),
                                        pad[1]:(dimx+pad[1])]
-            plotting._plot_trace_residuals(clear, o1_unpad, o2_unpad)
+            plotting.plot_trace_residuals(clear, o1_unpad, o2_unpad)
 
     # Add oversampling.
     if oversample != 1:
@@ -407,7 +407,7 @@ def construct_order1(clear, F277, ycens, subarray, pad=0, verbose=0):
         Ranch /= np.nansum(Ranch)
 
         # Interpolation polynomial coeffs, calculated via calc_interp_coefs
-        coef_b, coef_r = utils._read_interp_coefs(F277W=True, verbose=verbose)
+        coef_b, coef_r = utils.read_interp_coefs(verbose=verbose)
     else:
         # If no F277W exposure is provided, interpolate out to 2.9µm.
         # Generate a simulated 2.9µm PSF.
@@ -439,7 +439,7 @@ def construct_order1(clear, F277, ycens, subarray, pad=0, verbose=0):
         # Normalize
         Ranch /= np.nansum(Ranch)
         # Interpolation polynomial coeffs, calculated via calc_interp_coefs
-        coef_b, coef_r = utils._read_interp_coefs(F277W=False, verbose=verbose)
+        coef_b, coef_r = utils.read_interp_coefs(verbose=verbose)
         # Pixel coords at which to start the interpolation.
         xdr = 0
 
@@ -454,7 +454,7 @@ def construct_order1(clear, F277, ycens, subarray, pad=0, verbose=0):
     # Create an interpolated 1D PSF at each required position.
     if verbose != 0:
         print('   Interpolating trace...', flush=True)
-    disable = utils._verbose_to_bool(verbose)
+    disable = utils.verbose_to_bool(verbose)
     for i, vals in tqdm(enumerate(zip(cenx_d, ceny_d, lmbda)),
                         total=len(lmbda), disable=disable):
         cenx, ceny, lbd = int(round(vals[0], 0)), vals[1], vals[2]
@@ -487,7 +487,7 @@ def construct_order1(clear, F277, ycens, subarray, pad=0, verbose=0):
     # Insert interpolated data.
     o1frame[:, rend:bend] = map2D[:, rend:bend]
     # Bluer region is known from the CLEAR exposure.
-    disable = utils._verbose_to_bool(verbose)
+    disable = utils.verbose_to_bool(verbose)
     for col in tqdm(range(bend, dimx), disable=disable):
         if subarray == 'SUBSTRIP96':
             cen = ycens['order 1']['Y centroid'][col]
@@ -516,7 +516,7 @@ def construct_order1(clear, F277, ycens, subarray, pad=0, verbose=0):
                                                    pad=pad, smooth=True)
     if F277 is not None:
         # Add on the F277W frame to the red of the model.
-        disable = utils._verbose_to_bool(verbose)
+        disable = utils.verbose_to_bool(verbose)
         for col in tqdm(range(rend), disable=disable):
             # Reconstruct wing structure and pad.
             if subarray == 'SUBSTRIP96':
@@ -597,7 +597,7 @@ def construct_order2(clear, order1_rescale, ycens, pad=0, verbose=0):
     # second order wings.
     if verbose != 0:
         print('   Reconstructing oversubtracted wings...', flush=True)
-    disable = utils._verbose_to_bool(verbose)
+    disable = utils.verbose_to_bool(verbose)
     for o2pix in tqdm(range(dimx), disable=disable):
         # Get the wavelength for each column in order 2.
         o2wave = np.polyval(pp_w2, o2pix)
@@ -691,14 +691,14 @@ def construct_order2(clear, order1_rescale, ycens, pad=0, verbose=0):
     # oversubtraction of the first order.
     pixs, ks = np.array(pixs), np.array(ks)
     # Rough sigma clip of huge outliers.
-    pixs, ks = utils._sigma_clip(pixs, ks)
+    pixs, ks = utils.sigma_clip(pixs, ks)
     # Fit a polynomial to all positive scaling coefficients, and use the fit to
     # interpolate the correct scaling for notdone columns.
     pp_k = np.polyfit(pixs, ks, 6)
-    pp_k = utils._robust_polyfit(pixs, ks, pp_k)
+    pp_k = utils.robust_polyfit(pixs, ks, pp_k)
     # Plot the results if necessary.
     if verbose == 3:
-        plotting._plot_scaling_coefs(pixs, ks, pp_k)
+        plotting.plot_scaling_coefs(pixs, ks, pp_k)
 
     if verbose != 0 and len(notdone) != 0:
         print('   Dealing with oversubtracted cores...')
@@ -821,7 +821,7 @@ def _fit_trace_widths(clear, wave_coefs, verbose=0):
     inds = np.where(np.abs(fit_widths_b - mod_widths) < 5*stddev)
     # Robustly fit a straight line.
     pp_b = np.polyfit(fit_waves_b[inds], fit_widths_b[inds], 1)
-    wfit_b = utils._robust_polyfit(fit_waves_b[inds], fit_widths_b[inds], pp_b)
+    wfit_b = utils.robust_polyfit(fit_waves_b[inds], fit_widths_b[inds], pp_b)
 
     # Seperate fit to contaminated region.
     fit_waves_r = np.array(wax[:(end+10)])
@@ -833,12 +833,11 @@ def _fit_trace_widths(clear, wave_coefs, verbose=0):
     inds = np.where(np.abs(fit_widths_r - mod_widths) < 5*stddev)
     # Robustly fit a straight line.
     pp_r = np.polyfit(fit_waves_r[inds], fit_widths_r[inds], 1)
-    wfit_r = utils._robust_polyfit(fit_waves_r[inds], fit_widths_r[inds], pp_r)
+    wfit_r = utils.robust_polyfit(fit_waves_r[inds], fit_widths_r[inds], pp_r)
 
     # Plot the width calibration fit if required.
     if verbose == 3:
-        plotting._plot_width_cal(wax, trace_widths, (fit_waves_b, fit_waves_r),
-                                 (wfit_b, wfit_r))
+        plotting.plot_width_cal(wax, trace_widths, (fit_waves_b, fit_waves_r), (wfit_b, wfit_r))
 
     return wfit_r, wfit_b
 
@@ -1091,7 +1090,7 @@ def reconstruct_wings256(profile, ycens=None, contamination=[2, 3], pad=0,
         prof_r[start:end] = np.nan
     # Fit the unmasked part of the wing to determine the mean linear trend.
     inds = np.where(np.isfinite(prof_r))[0]
-    pp = utils._robust_polyfit(axis_r[inds], prof_r[inds], (0, 0))
+    pp = utils.robust_polyfit(axis_r[inds], prof_r[inds], (0, 0))
     wing_mean = pp[1]+pp[0]*axis_r
     # Calculate the standard dev of unmasked points from the mean trend.
     stddev_m = np.sqrt(np.median((prof_r[inds] - wing_mean[inds])**2))
@@ -1131,7 +1130,7 @@ def reconstruct_wings256(profile, ycens=None, contamination=[2, 3], pad=0,
     # Use np.polyfit for a first estimate of the coefficients.
     pp_r0 = np.polyfit(fit_ax, fit_prof, 7)
     # Robust fit using the polyfit results as a starting point.
-    pp_r = utils._robust_polyfit(fit_ax, fit_prof, pp_r0)
+    pp_r = utils.robust_polyfit(fit_ax, fit_prof, pp_r0)
 
     # === Stitching ===
     newprof = profile*1
@@ -1173,9 +1172,7 @@ def reconstruct_wings256(profile, ycens=None, contamination=[2, 3], pad=0,
 
     # Do diagnostic plot if requested.
     if verbose == 3:
-        plotting._plot_wing_reconstruction(profile, ycens, axis_r[inds3],
-                                           prof_r2[inds3], pp_r, newprof, pad,
-                                           **kwargs)
+        plotting.plot_wing_reconstruction(profile, ycens, axis_r[inds3], prof_r2[inds3], pp_r, newprof, pad, **kwargs)
 
     return newprof
 
@@ -1246,8 +1243,7 @@ def reconstruct_wings96(profile, ycen, goodwing=None, contamination=False,
                               np.tile(padval_r, pad+4)])
 
     if verbose == 3:
-        plotting._plot_wing_reconstruction96(profile, newprof, goodwing,
-                                             **kwargs)
+        plotting.plot_wing_reconstruction96(profile, newprof, **kwargs)
 
     return newprof
 
@@ -1282,7 +1278,7 @@ def refine_order1(clear, o2frame, centroids, pad, verbose=0):
     order1_uncontam = np.zeros((dimy+2*pad, dimx))
 
     # Reconstruct first order wings.
-    disable = utils._verbose_to_bool(verbose)
+    disable = utils.verbose_to_bool(verbose)
     for i in tqdm(range(dimx), disable=disable):
         ycens = [centroids['order 1']['Y centroid'][i],
                  centroids['order 2']['Y centroid'][i],
@@ -1329,7 +1325,7 @@ def replace_badpix(clear, badpix_mask, fill_negatives=True, verbose=0):
     clear_r = clear*1
     ys, xs = np.where(mask)
 
-    disable = utils._verbose_to_bool(verbose)
+    disable = utils.verbose_to_bool(verbose)
     for y, x in tqdm(zip(ys, xs), total=len(ys), disable=disable):
         # Get coordinates of pixels in the 5x5 box.
         starty = np.max([(y-2), 0])
@@ -1379,7 +1375,7 @@ def rescale_model(data, model, centroids, verbose=0):
     ks = []
     # Loop over all columns - surely there is a more vectorized way to do this
     # whenever I try to minimize all of k at once I get nonsensical results?
-    disable = utils._verbose_to_bool(verbose)
+    disable = utils.verbose_to_bool(verbose)
     for i in tqdm(range(data.shape[1]), disable=disable):
         # Get region around centroid
         ycen = int(round(centroids['order 1']['Y centroid'][i], 0))
@@ -1488,6 +1484,6 @@ def smooth_spec_discont(o2frame, verbose):
 
     # Plot the change in flux deviations after all iterations are complete.
     if verbose == 3:
-        plotting._plot_flux_deviations(dev_0, dev, iter)
+        plotting.plot_flux_deviations(dev_0, dev, iter)
 
     return o2frame

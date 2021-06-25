@@ -107,11 +107,10 @@ class Empirical_Trace():
             warnings.warn(msg)
 
         # Write trace profiles to disk.
-        utils._write_to_file(self.order1, self.order2, self.subarray,
-                             filename, self.pad, self.oversample)
+        utils.write_to_file(self.order1, self.order2, self.subarray, filename, self.pad, self.oversample)
 
     def validate_inputs(self):
         '''Validate the input parameters.
         '''
 
-        return utils._validate_inputs(self)
+        return utils.validate_inputs(self)
