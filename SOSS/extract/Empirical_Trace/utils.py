@@ -98,6 +98,32 @@ def _gen_primaryhdu_header(hdu, subarray, filename):
     return hdu
 
 
+def lik(k, data, model):
+    """Utility likelihood function for flux rescaling. Essentially a Chi^2
+    multiplied by the data such that wing values don't carry too much weight.
+    """
+    return np.nansum((data - k*model)**2)
+
+
+def local_mean(array, step):
+    """Calculate the mean of an array in chunks of 2*step.
+    """
+    running_means = []
+    for i in range(-step, step):
+        if i == 0:
+            continue
+        running_means.append(np.roll(array, i))
+    loc_mean = np.mean(running_means, axis=0)
+
+    return loc_mean
+
+
+def _poly_res(p, x, y):
+    """Residuals from a polynomial.
+    """
+    return np.polyval(p, x) - y
+
+
 def read_interp_coefs(f277w=True, verbose=0):
     """Read the interpolation coefficients from the appropriate reference file.
     If the reference file does not exist, or the correct coefficients cannot be
@@ -138,32 +164,6 @@ def read_interp_coefs(f277w=True, verbose=0):
                                                               verbose=verbose)
 
     return coef_b, coef_r
-
-
-def lik(k, data, model):
-    """Utility likelihood function for flux rescaling. Essentially a Chi^2
-    multiplied by the data such that wing values don't carry too much weight.
-    """
-    return np.nansum((data - k*model)**2)
-
-
-def local_mean(array, step):
-    """Calculate the mean of an array in chunks of 2*step.
-    """
-    running_means = []
-    for i in range(-step, step):
-        if i == 0:
-            continue
-        running_means.append(np.roll(array, i))
-    loc_mean = np.mean(running_means, axis=0)
-
-    return loc_mean
-
-
-def _poly_res(p, x, y):
-    """Residuals from a polynomial.
-    """
-    return np.polyval(p, x) - y
 
 
 def robust_polyfit(x, y, p0):
@@ -237,12 +237,12 @@ def validate_inputs(etrace):
     """
 
     # Ensure F277W and CLEAR have the same dimensions.
-    if etrace.F277W is not None:
-        if np.shape(etrace.F277W) != np.shape(etrace.CLEAR):
+    if etrace.f277w is not None:
+        if np.shape(etrace.f277w) != np.shape(etrace.clear):
             msg = 'F277W and CLEAR dataframes must be the same shape.'
             raise ValueError(msg)
     # Ensure bad pixel mask and clear have the same dimensions.
-    if np.shape(etrace.CLEAR) != np.shape(etrace.badpix_mask):
+    if np.shape(etrace.clear) != np.shape(etrace.badpix_mask):
         raise ValueError('Bad pixel mask must be the same shape as the data.')
     # Ensure padding and oversampling are integers.
     if type(etrace.pad) != tuple and len(etrace.pad) != 2:
@@ -254,7 +254,7 @@ def validate_inputs(etrace):
         raise ValueError('Verbose argument must be in the range 0 to 3.')
 
     # Determine correct subarray dimensions.
-    dimy, dimx = np.shape(etrace.CLEAR)
+    dimy, dimx = np.shape(etrace.clear)
     if dimy == 96:
         subarray = 'SUBSTRIP96'
         # Fail if user wants to create reference files with a SUBSTRIP96

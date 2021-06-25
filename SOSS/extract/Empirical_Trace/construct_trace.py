@@ -680,7 +680,7 @@ def construct_order2(clear, order1_rescale, ycens, pad=0, verbose=0):
         # Put the profile on the detector.
         o2frame[:, o2pix] = newprof[start:(end+ext)]
 
-    # ========= CORRECT sOVERSUBTRACTED COLUMNS =========
+    # ========= CORRECT OVERSUBTRACTED COLUMNS =========
     # Deal with notdone columns: columns who's scaling coef was <= 0 due to
     # oversubtraction of the first order.
     pixs, ks = np.array(pixs), np.array(ks)
@@ -808,30 +808,24 @@ def _fit_trace_widths(clear, wave_coefs, verbose=0):
     end = np.where(wax < 2.1)[0][0]
     fit_waves_b = np.array(wax[end:])
     fit_widths_b = np.array(trace_widths[end:])
-    # Reject clear outliers (>5sigma)
-    pp_b = np.polyfit(fit_waves_b, fit_widths_b, 1)
-    mod_widths = np.polyval(pp_b, fit_waves_b)
-    stddev = np.median(np.sqrt((fit_widths_b - mod_widths)**2))
-    inds = np.where(np.abs(fit_widths_b - mod_widths) < 5*stddev)
+    # Rough sigma clip of huge outliers.
+    fit_waves_b, fit_widths_b = utils.sigma_clip(fit_waves_b, fit_widths_b)
     # Robustly fit a straight line.
-    pp_b = np.polyfit(fit_waves_b[inds], fit_widths_b[inds], 1)
-    wfit_b = utils.robust_polyfit(fit_waves_b[inds], fit_widths_b[inds], pp_b)
+    pp_b = np.polyfit(fit_waves_b, fit_widths_b, 1)
+    wfit_b = utils.robust_polyfit(fit_waves_b, fit_widths_b, pp_b)
 
     # Separate fit to contaminated region.
     fit_waves_r = np.array(wax[:(end+10)])
     fit_widths_r = np.array(trace_widths[:(end+10)])
-    # Reject clear outliers (>5sigma)
-    pp_r = np.polyfit(fit_waves_r, fit_widths_r, 1)
-    mod_widths = np.polyval(pp_r, fit_waves_r)
-    stddev = np.median(np.sqrt((fit_widths_r - mod_widths)**2))
-    inds = np.where(np.abs(fit_widths_r - mod_widths) < 5*stddev)
+    # Rough sigma clip of huge outliers.
+    fit_waves_r, fit_widths_r = utils.sigma_clip(fit_waves_r, fit_widths_r)
     # Robustly fit a straight line.
-    pp_r = np.polyfit(fit_waves_r[inds], fit_widths_r[inds], 1)
-    wfit_r = utils.robust_polyfit(fit_waves_r[inds], fit_widths_r[inds], pp_r)
+    pp_r = np.polyfit(fit_waves_r, fit_widths_r, 1)
+    wfit_r = utils.robust_polyfit(fit_waves_r, fit_widths_r, pp_r)
 
     # Plot the width calibration fit if required.
     if verbose == 3:
-        plotting.plot_width_cal(wax, trace_widths, (fit_waves_b, fit_waves_r), (wfit_b, wfit_r))
+        plotting.plot_width_cal((fit_widths_b, fit_widths_r), (fit_waves_b, fit_waves_r), (wfit_b, wfit_r))
 
     return wfit_r, wfit_b
 
