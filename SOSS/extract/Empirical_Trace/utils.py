@@ -140,14 +140,14 @@ def read_interp_coefs(f277w=True, verbose=0):
     return coef_b, coef_r
 
 
-def _lik(k, data, model):
+def lik(k, data, model):
     """Utility likelihood function for flux rescaling. Essentially a Chi^2
     multiplied by the data such that wing values don't carry too much weight.
     """
     return np.nansum((data - k*model)**2)
 
 
-def _local_mean(array, step):
+def local_mean(array, step):
     """Calculate the mean of an array in chunks of 2*step.
     """
     running_means = []
@@ -172,9 +172,9 @@ def robust_polyfit(x, y, p0):
 
     Parameters
     ----------
-    x : list
+    x : list, np.array
         Data describing dependant variable.
-    y : list
+    y : list, np.array
         Data describing independent variable.
     p0 : tuple
         Initial guess straight line parameters. The length of p0 determines the
@@ -197,9 +197,9 @@ def sigma_clip(xdata, ydata):
 
     Parameters
     ----------
-    xdata : list
+    xdata : list, np.array
         Independent variable.
-    ydata : list
+    ydata : list, np.array
         Dependent variable.
 
     Returns
@@ -226,8 +226,8 @@ def validate_inputs(etrace):
 
     Parameters
     ----------
-    etrace : Empirical_Trace instance
-        Instance of an Empirical_Trace object.
+    etrace : EmpiricalTrace instance
+        Instance of an EmpiricalTrace object.
 
     Returns
     -------
