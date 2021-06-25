@@ -15,12 +15,12 @@ import numpy.ma as ma
 from scipy.optimize import minimize
 from tqdm import tqdm
 import warnings
+from SOSS.dms.soss_solver import _chi_squared, transform_coords
+from SOSS.dms.soss_centroids import get_soss_centroids
 from SOSS.extract import soss_read_refs
 from SOSS.extract.empirical_trace import plotting
 from SOSS.extract.empirical_trace import _calc_interp_coefs
 from SOSS.extract.empirical_trace import utils
-from SOSS.extract.simple_solver import simple_solver as ss
-from SOSS.trace import contaminated_centroids as ctd
 
 warnings.simplefilter(action='ignore', category=RuntimeWarning)
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -29,10 +29,10 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 path = '/Users/michaelradica/Documents/School/Ph.D./Research/SOSS/Extraction/Input_Files/'
 
 
-def build_empirical_trace(clear, F277W, badpix_mask, subarray, pad, oversample,
+def build_empirical_trace(clear, f277w, badpix_mask, subarray, pad, oversample,
                           normalize, verbose):
-    '''Main procedural function for the empirical trace construction module.
-    Calling this function will initialize and run all the requred subroutines
+    """Main procedural function for the empirical trace construction module.
+    Calling this function will initialize and run all the required subroutines
     to produce an uncontaminated spatial profile for the first and second
     orders. The spatial profiles generated can include oversampling as well as
     padding in both the spatial and spectral directions.
@@ -43,10 +43,10 @@ def build_empirical_trace(clear, F277W, badpix_mask, subarray, pad, oversample,
     ----------
     clear : np.array of float (2D)
         SOSS CLEAR exposure data frame.
-    F277W : np.array of float (2D)
+    f277w : np.array of float (2D)
         SOSS exposure data frame using the F277W filter. Pass None if no F277W
         exposure is available.
-    badpix_mask : np.ndarray (2D) of bool
+    badpix_mask : np.array (2D) of bool
         Bad pixel mask, values of True represent bad pixels. Must be the same
         shape as the CLEAR dataframe.
     subarray : str
@@ -54,7 +54,7 @@ def build_empirical_trace(clear, F277W, badpix_mask, subarray, pad, oversample,
         'FULL'.
     pad : tuple
         Amount of padding to include (in native pixels) in the spatial and
-        spectral directions, repsectively.
+        spectral directions, respectively.
     oversample : int
         Oversampling factor. Oversampling will be equal in the spectral and
         spatial directions.
@@ -70,9 +70,9 @@ def build_empirical_trace(clear, F277W, badpix_mask, subarray, pad, oversample,
 
     Returns
     -------
-    order1_uncontam : np.ndarray (2D)
+    order1_uncontam : np.array (2D)
         Uncontaminated spatial profile for the first order.
-    order2_uncontam : np.ndarray(2D)
+    order2_uncontam : np.array(2D)
         Uncontaminated spatial profile for the second order.
 
     Raises
@@ -80,7 +80,7 @@ def build_empirical_trace(clear, F277W, badpix_mask, subarray, pad, oversample,
     ValueError
         When the clear dimensions do not match a known subarray.
         If the bad pixel mask is not the same shape as the clear frame.
-    '''
+    """
 
     if verbose != 0:
         print('Starting the Empirical Trace Construction module.\n')
@@ -94,9 +94,9 @@ def build_empirical_trace(clear, F277W, badpix_mask, subarray, pad, oversample,
         # If subarray is FULL - trim down to SUBSTRIP256 and work with that.
         # The rest if the frame is zeros anyways.
         clear = clear[-256:, :]
-        F277W = F277W[-256:, :]
+        f277w = f277w[-256:, :]
         badpix_mask = badpix_mask[-256:, :]
-        # Reset all variable to appropriate SUSTRIP256 values.
+        # Reset all variable to appropriate SUBSTRIP256 values.
         subarray = 'SUBSTRIP256'
         dimy, dimx = np.shape(clear)
         # Note that the detector was trimmed.
@@ -107,32 +107,31 @@ def build_empirical_trace(clear, F277W, badpix_mask, subarray, pad, oversample,
         print(' Initial processing...')
         print('  Replacing bad pixels...', flush=True)
     clear = replace_badpix(clear, badpix_mask, verbose=verbose)
-    if F277W is not None:
-        F277W = replace_badpix(F277W, badpix_mask, verbose=verbose)
+    if f277w is not None:
+        f277w = replace_badpix(f277w, badpix_mask, verbose=verbose)
 
     # Get the centroid positions for both orders from the data using the
     # edgetrig method.
     if verbose != 0:
         print('  Getting trace centroids...')
-    centroids = ctd.get_soss_centroids(clear, subarray=subarray)
+    centroids = get_soss_centroids(clear, mask=badpix_mask, subarray=subarray)
     # For SUBSTRIP96, the edgetrig method cannot find the second and third
     # order centroids. Use the simple solver method instead.
     if subarray == 'SUBSTRIP96':
         centroids = get_substrip96_centroids(centroids)
     # Overplot the data centroids on the CLEAR exposure if desired.
     if verbose == 3:
-        plotting._plot_centroid(clear, centroids)
+        plotting.plot_centroid(clear, centroids)
 
     # ========= CONSTRUCT FIRST PASS MODELS =========
     # Build a first estimate of the first and second order spatial profiles
-    # through an interpolation model in the conatminated region, and
+    # through an interpolation model in the contaminated region, and
     # wing reconstruction for each order.
     # Construct the first order profile.
     if verbose != 0:
         print(' \nConstructing first pass trace models...')
         print('  Starting the first order trace model...')
-    order1_1 = construct_order1(clear, F277W, centroids, pad=0,
-                                verbose=verbose, subarray=subarray)
+    order1_1 = construct_order1(clear, f277w, centroids, subarray=subarray, pad=0, verbose=verbose)
     # If the data is SUBSTRIP96, this is as much as we can do - save the first
     # pass first order trace profile.
     if subarray == 'SUBSTRIP96':
@@ -182,17 +181,13 @@ def build_empirical_trace(clear, F277W, badpix_mask, subarray, pad, oversample,
         if pad != 0:
             if verbose != 0:
                 print(' Adding padding to the spectral axis...')
-            order1_uncontam = pad_spectral_axis(order1_uncontam,
-                                                centroids['order 1']['X centroid'],
-                                                centroids['order 1']['Y centroid'],
-                                                pad=pad[1])
+            order1_uncontam = pad_spectral_axis(order1_uncontam, centroids['order 1']['X centroid'],
+                                                centroids['order 1']['Y centroid'], pad=pad[1])
         # Even if padding is not requested, fill in the zero valued area of the
         # frame where the order 2 trace is off of the detector.
         edge = np.where(np.nanmedian(order2_uncontam, axis=0) == 0)[0][0] - 5
-        order2_uncontam = pad_spectral_axis(order2_uncontam,
-                                            centroids['order 2']['X centroid'],
-                                            centroids['order 2']['Y centroid'],
-                                            pad=pad[1], ref_col=(5, edge-dimx))
+        order2_uncontam = pad_spectral_axis(order2_uncontam, centroids['order 2']['X centroid'],
+                                            centroids['order 2']['Y centroid'], pad=pad[1], ref_cols=(5, edge - dimx))
 
         # Plot a map of the residuals.
         if verbose == 3:
@@ -200,7 +195,7 @@ def build_empirical_trace(clear, F277W, badpix_mask, subarray, pad, oversample,
                                        pad[1]:(dimx+pad[1])]
             o2_unpad = order2_uncontam[pad[0]:(dimy+pad[0]),
                                        pad[1]:(dimx+pad[1])]
-            plotting._plot_trace_residuals(clear, o1_unpad, o2_unpad)
+            plotting.plot_trace_residuals(clear, o1_unpad, o2_unpad)
 
     # Add oversampling.
     if oversample != 1:
@@ -219,7 +214,6 @@ def build_empirical_trace(clear, F277W, badpix_mask, subarray, pad, oversample,
 
     # If the original subarray was FULL - add back the rest of the frame
     if trim is True:
-        subarray = 'FULL'
         # Create the FULL frame including oversampling and padding.
         order1_full = np.zeros(((2048+2*pad[0])*oversample,
                                 (2048+2*pad[1])*oversample))
@@ -239,8 +233,8 @@ def build_empirical_trace(clear, F277W, badpix_mask, subarray, pad, oversample,
 
 
 def _chromescale(profile, wave_start, wave_end, ycen, poly_coef):
-    '''Correct chromatic variations in the PSF along the spatial direction
-    using the polynomial relationshop derived in _fit_trace_widths.
+    """Correct chromatic variations in the PSF along the spatial direction
+    using the polynomial relationship derived in _fit_trace_widths.
 
     Parameters
     ----------
@@ -258,9 +252,9 @@ def _chromescale(profile, wave_start, wave_end, ycen, poly_coef):
 
     Returns
     -------
-    prof_recsale : np.array of float
+    prof_rescale : np.array of float
         Rescaled 1D PSF profile.
-    '''
+    """
 
     xrange = len(profile)
     # Get the starting and ending trace widths.
@@ -290,8 +284,8 @@ def _chromescale(profile, wave_start, wave_end, ycen, poly_coef):
     return prof_rescale
 
 
-def construct_order1(clear, F277, ycens, subarray, pad=0, verbose=0):
-    '''This creates the full order 1 trace profile model. The region
+def construct_order1(clear, f277w, ycens, subarray, pad=0, verbose=0):
+    """This creates the full order 1 trace profile model. The region
     contaminated by the second order is interpolated from the CLEAR and F277W
     exposures, or just from the CLEAR exposure and a standard red anchor if
     no F277W exposure is available.
@@ -309,12 +303,12 @@ def construct_order1(clear, F277, ycens, subarray, pad=0, verbose=0):
     ----------
     clear : np.array of float (2D)
         NIRISS SOSS CLEAR exposure dataframe.
-    F277 : np.array of float (2D)
+    f277w : np.array of float (2D)
         NIRISS SOSS F277W filter exposure dataframe. If no F277W exposure
         is available, pass None.
     ycens : dict
         Dictionary of Y-coordinates for the trace centroids of the first three
-        diffraction orders, ie. as returned by get_contam_centroids.
+        diffraction orders, ie. as returned by get_soss_centroids.
     subarray : str
         Subarray identifier. One of "SUBSTRIP96", "SUBSTRIP256", or "FULL".
     pad : int
@@ -326,7 +320,7 @@ def construct_order1(clear, F277, ycens, subarray, pad=0, verbose=0):
     -------
     o1frame : np.array of float (2D)
         Interpolated order 1 trace model with padding.
-    '''
+    """
 
     # Get subarray dimensions
     dimx = 2048
@@ -362,28 +356,28 @@ def construct_order1(clear, F277, ycens, subarray, pad=0, verbose=0):
     ydb = ycens['order 1']['Y centroid'][xdb]
     # Extract the 2.1µm anchor profile from the data - take median profile of
     # neighbouring 5 columns to mitigate effects of outliers.
-    Banch = np.median(clear[:, (xdb-2):(xdb+2)], axis=1)
+    bl_anch = np.median(clear[:, (xdb - 2):(xdb + 2)], axis=1)
     if subarray == 'SUBSTRIP96':
-        Banch = reconstruct_wings96(Banch, ydb, goodwing=goodwing,
-                                    verbose=verbose, contamination=True,
-                                    pad=pad, **{'text': 'Blue anchor'})
+        bl_anch = reconstruct_wings96(bl_anch, ydb, goodwing=goodwing,
+                                      verbose=verbose, contamination=True,
+                                      pad=pad, **{'text': 'Blue anchor'})
     else:
         # Mask second and third order, reconstruct wing structure and pad.
         cens = [ycens['order 1']['Y centroid'][xdb],
                 ycens['order 2']['Y centroid'][xdb],
                 ycens['order 3']['Y centroid'][xdb]]
-        Banch = reconstruct_wings256(Banch, ycens=cens, contamination=[2, 3],
-                                     pad=pad, verbose=verbose, smooth=True,
-                                     **{'text': 'Blue anchor'})
+        bl_anch = reconstruct_wings256(bl_anch, ycens=cens, contamination=[2, 3],
+                                       pad=pad, verbose=verbose, smooth=True,
+                                       **{'text': 'Blue anchor'})
     # Remove the lambda/D scaling.
-    Banch = _chromescale(Banch, 2.1, 2.5, ydb+pad, wave_polys)
+    bl_anch = _chromescale(bl_anch, 2.1, 2.5, ydb + pad, wave_polys)
     # Normalize
-    Banch /= np.nansum(Banch)
+    bl_anch /= np.nansum(bl_anch)
 
     # Determine the anchor profiles - red anchor.
-    if F277 is not None:
+    if f277w is not None:
         # If an F277W exposure is provided, only interpolate out to 2.45µm.
-        # Redwards of 2.45µm we have perfect knowledge of the order 1 trace.
+        # Red-wards of 2.45µm we have perfect knowledge of the order 1 trace.
         # Find the pixel position of 2.45µm.
         i_r = np.where(wavecal_w >= 2.45)[0][-1]
         xdr = int(wavecal_x[i_r])
@@ -391,23 +385,23 @@ def construct_order1(clear, F277, ycens, subarray, pad=0, verbose=0):
 
         # Extract and rescale the 2.45µm profile - take median of neighbouring
         # five columns to mitigate effects of outliers.
-        Ranch = np.median(F277[:, (xdr-2):(xdr+2)], axis=1)
+        rd_anch = np.median(f277w[:, (xdr - 2):(xdr + 2)], axis=1)
         # Reconstruct wing structure and pad.
         if subarray == 'SUBSTRIP96':
-            Ranch = reconstruct_wings96(Ranch, ydr, verbose=verbose, pad=pad,
-                                        **{'text': 'Red anchor'})
+            rd_anch = reconstruct_wings96(rd_anch, ydr, verbose=verbose, pad=pad,
+                                          **{'text': 'Red anchor'})
         else:
             cens = [ycens['order 1']['Y centroid'][xdr]]
-            Ranch = reconstruct_wings256(Ranch, ycens=cens,
-                                         contamination=None, pad=pad,
-                                         verbose=verbose, smooth=True,
-                                         **{'text': 'Red anchor'})
-        Ranch = _chromescale(Ranch, 2.45, 2.5, ydr+pad, wave_polys)
+            rd_anch = reconstruct_wings256(rd_anch, ycens=cens,
+                                           contamination=None, pad=pad,
+                                           verbose=verbose, smooth=True,
+                                           **{'text': 'Red anchor'})
+        rd_anch = _chromescale(rd_anch, 2.45, 2.5, ydr + pad, wave_polys)
         # Normalize
-        Ranch /= np.nansum(Ranch)
+        rd_anch /= np.nansum(rd_anch)
 
-        # Interpolation polynomial coeffs, calculated via calc_interp_coefs
-        coef_b, coef_r = utils._read_interp_coefs(F277W=True, verbose=verbose)
+        # Interpolation polynomial coefs, calculated via calc_interp_coefs
+        coef_b, coef_r = utils.read_interp_coefs(verbose=verbose)
     else:
         # If no F277W exposure is provided, interpolate out to 2.9µm.
         # Generate a simulated 2.9µm PSF.
@@ -415,7 +409,7 @@ def construct_order1(clear, F277, ycens, subarray, pad=0, verbose=0):
                                            oversampling=1, pixel=256,
                                            verbose=False)[0][0].data
         # Extract the spatial profile.
-        Ranch = np.sum(stand[124:132, :], axis=0)
+        rd_anch = np.sum(stand[124:132, :], axis=0)
         # Extend y centroids and wavelengths off of the detector.
         pp_w = np.polyfit(wavecal_x, wavecal_w, 1)
         pp_y = np.polyfit(ycens['order 1']['X centroid'],
@@ -428,24 +422,24 @@ def construct_order1(clear, F277, ycens, subarray, pad=0, verbose=0):
         xdr = int(round(xpix[i_r], 0))
         ydr = ycen_ext[i_r]
         # Interpolate the WebbPSF generated profile to the correct location.
-        Ranch = np.interp(np.arange(256), np.arange(256)-128+ydr, Ranch)
+        rd_anch = np.interp(np.arange(256), np.arange(256) - 128 + ydr, rd_anch)
         # Reconstruct wing structure and pad.
-        Ranch = reconstruct_wings256(Ranch, ycens=[ydr],
-                                     contamination=None, pad=pad,
-                                     verbose=verbose, smooth=True,
-                                     **{'text': 'Red anchor'})
+        rd_anch = reconstruct_wings256(rd_anch, ycens=[ydr],
+                                       contamination=None, pad=pad,
+                                       verbose=verbose, smooth=True,
+                                       **{'text': 'Red anchor'})
         # Rescale to remove chromatic effects.
-        Ranch = _chromescale(Ranch, 2.9, 2.5, ydr+pad, wave_polys)
+        rd_anch = _chromescale(rd_anch, 2.9, 2.5, ydr + pad, wave_polys)
         # Normalize
-        Ranch /= np.nansum(Ranch)
-        # Interpolation polynomial coeffs, calculated via calc_interp_coefs
-        coef_b, coef_r = utils._read_interp_coefs(F277W=False, verbose=verbose)
-        # Pixel coords at which to start the interpolation.
+        rd_anch /= np.nansum(rd_anch)
+        # Interpolation polynomial coefficients, calculated via calc_interp_coefs
+        coef_b, coef_r = utils.read_interp_coefs(verbose=verbose)
+        # Pixel coordinates at which to start the interpolation.
         xdr = 0
 
     # ========= INTERPOLATE THE CONTAMINATED REGION =========
     # Create the interpolated order 1 PSF.
-    map2D = np.zeros((dimy+2*pad, dimx))*np.nan
+    map2d = np.zeros((dimy + 2 * pad, dimx)) * np.nan
     # Get centroid pixel coordinates and wavelengths for interpolation region.
     cenx_d = np.arange(xdb - xdr).astype(int) + xdr
     ceny_d = ycens['order 1']['Y centroid'][cenx_d]
@@ -454,7 +448,7 @@ def construct_order1(clear, F277, ycens, subarray, pad=0, verbose=0):
     # Create an interpolated 1D PSF at each required position.
     if verbose != 0:
         print('   Interpolating trace...', flush=True)
-    disable = utils._verbose_to_bool(verbose)
+    disable = utils.verbose_to_bool(verbose)
     for i, vals in tqdm(enumerate(zip(cenx_d, ceny_d, lmbda)),
                         total=len(lmbda), disable=disable):
         cenx, ceny, lbd = int(round(vals[0], 0)), vals[1], vals[2]
@@ -462,33 +456,33 @@ def construct_order1(clear, F277, ycens, subarray, pad=0, verbose=0):
         wb_i = np.polyval(coef_b, lbd)
         wr_i = np.polyval(coef_r, lbd)
         # Recenter the profile of both anchors on the correct Y-centroid.
-        bax = np.arange(dimy+2*pad)-ydb+ceny
-        Banch_i = np.interp(np.arange(dimy+2*pad), bax, Banch)
-        rax = np.arange(len(Ranch))-ydr+ceny
-        Ranch_i = np.interp(np.arange(dimy+2*pad), rax, Ranch)
+        bax = np.arange(dimy + 2*pad) - ydb + ceny
+        bl_anch_i = np.interp(np.arange(dimy + 2*pad), bax, bl_anch)
+        rax = np.arange(len(rd_anch)) - ydr + ceny
+        rd_anch_i = np.interp(np.arange(dimy + 2*pad), rax, rd_anch)
         # Construct the interpolated profile.
-        prof_int = (wb_i * Banch_i + wr_i * Ranch_i)
+        prof_int = (wb_i*bl_anch_i + wr_i*rd_anch_i)
         # Re-add the lambda/D scaling.
         prof_int_cs = _chromescale(prof_int, 2.5, lbd, ceny+pad, wave_polys)
         # Put the interpolated profile on the detector.
-        map2D[:, cenx] = prof_int_cs
+        map2d[:, cenx] = prof_int_cs
 
         # Note detector coordinates of the edges of the interpolated region.
-        bend = cenx
+        bl_end = cenx
         if i == 0:
             # 2.9µm (i=0) limit will be off the end of the detector.
-            rend = cenx
+            rd_end = cenx
 
     # ========= RECONSTRUCT THE FIRST ORDER WINGS =========
     if verbose != 0:
         print('   Stitching data and reconstructing wings...', flush=True)
     # Stitch together the interpolation and data.
-    o1frame = np.zeros((dimy+2*pad, dimx))
+    o1frame = np.zeros((dimy + 2*pad, dimx))
     # Insert interpolated data.
-    o1frame[:, rend:bend] = map2D[:, rend:bend]
+    o1frame[:, rd_end:bl_end] = map2d[:, rd_end:bl_end]
     # Bluer region is known from the CLEAR exposure.
-    disable = utils._verbose_to_bool(verbose)
-    for col in tqdm(range(bend, dimx), disable=disable):
+    disable = utils.verbose_to_bool(verbose)
+    for col in tqdm(range(bl_end, dimx), disable=disable):
         if subarray == 'SUBSTRIP96':
             cen = ycens['order 1']['Y centroid'][col]
             try:
@@ -514,18 +508,18 @@ def construct_order1(clear, F277, ycens, subarray, pad=0, verbose=0):
             # wings and add padding.
             o1frame[:, col] = reconstruct_wings256(clear[:, col], ycens=cens,
                                                    pad=pad, smooth=True)
-    if F277 is not None:
+    if f277w is not None:
         # Add on the F277W frame to the red of the model.
-        disable = utils._verbose_to_bool(verbose)
-        for col in tqdm(range(rend), disable=disable):
+        disable = utils.verbose_to_bool(verbose)
+        for col in tqdm(range(rd_end), disable=disable):
             # Reconstruct wing structure and pad.
             if subarray == 'SUBSTRIP96':
                 cen = ycens['order 1']['Y centroid'][col]
-                o1frame[:, col] = reconstruct_wings96(F277[:, col],
+                o1frame[:, col] = reconstruct_wings96(f277w[:, col],
                                                       ycen=cen, pad=pad)
             else:
                 cens = [ycens['order 1']['Y centroid'][col]]
-                o1frame[:, col] = reconstruct_wings256(F277[:, col],
+                o1frame[:, col] = reconstruct_wings256(f277w[:, col],
                                                        ycens=cens,
                                                        contamination=None,
                                                        pad=pad, smooth=True)
@@ -538,12 +532,12 @@ def construct_order1(clear, F277, ycens, subarray, pad=0, verbose=0):
 
 
 def construct_order2(clear, order1_rescale, ycens, pad=0, verbose=0):
-    '''This creates the full order 2 trace profile model. For wavelengths of
+    """This creates the full order 2 trace profile model. For wavelengths of
     overlap between orders one and two, use the first order wings to correct
-    the oversubtracted second order wings. For wavelengths where there is no
+    the over-subtracted second order wings. For wavelengths where there is no
     overlap between the orders, use the wings of the closest neighbouring first
     order wavelength. In cases where the second order core is also
-    oversubtracted, use the first order core to correct this as well. This
+    over-subtracted, use the first order core to correct this as well. This
     method implicitly assumes that the spatial profile is determined solely by
     the optics, and is the same for all orders at a given wavelength.
 
@@ -555,7 +549,7 @@ def construct_order2(clear, order1_rescale, ycens, pad=0, verbose=0):
         Uncontaminated order 1 trace profile.
     ycens : dict
         Dictionary of Y-coordinates for the trace centroids of the first three
-        diffraction orders, ie. as returned by get_contam_centroids.
+        diffraction orders, ie. as returned by get_soss_centroids.
     pad : int
         Number of pixels of padding to add on both ends of the spatial axis.
     verbose : int
@@ -563,9 +557,9 @@ def construct_order2(clear, order1_rescale, ycens, pad=0, verbose=0):
 
     Returns
     -------
-    o2frame : np.ndarray (2D)
+    o2frame : np.array (2D)
         Uncontaminated second order trace profile at the native flux level.
-    '''
+    """
 
     # ========= INITIAL SETUP =========
     # Get wavelength and detector pixel calibration info.
@@ -590,22 +584,22 @@ def construct_order2(clear, order1_rescale, ycens, pad=0, verbose=0):
     o2frame = np.zeros((dimy, dimx))
 
     # ========= RECONSTRUCT SECOND ORDER WINGS =========
-    # Determine a coeficient to rescale the first order profile to the flux
+    # Determine a coefficient to rescale the first order profile to the flux
     # level of the second order at the same wavelength. Since the
     # wavelengths are the same, we can assume that the spatial profiles are
     # also the same. Thus, use the first order wings to reconstruct the
     # second order wings.
     if verbose != 0:
         print('   Reconstructing oversubtracted wings...', flush=True)
-    disable = utils._verbose_to_bool(verbose)
+    disable = utils.verbose_to_bool(verbose)
     for o2pix in tqdm(range(dimx), disable=disable):
-        # Get the wavelenegth for to each column in order 2.
+        # Get the wavelength for each column in order 2.
         o2wave = np.polyval(pp_w2, o2pix)
         # Find the corresponding column in order 1.
         o1pix = int(round(np.polyval(pp_p, o2wave), 0))
 
         # === FIND CORRECT COLUMNS ===
-        if o1pix < dimx - 1:
+        if o1pix < dimx - 5:
             # Region where wavelengths in order 1 and order 2 overlap.
             # Get throughput for order 1.
             thpt_1i = np.where(thpt_o1[0] >= o2wave)[0][0]
@@ -648,7 +642,7 @@ def construct_order2(clear, order1_rescale, ycens, pad=0, verbose=0):
             mindif = np.min([ycen_o1i - min1, ycen_o2i - min2])
             min1, min2 = ycen_o1i - mindif, ycen_o2i - mindif
         # Determine optimal scaling coefficient.
-        k = minimize(utils._lik, k0, (sub[min2:max2, o2pix],
+        k = minimize(utils.lik, k0, (sub[min2:max2, o2pix],
                      order1_rescale[min1:max1, o1pix])).x
         if k <= 0:
             notdone.append(o2pix)
@@ -656,7 +650,7 @@ def construct_order2(clear, order1_rescale, ycens, pad=0, verbose=0):
         # Rescale the first order profile to the flux level of order 2.
         o1prof = order1_rescale[:, o1pix]*k
         if marker is True:
-            ks.append(k)
+            ks.append(k[0])
             pixs.append(o2pix)
 
         # === RECONSTRUCT SPATIAL PROFILE ===
@@ -689,12 +683,16 @@ def construct_order2(clear, order1_rescale, ycens, pad=0, verbose=0):
     # ========= CORRECT OVERSUBTRACTED COLUMNS =========
     # Deal with notdone columns: columns who's scaling coef was <= 0 due to
     # oversubtraction of the first order.
+    pixs, ks = np.array(pixs), np.array(ks)
+    # Rough sigma clip of huge outliers.
+    pixs, ks = utils.sigma_clip(pixs, ks)
     # Fit a polynomial to all positive scaling coefficients, and use the fit to
     # interpolate the correct scaling for notdone columns.
-    pp_k = np.polyfit(pixs, ks, 11)
+    pp_k = np.polyfit(pixs, ks, 6)
+    pp_k = utils.robust_polyfit(pixs, ks, pp_k)
     # Plot the results if necessary.
     if verbose == 3:
-        plotting._plot_scaling_coefs(pixs, ks, pp_k)
+        plotting.plot_scaling_coefs(pixs, ks, pp_k)
 
     if verbose != 0 and len(notdone) != 0:
         print('   Dealing with oversubtracted cores...')
@@ -702,8 +700,13 @@ def construct_order2(clear, order1_rescale, ycens, pad=0, verbose=0):
         # Get the order 2 wavelength and corresponding order 1 column.
         o2wave = np.polyval(pp_w2, o2pix)
         o1pix = int(round(np.polyval(pp_p, o2wave), 0))
-        # Interpolate the appropriate scaling coefficient.
-        k = np.polyval(pp_k, o2pix)
+        # If order 1 pixel is off of the detector, use trailing blue profile.
+        if o1pix >= 2048:
+            o1pix = o1pix_r
+            k = ks[-1]
+        else:
+            # Interpolate the appropriate scaling coefficient.
+            k = np.polyval(pp_k, o2pix)
         # Rescale the order 1 profile to the flux level of order 2.
         o1prof = order1_rescale[:, o1pix]*k
         # Get bounds of the order 1 trace core.
@@ -754,14 +757,14 @@ def construct_order2(clear, order1_rescale, ycens, pad=0, verbose=0):
 
 
 def _fit_trace_widths(clear, wave_coefs, verbose=0):
-    '''Due to the defocusing of the SOSS PSF, the width in the spatial
+    """Due to the defocusing of the SOSS PSF, the width in the spatial
     direction does not behave as if it is diffraction limited. Calculate the
     width of the spatial trace profile as a function of wavelength, and fit
     with a linear relation to allow corrections of chromatic variations.
 
     Parameters
     ----------
-    clear : np.ndarray
+    clear : np.array
         CLEAR exposure dataframe
     wave_coefs : tuple of float
         Polynomial coefficients for the wavelength to spectral pixel
@@ -777,9 +780,9 @@ def _fit_trace_widths(clear, wave_coefs, verbose=0):
     wfit_r : tuple
         Polynomial coefficients for a first order fit to the contaminated trace
         widths.
-    '''
+    """
 
-    # Get subarray diemsnions and wavelength to spectral pixel transformation.
+    # Get subarray dimensions and wavelength to spectral pixel transformation.
     yax, xax = np.shape(clear)
     wax = np.polyval(wave_coefs, np.arange(xax))
 
@@ -805,51 +808,44 @@ def _fit_trace_widths(clear, wave_coefs, verbose=0):
     end = np.where(wax < 2.1)[0][0]
     fit_waves_b = np.array(wax[end:])
     fit_widths_b = np.array(trace_widths[end:])
-    # Reject clear outliers (>5sigma)
-    pp_b = np.polyfit(fit_waves_b, fit_widths_b, 1)
-    mod_widths = np.polyval(pp_b, fit_waves_b)
-    stddev = np.median(np.sqrt((fit_widths_b - mod_widths)**2))
-    inds = np.where(np.abs(fit_widths_b - mod_widths) < 5*stddev)
+    # Rough sigma clip of huge outliers.
+    fit_waves_b, fit_widths_b = utils.sigma_clip(fit_waves_b, fit_widths_b)
     # Robustly fit a straight line.
-    pp_b = np.polyfit(fit_waves_b[inds], fit_widths_b[inds], 1)
-    wfit_b = utils._robust_polyfit(fit_waves_b[inds], fit_widths_b[inds], pp_b)
+    pp_b = np.polyfit(fit_waves_b, fit_widths_b, 1)
+    wfit_b = utils.robust_polyfit(fit_waves_b, fit_widths_b, pp_b)
 
-    # Seperate fit to contaminated region.
+    # Separate fit to contaminated region.
     fit_waves_r = np.array(wax[:(end+10)])
     fit_widths_r = np.array(trace_widths[:(end+10)])
-    # Reject clear outliers (>5sigma)
-    pp_r = np.polyfit(fit_waves_r, fit_widths_r, 1)
-    mod_widths = np.polyval(pp_r, fit_waves_r)
-    stddev = np.median(np.sqrt((fit_widths_r - mod_widths)**2))
-    inds = np.where(np.abs(fit_widths_r - mod_widths) < 5*stddev)
+    # Rough sigma clip of huge outliers.
+    fit_waves_r, fit_widths_r = utils.sigma_clip(fit_waves_r, fit_widths_r)
     # Robustly fit a straight line.
-    pp_r = np.polyfit(fit_waves_r[inds], fit_widths_r[inds], 1)
-    wfit_r = utils._robust_polyfit(fit_waves_r[inds], fit_widths_r[inds], pp_r)
+    pp_r = np.polyfit(fit_waves_r, fit_widths_r, 1)
+    wfit_r = utils.robust_polyfit(fit_waves_r, fit_widths_r, pp_r)
 
     # Plot the width calibration fit if required.
     if verbose == 3:
-        plotting._plot_width_cal(wax, trace_widths, (fit_waves_b, fit_waves_r),
-                                 (wfit_b, wfit_r))
+        plotting.plot_width_cal((fit_widths_b, fit_widths_r), (fit_waves_b, fit_waves_r), (wfit_b, wfit_r))
 
     return wfit_r, wfit_b
 
 
 def get_goodwing(clear96, centroids):
-    '''Obtain an uncontaminated wing of the first order spatial profile to use
+    """Obtain an uncontaminated wing of the first order spatial profile to use
     as a reference wing for SUBSTRIP96 wing reconstruction.
 
     Parameters
     ----------
-    clear96 : np.ndarray (2D)
+    clear96 : np.array
         SUBSTRIP96 2D trace profile dataframe.
     centroids : dict
         Centroids dictionary.
 
     Returns
     -------
-    goodwing : np.ndarray
+    goodwing : np.array
         Uncontaminated first order wing.
-    '''
+    """
 
     # Find the column where the first order is lowest on the detector. This
     # ensures that we will never have to extend the goodwing.
@@ -868,11 +864,11 @@ def get_goodwing(clear96, centroids):
 
 
 def get_substrip96_centroids(centroids):
-    '''For the SUBSTRIP96 subarray, the edgetrig centroiding method cannot
+    """For the SUBSTRIP96 subarray, the edgetrig centroiding method cannot
     locate the centroids for orders 2 and 3 as they are not on the detector.
     This function estimates the centroid positions for these orders by
     comparing the edgetrig first order centroids to the centroids in the trace
-    table reference file. Analagous to the simple solver, the necessary
+    table reference file. Analogous to the simple solver, the necessary
     rotation and x/y offsets are calculated to transform the reference first
     order centroids to match the data. All orders are assumed to transform
     rigidly, such that applying the transformation to the reference second, or
@@ -888,7 +884,7 @@ def get_substrip96_centroids(centroids):
     -------
     centroids : dict
         Centroids dictionary, with second and third order centroids appended.
-    '''
+    """
 
     # Get first order centroids from the data.
     xcen_dat = centroids['order 1']['X centroid']
@@ -903,9 +899,9 @@ def get_substrip96_centroids(centroids):
 
     # Fit reference file centroids to the data to determine necessary rotation
     # and offsets.
-    guess_params = (0.15, 1, 1)
-    lik_args = (xcen_ref, ycen_ref, xcen_dat, ycen_dat, 'SUBSTRIP96')
-    fit = minimize(ss._chi_squared, guess_params, lik_args).x
+    guess_params = np.array([0.15, 1., 1.])
+    lik_args = [xcen_ref, ycen_ref, xcen_dat, ycen_dat]
+    fit = minimize(_chi_squared, guess_params, lik_args).x
     rot_ang, x_shift, y_shift = fit
 
     # Transform centroids to detector frame for orders 2 and 3.
@@ -918,21 +914,21 @@ def get_substrip96_centroids(centroids):
         xcen_ref = xcen_ref[inds]
         ycen_ref = ttab_file('Y', subarray='SUBSTRIP96', order=2)[1][inds]
         # Transform reference centroids to the data frame.
-        # Bound using the SUBSTRIP256 such that the centroids are bounded in
-        # the spectral direction, but extend beyond the spatial axis.
-        rot_x, rot_y = ss.rot_centroids(rot_ang, x_shift, y_shift, xcen_ref,
-                                        ycen_ref, subarray='SUBSTRIP256')
+        rot_x, rot_y = transform_coords(rot_ang, x_shift, y_shift, xcen_ref,
+                                        ycen_ref)
+        # Ensure there is a y-centroid for every x-pixel (even if they extend
+        # off of the detector).
+        rot_y = np.interp(np.arange(2048), rot_x[::-1], rot_y[::-1])
         # Add the transformed centroids to the centroid dict.
-        tmp = {}
-        tmp['X centroid'], tmp['Y centroid'] = rot_x, rot_y
+        tmp = {['X centroid']: np.arange(2048), ['Y centroid']: rot_y}
         centroids['order {}'.format(order)] = tmp
 
     return centroids
 
 
 def oversample_frame(frame, oversample=1):
-    '''Oversample a dataframe by a specified amount. Oversampling is currently
-    implemented seperately in each dimension, that is, the spatial axis is
+    """Oversample a dataframe by a specified amount. Oversampling is currently
+    implemented separately in each dimension, that is, the spatial axis is
     oversampled first, followed by the spectral direction.
 
     Parameters
@@ -946,7 +942,7 @@ def oversample_frame(frame, oversample=1):
     -------
     osframe : np.array (2D)
         Input dataframe with each axis oversampled by the desired amount.
-    '''
+    """
 
     # Get dataframe dimensions.
     dimy, dimx = frame.shape
@@ -969,8 +965,8 @@ def oversample_frame(frame, oversample=1):
     return osframe
 
 
-def pad_spectral_axis(frame, xcens, ycens, pad=0, ref_col=(5, -5)):
-    '''Add padding to the spectral axis by interpolating the corresponding
+def pad_spectral_axis(frame, xcens, ycens, pad=0, ref_cols=None):
+    """Add padding to the spectral axis by interpolating the corresponding
     edge profile onto a set of extrapolated centroids.
 
     Parameters
@@ -984,12 +980,18 @@ def pad_spectral_axis(frame, xcens, ycens, pad=0, ref_col=(5, -5)):
     pad : int
         Amount of padding to add along either end of the spectral axis (in
         pixels).
+    ref_cols : list, np.array, None
+        Which columns to use as the reference profiles for the padding.
 
     Returns
     -------
     newframe : np.array (2D)
         Data frame with padding on the spectral axis.
-    '''
+    """
+
+    # Set default reference columns.
+    if ref_cols is None:
+        ref_cols = [5, -5]
 
     dimy, dimx = np.shape(frame)
     pp = np.polyfit(xcens, ycens, 5)
@@ -997,24 +999,24 @@ def pad_spectral_axis(frame, xcens, ycens, pad=0, ref_col=(5, -5)):
     ycens_pad = np.polyval(pp, xax_pad)
 
     newframe = np.zeros((dimy, dimx+2*pad))
-    newframe[:, (pad):(dimx+pad)] = frame
+    newframe[:, pad:(dimx+pad)] = frame
 
     for col in range(pad):
         yax = np.arange(dimy)
-        newframe[:, col] = np.interp(yax+ycens[ref_col[0]]-ycens_pad[col], yax,
-                                     frame[:, ref_col[0]])
+        newframe[:, col] = np.interp(yax + ycens[ref_cols[0]] - ycens_pad[col], yax,
+                                     frame[:, ref_cols[0]])
 
-    for col in range(dimx+ref_col[1]+pad, dimx+2*pad):
+    for col in range(dimx + ref_cols[1] + pad, dimx + 2 * pad):
         yax = np.arange(dimy)
-        newframe[:, col] = np.interp(yax+ycens[ref_col[1]]-ycens_pad[col], yax,
-                                     frame[:, ref_col[1]])
+        newframe[:, col] = np.interp(yax + ycens[ref_cols[1]] - ycens_pad[col], yax,
+                                     frame[:, ref_cols[1]])
 
     return newframe
 
 
 def reconstruct_wings256(profile, ycens=None, contamination=[2, 3], pad=0,
                          verbose=0, smooth=True, **kwargs):
-    '''Masks the second and third diffraction orders and reconstructs the
+    """Masks the second and third diffraction orders and reconstructs the
      underlying wing structure of the first order. Also adds padding in the
      spatial direction if required.
 
@@ -1022,15 +1024,15 @@ def reconstruct_wings256(profile, ycens=None, contamination=[2, 3], pad=0,
     ----------
     profile : np.array
         Spectral trace spatial profile.
-    ycens : list
+    ycens : list, np.array
         Y-coordinates of the trace centroids. Must include all three
         diffraction orders if contamination is True, or only the first order if
         False.
-    contamination : list
+    contamination : list, np.array, None
         List of contaminating orders present on the detector (not including the
         first order). For an uncontaminated detector, pass None.
     pad : int
-        Amount to pad each end of the spartial axis (in pixels).
+        Amount to pad each end of the spatial axis (in pixels).
     verbose : int
         Level of verbosity.
     smooth : bool
@@ -1046,8 +1048,8 @@ def reconstruct_wings256(profile, ycens=None, contamination=[2, 3], pad=0,
     ValueError
         If centroids are not provided for all three orders when contamination
         is not None.
-    '''
-
+    """
+    
     dimy = len(profile)
     # Convert Y-centroid positions to indices
     ycens = np.atleast_1d(ycens)
@@ -1081,7 +1083,7 @@ def reconstruct_wings256(profile, ycens=None, contamination=[2, 3], pad=0,
         prof_r[start:end] = np.nan
     # Fit the unmasked part of the wing to determine the mean linear trend.
     inds = np.where(np.isfinite(prof_r))[0]
-    pp = utils._robust_polyfit(axis_r[inds], prof_r[inds], (0, 0))
+    pp = utils.robust_polyfit(axis_r[inds], prof_r[inds], (0, 0))
     wing_mean = pp[1]+pp[0]*axis_r
     # Calculate the standard dev of unmasked points from the mean trend.
     stddev_m = np.sqrt(np.median((prof_r[inds] - wing_mean[inds])**2))
@@ -1121,7 +1123,7 @@ def reconstruct_wings256(profile, ycens=None, contamination=[2, 3], pad=0,
     # Use np.polyfit for a first estimate of the coefficients.
     pp_r0 = np.polyfit(fit_ax, fit_prof, 7)
     # Robust fit using the polyfit results as a starting point.
-    pp_r = utils._robust_polyfit(fit_ax, fit_prof, pp_r0)
+    pp_r = utils.robust_polyfit(fit_ax, fit_prof, pp_r0)
 
     # === Stitching ===
     newprof = profile*1
@@ -1138,9 +1140,11 @@ def reconstruct_wings256(profile, ycens=None, contamination=[2, 3], pad=0,
             newprof = np.concatenate([newprof[:start],
                                       10**np.polyval(pp_r, axis_r)[start:end],
                                       newprof[end:]])
-    # Interpolate nan pixels and negatives.
-    inds5 = np.isnan(newprof)
-    newprof[inds5] = 10**np.polyval(pp_r, axis_r)[inds5]
+    # Interpolate nans and negatives with median of surrounding pixels.
+    for pixel in np.where(np.isnan(newprof))[0]:
+        minp = np.max([pixel-5, 0])
+        maxp = np.min([pixel+5, dimy])
+        newprof[pixel] = np.nanmedian(newprof[minp:maxp])
 
     if smooth is True:
         # Replace highly deviant pixels throughout the wings.
@@ -1161,16 +1165,14 @@ def reconstruct_wings256(profile, ycens=None, contamination=[2, 3], pad=0,
 
     # Do diagnostic plot if requested.
     if verbose == 3:
-        plotting._plot_wing_reconstruction(profile, ycens, axis_r[inds3],
-                                           prof_r2[inds3], pp_r, newprof, pad,
-                                           **kwargs)
+        plotting.plot_wing_reconstruction(profile, ycens, axis_r[inds3], prof_r2[inds3], pp_r, newprof, pad, **kwargs)
 
     return newprof
 
 
 def reconstruct_wings96(profile, ycen, goodwing=None, contamination=False,
                         pad=0, verbose=0, **kwargs):
-    '''Wing reconstruction for the SUBSTRIP96 subarray. As not enough of the
+    """Wing reconstruction for the SUBSTRIP96 subarray. As not enough of the
     first order wings remain on the detector to perform the full wing
     reconstruction, a standard uncontaminated wing profile is used to correct
     second order contamination.
@@ -1179,16 +1181,16 @@ def reconstruct_wings96(profile, ycen, goodwing=None, contamination=False,
     ----------
     profile : np.array
         Spectral trace spatial profile.
-    ycens : list
+    ycen : list, np.array
         Y-coordinates of the trace centroids. Must include all three
         diffraction orders if contamination is True, or only the first order if
         False.
-    goodwing : np.ndarray or None
+    goodwing : np.array, None
         Uncontaminated wing profile.
     contamination : bool
         If True, profile is contaminated by the second order.
     pad : int
-        Amount to pad each end of the spartial axis (in pixels).
+        Amount to pad each end of the spatial axis (in pixels).
     verbose : int
         Level of verbosity.
 
@@ -1201,15 +1203,15 @@ def reconstruct_wings96(profile, ycen, goodwing=None, contamination=False,
     ------
     ValueError
         If contamination is True and goodwing is None.
-    '''
+    """
 
-    # Get rid of second order contamination by stitching an uncontminated wing
+    # Get rid of second order contamination by stitching an uncontaminated wing
     # to the uncontaminated first order core.
     if contamination is True:
         # Stitch together the contaminated profile, and uncontaminated wing.
         ycen = int(round(ycen, 0))
         if goodwing is None:
-            errmsg = 'Uncontamined wing must not be None if profile is \
+            errmsg = 'Uncontaminated wing must not be None if profile is \
                       contaminated.'
             raise ValueError(errmsg)
         newprof = np.concatenate([profile[:(ycen+13)], goodwing])
@@ -1220,7 +1222,7 @@ def reconstruct_wings96(profile, ycen, goodwing=None, contamination=False,
                                 mask=[0, 0, 1, 1, 1, 1, 0, 0, 0, 0])
         # Fit the pixels on either side of the joint.
         pp = ma.polyfit(fitax, fitprof, 5)
-        # Evaluate the above polynominal in the joint region.
+        # Evaluate the above polynomial in the joint region.
         newprof[(ycen+12):(ycen+16)] = np.polyval(pp, np.arange(4)+ycen+12)
         # Trim to the size of SUBSTRIP96
         newprof = newprof[:96]
@@ -1234,21 +1236,20 @@ def reconstruct_wings96(profile, ycen, goodwing=None, contamination=False,
                               np.tile(padval_r, pad+4)])
 
     if verbose == 3:
-        plotting._plot_wing_reconstruction96(profile, newprof, goodwing,
-                                             **kwargs)
+        plotting.plot_wing_reconstruction96(profile, newprof, **kwargs)
 
     return newprof
 
 
 def refine_order1(clear, o2frame, centroids, pad, verbose=0):
-    '''Refine the first order trace model using a clear exposure with the
+    """Refine the first order trace model using a clear exposure with the
     second order subtracted.
 
     Parameters
     ----------
-    clear : np.ndarray (2D)
+    clear : np.array
         CLEAR data frame.
-    o2frame : np.ndarray (2D)
+    o2frame : np.array
         Model of the second order spatial profile.
     centroids : dict
         Centroid dictionary.
@@ -1259,9 +1260,9 @@ def refine_order1(clear, o2frame, centroids, pad, verbose=0):
 
     Returns
     -------
-    order1_uncontam : np.ndarray (2D)
+    order1_uncontam : np.array
         First order trace model.
-    '''
+    """
 
     dimy, dimx = np.shape(clear)
     # Create an uncontaminated frame by subtracting the second order model from
@@ -1270,7 +1271,7 @@ def refine_order1(clear, o2frame, centroids, pad, verbose=0):
     order1_uncontam = np.zeros((dimy+2*pad, dimx))
 
     # Reconstruct first order wings.
-    disable = utils._verbose_to_bool(verbose)
+    disable = utils.verbose_to_bool(verbose)
     for i in tqdm(range(dimx), disable=disable):
         ycens = [centroids['order 1']['Y centroid'][i],
                  centroids['order 2']['Y centroid'][i],
@@ -1283,14 +1284,14 @@ def refine_order1(clear, o2frame, centroids, pad, verbose=0):
 
 
 def replace_badpix(clear, badpix_mask, fill_negatives=True, verbose=0):
-    '''Replace all bad pixels with the median of the pixels values of a 5x5 box
+    """Replace all bad pixels with the median of the pixels values of a 5x5 box
     centered on the bad pixel.
 
     Parameters
     ----------
-    clear : np.ndarray (2D)
+    clear : np.array
         Dataframe with bad pixels.
-    badpix_mask : np.ndarray (2D)
+    badpix_mask : np.array
         Boolean array with the same dimensions as clear. Values of True
         indicate a bad pixel.
     fill_negatives : bool
@@ -1300,9 +1301,9 @@ def replace_badpix(clear, badpix_mask, fill_negatives=True, verbose=0):
 
     Returns
     -------
-    clear_r : np.ndarray (2D)
+    clear_r : np.array (2D)
         Input clear frame with bad pixels interpolated.
-    '''
+    """
 
     # Get frame dimensions
     dimy, dimx = np.shape(clear)
@@ -1317,7 +1318,7 @@ def replace_badpix(clear, badpix_mask, fill_negatives=True, verbose=0):
     clear_r = clear*1
     ys, xs = np.where(mask)
 
-    disable = utils._verbose_to_bool(verbose)
+    disable = utils.verbose_to_bool(verbose)
     for y, x in tqdm(zip(ys, xs), total=len(ys), disable=disable):
         # Get coordinates of pixels in the 5x5 box.
         starty = np.max([(y-2), 0])
@@ -1342,32 +1343,34 @@ def replace_badpix(clear, badpix_mask, fill_negatives=True, verbose=0):
 
 
 def rescale_model(data, model, centroids, verbose=0):
-    '''Rescale a column normalized trace model to the flux level of an actual
+    """Rescale a column normalized trace model to the flux level of an actual
     observation. A multiplicative coefficient is determined via Chi^2
-    minimization independantly for each column, such that the rescaled model
+    minimization independently for each column, such that the rescaled model
     best matches the data.
 
     Parameters
     ----------
-    data : np.ndarray (2D)
+    data : np.array
         Observed dataframe.
-    model : np.ndarray (2D)
+    model : np.array
         Column normalized trace model.
+    centroids : dict
+        Centroids dictionary.
     verbose : int
         Level of verbosity.
 
     Returns
     -------
-    model_rescale : np.ndarray (2D)
+    model_rescale : np.array
         Trace model after rescaling.
-    '''
+    """
 
     # Determine first guess coefficients.
     k0 = np.nanmax(data, axis=0)
     ks = []
     # Loop over all columns - surely there is a more vectorized way to do this
     # whenever I try to minimize all of k at once I get nonsensical results?
-    disable = utils._verbose_to_bool(verbose)
+    disable = utils.verbose_to_bool(verbose)
     for i in tqdm(range(data.shape[1]), disable=disable):
         # Get region around centroid
         ycen = int(round(centroids['order 1']['Y centroid'][i], 0))
@@ -1375,7 +1378,7 @@ def rescale_model(data, model, centroids, verbose=0):
         end = ycen + 14
         # Minimize the Chi^2.
         lik_args = (data[start:end, i], model[start:end, i])
-        k = minimize(utils._lik, k0[i], lik_args)
+        k = minimize(utils.lik, k0[i], lik_args)
         ks.append(k.x[0])
 
     # Rescale the column normalized model.
@@ -1386,23 +1389,23 @@ def rescale_model(data, model, centroids, verbose=0):
 
 
 def smooth_spat_discont(o2frame, ycens):
-    '''Smooth oversubtracted pixels in the spatial direction. If the flux in a
+    """Smooth oversubtracted pixels in the spatial direction. If the flux in a
     pixel is >3sigma deviant from the mean value of the trace core in its
-    column, it is replaced by a median of flux values over its nieghbours in
+    column, it is replaced by a median of flux values over its neighbours in
     the spectral direction.
 
     Parameters
     ----------
-    o2frame : np.ndarray (2D)
+    o2frame : np.array
         Uncontaminated second order trace profile.
     ycens : dict
         Centroids dictionary.
 
     Returns
     -------
-    o2frame : np.ndarray (2D)
+    o2frame : np.array
         Uncontaminated trace profile with oversubtracted pixels interpolated.
-    '''
+    """
 
     for col in range(o2frame.shape[1]):
         # Get lower and upper bounds of trace core
@@ -1427,55 +1430,55 @@ def smooth_spat_discont(o2frame, ycens):
 
 
 def smooth_spec_discont(o2frame, verbose):
-    '''Smooth over streaks (especially in the contaminated region). If the mean
-    flux value of a column is >10% deviant from that of the surrounding
+    """Smooth over streaks (especially in the contaminated region). If the
+    median flux value of a column is >10% deviant from that of the surrounding
     columns, replace it with the median of its neighbours.
 
     Parameters
     ----------
-    o2frame : np.ndarray (2D)
+    o2frame : np.array
         Uncontaminated second order trace profile.
     verbose : int
         Level of verbosity.
 
     Returns
     -------
-    o2frame : np.ndarray (2D)
+    o2frame : np.array
         Uncontaminated trace profile with column-to-column discontinuities
         smoothed.
-    '''
+    """
 
     # Get mean flux values for each column.
-    col_mean = np.nanmean(o2frame, axis=0)
+    col_mean = np.nanmedian(o2frame, axis=0)
     # Find where order 2 ends.
     end = np.where(col_mean == 0)[0][0] - 5
     # For each column, find the local mean of the surrounding 6 columns.
-    loc_mean = utils._local_mean(col_mean, step=3)
+    loc_mean = utils.local_mean(col_mean, step=3)
     # Calculate the deviation of each column from the local mean.
     dev_0 = np.abs((col_mean[3:end] - loc_mean[3:end])/loc_mean[3:end])
     # Replace all columns whose mean value is >10% deviant from the local mean
     # with the median of its neighbours.
-    dev, iter = dev_0, 0
+    dev, iteration = dev_0, 0
     # Iterate until no columns are >10% deviant, or 10 iterations have run.
-    while np.any(dev > 0.1) and iter < 10:
+    while np.any(dev > 0.1) and iteration < 10:
         # Get all >10% deviant columns.
         inds = np.where(dev >= 0.1)[0]
         for i in inds:
             i += 3
             # For each column, calculate the median of the 'local region'.
             # Expand the region by one pixel each iteration.
-            local = np.concatenate([o2frame[:, (i-2-iter):i],
-                                    o2frame[:, (i+1):(i+3+iter)]], axis=1)
+            local = np.concatenate([o2frame[:, (i - 2 - iteration):i],
+                                    o2frame[:, (i+1):(i + 3 + iteration)]], axis=1)
             o2frame[:, i] = np.nanmedian(local, axis=1)
         # Recalculate the flux deviations as before.
         col_mean = np.nanmean(o2frame, axis=0)
-        loc_mean = utils._local_mean(col_mean, step=3)
+        loc_mean = utils.local_mean(col_mean, step=3)
         dev = np.abs((col_mean[3:end] - loc_mean[3:end])/loc_mean[3:end])
         # Increment iteration.
-        iter += 1
+        iteration += 1
 
     # Plot the change in flux deviations after all iterations are complete.
     if verbose == 3:
-        plotting._plot_flux_deviations(dev_0, dev, iter)
+        plotting.plot_flux_deviations(dev_0, dev, iteration)
 
     return o2frame

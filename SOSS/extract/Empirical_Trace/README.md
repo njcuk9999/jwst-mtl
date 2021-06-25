@@ -25,4 +25,4 @@ An outline of the major procedural steps are as follows:
 6. If the results are to be used as reference files, add padding and oversampling to both axes.
 7. Save the results to a fits file.
 
-These steps are carried out by initializing an Empirical_Trace object and calling its `build_empirical_trace()` method. Examples can be found in this [notebook](https://github.com/njcuk9999/jwst-mtl/blob/master/SOSS/extract/empirical_trace/empirical_trace.ipynb).
+These steps are carried out by initializing an EmpiricalTrace object and calling its `build_empirical_trace()` method. Examples can be found in this [notebook](https://github.com/njcuk9999/jwst-mtl/blob/master/SOSS/extract/empirical_trace/empirical_trace.ipynb).

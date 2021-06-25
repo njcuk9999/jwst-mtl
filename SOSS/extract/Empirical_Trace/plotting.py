@@ -13,10 +13,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-def _plot_centroid(clear, centroid_dict):
-    '''Overplot the trace centroids extracted from the data over the data
+def plot_centroid(clear, centroid_dict):
+    """Overplot the trace centroids extracted from the data over the data
     itself to verify accuracy.
-    '''
+    """
 
     plt.figure(figsize=(15, 3))
     for order in centroid_dict.keys():
@@ -35,12 +35,12 @@ def _plot_centroid(clear, centroid_dict):
     plt.show()
 
 
-def _plot_flux_deviations(dev_init, dev_fin, iter):
-    '''Plot the diagnostic results of the order 2 smoothing iterations. The
-    upper plot shows the initial columnwise flux deviations from the local
+def plot_flux_deviations(dev_init, dev_fin, iteration):
+    """Plot the diagnostic results of the order 2 smoothing iterations. The
+    upper plot shows the initial column-wise flux deviations from the local
     mean, and the lower plot shows the same variations after the smoothing has
     been completed.
-    '''
+    """
 
     f, ax = plt.subplots(2, figsize=(15, 6), sharex=True)
     ax[0].plot(dev_init)
@@ -48,16 +48,16 @@ def _plot_flux_deviations(dev_init, dev_fin, iter):
     ax[1].plot(dev_fin)
     ax[1].axhline(0.1, ls='--', c='black')
 
-    max = np.max([len(dev_init), 2048])
-    ax[1].set_xlim(0, max)
+    max_val = np.max([len(dev_init), 2048])
+    ax[1].set_xlim(0, max_val)
     ax[1].set_xlabel('Spectral Pixel', fontsize=14)
     ax[0].set_ylabel('Flux Variations (i=0)', fontsize=14)
-    ax[1].set_ylabel('Flux Variations (i={})'.format(iter-1), fontsize=14)
+    ax[1].set_ylabel('Flux Variations (i={})'.format(iteration-1), fontsize=14)
     plt.show()
 
 
-def _plot_interpmodel(waves, nw1, nw2, p1, p2):
-    '''Plot the diagnostic results of the derive_model function. Four plots
+def plot_interpmodel(waves, nw1, nw2, p1, p2):
+    """Plot the diagnostic results of the derive_model function. Four plots
     are generated, showing the normalized interpolation coefficients for the
     blue and red anchors for each WFE realization, as well as the mean trend
     across WFE for each anchor profile, and the resulting polynomial fit to
@@ -79,7 +79,7 @@ def _plot_interpmodel(waves, nw1, nw2, p1, p2):
     p2 : np.array of float
         Polynomial coefficients of the fit to the mean interpolation
         coefficients for the red anchor.
-    '''
+    """
 
     f, ax = plt.subplots(2, 2, figsize=(14, 6))
     for i in range(10):
@@ -106,10 +106,10 @@ def _plot_interpmodel(waves, nw1, nw2, p1, p2):
     plt.show()
 
 
-def _plot_scaling_coefs(pixels, k_coefs, pp_k):
-    '''Do diagnostic plotting for the first-to-second order flux scaling
+def plot_scaling_coefs(pixels, k_coefs, pp_k):
+    """Do diagnostic plotting for the first-to-second order flux scaling
     relationship.
-    '''
+    """
 
     plt.figure(figsize=(8, 5))
     plt.scatter(pixels, k_coefs, s=4, c='blue', alpha=0.8,
@@ -122,10 +122,10 @@ def _plot_scaling_coefs(pixels, k_coefs, pp_k):
     plt.show()
 
 
-def _plot_trace_residuals(clear, order1, order2):
-    '''Plot the residuals after subtracting the first and second order spatial
+def plot_trace_residuals(clear, order1, order2):
+    """Plot the residuals after subtracting the first and second order spatial
     profile models from the original CLEAR dataframe.
-    '''
+    """
 
     plt.figure(figsize=(15, 3))
     plt.imshow((clear - (order1 + order2))/np.nansum(clear, axis=0),
@@ -137,13 +137,14 @@ def _plot_trace_residuals(clear, order1, order2):
     plt.show()
 
 
-def _plot_width_cal(wax, widths, fit_waves, width_poly):
-    '''Do the diagnostic plot for the trace width calibration relation.
-    '''
+def plot_width_cal(fit_widths, fit_waves, width_poly):
+    """Do the diagnostic plot for the trace width calibration relation.
+    """
 
     plt.figure(figsize=(8, 5))
-    plt.scatter(wax[::10], widths[::10], label='trace widths', c='blue', s=12,
+    plt.scatter(fit_waves[0][::10], fit_widths[0][::10], label='trace widths', c='blue', s=12,
                 alpha=0.75)
+    plt.scatter(fit_waves[1][::10], fit_widths[1][::10], c='blue', s=12, alpha=0.75)
     plt.plot(fit_waves[0], np.polyval(width_poly[0], fit_waves[0]), c='red',
              ls='--', label='width relation')
     plt.plot(fit_waves[1], np.polyval(width_poly[1], fit_waves[1]), c='red',
@@ -155,10 +156,9 @@ def _plot_width_cal(wax, widths, fit_waves, width_poly):
     plt.show()
 
 
-def _plot_wing_reconstruction(profile, ycens, axis_r, prof_r2, pp_r, newprof,
-                              pad, text=None):
-    '''Do diagnositic plotting for wing reconstruction.
-    '''
+def plot_wing_reconstruction(profile, ycens, axis_r, prof_r2, pp_r, newprof, pad, text=None):
+    """Do diagnostic plotting for wing reconstruction.
+    """
 
     dimy = len(profile)
 
@@ -183,9 +183,9 @@ def _plot_wing_reconstruction(profile, ycens, axis_r, prof_r2, pp_r, newprof,
     plt.show()
 
 
-def _plot_wing_reconstruction96(profile, newprof, goodwing, text=None):
-    '''Do diagnostic plotting for the SUBSTRIP96 wing reconstruction.
-    '''
+def plot_wing_reconstruction96(profile, newprof, text=None):
+    """Do diagnostic plotting for the SUBSTRIP96 wing reconstruction.
+    """
 
     plt.figure(figsize=(8, 5))
     plt.plot(np.arange(len(profile)), np.log10(profile), ls=':', c='black',
