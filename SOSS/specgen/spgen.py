@@ -10,6 +10,8 @@ import scipy.signal
 import tfit5 #Fortran routine for fastest transitmodel ever
 import binmodels_py as bm #Fortran routine for speedy resampling of data
 
+import time as clocktimer
+
 import trace.tracepol as tp
 
 import specgen.synthesizeMagnitude as smag
@@ -1020,7 +1022,7 @@ def readkernels(psfdir, wls=0.5, wle=5.2, dwl=0.05, os=1):
         
         wl+=dwl
         
-    return kernels,kernels_wv
+    return np.array(kernels), np.array(kernels_wv)
 
 
 def gen_unconv_image(pars,response,bin_starmodel_wv,bin_starmodel_flux,bin_ld_coeff,\
@@ -1102,7 +1104,7 @@ def gen_unconv_image(pars,response,bin_starmodel_wv,bin_starmodel_flux,bin_ld_co
 
 
 
-def convolve_1wv(pixels_t,kernel_resize,kernels_wv,wv_idx,pars,norder,tracePars,dwl=0.05):
+def convolve_1wv_old(pixels_t,kernel_resize,kernels_wv,wv_idx,pars,norder,tracePars,dwl=0.05):
     
     x1=scipy.signal.fftconvolve(pixels_t, kernel_resize[wv_idx], mode='same')
     wl=kernels_wv[wv_idx]
@@ -1113,3 +1115,192 @@ def convolve_1wv(pixels_t,kernel_resize,kernels_wv,wv_idx,pars,norder,tracePars,
             x1[:,i]=x1[:,i]*fac
             fmax=np.max((fac,fmax))
     return x1
+
+def convolve_1wv_wave_indices(kernel_psf, kernels_wv, simuPars,
+                 spectral_order, tracePars, wv_spacing=0.05):
+    '''
+    Convolves the 1-pixel wide trace image with the monochromatic PSF at one wavelength.
+    :param trace_image: 2D image representing the 1-pixel wide trace and its correct flux.
+    :param kernel_psf: monochromatic PSF kernel (oversampled at the same os as the final os)
+    :param kernels_wv: Corresponding wavelength in microns
+    :param wv_index: array index of the PSF kernel wavelengths
+    :param simuPars:
+    :param spectral_order:
+    :param tracePars:
+    :param wv_spacing: Spacing (in microns) between PSF kernels used in the simulation.
+    :return:
+    '''
+
+    # pixel --> wavelength: p2w() has bug so replace with this
+    w_init = np.linspace(0.5, 5.5, 10000)
+    x_init, y_init, mask = tp.wavelength_to_pix(w_init, tracePars, m=spectral_order,
+                                      oversample=simuPars.noversample,
+                                      subarray=simuPars.subarray)
+    # np.interp needs ordered x_init
+    ind = np.argsort(x_init)
+    x_init, w_init = x_init[ind], w_init[ind]
+    # x, y, w for each x spectral pixel
+    # x_nopad = np.arange(2048 * simuPars.noversample)
+    # w_nopad = np.interp(x_nopad, x_init, w_init)
+    # y_nopad = np.interp(x_nopad, x_init, y_init)
+    #
+    dimx = (2048+2*simuPars.xpadding) * simuPars.noversample
+    x_pad = np.arange(dimx) - simuPars.xpadding * simuPars.noversample
+    w_pad = np.interp(x_pad, x_init, w_init)
+    # y_pad = np.interp(x_pad, x_init, y_init)
+
+    wave_indices = []
+    for wv_index in range(np.size(kernels_wv)):
+        # Wavelength of the current PSF (in microns)
+        wavelength = kernels_wv[wv_index]
+        # Wavelength array of each pixel column
+        wavelength_i = np.copy(w_pad)
+        # Contribution array of the pixel column to the current wavelength's PSF kernel
+        weight = 1.0 - np.abs(wavelength_i - wavelength) / wv_spacing
+        # Floor that weight to zero
+        fac = np.amax([np.zeros_like(wavelength_i), weight], axis=0)
+
+        # do it block by block, where fac > 0, extended by half the kernel width on each side
+        kernel_halfwidth = np.shape(kernel_psf)[1] / 2
+        # temporary array of pixel columns whose weight is non zero
+        nonzero = x_pad[np.where(fac > 0)]
+        # If at least 1 non-zero pixel column exist for the current wavelength then
+        if nonzero.size > 0:
+            # minimum/maximum column index where the weight is non zero
+            wave_indices.append(int(wv_index))
+        #else:
+            # Otherwise, return a all zero array at this wavelength
+
+    return np.array(wave_indices, dtype=np.int)
+
+
+
+def convolve_1wv(trace_image, kernel_psf, kernels_wv, wv_index, simuPars,
+                 spectral_order, tracePars, wv_spacing=0.05):
+    '''
+    Convolves the 1-pixel wide trace image with the monochromatic PSF at one wavelength.
+    :param trace_image: 2D image representing the 1-pixel wide trace and its correct flux.
+    :param kernel_psf: monochromatic PSF kernel (oversampled at the same os as the final os)
+    :param kernels_wv: Corresponding wavelength in microns
+    :param wv_index: array index of the PSF kernel wavelengths
+    :param simuPars:
+    :param spectral_order:
+    :param tracePars:
+    :param wv_spacing: Spacing (in microns) between PSF kernels used in the simulation.
+    :return:
+    '''
+
+    # pixel --> wavelength: p2w() has bug so replace with this
+    w_init = np.linspace(0.5, 5.5, 10000)
+    x_init, y_init, mask = tp.wavelength_to_pix(w_init, tracePars, m=spectral_order,
+                                      oversample=simuPars.noversample,
+                                      subarray=simuPars.subarray)
+    # np.interp needs ordered x_init
+    ind = np.argsort(x_init)
+    x_init, w_init = x_init[ind], w_init[ind]
+    # x, y, w for each x spectral pixel
+    # x_nopad = np.arange(2048 * simuPars.noversample)
+    # w_nopad = np.interp(x_nopad, x_init, w_init)
+    # y_nopad = np.interp(x_nopad, x_init, y_init)
+    #
+    dimx = (2048+2*simuPars.xpadding) * simuPars.noversample
+    x_pad = np.arange(dimx) - simuPars.xpadding * simuPars.noversample
+    w_pad = np.interp(x_pad, x_init, w_init)
+    # y_pad = np.interp(x_pad, x_init, y_init)
+
+    # Wavelength of the current PSF (in microns)
+    wavelength = kernels_wv[wv_index]
+    # Wavelength array of each pixel column
+    wavelength_i = np.copy(w_pad)
+    # Contribution array of the pixel column to the current wavelength's PSF kernel
+    weight = 1.0 - np.abs(wavelength_i - wavelength) / wv_spacing
+    # Floor that weight to zero
+    fac = np.amax([np.zeros_like(wavelength_i), weight], axis=0)
+
+    method='loic'
+    if method == 'jason':
+        # print('     Convolution method: {:}'.format(method))
+        # Convolve the whole trace image with current wavelength's monochromatic PSF kernel
+        convolved_trace = scipy.signal.fftconvolve(trace_image, kernel_psf[wv_index], mode='same')
+        # Apply weighting
+        # Used to be: for i in range(dimx): convolved_trace[:,i]=convolved_trace[:,i] * fac[i]
+        convolved_trace = convolved_trace * fac
+    else:
+        # print('     Convolution method: {:}'.format(method))
+        # do it block by block, where fac > 0, extended by half the kernel width on each side
+        kernel_halfwidth = np.shape(kernel_psf)[1]/2
+        # temporary array of pixel columns whose weight is non zero
+        nonzero = x_pad[np.where(fac > 0)]
+        # If at least 1 non-zero pixel column exist fo rthe current wavelength then
+        if nonzero.size > 0:
+            # minimum/maximum column index where the weight is non zero
+            xmin = int(np.min(nonzero) - kernel_halfwidth)
+            xmax = int(np.max(nonzero) + kernel_halfwidth)
+            # final bounds in pixel columns to keep for the convolution
+            xbound1 = np.max([0, xmin])
+            xbound2 = np.min([dimx, xmax])
+            # Convolve the sub trace image with current wavelength's monochromatic PSF kernel
+            sub_convolved_trace = scipy.signal.fftconvolve(trace_image[:, xbound1:xbound2],
+                                                           kernel_psf[wv_index], mode='same')
+            # Create the final convolved image and insert the convolved trace in it
+            convolved_trace = np.zeros_like(trace_image)
+            # Apply the weighting on the convolved image
+            convolved_trace[:, xbound1:xbound2] = sub_convolved_trace * fac[xbound1:xbound2]
+        else:
+            # Otherwise, return a all zero array at this wavelength
+            # print(kernels_wv[wv_index],'all zeros')
+            convolved_trace = np.zeros_like(trace_image)
+
+    return convolved_trace
+
+
+
+def convolve_1wv_safe(trace_image, kernel_psf, kernels_wv, wv_index, simuPars,
+                 spectral_order, tracePars, wv_spacing=0.05):
+    '''
+    Convolves the 1-pixel wide trace image with the monochromatic PSF at one wavelength.
+    :param trace_image: 2D image representing the 1-pixel wide trace and its correct flux.
+    :param kernel_psf: monochromatic PSF kernel (oversampled by x10)
+    :param kernels_wv: Corresponding wavelength in microns
+    :param wv_index: array index of the PSF kernel wavelengths
+    :param simuPars:
+    :param spectral_order:
+    :param tracePars:
+    :param wv_spacing: Spacing (in microns) between PSF kernels used in the simulation.
+    :return:
+    '''
+    # pixel --> wavelength: p2w() has bug so replace with this
+    w_init = np.linspace(0.5, 5.5, 10000)
+    x_init, y_init, mask = tp.wavelength_to_pix(w_init, tracePars, m=spectral_order,
+                                      oversample=simuPars.noversample,
+                                      subarray=simuPars.subarray)
+    # np.interp needs ordered x_init
+    ind = np.argsort(x_init)
+    x_init, w_init = x_init[ind], w_init[ind]
+    # x, y, w for each x spectral pixel
+    # x_nopad = np.arange(2048 * simuPars.noversample)
+    # w_nopad = np.interp(x_nopad, x_init, w_init)
+    # y_nopad = np.interp(x_nopad, x_init, y_init)
+    #
+    dimx = (2048+2*simuPars.xpadding) * simuPars.noversample
+    x_pad = np.arange(dimx) - simuPars.xpadding * simuPars.noversample
+    w_pad = np.interp(x_pad, x_init, w_init)
+    # y_pad = np.interp(x_pad, x_init, y_init)
+
+    # Convolve the whole trace image with current wavelength's monochromatic PSF kernel
+    # TODO: to speed up convolution, only convolve subimage where fac > 0.
+    convolved_trace = scipy.signal.fftconvolve(trace_image, kernel_psf[wv_index], mode='same')
+    # Wavelength of the current PSF (in microns)
+    wavelength = kernels_wv[wv_index]
+    # Loop on each pixel column
+    for i in range(dimx):
+            # Wavelength of the current pixel (in microns)
+            wavelength_i = np.copy(w_pad[i])
+            # Weight given to the current wavelength trace to the current pixel column
+            # 1 if the current pixel column is that of the current wavelength.
+            # 0 if the current pixel column is farther than the wavelength spacing between
+            # monochromatic PSFs. Linear in between.
+            fac = max(0.0, 1.0-np.abs(wavelength_i - wavelength) / wv_spacing)
+            # Apply that weighting on the convolved trace
+            convolved_trace[:,i]=convolved_trace[:,i] * fac
+    return convolved_trace
