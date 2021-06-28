@@ -83,7 +83,7 @@ print(simuPars.pmodeltype[0])
 
 # Here one can manually edit the parameters but we encourage rather to change
 # the simulation parameter file directly.
-#simuPars.noversample = 4  #example of changing a model parameter
+simuPars.noversample = 2  #example of changing a model parameter
 #simuPars.xout = 4000      #spectral axis
 #simuPars.yout = 300       #spatial (cross-dispersed axis)
 #simuPars.modelfile = 'CONSTANT_FNU'
@@ -93,6 +93,7 @@ print(simuPars.pmodeltype[0])
 simuPars.f277wcal = False
 simuPars.flatthroughput = True
 simuPars.flatquantumyield = True
+
 
 # Instrument Throughput (Response)
 throughput = spgen.read_response(pathPars.throughputfile, set_response_to_unity=simuPars.flatthroughput,
@@ -221,10 +222,10 @@ if simuPars.f277wcal is True:
     print('F277W calibration generated time steps (in seconds): ', timesteps_f277)
 
     if True:
-        imagelist_f277 = soss.generate_traces(WORKING_DIR+'tmp/f277', pathPars, simuPars, tracePars, throughput_f277,
-                                       starmodel_angstrom, starmodel_flambda, ld_coeff,
-                                       planetmodel_angstrom, planetmodel_rprs,
-                                       timesteps_f277, tintopen)
+        imagelist_f277 = soss.generate_traces(WORKING_DIR+'tmp/f277', pathPars, simuPars, tracePars,
+                                              throughput_f277, starmodel_angstrom, starmodel_flambda,
+                                              ld_coeff, planetmodel_angstrom, planetmodel_rprs,
+                                              timesteps_f277, tintopen)
     else:
         SIMUDIR = '/genesis/jwst/userland-soss/loic_review/tmp/'
         imagelist_f277 = glob.glob(WORKING_DIR + 'tmp/f277*.fits')
@@ -240,8 +241,8 @@ if simuPars.f277wcal is True:
                                               simuPars.frametime, simuPars.granularity, verbose=True)
 
     # All simulations (e-/sec) are converted to up-the-ramp images.
-    soss.write_dmsready_fits(data_f277[:,:,0:256,0:2048], os.path.join(WORKING_DIR,'test_f277.fits'),
-                        os=simuPars.noversample, input_frame='sim', f277=True)
+    soss.write_dmsready_fits(data_f277, os.path.join(WORKING_DIR,'test_f277.fits'),
+                        os=simuPars.noversample, input_frame='dms', f277=True)
 
     # Add detector noise to the noiseless data
     detector.add_noise(os.path.join(WORKING_DIR,'test_f277.fits'),

@@ -127,7 +127,6 @@ if False:
     bin_starmodel_angstrom,  = resampled_arrays
 
 
-
 # Generate the time steps array
 tintopen, frametime, nint, timesteps = soss.generate_timesteps(simuPars)
 print('Generated time steps:')
