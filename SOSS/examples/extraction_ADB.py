@@ -163,13 +163,13 @@ new_spat = fits.getdata(WORKING_DIR + "new_map_profile_clear_{}.fits".format(sim
 spat_pros_clear = new_spat[:2]
 
 # Choose between Loic's and Antoine's maps
-wave_maps = wave_maps_la[0]   # or wave_maps_adb
-spat_pros = spat_pros_clear[0]  # or new_spat_la    # or spat_pros_adb
+wave_maps = [wave_maps_la[0]]   # or wave_maps_adb
+spat_pros = [new_spat_la[0]]  # or spat_pros_clear   # or spat_pros_adb
 
 # Convert data from fits files to float (fits precision is 1e-8)
 wave_maps = [wv.astype('float64') for wv in wave_maps]
 spat_pros = [p_ord.astype('float64') for p_ord in spat_pros]
-
+print(np.shape(wave_maps))
 #### Throughputs ####
 thrpt_list = [ThroughputSOSS(order) for order in order_list]   # Has been changed to 1 everywhere in throughput.py  K.M.
 
@@ -295,13 +295,14 @@ for i_ord in range(extract.n_ord):
 #fig, ax = plt.subplots(2, 1, sharex=True, figsize=(12, 6))
 fig, ax = plt.subplots(1, 1, sharex=True, figsize=(12, 6))
 
-for i_ord in range(extract.n_ord):
-    label = extract.orders[i_ord]
-    ax[i_ord].plot(lam_bin_list[i_ord], f_bin_list[i_ord], label=label)
-#ax.plot(lam_bin_list[0], f_bin_list[0])
+#for i_ord in range(extract.n_ord):
+ #   label = extract.orders[i_ord]
+  #  ax[i_ord].plot(lam_bin_list[i_ord], f_bin_list[i_ord], label=label)
+ax.plot(lam_bin_list[0], f_bin_list[0])
 
-ax[0].set_ylabel("Extracted signal [counts]")
-ax[0].set_xlabel("Wavelength [$\mu m$]")
+#ax[0].set_ylabel("Extracted signal [counts]")
+ax.set_ylabel("Extracted signal [counts]")
+ax.set_xlabel("Wavelength [$\mu m$]")
 #ax[1].set_xlabel("Wavelength [$\mu m$]")
 #ax[1].set_ylabel("Extracted signal [counts]")
 
