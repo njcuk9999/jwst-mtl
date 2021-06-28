@@ -17,25 +17,29 @@ class ModelPars:
     
     nplanetmax=9 #code is hardwired to have upto 9 transiting planets. 
     #default parameters -- these will cause the program to end quickly
-    tstart=0.0e0 #start time (hours)
-    tend=0.0e0 #end time (hours)
-    exptime=0.0e0 #exposure time (s)
-    deadtime=0.0e0 #dead time (s)
+    tstart=0.0 #start time (hours)
+    tend=0.0 #end time (hours)
+    exptime=0.0 #exposure time (s)
+    deadtime=0.0 #dead time (s)
     modelfile='null' #stellar spectrum file name
     nmodeltype=2 #stellar spectrum type. 1=BT-Settl, 2=Atlas-9+NL limbdarkening
-    rvstar=0.0e0 #radial velocity of star (km/s)
-    vsini=0.0e0 #projected rotation of star (km/s)
-    pmodelfile=[None]*nplanetmax #file with Rp/Rs values 
+    rvstar=0.0 #radial velocity of star (km/s)
+    vsini=0.0 #projected rotation of star (km/s)
+    pmodelfile=[None]*nplanetmax #file with Rp/Rs values
+    pmodeltype=[None]*nplanetmax #Type of planet file
     emisfile=[None]*nplanetmax #file with emission spectrum
     ttvfile=[None]*nplanetmax #file with O-C measurements
     #nplanet is tracked by pmodelfile. 
     nplanet=0 #number of planets -- default is no planets - you will get staronly sim.
     sol=np.zeros(nplanetmax*8+1)
     sol[0]=1.0 #mean stellar density [g/cc]
+    subarray='SUBSTRIP256' #SOSS subarray name SUBSTRIP96, SUBSTRIP256 or FF
+    granularity='FRAME' # FRAME or INTEGRAION, an image is created at each XXX
     xout=2048  #dispersion axis
     yout=256   #spatial axis
     noversample=1 #oversampling
-    saturation=65536.0e0 #saturation
+    gain=1.6 # electronic gain [e-/adu]
+    saturation=65536.0 #saturation
     ngroup=1 #samples up ramp
     pid = 1 #programID
     onum = 1 #observation number
@@ -47,7 +51,12 @@ class ModelPars:
     enumos = 1 #exposure number for oversampling
     detectorname = 'NISRAPID' #confirm this 
     prodtype='cal'
-    
+    orderlist = np.array([1,2,3],dtype=np.int) # the spectral orders to simulate
+    frametime = np.nan # not selectable in the config file. Will be filled in the code.
+    nint = np.nan # not selectable in the config file. Will be filled in the code.
+    magnitude = 10.0
+    filter = 'J'
+    f277wcal = True
 
 def read_pars(filename,pars):
     """Usage:  pars=read_pars(filename,pars)
@@ -90,6 +99,19 @@ def read_pars(filename,pars):
                             print('Linenumber: ',linenumber)
                     elif command == 'vsini':
                         pars.vsini = np.float(columns[1])
+                    elif command == 'magnitude':
+                        pars.magnitude = np.float(columns[1])
+                    elif command == 'filter':
+                        pars.filter = str(columns[1])
+                    elif command == 'f277wcal':
+                        if isinstance(columns[1],str):
+                            pars.f277wcal = (columns[1] == 'True')
+                        else:
+                            pars.f277wcal = bool(columns[1])
+                    elif command == 'subarray':
+                        pars.subarray = columns[1]
+                    elif command == 'granularity':
+                        pars.granularity = columns[1]
                     elif command == 'xout':
                         pars.xout = int(np.float(columns[1]))
                     elif command == 'yout':
@@ -112,6 +134,17 @@ def read_pars(filename,pars):
                         pars.xcen = np.float(columns[1])
                     elif command == 'oversample':
                         pars.noversample = int(np.float(columns[1]))
+                    elif command == 'orderlist':
+                        print('spgen.py - warning - fix the bug with orderlist')
+                        # Bug. I cannot process a string of format '[1,2]'
+                        # to be converted to a numpy array of 2 integers.
+                        # until then, hard code the input in spgen.py
+                        # in the initiation of the parameters.
+                        #pars.orderlist = int(columns[1])
+                        #print('qqq{:}qqq'.format(pars.orderlist))
+                        #print(np.shape(pars.orderlist))
+                    elif command == 'gain':
+                        pars.gain = np.float(columns[1])
                     elif command == 'saturation':
                         pars.saturation = np.float(columns[1])
                     elif command == 'ngroup':
@@ -144,6 +177,14 @@ def read_pars(filename,pars):
                                 pars.pmodelfile[npl-1]=str(columns[1])
                             else:
                                 print('Error: Planet number is Invalid ',npl )
+                                print('Linenumber: ',linenumber)
+                    elif command[0:nlcom-1] == 'rprstype':
+                        if str(columns[1]) != 'null':
+                            npl=int(np.float(command[nlcom-1]))
+                            if (npl <= pars.nplanetmax) & (npl>0):
+                                pars.pmodeltype[npl-1]=int(columns[1])
+                            else:
+                                print('Error: Planet number is Invalid for planetmodel type ',npl)
                                 print('Linenumber: ',linenumber)
                     elif command[0:nlcom-1] == 'emisfile':
                         if str(columns[1]) != 'null':
@@ -248,7 +289,7 @@ class response_class:
         self.response_order=[]
         self.quantum_yield=[]
 
-def readresponse(response_file):
+def readresponse(response_file, quiet=False):
     """Usage: response=readresponse(response_file)
     Inputs
      response_file - FITS file for instrument response.
@@ -261,7 +302,7 @@ def readresponse(response_file):
        response_order(norder) : order index
        quantum_yield(npt) : quantum yield
     """
-
+    if not quiet: print('Reading response file (instrument throughput) {:}'.format(response_file))
     response=response_class() #class to contain response info
 
     hdulist = fits.open(response_file)
@@ -300,7 +341,7 @@ def readresponse_old(response_file):
 
     return reponse_ld,reponse_n0,reponse_n1,reponse_n2,reponse_n3,quantum_yield;
 
-def readstarmodel(starmodel_file,nmodeltype):
+def readstarmodel(starmodel_file, nmodeltype, quiet=False):
     """Usage: starmodel_wv,starmodel_flux=readstarmodel(starmodel_file,smodeltype)
     Inputs:
       starmodel_file - full path and filename to star spectral model
@@ -311,6 +352,8 @@ def readstarmodel(starmodel_file,nmodeltype):
       starmodel_flux : flux
       ld_coeff : non-linear limb-darkening coefficients
     """
+    if not quiet: print('Reading star model atmosphere {:}'.format(starmodel_file))
+
     starmodel_wv=[]
     starmodel_flux=[]
     ld_coeff=[]
@@ -338,44 +381,50 @@ def readstarmodel(starmodel_file,nmodeltype):
 
     return starmodel_wv,starmodel_flux,ld_coeff;
 
-def readplanetmodel(planetmodel_file,pmodeltype):
+def readplanetmodel(planetmodel_file, pmodeltype, quiet=False):
     """Usage: planetmodel_wv,planetmodel_depth=readplanetmodel(planetmodel_file,pmodeltype)
     Inputs
       planetmodel_file : full path to planet model (wavelength,r/R*)
       pmodeltype : type of mode
         1 : space seperated - wavelength(A) R/R*
-        2 : CSV - wavelength(A),transit-depth(ppm)
+        2 : CSV - wavelength(um),transit-depth(ppm)
 
     Outputs
       planetmodel_wv : array with model wavelengths (A)
       planetmodel_depth : array with model r/R* values.
     """
+
+    if not quiet: print('Reading planet atmosphere model {:}'.format(planetmodel_file))
+    if not quiet: print('pmodeltype = {:}'.format(pmodeltype))
+
     planetmodel_wv=[]
     planetmodel_depth=[]
     f = open(planetmodel_file,'r')
     for line in f:
-        
-        if pmodeltype==2:
+        if pmodeltype == 2:
             line = line.strip() #get rid of \n at the end of the line
             columns = line.split(',') #break into columns with comma
-            if is_number(columns[0]): #ignore lines that start with '#' 
+            if is_number(columns[0]): #ignore lines that start with '#'
                 planetmodel_wv.append(float(columns[0])*10000.0) #wavelength (um -> A)   
                 tdepth=np.abs(float(columns[1]))/1.0e6 #transit depth ppm -> relative
                 planetmodel_depth.append(np.sqrt(tdepth)) #transit depth- > r/R*
 
-        elif pmodeltype==1:
+        elif pmodeltype == 1:
             line = line.strip() #get rid of \n at the end of the line
             columns = line.split() #break into columns with comma
             if is_number(columns[0]): #ignore lines that start with '#' 
                 planetmodel_wv.append(float(columns[0])) #wavelength (A)   
                 planetmodel_depth.append(float(columns[1])) #r/R*
+        else:
+            print('Not a valid planet model type (1 or 2)')
+            sys.exit()
             
     f.close()
 
     planetmodel_wv=np.array(planetmodel_wv)       #convert to numpy array
     planetmodel_depth=np.array(planetmodel_depth)
     
-    return planetmodel_wv,planetmodel_depth;
+    return planetmodel_wv,planetmodel_depth
 
 def is_number(s):
     try:
@@ -486,17 +535,17 @@ Outputs:
                    'pixel' input parameter.
     """
     
-    pixel = 2048-pixel/noversample            # tp.flipX(pixel)                     # Subtracting from 2048 each pixel value to ensure that the spectral axis from
+    #pixel = 2048-pixel/noversample            # tp.flipX(pixel)                     # Subtracting from 2048 each pixel value to ensure that the spectral axis from
                                                      # left-to-right corresponds to decreasing wavelength values
     #pixel = pixel / noversample              # Adjusts the pixel values based on oversampling
     
-    wave_MICRON = tp.x2wavelength(pixel,tracePars,m=ntrace) # From 'jwst-mtl/SOSS/trace/tracepol.py'
+    wave_MICRON, mask = tp.specpix_to_wavelength(pixel,tracePars,m=ntrace,oversample=noversample,frame='sim') # From 'jwst-mtl/SOSS/trace/tracepol.py'
     
     if maskON:   # Decides whether or not to return the masking provided by the x2wavelength routine. Default is 'False' 
                     # because this functionality was not present before in J Rowe's previous implementation of 'p2w'
-        return wave_MICRON[0] * 10000 , wave_MICRON[1]
+        return wave_MICRON * 10000 , mask
     
-    return wave_MICRON[0] * 10000    # Factor of 10000 used to get wavelengths in units of (Avatar) Aang-stroms
+    return wave_MICRON * 10000    # Factor of 10000 used to get wavelengths in units of (Avatar) Aang-stroms
 
 
 def w2p(tracePars, wave_ANG , noversample=1 , ntrace=1 , maskON=False):
@@ -518,18 +567,19 @@ Outputs:
                    'wave_ANG' input parameter.
     """
     
-    pixel = list( tp.wavelength2x(wave_ANG/10000,tracePars,m=ntrace) )  # From 'jwst-mtl/SOSS/trace/tracepol.py'.
-                                                                           # Routine requires microns instead of Angstroms 
-    pixel[0] = pixel[0] * noversample  # Adjust pixels based on oversampling
+    specpix, spatpix, mask = tp.wavelength_to_pix(wave_ANG/10000,tracePars,
+                             m=ntrace,frame='sim',oversample=noversample,
+                             subarray='SUBSTRIP256')  # From 'jwst-mtl/SOSS/trace/tracepol.py'.
+                                                      # Routine requires microns instead of Angstroms 
+    #pixel[0] = pixel[0] * noversample  # Adjust pixels based on oversampling
     
     if maskON:   # Decides whether or not to return the masking provided by the wavelength2x routine. Default is 'False' 
                     # because this functionality was not present before in J Rowe's previous implementation of 'w2p'
-        #return tp.flipX(pixel[0]) , pixel[1]
-        return noversample*2048-pixel[0], pixel[1]
+        return specpix, mask
     
-    #return tp.flipX(pixel[0])  # Subtracting from 2048 each pixel value to ensure that the spectral axis from left-to-right
-    return noversample*2048-pixel[0]
-                             # corresponds to decreasing wavelength values
+    #return noversample*2048-pixel[0]   # Subtracting from 2048 each pixel value to ensure that the spectral axis from left-to-right
+                                        # corresponds to decreasing wavelength values
+    return specpix
 
 def ptrace(tracePars, pixel, noversample=1, ntrace=1 , maskON=False):
     
@@ -551,13 +601,14 @@ Outputs:
                    'pixel' input parameter.
     """
     
-    wv_ANG = p2w(tracePars, pixel,noversample=noversample , ntrace=ntrace , maskON=maskON)
+    wv_ANG, mask = p2w(tracePars, pixel,noversample=noversample , ntrace=ntrace , maskON=True)
+    specpix, spatpix, mask = tp.wavelength_to_pix(wv_ANG/10000,tracePars,m=ntrace,frame='sim',oversample=noversample)
     if maskON:
-        y , mask = tp.wavelength2y(wv_ANG[0]/10000, tracePars, m=ntrace)  # Need to input microns instead of Angstroms
-        return y*noversample , mask
+        #y , mask = tp.wavelength2y(wv_ANG[0]/10000, tracePars, m=ntrace)  # Need to input microns instead of Angstroms
+        return spatpix, mask
     else:
-        y = tp.wavelength2y(wv_ANG/10000, tracePars, m=ntrace)
-        return y[0]*noversample
+        #y = tp.wavelength2y(wv_ANG/10000, tracePars, m=ntrace)
+        return spatpix
 
 
 def addflux2pix(px,py,pixels,fmod):
@@ -681,6 +732,7 @@ def get_dw(starmodel_wv,planetmodel_wv,pars,tracePars):
 
     #get spectral resolution of planet spectra
     nplanetmodel=len(planetmodel_wv)
+    print(nplanetmodel)
     dw_planet_array=np.zeros(nplanetmodel-1)
     sortidx=np.argsort(planetmodel_wv)
     for i in range(nplanetmodel-1):
@@ -764,6 +816,14 @@ def resample_models(dw,starmodel_wv,starmodel_flux,ld_coeff,\
         planetmodel_wv,planetmodel_rprs,\
         bin_starmodel_wv,bin_starmodel_flux,bin_ld_coeff,bin_planetmodel_wv,bin_planetmodel_rprs)
 
+    # Make sure the array is sorted in increasing wavelengths
+    ind = np.argsort(bin_starmodel_wv)
+    bin_starmodel_wv = bin_starmodel_wv[ind]
+    bin_starmodel_flux = bin_starmodel_flux[ind]
+    bin_planetmodel_wv = planetmodel_wv[ind]
+    bin_planetmodel_rprs = bin_planetmodel_rprs[ind]
+    bin_ld_coeff = bin_ld_coeff[ind]
+
     return bin_starmodel_wv,bin_starmodel_flux,bin_ld_coeff,bin_planetmodel_wv,bin_planetmodel_rprs
 
 
@@ -824,16 +884,14 @@ def resample_models_old(dw,starmodel_wv,starmodel_flux,ld_coeff,\
     
     return bin_starmodel_wv,bin_starmodel_flux,bin_ld_coeff,bin_planetmodel_wv,bin_planetmodel_rprs
 
-def readkernels(workdir,\
-                wls=0.5,wle=5.2,dwl=0.05,kerneldir='Kernel/',os=1):
+def readkernels(psfdir, wls=0.5, wle=5.2, dwl=0.05, os=1):
     """ kernels=readkernels(wls=0.5,wle=5.2,dwl=0.05,Kerneldir='Kernel',os=1)
     Inputs
-     workdir   : base directory
+     psfdir    : psf FITS files directory
      wls       : wavelength start for Kernels, inclusive (um)
      wle       : wavelength end for Kernels, inclusive (um)
      dwl       : wavelength spacing for Kernels (uw)
-     kerneldir : location of Kernels (workdir+Kernels is the full path)
-     os        : amount of oversampling.  Much be an integer >=1. 
+     os        : amount of oversampling.  Much be an integer >=1.
     """
     
     kernels=[]
@@ -846,7 +904,9 @@ def readkernels(workdir,\
     while wl<=wle:
         
         wname='{0:.6f}'.format(int(wl*100+0.1)/100)
-        fname=workdir+kerneldir+kdir+prename+wname+extname
+        #fname=workdir+kerneldir+kdir+prename+wname+extname
+        # (2020/09/02) New path in order to harmonize with rest of code
+        fname=psfdir+prename+wname+extname
         #print(fname)
         hdulist = fits.open(fname)
         

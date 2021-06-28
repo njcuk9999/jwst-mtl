@@ -10,13 +10,65 @@ Created on Wed Jun 17 14:02:42 2020
 # Translated to python
 
 import sys
-sys.path.insert(0, "trace/")
+sys.path.insert(0, "/genesis/jwst/github/jwst-mtl/SOSS/trace/")
 import numpy as np
 import tracepol as tp
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 from astropy.io import fits
 
 
+def read_tilt_file():
+    # For spectral axis pixels (1 to 2048), return the monochromatic tilt
+    # in degrees, for a given spectral order (1 or 2) as a function of spectral
+    # pixel. This is the function where a varying tilt can be defined.
+    # Based on CV3 data, there seems to be some variations of that tilt angle
+    # for order 1. It is however difficult to quantify well.
+
+    # The tilt sign is defined the following way:
+    # Given the spatial axis going from the blue to the red is positive;
+    # Given that the spectral axis is positive from the blue to the red;
+    # Then the tilt is the angle away from the positive spatial axis towards
+    # the positive spectral axis. In that direction, the tilt is positive.
+    #
+    #           red (+)
+    #              |
+    #     tilt (+) | s
+    #        \     | p
+    #         \    | a
+    #          \   | t
+    #           \  | i
+    #            \ | a
+    #             \| l
+    # red(+)-------- blue
+    #      spectral
+
+    filename = '/genesis/jwst/github/jwst-mtl/SOSS/extract/Generate_ref_files/SOSS_wavelength_dependent_tilt.txt'
+
+    if True:
+        # Use the best guess estimate for what the tilt is from CV3
+        # Initialize arrays read from reference file.
+        w = []
+        o1, o2, o3 = [], [], []
+        # Read in the reference tilt file
+        f = open(filename, 'r')
+        for line in f:
+            # Ignore comments (lines starting with #
+            if line[0] != '#':
+                columns = line.split()
+                w.append(float(columns[0]))
+                o1.append(float(columns[1]))
+                o2.append(float(columns[2]))
+                o3.append(float(columns[3]))
+        # Make sure to convert from lists to numpy arrays
+        w = np.array(w)
+        o1 = np.array(o1)
+        o2 = np.array(o2)
+        o3 = np.array(o3)
+
+    # The tilt relation is
+    tilt_columns = w, o1, o2, o3
+
+    return(tilt_columns)
 
 def tilt_vs_spectralpixel(wavelength_micron, order):
     # For spectral axis pixels (1 to 2048), return the monochromatic tilt
@@ -42,15 +94,66 @@ def tilt_vs_spectralpixel(wavelength_micron, order):
     #             \| l
     # red(+)-------- blue
     #      spectral
-    
-    if order == 1:
-        tilt_degrees = 1.0 + 10.0*np.sin(wavelength_micron/50.)
-    elif order == 2:
-        tilt_degrees = 1.0 + 10.0*np.sin(wavelength_micron/100.)    
-    else:
-        print('Call tilt_vs_spectralpixel with order=1 or order=2.')
-        stop
+
+    if False:
+        # Used this sinusoidaly changing tilt for debugging.
+        if order == 1:
+            tilt_degrees = 1.0 + 10.0*np.sin(wavelength_micron/50.)
+        elif order == 2:
+            tilt_degrees = 1.0 + 10.0*np.sin(wavelength_micron/100.)    
+        else:
+            print('Call tilt_vs_spectralpixel with order=1 or order=2.')
+            sys.exit()
+
+    if True:
+        # Use the best guess estimate for what the tilt is from CV3
+        # Initialize arrays read from reference file.
+        w = []
+        o1, o2, o3 = [], [], []
+        # Read in the reference tilt file
+        f = open('/genesis/jwst/github/jwst-mtl/SOSS/extract/Generate_ref_files/SOSS_wavelength_dependent_tilt.txt','r')
+        for line in f:
+            # Ignore comments (lines starting with #
+            if line[0] != '#':
+                columns = line.split()
+                w.append(float(columns[0]))
+                o1.append(float(columns[1]))
+                o2.append(float(columns[2]))
+                o3.append(float(columns[3]))
+        # Make sure to convert from lists to numpy arrays
+        w = np.array(w)
+        o1 = np.array(o1)
+        o2 = np.array(o2)
+        o3 = np.array(o3)
+        # Branch according to the spectral order
+        if order == 1:
+            tilt_degrees = np.interp(wavelength_micron, w, o1)
+        elif order == 2:
+            tilt_degrees = np.interp(wavelength_micron, w, o2)
+        elif order == 3:
+            tilt_degrees = np.interp(wavelength_micron, w, o3)
+        else:
+            print('Call tilt_vs_spectralpixel with order=1 or order=2 or order=3')
+            sys.exit()
+
     return(tilt_degrees)
+
+
+def tilt_solution(wave_queried, tilt_columns, order=1):
+
+    w, o1, o2, o3 = tilt_columns
+    if order == 1:
+        tilt_queried = np.interp(wave_queried, w, o1)
+    elif order == 2:
+        tilt_queried = np.interp(wave_queried, w, o2)
+    elif order == 3:
+        tilt_queried = np.interp(wave_queried, w, o3)
+    else:
+        print('in tilt_solution, use order 1, 2 or 3.')
+        sys.exit()
+
+    return(tilt_queried)
+
      
 def image_native_to_DMS(image):
     # This function converts from ds9 (native) to DMS coordinates.
@@ -71,8 +174,8 @@ def image_native_to_DMS(image):
 
 
 
-def make_2D_wavemap(subarray_name, coordinate_system, fitsmap_name,
-                    tilt_table, tilt_constant=None, oversampling=1):
+def make_2D_wavemap(fitsmap_name, subarray_name='SUBSTRIP256', coordinate_system='DMS',
+                    tilt_constant=None, oversampling=1, padding=10):
 
     # This script generates and writes on disk the reference file that
     # describes the wavelength at the center of each pixel in the subarray.
@@ -81,22 +184,22 @@ def make_2D_wavemap(subarray_name, coordinate_system, fitsmap_name,
 
     # subarray_name: SUBSTRIP96, SUBSTRIP256, FF
     # coordinate_system: DS9 (native) or DMS or Jason's
-    # tilt_table: the name of the 3-column table describing the monochromatic
+    # tilt_table: the name of the 4-column table describing the monochromatic
     #    tilt as a function of wavelength (in microns). Interpolation will be 
     #    made from that table. Col 1 = microns, col 2 = first order, col 3 = 
-    #    second order.
+    #    second order. No longer used here. Put in tilt_vs_spectralpixel instead.
     # tilt_constant: if that is set then its value is the monochromatic tilt
     #    in degrees whose value is constant for all wavelengths. It then
     #    bypasses the tilt described in the tilt_table.
     # The convention for the tilt sign is described in the 
     # tilt_vs_spectralpixel() function above.
-    
-    
+    # padding: the number of native pixels to add as padding on each sides
+    # and top/bottom of the generated map. That will allow the extract 1D Solver
+    # to simply apply rotation+offsets without incurring border artifacts.
+
     # Assuming that tracepol is oriented in the ds9 (native detector) coordinates,
     # i.e. the spectral axis is along Y, the spatial axis is along X, with the red
     # wavelengths going up and blue curving left.
-    
-    
     if subarray_name == 'SUBSTRIP96':
         # Seed the larger subarray then we will shrink it later to 96
         dimy = 2048 # spectral axis
@@ -113,57 +216,60 @@ def make_2D_wavemap(subarray_name, coordinate_system, fitsmap_name,
         print('No subarray_name was passed to make_2D_wavemap, assuming SUBSTRIP256.')
         dimy = 2048 # spectral axis
         dimx = 256 # spatial axis
+
+    # number of spectral orders (1 to 3)
+    norder = 3
         
     # xpad and ypad are not currently necessary but may prove to be in the
     # the future. Keep for now. They are given in native pixel size.
-    xpad = 0 # not required
-    ypad = 0 # not required
+    xpad = np.copy(padding) # not required
+    ypad = np.copy(padding) # not required
     # The oversampling is an integer number that will scale the output 2D map
     os = np.copy(oversampling)
-    lambda_map = np.zeros((2,(dimy+2*ypad)*os,(dimx+2*xpad)*os))
+    lambda_map = np.zeros((norder,(dimy+2*ypad)*os,(dimx+2*xpad)*os))
     
-    # The gain is for the iterative appraoch to finding the wavelength
+    # The gain is for the iterative approach to finding the wavelength
     gain = -1.0
+
+    # Inititalize the tilt solution
+    tilt_columns = read_tilt_file()
     
-    for m in range(1): # repeat for each order
+    for m in range(norder): # repeat for each order
     
         order = m+1
-        # First, query the x,y for order m+1 (so order 1 or 2)
+        # First, query the x,y for order m+1 (so order 1 or 2 or 3)
         # Get the trace parameters, function found in tracepol imported above
-        trace_file = './trace/NIRISS_GR700_trace_extended.csv'
+        trace_file = '/genesis/jwst/jwst-ref-soss/trace_model/NIRISS_GR700_trace_extended.csv'
         tracepars = tp.get_tracepars(trace_file)
         # Get wavelength (in um) of first and last pixel of the Order m trace
-        lba = np.linspace(0.6,3.0,2401)
-        x, y, mask = tp.wavelength2xy(lba, tracepars, m=order)
-        # WARNING WARNING WARNING
-        # As of this writing (June 29 2020), tracepol was using the old Jason
-        # coordinate system for its traces. Until that is corrected such that
-        # we can call tracepol with a coordinate_system option (DS9 or DMS or JASON)
-        # then we need to resort to the following axis flip.
-        # END OF WARNING    
-        xtmp = np.copy(x)
-        x = np.copy(y)
-        y = np.copy(xtmp)
-        # REMOVE THE ABOVE LINES WHEN tracepol has been fixed and a call is made
-        # with the DS9 coordinate system.    
-    
+        lba = np.linspace(0.5,3.0,2501)
+        y, x, mask = tp.wavelength_to_pix(lba, tracepars, m = order,
+                                          #frame = str.lower(coordinate_system),
+                                          frame = 'nat',
+                                          subarray = subarray_name,
+                                          oversample = oversampling)
+
         # Loop over spectral order (m), spatial axis (x) and spectral axis (y)
         # For each pixel, project back to trace center iteratively to
         # recover the wavelength.
         for i in range((dimx+2*xpad)*os): # the spatial axis
-            print(i)
+            print('Order {:} Spatial pixel {:}'.format(order,i))
             for j in range((dimy+2*ypad)*os): # the spectral axis
                 x_queried = np.float(i)/os-xpad
                 y_queried = np.float(j)/os-ypad
+                # Debugging for os > 1
+                #x_queried = (np.float(i)-xpad)/os
+                #y_queried = (np.float(j)-ypad)/os
                 delta_y = 0.0
                 for iter in range(5):
                     # Assume all x have same lambda
-                    lba_queried = np.interp(y_queried+gain*delta_y,y,lba)
+                    lba_queried = np.interp(y_queried+gain*delta_y,y/os,lba)
+                    #print(x_queried, y_queried, lba_queried)
                     # Monochromatic tilt at that wavelenength is:
                     if tilt_constant != None:
                         tilt_tmp = np.copy(tilt_constant)
                     else:
-                        tilt_tmp = tilt_vs_spectralpixel(lba_queried,order=order)                   
+                        tilt_tmp = tilt_solution(lba_queried, tilt_columns, order=order)
                     # Plug the lambda to spit out the x,y
                     x_estimate = np.interp(lba_queried, lba, x)
                     y_estimate = np.interp(lba_queried, lba, y)
@@ -174,6 +280,8 @@ def make_2D_wavemap(subarray_name, coordinate_system, fitsmap_name,
                         np.tan(np.deg2rad(tilt_tmp))
                     # Measure error between requested and iterated position
                     delta_y = delta_y + (y_iterated-y_queried)
+                    #print(i,j,iter, x_queried, y_queried, tilt_tmp,
+                    #      lba_queried, x_estimate, y_estimate, delta_y)
                 lambda_map[m,j,i] = lba_queried
 
     # Crop or expand to the appropriate size for the subarray.
@@ -181,15 +289,15 @@ def make_2D_wavemap(subarray_name, coordinate_system, fitsmap_name,
         # The SUBSTRIP96 subarray is offset relative to the SUBSTRIP256 by
         # nnn pixels
         offset = 11
-        lambda_map = lambda_map[:,256-96-offset:256-offset,:]
+        lambda_map = lambda_map[:, :, os*(2*xpad+256-96-offset):os*(xpad+256-offset)]
     elif subarray_name == 'FF':
-        tmp = np.zeros((2,(dimy+2*ypad)*os,(dimy+2*xpad)*os)) * np.nan
-        tmp[:,:,os*(xpad+0):os*(xpad+dimx)] = lambda_map
+        tmp = np.zeros((norder,(dimy+2*ypad)*os,(dimy+2*xpad)*os)) * np.nan
+        tmp[:,:,os*(xpad+0):os*(2*xpad+dimx)] = lambda_map
         lambda_map = tmp
     else:
         # Nothing to do for other sizes.
         print() # some statement so that python does not complain.
-        
+
     # Prepare the output map
     print('Saving the 2D wavelength map as {:}'.format(fitsmap_name))
 
@@ -208,10 +316,14 @@ def make_2D_wavemap(subarray_name, coordinate_system, fitsmap_name,
     
     hdu = fits.PrimaryHDU()
     hdu.data = lambda_map
+    hdu.header['oversamp'] = (int(os), 'Pixel oversampling')
+    hdu.header['padding'] = (int(padding), 'Native pixel-size padding around the image.')
     hdu.writeto(fitsmap_name, overwrite=True)
     
     return(lambda_map)
-    
+
+make_2D_wavemap('/genesis/jwst/userland-soss/loic_review/wave2Dmap_os1.fits',
+                subarray_name = 'SUBSTRIP256', oversampling=1)
 
 #
 # IDL CODE -------------------------------------------------------------------
