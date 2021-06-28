@@ -26,6 +26,7 @@ from astropy.table import Table
 import scipy.constants as sc_cst
 from scipy import interpolate #spline interpolation
 import matplotlib.pyplot as plt
+import time as clocktimer
 
 from tqdm.notebook import tqdm as tqdm_notebook
 
@@ -662,13 +663,14 @@ def loictrace(simuPars, response, bin_models_wv, bin_starmodel_flux, bin_ld_coef
     # Make sure that all flux are finite, or make Nans, zero
     pixelflux[~np.isfinite(pixelflux)] = 0.0
 
-    plt.figure()
-    plt.scatter(bin_models_wv, bin_starmodel_flux, label="bin_starmodel_flux")
-    plt.scatter(bin_models_wv, bin_models_flux, label="bin_models_flux")
-    plt.scatter(np.arange(len(pixelflux)), pixelflux, label="pixelflux")
-    plt.legend()
-    plt.show()
-    sys.exit()
+    if False:
+        plt.figure()
+        plt.scatter(bin_models_wv, bin_starmodel_flux, label="bin_starmodel_flux")
+        plt.scatter(bin_models_wv, bin_models_flux, label="bin_models_flux")
+        plt.scatter(np.arange(len(pixelflux)), pixelflux, label="pixelflux")
+        plt.legend()
+        plt.show()
+        sys.exit()
 
     # Now need to distribute this flux along the y-axis using the trace centroid position
     # still want to seed a 1-pixel high trace. But in regions where the curvature is strong,
@@ -848,7 +850,11 @@ def generate_traces(savingprefix, pathPars, simuPars, tracePars, throughput,
     # limit oversampling to be: 1<10
     kernel_resize = []
     for k in kernels:
-        kernel_resize.append(resize(k, (128 * simuPars.noversample, 128 * simuPars.noversample)))
+        resized = resize(k, (128 * simuPars.noversample, 128 * simuPars.noversample))
+        thesum = np.sum(resized)
+        kernel_resize.append(resized / thesum)
+    # Convert to numpy array and apply flux scaling conservation from resize
+    kernel_resize = np.array(kernel_resize) * (10 / simuPars.noversample)**2
 
     #The number of images (slices) that will be simulated is equal the number of orders
     # Don't worry, that 'cube' will be merged down later after flux normalization.
@@ -887,6 +893,15 @@ def generate_traces(savingprefix, pathPars, simuPars, tracePars, throughput,
                                       ld_coeff_bin, planet_rprs_bin,
                                       currenttime, exposetime, solin, spectral_order, tracePars)
 
+
+
+            if False:
+                # Replace by a simple horizontal trace of intensity 10000
+                a = np.zeros_like(pixels_t)
+                a[500,:] = 10000
+                pixels_t = a
+
+
             #Enable threads (not working?!?!)
             #pyfftw.config.NUM_THREADS = 1 #do not need multi-cpu for pools
             #with scipy.fft.set_backend(pyfftw.interfaces.scipy_fft):
@@ -895,30 +910,54 @@ def generate_traces(savingprefix, pathPars, simuPars, tracePars, throughput,
 
             #do the convolution
             print('     Convolving trace with monochromatic PSFs')
-            x=pixels_t*0+1.0e-10
+            # x=pixels_t*0+1.0e-10
 
-            nwv=len(kernels_wv) #number of wavelengths to process
+            # Identify wavelengths whose wings fall on the detector
+            wv_indices = spgen.convolve_1wv_wave_indices(kernel_resize, kernels_wv, simuPars, spectral_order, tracePars)
+            kernels_wv_subgroup = kernels_wv[wv_indices]
+            kernel_resize_subgroup = kernel_resize[wv_indices,:,:]
+
+            nwv=len(kernels_wv_subgroup) #number of wavelengths to process
             #pbar = tqdm_notebook(total=nwv)  #Will make a progressbar to monitor processing.
             ncpu = 16
             pool = mp.Pool(processes=ncpu)  #Use lots of threads - because we can!
 
             #arguments = (pixels_t, kernel_resize, kernels_wv, wv_idx, simuPars, spectral_order, tracePars,)
             #results = [pool.apply_async(spgen.convolve_1wv, args = (pixels_t, kernel_resize, kernels_wv, wv_idx, simuPars, spectral_order, tracePars,), callback=barupdate) for wv_idx in range(nwv)]
-            results = [pool.apply_async(spgen.convolve_1wv, args = (pixels_t, kernel_resize, kernels_wv, wv_idx, simuPars, spectral_order, tracePars,)) for wv_idx in range(nwv)]
+            tic = clocktimer.perf_counter()
+
+
+            results = [pool.apply_async(spgen.convolve_1wv, args = (pixels_t, kernel_resize_subgroup, kernels_wv_subgroup, wv_idx, simuPars, spectral_order, tracePars,)) for wv_idx in range(nwv)]
+
 
             pixels_c = [p.get() for p in results]
 
             pool.close()
             pool.join()
 
+            # Save the intermediate convolutions
+            #if spectral_order == 1:
+            #    dimy, dimx = np.shape(pixels_t)
+            #    conv_intermediate = np.zeros((nwv, dimy, dimx))
+
             #bring together the results
             x=pixels_t*0+1.0e-10
+            n = 0
             for p in pixels_c:
                 x+=p
+                #if spectral_order == 1: conv_intermediate[n, :, :] = np.copy(p)
+                n = n + 1
 
+            toc = clocktimer.perf_counter()
+            print('     Elapsed time = {:.4f}'.format(toc - tic))
             pixels_c=None #release Memory
 
-            trace_image[m,:,:] = np.copy(pixels_t) - 1e-10
+            #if spectral_order == 1:
+            #    h = fits.PrimaryHDU(conv_intermediate)
+            #    h.writeto('/genesis/jwst/userland-soss/loic_review/convolved_intermediate.fits', overwrite=True)
+            #    conv_intermediate=None
+
+            trace_image[m,:,:] = np.copy(pixels_t)
             convolved_image[m,:,:] = np.copy(x) - 1e-10
 
             # Sum in the flux for that order
@@ -958,7 +997,7 @@ def flux_calibrate_simulation(parameters):
 
 
 
-def rebin(image, noversampling):
+def rebin(image, noversampling, flux_method='mean'):
     """
     Takes an oversampled image and bins it down to native pixel size, taking
     the mean of the pixel values.
@@ -972,7 +1011,10 @@ def rebin(image, noversampling):
         newdimy, newdimx = int(dimy/noversampling), int(dimx/noversampling)
         shape = (newdimy, image.shape[0] // newdimy,
                 newdimx, image.shape[1] // newdimx)
-        return image.reshape(shape).mean(-1).mean(1)
+        if flux_method == 'sum':
+            return image.reshape(shape).sum(-1).sum(1)
+        else:
+            return image.reshape(shape).mean(-1).mean(1)
     elif ndim == 3:
         dimz, dimy, dimx = np.shape(image2D)
         newdimy, newdimx = int(dimy/noversampling), int(dimx/noversampling)
@@ -981,7 +1023,10 @@ def rebin(image, noversampling):
             image2D = image[i,:,:]
             shape = (newdimy, image2D.shape[0] // newdimy,
                      newdimx, image2D.shape[1] // newdimx)
-            cube[i,:,:] = image2D.reshape(shape).mean(-1).mean(1)
+            if flux_method == 'sum':
+                cube[i,:,:] = image2D.reshape(shape).sum(-1).sum(1)
+            else:
+                cube[i,:,:] = image2D.reshape(shape).mean(-1).mean(1)
         return cube
     else:
         print('rebin accepts 2D or 3D arrays, nothing else!')
@@ -1265,14 +1310,25 @@ def write_dmsready_fits(image, filename, os=1, xpadding=0, ypadding=0,
         subarray = 'SUBSTRIP96'
         substrt1, subsize1 = 1, 2048
         substrt2, subsize2 = 1803, 96
+        # Put reference pixels at zero
+        data[:, :, :, 0:4] = 0.0
+        data[:, :, :, -4:] = 0.0
     elif (dimy == 256) & (dimx == 2048):
         subarray = 'SUBSTRIP256'
         substrt1, subsize1 = 1, 2048
         substrt2, subsize2 = 1793, 256
+        # Put reference pixels at zero
+        data[:, :, :, 0:4] = 0.0
+        data[:, :, :, -4:] = 0.0
+        data[:, :, -4:, :] = 0.0
     elif (dimy == 2048) & (dimx == 2048):
         subarray = 'FULL'
         substrt1, subsize1 = 1, 2048
         substrt2, subsize2 = 1, 2048
+        data[:, :, :, 0:4] = 0.0
+        data[:, :, :, -4:] = 0.0
+        data[:, :, -4:, :] = 0.0
+        data[:, :, 0:4, :] = 0.0
     else:
         print('WARNING. image size not correct.')
         subarray = 'CUSTOM'
