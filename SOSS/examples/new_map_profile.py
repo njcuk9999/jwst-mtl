@@ -19,7 +19,7 @@ soss.readpaths(config_paths_filename, pathPars)
 
 # Create and read the simulation parameters
 simuPars = spgen.ModelPars()              # Set up default parameters
-simuPars = spgen.read_pars(pathPars.simulationparamfile, simuPars) # Read in parameter file
+simuPars = spgen.read_pars(pathPars.simulationparamfile, simuPars)   # Read in parameter file
 
 
 ###############################
@@ -37,16 +37,16 @@ for i in range(len(clear_00[0].data)):
         clear[i] = clear_00[0].data[i, 10:266, 10:2058]  # Because of x_padding and y_padding
     else:
         clear_i = soss.rebin(clear_00[0].data[i], simuPars.noversample)
-        clear[i] = clear_i[10:266,10:2058]   # Because of x_padding and y_padding
+        clear[i] = clear_i[10:266, 10:2058]   # Because of x_padding and y_padding
     sum_col = np.sum(clear[i], axis=0)
     map_clear[i] = clear[i] / sum_col
 
-map_clear[1,:,1790:] = 0  # Problem with end of order 2 trace
+map_clear[1, :, 1790:] = 0  # Problem with end of order 2 trace
 
 
 # Save map_profile
 hdu = fits.PrimaryHDU(map_clear)
-hdu.writeto(WORKING_DIR + "new_map_profile_clear_{}.fits".format(simuPars.noversample), overwrite = True)
+hdu.writeto(WORKING_DIR + "new_map_profile_clear_{}.fits".format(simuPars.noversample), overwrite=True)
 
 plt.figure()
 plt.imshow(map_clear[1], origin="lower")

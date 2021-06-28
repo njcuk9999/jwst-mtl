@@ -197,7 +197,10 @@ simuPars = spgen.read_pars(pathPars.simulationparamfile, simuPars) #read in para
 m_order = 1  # For now, only option is 1.
 
 # CHOOSE OVERSAMPLE  !!!
-simuPars.noversample = 2
+simuPars.noversample = 10
+
+# SAVE FIGS? !!!
+save = True
 #####################################
 
 
@@ -207,7 +210,7 @@ starmodel_angstrom, starmodel_flambda, ld_coeff = soss.starmodel(simuPars, pathP
 
 # Position of trace
 trace_file = "/genesis/jwst/jwst-ref-soss/trace_model/NIRISS_GR700_trace_extended.csv"
-x = np.linspace(0,2047,2048)    # Array of pixels
+x = np.linspace(0, 2047, 2048)    # Array of pixels
 pars = tp.get_tracepars(trace_file)   # Gives the middle position of oorder 1 trace
 w, tmp = tp.specpix_to_wavelength(x,pars,m=1)   # Returns wavelength for each x, order 1
 xnew, y, mask = tp.wavelength_to_pix(w, pars, m=1)   # Converts wavelenghths to pixel coordinates
@@ -222,7 +225,7 @@ clear_00 = fits.open(WORKING_DIR + "tmp/oversampling_{}/clear_000000.fits".forma
 if simuPars.noversample == 1:
     clear = clear_00[0].data[:, 10:266, 10:2058]  # Because of x_padding and y_padding
 else:
-    clear = np.empty(shape=(3,256,2048))
+    clear = np.empty(shape=(3, 256, 2048))
     for i in range(len(clear_00[0].data)):
         clear_i = soss.rebin(clear_00[0].data[i], simuPars.noversample)
         clear[i] = clear_i[10:266, 10:2058]  # Because of x_padding and y_padding
@@ -235,8 +238,8 @@ delta = noisy_rateints[2].data[m_order-1]   # Error [adu/s]
 dq = noisy_rateints[3].data[m_order-1]  # Data quality
 # Odd values of dq = DO NOT USE these pixels
 i = np.where(dq %2 != 0)
-im_adu_noisy[i[0],i[1]] = 0
-delta[i[0],i[1]] = 0
+im_adu_noisy[i[0], i[1]] = 0
+delta[i[0], i[1]] = 0
 
 # Without noise
 # Clear order 1 only
@@ -349,32 +352,38 @@ print("Oversample = {}".format(simuPars.noversample))
 # GRAPHICS
 
 # Matplotlib defaults
-plt.rc('figure', figsize=(12,7))
+plt.rc('figure', figsize=(12, 7))
 plt.rc('font', size=14)
 
 # Images of traces
 plt.figure()
 plt.imshow(im_adu_noisy, vmin=0, vmax=1000, origin="lower")   # Image of noisy traces
 plt.plot(x, y, color="r", label="Order 1 trace's position")   # Middle position of order 1 trace
+plt.colorbar(label="[adu/s]", orientation='horizontal')
 plt.title("test_clear_noisy_rateints.fits")
 plt.legend()
-plt.savefig(WORKING_DIR + "oversampling_{}/noisy_rateints_imshow.png".format(simuPars.noversample))
+if save is True:
+    plt.savefig(WORKING_DIR + "oversampling_{}/noisy_rateints_imshow.png".format(simuPars.noversample))
 plt.show()
 
 plt.figure()
-plt.imshow(m1_clear_adu, vmin=0, vmax=3000, origin="lower")   # Image of clear order 1 trace
+plt.imshow(m1_clear_adu, origin="lower")   # Image of clear order 1 trace
 plt.plot(x, y, color="r", label="Order 1 trace's position")   # Middle position of order 1 trace
+plt.colorbar(label="[adu/s]", orientation='horizontal')
 plt.title("clear_000000.fits, order 1 only")
 plt.legend()
-plt.savefig(WORKING_DIR + "oversampling_{}/clearm1_imshow.png".format(simuPars.noversample))
+if save is True:
+    plt.savefig(WORKING_DIR + "oversampling_{}/clearm1_imshow.png".format(simuPars.noversample))
 plt.show()
 
 plt.figure()
-plt.imshow(tot_clear_adu, vmin=0, vmax=1000, origin="lower")   # Image of clear order 1 traces
+plt.imshow(tot_clear_adu, origin="lower")   # Image of clear order 1 traces
 plt.plot(x, y, color="r", label="Order 1 trace's position")   # Middle position of order 1 trace
+plt.colorbar(label="[adu/s]", orientation='horizontal')
 plt.title("clear_000000.fits, all orders")
 plt.legend()
-plt.savefig(WORKING_DIR + "oversampling_{}/cleartot_imshow.png".format(simuPars.noversample))
+if save is True:
+    plt.savefig(WORKING_DIR + "oversampling_{}/cleartot_imshow.png".format(simuPars.noversample))
 plt.show()
 
 
@@ -387,7 +396,8 @@ plt.errorbar(w[start:end], flamb_noisy_energy[start:end], yerr=sigma_flamb_noisy
 plt.xlabel(r"Wavelength [$\mu$m]")
 plt.ylabel(r"Extracted flux [J s⁻¹ m⁻² $\mu$m⁻¹]")
 plt.title("Extracted flux of order 1 from noisy traces")
-plt.savefig(WORKING_DIR + "oversampling_{}/flamb_noisy_energy.png".format(simuPars.noversample))
+if save is True:
+    plt.savefig(WORKING_DIR + "oversampling_{}/flamb_noisy_energy.png".format(simuPars.noversample))
 plt.show()
 
 plt.figure()
@@ -404,7 +414,8 @@ plt.plot(w[start:end], flamb_totclear_energy[start:end], lw=1, color='b',
 plt.ylabel(r"Extracted flux [J s⁻¹ m⁻² $\mu$m⁻¹]")
 plt.xlabel(r"Wavelength [$\mu$m]")
 plt.legend()
-plt.savefig(WORKING_DIR + "oversampling_{}/flamb_clear_energy.png".format(simuPars.noversample))
+if save is True:
+    plt.savefig(WORKING_DIR + "oversampling_{}/flamb_clear_energy.png".format(simuPars.noversample))
 plt.show()
 
 plt.figure()
@@ -412,7 +423,8 @@ plt.plot(w[start:end], flamb_m1_inf_radi_ener[start:end], lw=2, color="Purple")
 plt.ylabel(r"Extracted flux [J s⁻¹ m⁻² $\mu$m⁻¹]")
 plt.xlabel(r"Wavelength [$\mu$m]")
 plt.title("Extracted flux with infinite radius of clear order 1 trace")
-plt.savefig(WORKING_DIR + "oversampling_{}/flamb_m1_inf_energy.png".format(simuPars.noversample))
+if save is True:
+    plt.savefig(WORKING_DIR + "oversampling_{}/flamb_m1_inf_energy.png".format(simuPars.noversample))
 plt.show()
 
 """
@@ -434,7 +446,8 @@ plt.ylabel(r"Extracted flux [e$^-$/colonne]")
 plt.xlabel(r"Wavelength [$\mu$m]")
 plt.title(r"Extracted flux in of clear order 1 trace")
 plt.legend()
-plt.savefig(WORKING_DIR + "oversampling_{}/flamb_m1clear_elec.png".format(simuPars.noversample))
+if save is True:
+    plt.savefig(WORKING_DIR + "oversampling_{}/flamb_m1clear_elec.png".format(simuPars.noversample))
 plt.show()
 
 """
@@ -455,7 +468,8 @@ plt.ylabel(r"Extracted flux [e$^-$/colonne]")
 plt.xlabel(r"Wavelength [$\mu$m]")
 plt.title(r"Extracted flux of order 1 trace from all clear traces")
 plt.legend()
-plt.savefig(WORKING_DIR + "oversampling_{}/flamb_totclear_elec.png".format(simuPars.noversample))
+if save is True:
+    plt.savefig(WORKING_DIR + "oversampling_{}/flamb_totclear_elec.png".format(simuPars.noversample))
 plt.show()
 
 """
@@ -475,7 +489,8 @@ plt.ylabel(r"Extracted flux [e$^-$/colonne]")
 plt.xlabel(r"Wavelength [$\mu$m]")
 plt.title(r"Extracted flux of order 1 trace from noisy traces")
 plt.legend()
-plt.savefig(WORKING_DIR + "oversampling_{}/flamb_noisy_elec.png".format(simuPars.noversample))
+if save is True:
+    plt.savefig(WORKING_DIR + "oversampling_{}/flamb_noisy_elec.png".format(simuPars.noversample))
 plt.show()
 
 """
