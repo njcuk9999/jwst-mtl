@@ -1002,7 +1002,7 @@ def readkernels(psfdir, wls=0.5, wle=5.2, dwl=0.05, os=1):
     
     kdir='Kernels'+str(int(os+0.01))+'/'
     prename='SOSS_os10_128x128_'
-    extname='.fits'
+    extname='_wfe0.fits'
     wl=np.copy(wls)
     while wl<=wle:
         
@@ -1012,8 +1012,10 @@ def readkernels(psfdir, wls=0.5, wle=5.2, dwl=0.05, os=1):
         fname=psfdir+prename+wname+extname
         #print(fname)
         hdulist = fits.open(fname)
-        
-        kernel_1=hdulist[0].data.T
+        # Extract data and rotate (ds9 to sim coordinates). Deprecated.
+        # kernel_1=hdulist[0].data.T
+        # Extract data (of PSFs generated in the DMS coordinates)
+        kernel_1 = hdulist[0].data
         kernels.append(np.copy(kernel_1))
         kernels_wv.append(np.float(wl))
         
