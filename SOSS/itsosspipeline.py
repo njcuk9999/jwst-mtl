@@ -769,7 +769,7 @@ def spread_spatially(dimy, y1, y2, flux):
     return column
 
 
-def build_wings(convolved_slice, noversample):
+def add_wings(convolved_slice, noversample):
     '''
     Takes an image of the convolved trace and extends the wings across the
     image along the columns, assuming that the wing slop eis constant (in log(flux)).
@@ -1034,10 +1034,8 @@ def generate_traces(savingprefix, pathPars, simuPars, tracePars, throughput,
             print('     Actual counts measured on the simulation = {:} e-/sec'.format(actual_counts))
 
             # Extend wings across the columns (neglect the flux associated with it)
-            addwings = True
-            # if simuPars.addwings == True:
-            if addwings:
-                convolved_image[m,:,:] = build_wings(convolved_image[m,:,:], simuPars.noversample)
+            if simuPars.addwings == True:
+                convolved_image[m,:,:] = add_wings(convolved_image[m,:,:], simuPars.noversample)
 
             print()
 
