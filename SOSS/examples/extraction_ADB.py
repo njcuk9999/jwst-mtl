@@ -59,7 +59,7 @@ simuPars = spgen.read_pars(pathPars.simulationparamfile, simuPars) #read in para
 m_order = 1  # For now, only option is 1.
 
 # CHOOSE OVERSAMPLE  !!!
-simuPars.noversample = 4
+simuPars.noversample = 1
 
 # CHOOSE ORDER(S) TO EXTRACT (ADB)  !!!
 only_order_1 = True
@@ -300,6 +300,8 @@ if only_order_1 is True:
     # Because w and lam_bin_list[0] are not the same
     f = interp1d(w, flamb_inf_radi_adu, fill_value='extrapolate')
     flamb_clear_interp = f(lam_bin_list[0])
+    ff = interp1d(lam_bin_list[0], f_bin_list[0], fill_value='extrapolate')
+    f_bin_interp = ff(w)
     ax.plot(lam_bin_list[0], f_bin_list[0], lw=1, label='Tikhonov')
     ax.plot(lam_bin_list[0], flamb_clear_interp, lw=1, label="Interp clear")
 
@@ -328,9 +330,11 @@ plt.show()
 
 # Comparison
 diff_extra = f_bin_list[0] - flamb_clear_interp
+diff_extra_2 = flamb_inf_radi_adu - f_bin_interp
 
 plt.figure()
 plt.plot(lam_bin_list[0], diff_extra, lw=1, color='Indigo')
+#plt.plot(w, diff_extra_2, lw=1, color='Indigo')
 plt.xlabel("Wavelength [$\mu m$]")
 plt.ylabel("Difference [counts (adu/s)]")
 plt.title("Difference between Tikhonov and box extracted signal")
