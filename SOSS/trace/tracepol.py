@@ -5,18 +5,25 @@ Created on Mon Feb 17 13:31:58 2020
 """
 
 import numpy as np
+
 from numpy.polynomial import Legendre
 
 from astropy.io import ascii
 
-# SUBSTRIP256 keeps solumns 0:255 (0 based) in the nat frame.
+# SUBSTRIP256 keeps columns 0:255 (0 based) in the nat frame.
 # SUBSTRIP96 keeps columns 150:245 (0 based) in the nat frame.
 
+# Default parameters for the CV3 calibration of the trace positions.
+ANGLE_CV3 = 1.3824300138
+ORIGIN_CV3 = np.array([1419.8897384173, 472.9340739229])
 
-def apply_rotation(coords, origin=np.array([1514., 456.]), angle=1.489):
-    """
-    Rotate a point counterclockwise by a given angle around a given origin.
-    The angle should be given in radians.
+
+def apply_rotation(coords, origin=ORIGIN_CV3, angle=ANGLE_CV3):
+    """Rotate a point counterclockwise by a given angle around a given origin.
+    The angle should be given in radians. This transformation is performed
+    in the native coordinates (aka ds9).
+
+    The defaults were obtained using calibrate_tracepol.py
 
     :param coords: x, y coordinates to rotate.
     :param origin: point around which to rotate the coordinates.
@@ -28,7 +35,6 @@ def apply_rotation(coords, origin=np.array([1514., 456.]), angle=1.489):
 
     :returns: x_rot, y_rot - rotated coordinates.
     :rtype: Tuple(array[float], array[float])
-
     """
 
     x, y = coords
@@ -102,19 +108,23 @@ def trace_polynomial(trace, m=1, maxorder=15):
     return pars
 
 
-def get_tracepars(filename=None, origin=np.array([1514, 456]), angle=1.489):
+def get_tracepars(filename=None, origin=ORIGIN_CV3, angle=ANGLE_CV3,
+                  disable_rotation=False):
     """Read a file containing the trace profile and generate
     polynomial parameters for each order.
 
     :param filename: file containing modelled trace points.
     :param origin: point around which to rotate the coordinates.
     :param angle: angle in degrees.
+    :param disable_rotation: True or False to disable the rotation calibration that brings
+    the optics model file in agreement with the CV3 data.
 
     :type filename: str
     :type origin: array[float]
     :type angle: float
 
     :returns: tracepars - a dictionary containg the parameters for the polynomial fits.
+    For example tracepars[-1] returns the parameters for order = -1 as a dictionary.
     :rtype: dict
     """
     
@@ -130,8 +140,10 @@ def get_tracepars(filename=None, origin=np.array([1514, 456]), angle=1.489):
     trace['xpos'] -= 0.5  # Set the origin at the center of the lower-left pixel.
     trace['ypos'] -= 0.5  # Set the origin at the center of the lower-left pixel.
 
-    # Apply rotation around point.
-    trace['xpos'], trace['ypos'] = apply_rotation((trace['xpos'], trace['ypos']), origin=origin, angle=angle)
+    # Apply rotation around point (by default).
+    if not disable_rotation:
+
+        trace['xpos'], trace['ypos'] = apply_rotation((trace['xpos'], trace['ypos']), origin=origin, angle=angle)
 
     # Compute polynomial parameters for different orders.
     tracepars = dict()
@@ -185,6 +197,61 @@ def bounds_check(values, lower, upper):
     mask = (values >= lower) & (values <= upper)
     
     return mask
+
+
+def subarray_wavelength_bounds(tracepars, m=1, subarray='SUBSTRIP256',
+                               specpix_offset=0, spatpix_offset=0):
+    """Compute the minimum and maximum wavelength of a given order in a given
+    subarray.
+
+    :param tracepars: the trace polynomial solutions returned by get_tracepars.
+    :param subarray: the output coordinate subarray.
+    :param m: the spectral order.
+    :param specpix_offset: a pixel offset by which the traces are positioned
+        relative to the model given by tracepars.
+    :param spatpix_offset: a pixel offset by which the traces are positioned
+        relative to the model given by tracepars.
+
+    :returns: (wave_min, wave_max), (pixel_min, pixel_max) - A tuple of
+        wavelength bounds and a tuple of the corresponding pixel bounds.
+    :rtype: Tuple(Tuple(float, float), Tuple(float, float))
+    """
+
+    # Generate wavelengths (microns) spanning all orders
+    wavelength = np.linspace(0.5, 5.5, 50001)
+
+    # Convert wavelengths to dms pixel coordinates in the requested subarray.
+    specpix, spatpix, _ = wavelength_to_pix(wavelength, tracepars, m=m, frame='dms', subarray=subarray)
+
+    # Apply the offsets.
+    specpix = specpix + specpix_offset
+    spatpix = spatpix + spatpix_offset
+
+    # Determine the valid region in both pixel coordinate directions.
+    mask_spec = (specpix >= 0) & (specpix < 2048)
+
+    if subarray == 'SUBSTRIP256':
+        mask_spat = (spatpix >= 0) & (spatpix < 256)
+    elif subarray == 'SUBSTRIP96':
+        mask_spat = (spatpix >= 0) & (spatpix < 96)
+    elif subarray == 'FULL':
+        mask_spat = (spatpix >= 0) & (spatpix < 2048)
+    else:
+        msg = 'Unknown subarray: {}'
+        raise ValueError(msg.format(subarray))
+
+    # Combine the masks.
+    mask = mask_spec & mask_spat
+
+    # Obtain the bounds in wavelength units.
+    wave_min = np.min(wavelength[mask])
+    wave_max = np.max(wavelength[mask])
+
+    # Obtain the bounds in pixel units.
+    pixel_min = np.min(specpix[mask])
+    pixel_max = np.max(specpix[mask])
+
+    return (wave_min, wave_max), (pixel_min, pixel_max)
 
 
 def specpix_ref_to_frame(specpix_ref, frame='dms', oversample=1):
@@ -364,7 +431,8 @@ def pix_frame_to_ref(specpix, spatpix, frame='dms', subarray='SUBSTRIP256', over
     :type subarray: str
     :type oversample: int
 
-    :returns: specpix_ref, spatpix_ref - the input coordinates transformed to nat coordinate frame and SUBSTRIP256 subarray.
+    :returns: specpix_ref, spatpix_ref - the input coordinates transformed to
+        nat coordinate frame and SUBSTRIP256 subarray.
     :rtype: Tuple(array[float], array[float])
     """
 

@@ -486,8 +486,7 @@ def build_mask_vertical(shape, xlims, mask_right=True, mask_between=True):
     return mask
 
 
-def build_mask_sloped(shape, point1, point2, mask_above=True, verbose=True):
-
+def build_mask_sloped(shape, point1, point2, mask_above=True, verbose=False):
     """Mask pixels above or below the boundary line defined by point1 and point2.
 
     :param shape: tuple containing the intended shape of the mask array.
@@ -517,7 +516,7 @@ def build_mask_sloped(shape, point1, point2, mask_above=True, verbose=True):
     xline = np.arange(dimx)
     yline = np.polyval(param, xline)
 
-    if verbose is True:
+    if verbose:
         print('line fit param:', param)
 
     # Create a coordinate grid.
