@@ -68,6 +68,8 @@ class ModelPars:
     f277wcal = True
     flatthroughput = False
     flatquantumyield = False
+    addwings = False # Add extended wings post facto on convolved traces
+
 
 def read_pars(filename,pars):
     """Usage:  pars=read_pars(filename,pars)
@@ -127,6 +129,8 @@ def read_pars(filename,pars):
                         pars.flatthroughput = bool(columns[1])
                     elif command == 'flatquantumyield':
                         pars.flatquantumyield = bool(columns[1])
+                    elif command == 'addwings':
+                        pars.addwings = bool(columns[1])
                     elif command == 'granularity':
                         pars.granularity = columns[1]
                     elif command == 'xout':
