@@ -11,6 +11,8 @@ import specgen.spgen as spgen
 import scipy.constants as sc_cst
 from scipy.interpolate import interp1d
 
+import box_kim
+
 # Constants
 h = sc_cst.Planck
 c = sc_cst.speed_of_light
@@ -23,118 +25,6 @@ tint = (ng - 1) * t_read   # Integration time [s]
 radius_pixel = 30
 length = 240   # Length of window for median filter  # For oscillations
 
-
-def photon_energy(wl):
-    """
-    wl: Wavelength in microns
-    return: Photon energy in J
-    """
-    return h * c / (wl * 1e-6)
-
-def dispersion(wl):
-    """
-    wl: Wavelengths array [microns]
-    return: Dispersion [microns]
-    """
-    dw = np.zeros_like(wl)
-    for i in range(len(wl)):
-        if i == 0:
-            dw[i] = wl[0] - wl[1]   #The wl array has to be reversed
-        else:
-            dw[i] = wl[i - 1] - wl[i]
-    return dw
-
-def f_lambda(pixels, im_test, wl, y_trace, radius_pixel=radius_pixel, area=area, gain=gain):
-    """
-    pixels: Array of pixels
-    im_test: Trace's image [adu/s]
-    wl: Array of wavelengths (same size as pixels)  [microns]
-    y_trace: Array for the positions of the center of the trace for each column
-    radius_pixel: Radius of extraction box [pixels]
-    area: Area of photons collection surface [m²]
-    gain: Gain [e⁻/adu]
-    return: Extracted flux [J/s/m²/micron]
-    """
-    flux = np.zeros_like(pixels)  # Array for extracted spectrum
-    for x_i in pixels:
-        x_i = int(x_i)
-        y_i = y_trace[x_i]
-        first = y_i - radius_pixel
-        last = y_i + radius_pixel
-        flux[x_i] = im_test[int(first), x_i] * (1 - first % int(first)) + np.sum(
-            im_test[int(first) + 1:int(last) + 1, x_i]) + im_test[int(last) + 1, x_i] * (last % int(last))
-
-    # Calculate the flux in J/s/m²/um
-    phot_ener = photon_energy(wl)  # Energy of each photon [J/photon]
-    dw = dispersion(wl)   #Dispersion [microns]
-
-    return flux * gain * phot_ener / area / dw
-
-def flambda_elec(pixels, im_test, y_trace, radius_pixel=radius_pixel, gain=gain):
-    """
-    pixels: Array of pixels
-    im_test: Trace's image [adu/s]
-    y_trace: Array for the positions of the center of the trace for each column
-    radius_pixel: Radius of extraction box [pixels]
-    gain: Gain [e⁻/adu]
-    return: Extracted flux [e⁻/s/colonne]
-    """
-    flux = np.zeros_like(pixels)  # Array for extracted spectrum
-    for x_i in pixels:
-        x_i = int(x_i)
-        y_i = y_trace[x_i]
-        first = y_i - radius_pixel
-        last = y_i + radius_pixel
-        flux[x_i] = im_test[int(first), x_i] * (1 - first % int(first)) + np.sum(
-            im_test[int(first) + 1:int(last) + 1, x_i]) + im_test[int(last) + 1, x_i] * (last % int(last))
-
-    return flux * gain
-
-def flambda_inf_radi(im_test, wl, area=area, gain=gain):
-    """
-    im_test: Trace's image [adu/s]
-    wl: Array of wavelengths (same size as pixels)  [um]
-    area: Area of photons collection surface [m²]
-    gain: Gain [e⁻/adu]
-    return: Extracted flux for infinite radius [J/s/m²/um]
-    """
-    flux = np.sum(im_test,axis=0)
-
-    # Calculate the flux in J/s/m²/um
-    phot_ener = photon_energy(wl)  # Energy of each photon [J/photon]
-    dw = dispersion(wl)   #Dispersion [um]
-
-    return flux * gain * phot_ener / area / dw
-
-def sigma_flambda(pixels, error, wl, y_trace, radius_pixel=radius_pixel, area=area, gain=gain):
-    """
-    pixels: Array of pixels
-    variance: Variance of pixels [adu/s]
-    wl: Array of wavelengths (same size as pixels)  [microns]
-    y_trace: Array for the positions of the center of the trace for each column
-    radius_pixel: Radius of extraction box [pixels]
-    area: Area of photons collection surface [m²]
-    gain: Gain [e⁻/adu]
-    return: Sigma of extracted flux [J/s/m²/micron]
-    """
-    variance = error ** 2  # Variance of each pixel [adu²/s²]
-
-    vari = np.zeros_like(pixels)  # Array for variances
-    for x_i in pixels:
-        x_i = int(x_i)
-        y_i = y_trace[x_i]
-        first = y_i - radius_pixel
-        last = y_i + radius_pixel
-        vari[x_i] = variance[int(first), x_i] * (1 - first % int(first)) + np.sum(
-            variance[int(first) + 1:int(last) + 1, x_i]) + variance[int(last) + 1, x_i] * (last % int(last))
-
-    # Calculate the total error in J/s/m²/um
-    delta_flambda = np.sqrt(vari)   #Sigma of column [adu/s]
-
-    phot_ener = photon_energy(wl)  # Energy of each photon [J/photon]
-    dw = dispersion(wl)  # Dispersion [microns]
-
-    return delta_flambda * gain * phot_ener / area / dw
 
 def median_window(flux, start, length):
     """
@@ -197,10 +87,10 @@ simuPars = spgen.read_pars(pathPars.simulationparamfile, simuPars) #read in para
 m_order = 1  # For now, only option is 1.
 
 # CHOOSE OVERSAMPLE  !!!
-simuPars.noversample = 10
+simuPars.noversample = 4
 
 # SAVE FIGS? !!!
-save = True
+save = False
 #####################################
 
 
@@ -251,19 +141,19 @@ tot_clear_adu = np.sum(clear, axis=0)   # Sum all traces [adu/s]
 
 # EXTRACTIONS
 # Extracted flux of noisy image
-flamb_noisy_energy = f_lambda(x, im_adu_noisy, w, y)   # Extracted flux [J/s/m²/um]
-sigma_flamb_noisy_ener = sigma_flambda(x, delta, w, y)   # Error on extracted flux [J/s/m²/um]
-flamb_noisy_elec = flambda_elec(x, im_adu_noisy, y) * tint  # Extracted flux in electrons [e⁻/colonne]
+flamb_noisy_energy = box_kim.f_lambda(x, im_adu_noisy, w, y, radius_pixel=radius_pixel)   # Extracted flux [J/s/m²/um]
+sigma_flamb_noisy_ener = box_kim.sigma_flambda(x, delta, w, y, radius_pixel=radius_pixel)   # Error on extracted flux [J/s/m²/um]
+flamb_noisy_elec = box_kim.flambda_elec(x, im_adu_noisy, y, radius_pixel=radius_pixel) * tint  # Extracted flux in electrons [e⁻/colonne]
 
 # Extracted flux of clear order 1 trace only
-flamb_m1clear_energy = f_lambda(x, m1_clear_adu, w, y)   # Extracted flux [J/s/m²/um]
-flamb_m1_inf_radi_ener = flambda_inf_radi(m1_clear_adu, w)   # Extracted flux with infinite radius [J/s/m²/um]
-flamb_m1clear_elec = flambda_elec(x, m1_clear_adu, y) * tint  # Extracted flux in electrons [e⁻/colonne]
+flamb_m1clear_energy = box_kim.f_lambda(x, m1_clear_adu, w, y, radius_pixel=radius_pixel)   # Extracted flux [J/s/m²/um]
+flamb_m1_inf_radi_ener = box_kim.flambda_inf_radi(m1_clear_adu, w)   # Extracted flux with infinite radius [J/s/m²/um]
+flamb_m1clear_elec = box_kim.flambda_elec(x, m1_clear_adu, y, radius_pixel=radius_pixel) * tint  # Extracted flux in electrons [e⁻/colonne]
 elec_noise_m1 = np.sqrt(flamb_m1clear_elec)   # Photon noise [e⁻/colonne]
 
 # Extracted flux of order 1 from sum of clear traces
-flamb_totclear_energy = f_lambda(x,tot_clear_adu,w,y)   # Extracted flux [J/s/m²/micron]
-flamb_totclear_elec = flambda_elec(x,tot_clear_adu,y) * tint  # Extracted flux in electrons [e⁻/colonne]
+flamb_totclear_energy = box_kim.f_lambda(x, tot_clear_adu, w, y, radius_pixel=radius_pixel)   # Extracted flux [J/s/m²/micron]
+flamb_totclear_elec = box_kim.flambda_elec(x, tot_clear_adu, y, radius_pixel=radius_pixel) * tint  # Extracted flux in electrons [e⁻/colonne]
 elec_noise_tot = np.sqrt(flamb_totclear_elec)   # Photon noise [e⁻/colonne]
 
 """
@@ -305,8 +195,8 @@ std_totclear = np.array([std_totclear_os1, std_totclear_os2, std_totclear_os4, s
 """
 
 # Estimated photon noises
-dw = dispersion(w)   # Dispersion [microns]
-phot_ener = photon_energy(w)   # Energy of photon [J]
+dw = box_kim.dispersion(w)   # Dispersion [um]
+phot_ener = box_kim.photon_energy(w)   # Energy of photon [J]
 
 # Order 1 trace only
 photon_noise_m1 = flamb_m1clear_energy * tint * dw * area / phot_ener
@@ -444,7 +334,7 @@ plt.errorbar(w[start:end], flamb_m1clear_elec[start:end], yerr=elec_noise_m1[sta
 #plt.plot(w_median, flamb_m1clear_median, lw=1, color="Lime", label="Median filter applied", zorder=5)
 plt.ylabel(r"Extracted flux [e$^-$/colonne]")
 plt.xlabel(r"Wavelength [$\mu$m]")
-plt.title(r"Extracted flux in of clear order 1 trace")
+plt.title(r"Extracted flux of clear order 1 trace")
 plt.legend()
 if save is True:
     plt.savefig(WORKING_DIR + "oversampling_{}/flamb_m1clear_elec.png".format(simuPars.noversample))

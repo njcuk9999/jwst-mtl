@@ -19,7 +19,7 @@ from extract.convolution import WebbKer
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm  # For displaying of FITS images.
 
-from extraction_kim import photon_energy, dispersion, f_lambda, flambda_elec
+import box_kim
 
 
 # Matplotlib defaults
@@ -37,8 +37,7 @@ ng = 3   # NGROUP
 t_read = 5.49   # Reading time [s]
 tint = (ng - 1) * t_read   # Integration time [s]
 
-radius_pixel = 30
-length = 240   # Length of window for median filter  # For oscillations
+radius_pixel = 35
 
 
 WORKING_DIR = '/home/kmorel/ongenesis/jwst-user-soss/'
@@ -60,13 +59,13 @@ simuPars = spgen.read_pars(pathPars.simulationparamfile, simuPars) #read in para
 m_order = 1  # For now, only option is 1.
 
 # CHOOSE OVERSAMPLE  !!!
-simuPars.noversample = 2
+simuPars.noversample = 4
 
 # CHOOSE ORDER(S) TO EXTRACT (ADB)  !!!
 only_order_1 = True
 
 # SAVE FIGS? !!!
-save = True
+save = False
 #####################################
 
 # Position of trace for box extraction
@@ -126,6 +125,7 @@ if only_order_1 is True:
 wave_maps = [wv.astype('float64') for wv in wave_maps]
 spat_pros = [p_ord.astype('float64') for p_ord in spat_pros]
 
+
 #### Throughputs ####
 thrpt_list = [ThroughputSOSS(order) for order in order_list]   # Has been changed to 1 everywhere in throughput.py  K.M.
 
@@ -140,31 +140,23 @@ path.append("Fake_data")
 
 # ADB
 #simu = load_simu("/home/kmorel/ongenesis/github/jwst-mtl/SOSS/Fake_data/phoenix_teff_02300_scale_1.0e+02.fits")
-#data = simu["data"]
+#data_clear = simu["data"]
 # LA
 noisy_rateints = fits.open(WORKING_DIR + "oversampling_{}/test_clear_noisy_rateints.fits".format(simuPars.noversample))
 clear_00 = fits.open(WORKING_DIR + "tmp/oversampling_{}/clear_000000.fits".format(simuPars.noversample))
 if simuPars.noversample == 1:
-    data_clear = clear_00[0].data[:2, 10:266, 10:2058]  # Because of x_padding and y_padding
+    data = clear_00[0].data[:2, 10:266, 10:2058]  # Because of x_padding and y_padding
 else:
-    data_clear = np.empty(shape=(2,256,2048))
+    data = np.empty(shape=(2,256,2048))
     for i in range(len(clear_00[0].data)-1):
         clear_i = soss.rebin(clear_00[0].data[i], simuPars.noversample)
-        data_clear[i] = clear_i[10:266, 10:2058]  # Because of x_padding and y_padding
+        data[i] = clear_i[10:266, 10:2058]  # Because of x_padding and y_padding
 
 if only_order_1 is True:
     # Without noise
-    data = data_clear[0]   # Order 1 only [adu/s]
-    m1_clear_adu = data  # [adu/s]
+    data_clear = data[0]   # Order 1 only [adu/s]  # m1_clear_adu
 else:
-    data = np.sum(data_clear, axis=0)   # Sum traces 1 & 2 [adu/s]
-    tot_clear_adu = data  # Sum all traces [adu/s]
-
-plt.figure()
-plt.imshow(data, origin="lower")
-plt.colorbar()
-plt.title('Data')
-plt.show()
+    data_clear = np.sum(data, axis=0)   # Sum traces 1 & 2 [adu/s]   # tot_clear_adu
 
 
 # Images for box extraction
@@ -178,8 +170,20 @@ im_adu_noisy[i[0], i[1]] = 0
 delta[i[0], i[1]] = 0
 
 
+# BOX EXTRACTIONS
+# Extracted flux of noisy image
+flamb_noisy_energy = box_kim.f_lambda(x, im_adu_noisy, w, y, radius_pixel=radius_pixel)   # Extracted flux [J/s/m²/um]
+flamb_noisy_elec = box_kim.flambda_elec(x, im_adu_noisy, y, radius_pixel=radius_pixel) * tint  # Extracted flux in electrons [e⁻/colonne]
+flamb_noisy_adu = box_kim.flambda_adu(x, im_adu_noisy, y, radius_pixel=radius_pixel)  # Extracted flux in adu [adu/s/colonne]
 
-# Extraction
+# Extracted flux of clear trace(s)
+flamb_clear_energy = box_kim.f_lambda(x, data_clear, w, y, radius_pixel=radius_pixel)   # Extracted flux [J/s/m²/um]
+flamb_clear_elec = box_kim.flambda_elec(x, data_clear, y, radius_pixel=radius_pixel) * tint  # Extracted flux in electrons [e⁻/colonne]
+flamb_clear_adu = box_kim.flambda_adu(x, data_clear, y, radius_pixel=radius_pixel)  # Extracted flux in adu [adu/s/colonne]
+flamb_inf_radi_adu = box_kim.flambda_inf_radi_adu(data_clear)   # Extracted flux with infinite radius [J/s/m²/um]
+
+
+# TIKHONOV EXTRACTION
 params = {}
 
 # Map of expected noise (standard deviation).
@@ -207,10 +211,10 @@ factors = np.logspace(-25, -12, 14)
 
 # Noise estimate to weigh the pixels.
 # Poisson noise + background noise.
-sig = np.sqrt(data + bkgd_noise**2)
+sig = np.sqrt(data_clear + bkgd_noise**2)
 
 # Tests all these factors.
-tests = extract.get_tikho_tests(factors, data=data, sig=sig)
+tests = extract.get_tikho_tests(factors, data=data_clear, sig=sig)
 
 # Find the best factor.
 best_fac = extract.best_tikho_factor(tests=tests, i_plot=True)
@@ -219,14 +223,33 @@ best_fac = extract.best_tikho_factor(tests=tests, i_plot=True)
 best_fac = np.log10(best_fac)
 factors = np.logspace(best_fac-2, best_fac+2, 20)
 
-tests = extract.get_tikho_tests(factors, data=data, sig=sig)
+tests = extract.get_tikho_tests(factors, data=data_clear, sig=sig)
 best_fac = extract.best_tikho_factor(tests=tests, i_plot=True)
 
 # Extract the oversampled spectrum 𝑓𝑘
 # Can be done in a loop for a timeseries and/or iteratively for different estimates of the reference files.
 # Extract the spectrum.
-f_k = extract.extract(data=data, sig=sig, tikhonov=True, factor=best_fac)
+f_k = extract.extract(data=data_clear, sig=sig, tikhonov=True, factor=best_fac)
 # Could we make change this method to __call__?  # Very good idea!
+
+"""
+# Images of traces
+plt.figure()
+plt.imshow(im_adu_noisy, vmin=0, vmax=1000, origin="lower")   # Image of noisy traces
+plt.plot(x, y, color="r", label="Order 1 trace's position")   # Middle position of order 1 trace
+plt.colorbar(label="[adu/s]", orientation='horizontal')
+plt.title("test_clear_noisy_rateints.fits")
+plt.legend()
+plt.show()
+
+plt.figure()
+plt.imshow(data_clear, origin="lower")   # Image of clear trace(s)
+plt.plot(x, y, color="r", label="Order 1 trace's position")   # Middle position of order 1 trace
+plt.colorbar(label="[adu/s]", orientation='horizontal')
+plt.title("clear_000000.fits")
+plt.legend()
+plt.show()
+"""
 
 # Plot the extracted spectrum.
 plt.figure()
@@ -272,9 +295,15 @@ for i_ord in range(extract.n_ord):
 
 if only_order_1 is True:
     fig, ax = plt.subplots(1, 1, sharex=True, figsize=(12, 6))
-    ax.plot(lam_bin_list[0], f_bin_list[0])
 
-    ax.set_ylabel("Extracted signal [counts]")
+    # For comparison:
+    # Because w and lam_bin_list[0] are not the same
+    f = interp1d(w, flamb_inf_radi_adu, fill_value='extrapolate')
+    flamb_clear_interp = f(lam_bin_list[0])
+    ax.plot(lam_bin_list[0], f_bin_list[0], lw=1, label='Tikhonov')
+    ax.plot(lam_bin_list[0], flamb_clear_interp, lw=1, label="Interp clear")
+
+    ax.set_ylabel("Extracted signal [counts (adu/s)]")
     ax.set_xlabel("Wavelength [$\mu m$]")
 
 else:
@@ -287,12 +316,24 @@ else:
     ax[1].set_xlabel("Wavelength [$\mu m$]")
     ax[1].set_ylabel("Extracted signal [counts]")
 
+plt.legend()
 plt.tight_layout()
 if save is True:
     if only_order_1 is True:
         plt.savefig(WORKING_DIR + "oversampling_{}/extracted_signal_adb_order1.png".format(simuPars.noversample))
     else:
         plt.savefig(WORKING_DIR + "oversampling_{}/extracted_signal_adb.png".format(simuPars.noversample))
+plt.show()
+
+
+# Comparison
+diff_extra = f_bin_list[0] - flamb_clear_interp
+
+plt.figure()
+plt.plot(lam_bin_list[0], diff_extra, lw=1, color='Indigo')
+plt.xlabel("Wavelength [$\mu m$]")
+plt.ylabel("Difference [counts (adu/s)]")
+plt.title("Difference between Tikhonov and box extracted signal")
 plt.show()
 
 # Bin in flux units
@@ -326,7 +367,7 @@ plt.show()
 rebuilt = extract.rebuild(f_k)
 
 plt.subplot(111, aspect='equal')
-plt.pcolormesh((rebuilt - data)/sig, vmin=-3, vmax=3)
+plt.pcolormesh((rebuilt - data_clear)/sig, vmin=-3, vmax=3)
 plt.colorbar(label="Error relative to noise", orientation='horizontal', aspect=40)
 plt.tight_layout()
 if save is True:
@@ -338,3 +379,57 @@ plt.show()
 # We can see that we are very close to the photon noise limit in this case. There are some small
 # structures in the 2nd order in the overlap region, but the extracted spectrum is dominated by the
 # 1st order in this wavelength region anyway, due to the higher throughput.
+
+
+##########################
+# GRAPHICS FOR BOX EXTRACTION
+
+# Extracted flux [J/s/m²/um]
+start, end = 5, -5   # To avoid problems with the extremities
+
+"""
+# Noisy
+plt.figure()
+plt.plot(w[start:end], flamb_noisy_energy[start:end], lw=1, color="HotPink")
+plt.xlabel(r"Wavelength [$\mu$m]")
+plt.ylabel(r"Extracted flux [J s⁻¹ m⁻² $\mu$m⁻¹]")
+plt.title("Extracted flux of order 1 from noisy traces")
+plt.show()
+"""
+
+plt.figure()
+plt.plot(w[start:end], flamb_clear_energy[start:end], lw=1, color='MediumVioletRed')
+plt.ylabel(r"Extracted flux [J s⁻¹ m⁻² $\mu$m⁻¹]")
+plt.xlabel(r"Wavelength [$\mu$m]")
+plt.title("Extracted flux of order 1 clear trace")
+plt.show()
+
+# Extracted flux [e⁻/colonne]
+plt.figure()
+plt.plot(w[start:end], flamb_clear_elec[start:end], lw=1, color="HotPink")
+plt.ylabel(r"Extracted flux [e$^-$/colonne]")
+plt.xlabel(r"Wavelength [$\mu$m]")
+plt.title(r"Extracted flux of order 1 clear trace")
+plt.show()
+
+"""
+# Noisy
+plt.figure()
+plt.plot(w[start:end], flamb_noisy_elec[start:end], lw=1, color="HotPink")
+plt.ylabel(r"Extracted flux [e$^-$/colonne]")
+plt.xlabel(r"Wavelength [$\mu$m]")
+plt.title(r"Extracted flux of order 1 trace from noisy traces")
+plt.show()
+"""
+
+# Extracted flux [adu/s/colonne]
+plt.figure()
+plt.plot(w[start:end], flamb_clear_adu[start:end], lw=1, color="Indigo")
+plt.ylabel(r"Extracted flux [adu/s/colonne]")
+plt.xlabel(r"Wavelength [$\mu$m]")
+plt.title(r"Extracted flux of order 1 clear trace")
+plt.show()
+
+print("Oversample = {}".format(simuPars.noversample))
+if only_order_1 is True:
+    print("Order 1 only")
