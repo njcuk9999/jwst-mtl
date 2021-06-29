@@ -80,9 +80,8 @@ class EmpiricalTrace:
 
         # Warn user that not iterating will yield inaccurate solutions.
         if max_iter < 1:
-            warn_msg = 'max_iter has been set to 0 - not iterating is' \
-                'unadvisable, and will lead to inaccurate solutions for the' \
-                'trace profiles.'
+            warn_msg = 'max_iter has been set to 0 - not iterating is ' \
+                'inadvisable, and will lead to inaccurate trace solutions.'
             warnings.warn(warn_msg)
             print('', flush=True)
 
