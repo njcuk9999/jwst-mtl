@@ -87,7 +87,7 @@ simuPars = spgen.read_pars(pathPars.simulationparamfile, simuPars) #read in para
 m_order = 1  # For now, only option is 1.
 
 # CHOOSE OVERSAMPLE  !!!
-simuPars.noversample = 4
+simuPars.noversample = 10
 
 # SAVE FIGS? !!!
 save = False
@@ -147,7 +147,7 @@ flamb_noisy_elec = box_kim.flambda_elec(x, im_adu_noisy, y, radius_pixel=radius_
 
 # Extracted flux of clear order 1 trace only
 flamb_m1clear_energy = box_kim.f_lambda(x, m1_clear_adu, w, y, radius_pixel=radius_pixel)   # Extracted flux [J/s/m²/um]
-flamb_m1_inf_radi_ener = box_kim.flambda_inf_radi(m1_clear_adu, w)   # Extracted flux with infinite radius [J/s/m²/um]
+flamb_m1_inf_radi_ener = box_kim.flambda_inf_radi_ener(m1_clear_adu, w)   # Extracted flux with infinite radius [J/s/m²/um]
 flamb_m1clear_elec = box_kim.flambda_elec(x, m1_clear_adu, y, radius_pixel=radius_pixel) * tint  # Extracted flux in electrons [e⁻/colonne]
 elec_noise_m1 = np.sqrt(flamb_m1clear_elec)   # Photon noise [e⁻/colonne]
 

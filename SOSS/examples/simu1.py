@@ -83,7 +83,7 @@ print(simuPars.pmodeltype[0])
 
 # Here one can manually edit the parameters but we encourage rather to change
 # the simulation parameter file directly.
-simuPars.noversample = 2  #example of changing a model parameter
+simuPars.noversample = 10  #example of changing a model parameter
 #simuPars.xout = 4000      #spectral axis
 #simuPars.yout = 300       #spatial (cross-dispersed axis)
 #simuPars.modelfile = 'CONSTANT_FNU'
@@ -135,16 +135,16 @@ print('norders={:} dimy={:} dimx={:}'.format(norders,dimy,dimx))
 # The cube has all spectral orders in separate slices.
 # The list of such fits cube file names is returned.
 if True:
-    imagelist = soss.generate_traces(WORKING_DIR+'tmp/clear', pathPars, simuPars, tracePars, throughput,
-                                   starmodel_angstrom, starmodel_flambda, ld_coeff,
-                                   planetmodel_angstrom, planetmodel_rprs,
-                                   timesteps, tintopen)
+    imagelist = soss.generate_traces(WORKING_DIR + 'tmp/oversampling_{}/clear'.format(simuPars.noversample),
+                                     pathPars, simuPars, tracePars, throughput, starmodel_angstrom,
+                                     starmodel_flambda, ld_coeff, planetmodel_angstrom, planetmodel_rprs,
+                                     timesteps, tintopen)
 else:
     SIMUDIR = '/home/kmorel/ongenesis/jwst-user-soss/tmp/'
-    imagelist = glob.glob(WORKING_DIR + 'tmp/clear*.fits')
+    imagelist = glob.glob(WORKING_DIR + 'tmp/oversampling_{}/clear*.fits'.format(simuPars.noversample))
     #imagelist = os.listdir(SIMUDIR)
     for i in range(np.size(imagelist)):
-        imagelist[i] = os.path.join(SIMUDIR,imagelist[i])
+        imagelist[i] = os.path.join(SIMUDIR + 'oversampling_{}/'.format(simuPars.noversample),imagelist[i])
     print(imagelist)
 
 
@@ -181,17 +181,19 @@ data = soss.write_dmsready_fits_init(imagelist, normalization_scale,
 # All simulations (e-/sec) are converted to up-the-ramp images.
 #soss.write_dmsready_fits(data[:,:,0:256,0:2048], os.path.join(WORKING_DIR,'test_clear.fits'),
                     #os=simuPars.noversample, input_frame='sim')
-soss.write_dmsready_fits(data, os.path.join(WORKING_DIR,'test_clear.fits'),
-                         os=simuPars.noversample, input_frame='dms',
+soss.write_dmsready_fits(data, os.path.join(WORKING_DIR + 'oversampling_{}/'.format(simuPars.noversample),
+                                            'test_clear.fits'), os=simuPars.noversample, input_frame='dms',
                          xpadding=simuPars.xpadding, ypadding=simuPars.ypadding)
 
 # Add detector noise to the noiseless data
-detector.add_noise(os.path.join(WORKING_DIR,'test_clear.fits'),
-                   outputfilename=os.path.join(WORKING_DIR, 'test_clear_noisy.fits'))
+detector.add_noise(os.path.join(WORKING_DIR + 'oversampling_{}/'.format(simuPars.noversample),'test_clear.fits'),
+                   outputfilename=os.path.join(WORKING_DIR + 'oversampling_{}/'.format(simuPars.noversample),
+                                               'test_clear_noisy.fits'))
 
 # Process the data through the DMS level 1 pipeline
-result = Detector1Pipeline.call(os.path.join(WORKING_DIR, 'test_clear_noisy.fits'),
-                                output_file='test_clear_noisy', output_dir=WORKING_DIR)
+result = Detector1Pipeline.call(os.path.join(WORKING_DIR + 'oversampling_{}/'.format(simuPars.noversample),
+                                             'test_clear_noisy.fits'), output_file='test_clear_noisy',
+                                output_dir=WORKING_DIR + 'oversampling_{}/'.format(simuPars.noversample))
 
 
 """

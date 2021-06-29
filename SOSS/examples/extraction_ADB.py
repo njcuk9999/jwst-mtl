@@ -59,7 +59,7 @@ simuPars = spgen.read_pars(pathPars.simulationparamfile, simuPars) #read in para
 m_order = 1  # For now, only option is 1.
 
 # CHOOSE OVERSAMPLE  !!!
-simuPars.noversample = 1
+simuPars.noversample = 2
 
 # CHOOSE ORDER(S) TO EXTRACT (ADB)  !!!
 only_order_1 = True
@@ -144,19 +144,24 @@ path.append("Fake_data")
 # LA
 noisy_rateints = fits.open(WORKING_DIR + "oversampling_{}/test_clear_noisy_rateints.fits".format(simuPars.noversample))
 clear_00 = fits.open(WORKING_DIR + "tmp/oversampling_{}/clear_000000.fits".format(simuPars.noversample))
-if simuPars.noversample == 1:
-    data = clear_00[0].data[:2, 10:266, 10:2058]  # Because of x_padding and y_padding
-else:
-    data = np.empty(shape=(2,256,2048))
+clear_tr_00 = fits.open(WORKING_DIR + "tmp/oversampling_{}/clear_trace_000000.fits".format(simuPars.noversample))
+
+padd = 10 * simuPars.noversample
+data_ref = clear_tr_00[0].data[:2, padd:-padd, padd:-padd]  # Because of x_padding and y_padding
+data = clear_00[0].data[:2, padd:-padd, padd:-padd]  # Because of x_padding and y_padding
+if simuPars.noversample != 1:
+    data_bin = np.empty(shape=(2,256,2048))
     for i in range(len(clear_00[0].data)-1):
-        clear_i = soss.rebin(clear_00[0].data[i], simuPars.noversample)
-        data[i] = clear_i[10:266, 10:2058]  # Because of x_padding and y_padding
+        clear_i = soss.rebin(clear_00[0].data[i], simuPars.noversample)  # Bin to pixel native
+        data_bin[i] = clear_i[10:-10, 10:-10]  # Because of x_padding and y_padding
 
 if only_order_1 is True:
     # Without noise
-    data_clear = data[0]   # Order 1 only [adu/s]  # m1_clear_adu
+    data_clear_bin = data_bin[0]   # Order 1 only, binned [adu/s]   # m1_clear_adu
+    data_clear = data[0]    # Order 1 only, not binned [adu/s]
 else:
-    data_clear = np.sum(data, axis=0)   # Sum traces 1 & 2 [adu/s]   # tot_clear_adu
+    data_clear_bin = np.sum(data_bin, axis=0)   # Sum traces 1 & 2, binned [adu/s]   #tot_clear_adu
+    data_clear = np.sum(data, axis=0)  # Sum traces 1 & 2, not binned [adu/s]
 
 
 # Images for box extraction
@@ -177,10 +182,12 @@ flamb_noisy_elec = box_kim.flambda_elec(x, im_adu_noisy, y, radius_pixel=radius_
 flamb_noisy_adu = box_kim.flambda_adu(x, im_adu_noisy, y, radius_pixel=radius_pixel)  # Extracted flux in adu [adu/s/colonne]
 
 # Extracted flux of clear trace(s)
-flamb_clear_energy = box_kim.f_lambda(x, data_clear, w, y, radius_pixel=radius_pixel)   # Extracted flux [J/s/m²/um]
-flamb_clear_elec = box_kim.flambda_elec(x, data_clear, y, radius_pixel=radius_pixel) * tint  # Extracted flux in electrons [e⁻/colonne]
-flamb_clear_adu = box_kim.flambda_adu(x, data_clear, y, radius_pixel=radius_pixel)  # Extracted flux in adu [adu/s/colonne]
-flamb_inf_radi_adu = box_kim.flambda_inf_radi_adu(data_clear)   # Extracted flux with infinite radius [J/s/m²/um]
+flamb_adu_ref = box_kim.flambda_inf_radi_adu(data_ref)
+flamb_clear_energy = box_kim.f_lambda(x, data_clear_bin, w, y, radius_pixel=radius_pixel)   # Extracted flux [J/s/m²/um]
+flamb_clear_elec = box_kim.flambda_elec(x, data_clear_bin, y, radius_pixel=radius_pixel) * tint  # Extracted flux in electrons [e⁻/colonne]
+flamb_clear_adu = box_kim.flambda_adu(x, data_clear_bin, y, radius_pixel=radius_pixel)  # Extracted flux in adu [adu/s/colonne]
+flamb_inf_adu = box_kim.flambda_inf_radi_adu(data_clear)   # Extracted flux with infinite radius, not binned [adu/s]
+flamb_inf_adu_bin = box_kim.flambda_inf_radi_adu(data_clear_bin)   # Extracted flux with infinite radius, binned [adu/s]
 
 
 # TIKHONOV EXTRACTION
@@ -211,10 +218,10 @@ factors = np.logspace(-25, -12, 14)
 
 # Noise estimate to weigh the pixels.
 # Poisson noise + background noise.
-sig = np.sqrt(data_clear + bkgd_noise**2)
+sig = np.sqrt(data_clear_bin + bkgd_noise**2)
 
 # Tests all these factors.
-tests = extract.get_tikho_tests(factors, data=data_clear, sig=sig)
+tests = extract.get_tikho_tests(factors, data=data_clear_bin, sig=sig)
 
 # Find the best factor.
 best_fac = extract.best_tikho_factor(tests=tests, i_plot=True)
@@ -223,27 +230,25 @@ best_fac = extract.best_tikho_factor(tests=tests, i_plot=True)
 best_fac = np.log10(best_fac)
 factors = np.logspace(best_fac-2, best_fac+2, 20)
 
-tests = extract.get_tikho_tests(factors, data=data_clear, sig=sig)
+tests = extract.get_tikho_tests(factors, data=data_clear_bin, sig=sig)
 best_fac = extract.best_tikho_factor(tests=tests, i_plot=True)
 
 # Extract the oversampled spectrum 𝑓𝑘
 # Can be done in a loop for a timeseries and/or iteratively for different estimates of the reference files.
 # Extract the spectrum.
-f_k = extract.extract(data=data_clear, sig=sig, tikhonov=True, factor=best_fac)
+f_k = extract.extract(data=data_clear_bin, sig=sig, tikhonov=True, factor=best_fac)
 # Could we make change this method to __call__?  # Very good idea!
 
 """
 # Images of traces
 plt.figure()
-plt.imshow(im_adu_noisy, vmin=0, vmax=1000, origin="lower")   # Image of noisy traces
-plt.plot(x, y, color="r", label="Order 1 trace's position")   # Middle position of order 1 trace
+plt.imshow(data_ref, vmin=0, vmax=1000, origin="lower")   # Image of noisy traces
 plt.colorbar(label="[adu/s]", orientation='horizontal')
-plt.title("test_clear_noisy_rateints.fits")
-plt.legend()
+plt.title("clear_trace_000000.fits")
 plt.show()
 
 plt.figure()
-plt.imshow(data_clear, origin="lower")   # Image of clear trace(s)
+plt.imshow(data_clear_bin, origin="lower")   # Image of clear trace(s)
 plt.plot(x, y, color="r", label="Order 1 trace's position")   # Middle position of order 1 trace
 plt.colorbar(label="[adu/s]", orientation='horizontal')
 plt.title("clear_000000.fits")
@@ -298,12 +303,10 @@ if only_order_1 is True:
 
     # For comparison:
     # Because w and lam_bin_list[0] are not the same
-    f = interp1d(w, flamb_inf_radi_adu, fill_value='extrapolate')
-    flamb_clear_interp = f(lam_bin_list[0])
-    ff = interp1d(lam_bin_list[0], f_bin_list[0], fill_value='extrapolate')
-    f_bin_interp = ff(w)
-    ax.plot(lam_bin_list[0], f_bin_list[0], lw=1, label='Tikhonov')
-    ax.plot(lam_bin_list[0], flamb_clear_interp, lw=1, label="Interp clear")
+    f = interp1d(lam_bin_list[0], f_bin_list[0], fill_value='extrapolate')
+    f_bin_interp = f(w)
+    ax.plot(w, flamb_inf_adu_bin, lw=1, label='Box')
+    ax.plot(lam_bin_list[0], f_bin_list[0], lw=1, label="Tikhonov")
 
     ax.set_ylabel("Extracted signal [counts (adu/s)]")
     ax.set_xlabel("Wavelength [$\mu m$]")
@@ -322,22 +325,26 @@ plt.legend()
 plt.tight_layout()
 if save is True:
     if only_order_1 is True:
-        plt.savefig(WORKING_DIR + "oversampling_{}/extracted_signal_adb_order1.png".format(simuPars.noversample))
+        plt.savefig(WORKING_DIR + "oversampling_{}/extracted_signal_tik_box_order1.png".format(simuPars.noversample))
     else:
-        plt.savefig(WORKING_DIR + "oversampling_{}/extracted_signal_adb.png".format(simuPars.noversample))
+        plt.savefig(WORKING_DIR + "oversampling_{}/extracted_signal_tik_box.png".format(simuPars.noversample))
 plt.show()
 
 
 # Comparison
-diff_extra = f_bin_list[0] - flamb_clear_interp
-diff_extra_2 = flamb_inf_radi_adu - f_bin_interp
+diff_extra = (f_bin_interp - flamb_inf_adu_bin) / flamb_inf_adu_bin
+diff_extra *= 1e6  # To get ppm
 
 plt.figure()
-plt.plot(lam_bin_list[0], diff_extra, lw=1, color='Indigo')
-#plt.plot(w, diff_extra_2, lw=1, color='Indigo')
+plt.plot(w, diff_extra, lw=1, color='Indigo')
 plt.xlabel("Wavelength [$\mu m$]")
-plt.ylabel("Difference [counts (adu/s)]")
-plt.title("Difference between Tikhonov and box extracted signal")
+plt.ylabel("Relative difference [ppm]")
+plt.title("Relative difference between Tikhonov and box extracted signal")
+if save is True:
+    if only_order_1 is True:
+        plt.savefig(WORKING_DIR + 'oversampling_{}/relat_diff_tik_box_order1.png'.format(simuPars.noversample))
+    else:
+        plt.savefig(WORKING_DIR + 'oversampling_{}/relat_diff_tik_box.png'.format(simuPars.noversample))
 plt.show()
 
 # Bin in flux units
@@ -371,7 +378,7 @@ plt.show()
 rebuilt = extract.rebuild(f_k)
 
 plt.subplot(111, aspect='equal')
-plt.pcolormesh((rebuilt - data_clear)/sig, vmin=-3, vmax=3)
+plt.pcolormesh((rebuilt - data_clear_bin)/sig, vmin=-3, vmax=3)
 plt.colorbar(label="Error relative to noise", orientation='horizontal', aspect=40)
 plt.tight_layout()
 if save is True:
