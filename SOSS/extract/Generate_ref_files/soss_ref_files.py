@@ -20,13 +20,18 @@ from SOSS.trace import tracepol  # TODO in the future this should not depend on 
 # ==============================================================================
 
 
-def init_spec_trace(throghput_file='../Ref_files/NIRISS_Throughput_STScI.fits',
-                    tilt_file='../../trace/SOSS_wavelength_dependent_tilt.ecsv'):
+def init_spec_trace(throughput_file=None, tilt_file=None):
     """Generate the NIRISS SOSS 1D trace reference file.
     TODO This code will need to be updated once in-flight measurements are available.
     TODO CAR NIS-018-GR700XD Wavelength Calibration
     TODO CAR NIS-017-GR700XD Flux Calibration
     """
+
+    if throughput_file is None:
+        throughput_file = 'files/NIRISS_Throughput_STScI.fits'
+
+    if tilt_file is None:
+        tilt_file = 'files/SOSS_wavelength_dependent_tilt.ecsv'
 
     # Fixed parameters for the 2D wavelength map reference file.
     subarrays = ['FULL', 'SUBSTRIP96', 'SUBSTRIP256']
@@ -36,7 +41,7 @@ def init_spec_trace(throghput_file='../Ref_files/NIRISS_Throughput_STScI.fits',
     wave_grid = np.linspace(0.5, 5.5, 5001)
 
     # Read the SOSS total throughput as a function of wavelength.
-    tab, hdr = fits.getdata(throghput_file, ext=1, header=True)
+    tab, hdr = fits.getdata(throughput_file, ext=1, header=True)
 
     throughput_wave = tab[0]['LAMBDA']/1e3
     throughput_order1 = tab[0]['SOSS_ORDER1']
@@ -320,8 +325,11 @@ def init_wave_map():
 # ==============================================================================
 
 
-def init_spec_profile():
+def init_spec_profile(profile_file=None):
     """"""
+
+    if profile_file is None:
+        'files/2DTrace.fits'
 
     # Fixed parameters for the 2D wavelength map reference file.
     padding = 10
@@ -373,7 +381,7 @@ def init_spec_profile():
         for m in orders:
 
             # TODO Read file provided by Loïc, replace with function that generates this info in the future.
-            profile_2d = fits.getdata('2DTrace.fits', ext=0)
+            profile_2d = fits.getdata(profile_file, ext=0)
             profile_2d = profile_2d[m - 1]
 
             nrows, ncols = profile_2d.shape
@@ -405,10 +413,13 @@ def init_spec_profile():
 # ==============================================================================
 
 
-def init_spec_kernel():
+def init_spec_kernel(kernel_file=None):
     """"""
 
-    # Fixed parameters for the spectral kernels reference file.
+    if kernel_file is None:
+        kernel_file = 'files/spectral_kernel_matrix_os_10_width_15pixels.fits'
+
+    # Fixed parameters for the spectral kernels reference file. # TODO get from kernel_file.
     specos = 10
     halfwidth = 7
     nwave = 95
@@ -417,7 +428,7 @@ def init_spec_kernel():
     soss_ref_spectral_kernel = 'SOSS_ref_spectral_kernel.fits'  # Output SOSS reference file.
 
     # TODO Read file provided by Loïc, replace with function that generates this info in the future.
-    kernels = fits.getdata('spectral_kernel_matrix_os_10_width_15pixels.fits')
+    kernels = fits.getdata(kernel_file)
 
     # Build the wavelenth array.
     wavelengths = np.linspace(wavemin, wavemax, nwave)
