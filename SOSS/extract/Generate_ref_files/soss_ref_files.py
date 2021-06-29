@@ -6,19 +6,19 @@ Created on Wed Nov  4 15:35:32 2020
 @author: albert
 """
 
-import sys
 from datetime import datetime
-sys.path.insert(0, "../../trace/")
 
 import numpy as np
 from astropy.io import fits
 from astropy.table import Table
-import tracepol  # TODO in the future this should not depend on tracepol.
+
+from SOSS.trace import tracepol  # TODO in the future this should not depend on tracepol.
 
 
-def main():
+def init_spec_trace(throghput_file='../Ref_files/NIRISS_Throughput_STScI.fits',
+                    tilt_file='../../trace/SOSS_wavelength_dependent_tilt.ecsv'):
     """Generate the NIRISS SOSS 1D trace reference file.
-    TODO This code will need to be updaterd once in-flight measurements are available.
+    TODO This code will need to be updated once in-flight measurements are available.
     TODO CAR NIS-018-GR700XD Wavelength Calibration
     TODO CAR NIS-017-GR700XD Flux Calibration
     """
@@ -31,7 +31,7 @@ def main():
     wave_grid = np.linspace(0.5, 5.5, 5001)
 
     # Read the SOSS total throughput as a function of wavelength.
-    tab, hdr = fits.getdata('../Ref_files/NIRISS_Throughput_STScI.fits', ext=1, header=True)
+    tab, hdr = fits.getdata(throghput_file, ext=1, header=True)
 
     throughput_wave = tab[0]['LAMBDA']/1e3
     throughput_order1 = tab[0]['SOSS_ORDER1']
@@ -49,7 +49,7 @@ def main():
     throughput_order3 = np.where(throughput_order3 < 0, 0, throughput_order3)
 
     # Read the tilt as a function of wavelength.
-    tab = Table.read('../../trace/SOSS_wavelength_dependent_tilt.ecsv')
+    tab = Table.read(tilt_file)
 
     tilt_wave = tab['Wavelength']
     tilt_order1 = tab['order 1']
@@ -147,6 +147,11 @@ def main():
         hdul = fits.HDUList(hdul)
         hdul.writeto(filename, overwrite=True)
         hdul.writeto(filename + '.gz', overwrite=True)
+
+    return
+
+
+def main():
 
     return
 
