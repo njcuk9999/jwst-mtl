@@ -581,7 +581,8 @@ def seed_trace_geometry(simuPars, tracePars, spectral_order, models_grid_wv):
     '''
 
     # Will need to pass these down at the input line
-    specmov, spatmov = 0.02, 0.02
+    # TODO: implement a non-zero dx,dy functionality and stick it here
+    specmov, spatmov = 0.0, 0.0
 
     # Dimensions of the real (unpadded but oversampled) image
     dimx = simuPars.xout * simuPars.noversample
@@ -768,6 +769,70 @@ def spread_spatially(dimy, y1, y2, flux):
     return column
 
 
+def build_wings(convolved_slice, noversample):
+    '''
+    Takes an image of the convolved trace and extends the wings across the
+    image along the columns, assuming that the wing slop eis constant (in log(flux)).
+    :param convolved_slice: a 2D image of the convolved trace, may be oversampled
+    :param noversample: the oversampling of the image
+    :return:
+    '''
+
+    # The wings are roughly a linear trend in log(flux). CV3 characterization
+    # by Michael Radica. log(flux) goes from 1.5 to 1.0 over about 100 native
+    # pixels.
+
+    print('     Extending wings on both sides of the trace.')
+
+    # Flux threshold above which a trace is considered seeded on a pixel
+    fluxthreshold = 30.0
+    slope = -0.032 # in log(flux) per native pixel
+
+    # Obtain the image dimensions
+    dimy, dimx = np.shape(convolved_slice)
+    # Repeat for each column
+    for col in range(dimx):
+        data = np.copy(convolved_slice[:,col])
+        indzero = np.where(data < fluxthreshold)[0]
+        nzero = np.size(indzero)
+        indtrace = np.where(data >= fluxthreshold)[0]
+        ntrace = np.size(indtrace)
+        # A branch of possibilities here
+        if nzero < dimy:
+            # Go further unless all pixels of this column are zero
+            indmax = np.max(indtrace)
+            indmin = np.min(indtrace)
+            if indmax < dimy-1:
+                # At least 1 pixel is zero at the top of the column
+                # take value of pixel below and extend across column above
+                logflux = np.log10(fluxthreshold) + slope * np.arange(dimy - indmax) / noversample
+                # convolved_slice[indmax:,col] = np.exp(logflux)
+                convolved_slice[indmax:,col] = np.power(10, logflux)
+                if False:
+                    if col%100 == 0:
+                        plt.figure()
+                        y = np.arange(dimy)
+                        plt.scatter(y, np.log10(data), s=2)
+                        plt.scatter(y[indmax], np.log10(data[indmax]))
+                        y_wing = np.arange(dimy - indmax) + indmax
+                        plt.scatter(y_wing, logflux)
+            if indmin > 0:
+                # At least 1 pixel is zero at the bottom of the column
+                # take value of pixel above and extend across column below
+                logflux = np.log10(fluxthreshold) + slope * np.arange(indmin) / noversample
+                # convolved_slice[:indmin,col] = np.exp(np.flip(logflux))
+                convolved_slice[:indmin, col] = np.power(10, np.flip(logflux))
+                if False:
+                    if col%100 == 0:
+                        plt.scatter(y[indmax], np.log10(data[indmax]))
+                        y_wing = np.arange(indmin)
+                        plt.scatter(y_wing, np.flip(logflux))
+                        plt.plot(y, np.log10(convolved_slice[:,col]))
+                        plt.show()
+    return convolved_slice
+
+
+
 def generate_traces(savingprefix, pathPars, simuPars, tracePars, throughput,
                     star_angstrom, star_flux, ld_coeff,
                     planet_angstrom, planet_rprs,
@@ -853,8 +918,8 @@ def generate_traces(savingprefix, pathPars, simuPars, tracePars, throughput,
         resized = resize(k, (128 * simuPars.noversample, 128 * simuPars.noversample))
         thesum = np.sum(resized)
         kernel_resize.append(resized / thesum)
-    # Convert to numpy array and apply flux scaling conservation from resize
-    kernel_resize = np.array(kernel_resize) * (10 / simuPars.noversample)**2
+    # Convert to numpy array (no flux scaling conservation from resize is required)
+    kernel_resize = np.array(kernel_resize) #* (10 / simuPars.noversample)**2
 
     #The number of images (slices) that will be simulated is equal the number of orders
     # Don't worry, that 'cube' will be merged down later after flux normalization.
@@ -967,6 +1032,13 @@ def generate_traces(savingprefix, pathPars, simuPars, tracePars, throughput,
             x2 = x1 + simuPars.xout * simuPars.noversample
             actual_counts = np.sum(convolved_image[m,y1:y2,x1:x2])
             print('     Actual counts measured on the simulation = {:} e-/sec'.format(actual_counts))
+
+            # Extend wings across the columns (neglect the flux associated with it)
+            addwings = True
+            # if simuPars.addwings == True:
+            if addwings:
+                convolved_image[m,:,:] = build_wings(convolved_image[m,:,:], simuPars.noversample)
+
             print()
 
         tmp = write_intermediate_fits(trace_image, savingprefix+'_trace', t, simuPars)
