@@ -15,7 +15,7 @@ import numpy.ma as ma
 from scipy.optimize import minimize
 from tqdm import tqdm
 import warnings
-from SOSS.dms.soss_solver import _chi_squared, transform_coords
+from SOSS.dms.soss_solver import chi_squared, transform_coords
 from SOSS.dms.soss_centroids import get_soss_centroids
 from SOSS.extract import soss_read_refs
 from SOSS.extract.empirical_trace import plotting
@@ -937,7 +937,7 @@ def get_substrip96_centroids(centroids):
     # and offsets.
     guess_params = np.array([0.15, 1., 1.])
     lik_args = [xcen_ref, ycen_ref, xcen_dat, ycen_dat]
-    fit = minimize(_chi_squared, guess_params, lik_args).x
+    fit = minimize(chi_squared, guess_params, lik_args).x
     rot_ang, x_shift, y_shift = fit
 
     # Transform centroids to detector frame for orders 2 and 3.
