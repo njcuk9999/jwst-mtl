@@ -1113,8 +1113,8 @@ def reconstruct_wings256(profile, ycens=None, contamination=[2, 3], pad=0,
             start = 0
             end = ycen+30
         else:
-            start = np.min([ycen-17, dimy-2])
-            end = np.min([ycen+17, dimy-1])
+            start = np.min([ycen-18, dimy-2])
+            end = np.min([ycen+18, dimy-1])
         # Set core of each order to NaN.
         prof_r[start:end] = np.nan
     # Fit the unmasked part of the wing to determine the mean linear trend.
@@ -1133,8 +1133,8 @@ def reconstruct_wings256(profile, ycens=None, contamination=[2, 3], pad=0,
     if contamination is not None:
         for order, ycen in enumerate(ycens):
             if order + 1 in contamination:
-                start = np.max([ycen-17, 0])
-                end = np.max([ycen+17, 1])
+                start = np.max([ycen-18, 0])
+                end = np.max([ycen+18, 1])
                 # Set core of each order to NaN.
                 prof_r2[start:end] = np.nan
     # Find all outliers that are >3-sigma deviant from the mean.
