@@ -1086,7 +1086,7 @@ def rebin(image, noversampling, flux_method='mean'):
         else:
             return image.reshape(shape).mean(-1).mean(1)
     elif ndim == 3:
-        dimz, dimy, dimx = np.shape(image2D)
+        dimz, dimy, dimx = np.shape(image)
         newdimy, newdimx = int(dimy/noversampling), int(dimx/noversampling)
         cube = np.zeros((dimz, newdimy, newdimx))
         for i in range(dimz):

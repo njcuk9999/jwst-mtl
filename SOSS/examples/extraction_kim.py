@@ -104,6 +104,7 @@ x = np.linspace(0, 2047, 2048)    # Array of pixels
 pars = tp.get_tracepars(trace_file)   # Gives the middle position of oorder 1 trace
 w, tmp = tp.specpix_to_wavelength(x,pars,m=1)   # Returns wavelength for each x, order 1
 xnew, y, mask = tp.wavelength_to_pix(w, pars, m=1)   # Converts wavelenghths to pixel coordinates
+
 ### x and xnew should be the same!...
 #ynew = np.interp(x, xnew, y)    #Interpolation of y at integer values of x
 #ynew = np.around(ynew)
@@ -113,13 +114,10 @@ xnew, y, mask = tp.wavelength_to_pix(w, pars, m=1)   # Converts wavelenghths to 
 noisy_rateints = fits.open(WORKING_DIR + "oversampling_{}/test_clear_noisy_rateints.fits".format(simuPars.noversample))
 clear_00 = fits.open(WORKING_DIR + "tmp/oversampling_{}/clear_000000.fits".format(simuPars.noversample))
 if simuPars.noversample == 1:
-    clear = clear_00[0].data[:, 10:266, 10:2058]  # Because of x_padding and y_padding
+    clear = clear_00[0].data[:, 10:-10, 10:-10]  # Because of x_padding and y_padding
 else:
-    clear = np.empty(shape=(3, 256, 2048))
-    for i in range(len(clear_00[0].data)):
-        clear_i = soss.rebin(clear_00[0].data[i], simuPars.noversample)
-        clear[i] = clear_i[10:266, 10:2058]  # Because of x_padding and y_padding
-
+    clear = soss.rebin(clear_00[0].data, simuPars.noversample)
+    clear = clear[:, 10:-10, 10:-10]  # Because of x_padding and y_padding
 
 # Images
 # With noise

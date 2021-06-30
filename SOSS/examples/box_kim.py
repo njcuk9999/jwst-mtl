@@ -1,5 +1,6 @@
 import numpy as np
 import scipy.constants as sc_cst
+import SOSS.trace.tracepol as tp
 
 # Constants
 h = sc_cst.Planck
@@ -137,3 +138,16 @@ def sigma_flambda(pixels, error, wl, y_trace, radius_pixel=30, area=area, gain=g
     dw = dispersion(wl)  # Dispersion [microns]
 
     return delta_flambda * gain * phot_ener / area / dw
+
+def readtrace(os):  # From Loic
+    trace_filename = '/genesis/jwst/jwst-ref-soss/trace_model/NIRISS_GR700_trace_extended.csv'
+    pars = tp.get_tracepars(trace_filename, disable_rotation=False)
+    w = np.linspace(0.7, 3.0, 10000)
+    x, y, mask = tp.wavelength_to_pix(w, pars, m=1, oversample=os, subarray='SUBSTRIP256')
+    x_index = np.arange(2048 * os)
+    # np.interp needs ordered x
+    ind = np.argsort(x)
+    x, w = x[ind], w[ind]
+    wavelength = np.interp(x_index, x, w)
+    y_index = np.interp(x_index, x, y)
+    return x_index, np.flip(y_index), wavelength
