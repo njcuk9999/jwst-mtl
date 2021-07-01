@@ -17,7 +17,7 @@ import webbpsf
 # These contain the functions used to determine the tilt
 # of a PSF using cross-correlations (from Loic Albert)
 sys_path.append("../../github/jwst-mtl/SOSS/PSFs/")
-import soss_get_tilt as sgt
+import soss_get_tilt_Frost as sgt
 
 
 
@@ -183,7 +183,7 @@ psf-list : list
 #--------------------------------------------------------------------------------#
 
 def get_webbpsf_tilt( PSF , oversamp=10 , view='dms'
-                    , mode='ccf' , spatbox_size=23 , specbox_size=20
+                    , mode='ccf' , fitrad=20 , spatbox_size=23 , specbox_size=20
                     , doPlot=False):
     '''Function used to calculate/estimate the tilt
 (with respect to the spatial axis) in NIRISS-SOSS PSFs
@@ -303,7 +303,7 @@ tilt : float
         # The number of columns between both slices
         dx = np.mean([rspat_left, rspat_right]) - np.mean([lspat_left, lspat_right]) 
         # Perform a cross-correlation correlation and fit its peak using a gaussian
-        ccf2 = sgt.fitCCF(leftslice, rightslice, fitfunc='gauss', fitradius=40, makeplot=doPlot)
+        ccf2 = sgt.fitCCF(leftslice, rightslice, fitfunc='gauss', fitradius=fitrad, makeplot=doPlot)
         # The monochromatic tilt is then:
         tilt = np.rad2deg(np.arctan(ccf2 / dx))
     
@@ -389,6 +389,7 @@ image_rot_crop : np.ndarray
 #--------------------------------------------------------------------------------#
 
 def generate_and_rotate_webbpsf( PSF_arg , wanted_tilt
+                  , known_webbpsf_tilt = None
                   , save=False , savepath=None , **kwargs ):
     '''Function that takes a PSF (or an argument to create one)
 and rotates it according to a desired tilt.
@@ -501,10 +502,14 @@ image_rot_crop : np.ndarray
         is_hdu = True
     
 
-################ Get tilt of the padded PSF ##########################  
-    current_tilt = get_webbpsf_tilt( psf , oversamp=kwargs['oversamp'] , mode=kwargs['tilt_measurement_mode']
+################ Get tilt of the padded PSF ##########################
+    if known_webbpsf_tilt != None:
+        current_tilt = known_webbpsf_tilt
+    else:
+        current_tilt = get_webbpsf_tilt( psf , oversamp=kwargs['oversamp'] , mode=kwargs['tilt_measurement_mode']
                                    , spatbox_size=kwargs['spatbox_size'] , specbox_size=kwargs['specbox_size']
                                    , view=kwargs['view'] , doPlot=kwargs['doPlot']
+                                   , fitrad=(kwargs['oversamp'] if kwargs['oversamp'] >= 6 else 6)
                                    )
     
     rotation = wanted_tilt - current_tilt
@@ -563,6 +568,7 @@ image_rot_crop : np.ndarray
 #--------------------------------------------------------------------------------#
     
 def correct_tilt_in_webbpsf_files( fpath , files_endwith='.fits' , savepath=None
+                                 , webbpsf_tilts_file = None
                                  , wanted_tilts_file="SOSS_wavelength_dependent_tilt_extrapolated.txt"
                                  , wanted_os = []
                                  , **kwargs):
@@ -621,6 +627,9 @@ wanted_tilts_file : string
     if savepath == None:
             savepath = fpath
     
+    if webbpsf_tilts_file != None:
+        wpsf_tilts = np.loadtxt(webbpsf_tilts_file)
+    
 ########## Process each file through 'generate_and_rotate_webbpsf' ##########
     t_start = time()
     if len(wanted_os) == 0: os_str = ''
@@ -630,6 +639,7 @@ wanted_tilts_file : string
           + os_str
           + "To optimize viewer experience, we recommend you\n"
           + "sit back and enjoy your favorite tune while this runs\n\n")
+    
     for i,f in enumerate(flist):
         print("Processing:  " + f)
         t_lap = time()
@@ -639,12 +649,26 @@ wanted_tilts_file : string
         # interpolate to find desired tilt from reference file
         wanted_tilt = np.interp( wav , ref_wavs , wanted_tilts )
         
+        # If you already know the PSF's tilt in advance, say it
+        if webbpsf_tilts_file != None:
+            where = np.where( np.logical_and( wav-0.00001 <= wpsf_tilts[:,0]
+                                            , wpsf_tilts[:,0] <= wav+0.00001
+                                            )
+                            )
+            if len(where[0]) != 0:
+                known_webbpsf_tilt = wpsf_tilts[where[0][0],1]
+            else:
+                known_webbpsf_tilt = None
+        else:
+            known_webbpsf_tilt = None
+            
+        
         # Decides on if you desire multiple oversamp for each PSF
         # and generates them
         kwargs['psf_dim'] = psf_dim
         if len(wanted_os) == 0:
             kwargs['oversamp'] = os
-            generate_and_rotate_webbpsf( wav*1e-6 , wanted_tilt
+            generate_and_rotate_webbpsf( wav*1e-6 , wanted_tilt , known_webbpsf_tilt=known_webbpsf_tilt
                                        , save=True , savepath=savepath , **kwargs
                                        )
             print("Runtime = " + get_time_str(time()-t_lap) + "\n")
@@ -652,7 +676,7 @@ wanted_tilts_file : string
             for oh_ess in wanted_os:
                 t_lap2 = time()
                 kwargs['oversamp'] = oh_ess
-                generate_and_rotate_webbpsf( wav*1e-6 , wanted_tilt
+                generate_and_rotate_webbpsf( wav*1e-6 , wanted_tilt , known_webbpsf_tilt=known_webbpsf_tilt
                                            , save=True , savepath=savepath , **kwargs
                                            )
                 print("Runtime (os"+str(oh_ess)+") = " + get_time_str(time()-t_lap2) )
