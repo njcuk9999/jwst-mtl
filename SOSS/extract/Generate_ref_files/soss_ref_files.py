@@ -25,13 +25,12 @@ def init_spec_trace(wave_grid, xtrace, ytrace, tilt, throughput, subarray, filen
     """
 
     # Default filename.
-    filepattern = 'SOSS_ref_trace_table_{}.fits'
+    if filename is None:
+        filepattern = 'SOSS_ref_trace_table_{}.fits'
+        filename = filepattern.format(subarray)
 
     # TODO perform checks on input.
     # TODO enough wavelength range resolution, etc.
-
-    if filename is None:
-        filename = filepattern.format(subarray)
 
     # Create the reference file.
     hdul = list()
@@ -175,85 +174,81 @@ def calc_2d_wave_map(wave_grid, x_dms, y_dms, tilt, oversample=2, padding=10, ma
     return wave_map_2d
 
 
-def init_wave_map():
+def init_wave_map(wave_map_2d, oversample, padding, subarray, filename=None):
     """Generate the NIRISS SOSS 2D wavelength reference file."""
 
-    # Fixed parameters for the 2D wavelength map reference file.
-    padding = 10
-    oversample = 2
-    orders = [1, 2, 3]
-    subarrays = ['FULL', 'SUBSTRIP96', 'SUBSTRIP256']
-    soss_ref_trace_table = 'SOSS_ref_trace_table_FULL.fits'  # Input SOSS reference file.
-    filepattern = 'SOSS_ref_2D_wave_{}.fits'  # Output SOSS reference file.
+    # Default filename.
+    if filename is None:
+        filepattern = 'SOSS_ref_2D_wave_{}.fits'  # Output SOSS reference file.
+        filename = filepattern.format(subarray)
 
-    for subarray in subarrays:
+    # Find the indices in the FULL subarray for the requested subarrays.
+    if subarray == 'FULL':
+        lrow = 0
+        urow = oversample * (2048 + 2 * padding)
+        lcol = 0
+        ucol = oversample * (2048 + 2 * padding)
+    elif subarray == 'SUBSTRIP96':
+        lrow = oversample * (2048 - 246)
+        urow = oversample * (2048 - 150 + 2 * padding)
+        lcol = 0
+        ucol = oversample * (2048 + 2 * padding)
+    elif subarray == 'SUBSTRIP256':
+        lrow = oversample * (2048 - 256)
+        urow = oversample * (2048 + 2 * padding)
+        lcol = 0
+        ucol = oversample * (2048 + 2 * padding)
+    else:
+        raise ValueError('Unknown subarray: {}'.format(subarray))
 
-        if subarray == 'FULL':
-            lrow = 0
-            urow = oversample * (2048 + 2 * padding)
-            lcol = 0
-            ucol = oversample * (2048 + 2 * padding)
-            filename = filepattern.format(subarray)
-        elif subarray == 'SUBSTRIP96':
-            lrow = oversample * (2048 - 246)
-            urow = oversample * (2048 - 150 + 2 * padding)
-            lcol = 0
-            ucol = oversample * (2048 + 2 * padding)
-            filename = filepattern.format(subarray)
-        elif subarray == 'SUBSTRIP256':
-            lrow = oversample * (2048 - 256)
-            urow = oversample * (2048 + 2 * padding)
-            lcol = 0
-            ucol = oversample * (2048 + 2 * padding)
-            filename = filepattern.format(subarray)
-        else:
-            raise ValueError('Unknown subarray: {}'.format(subarray))
+    # Start building the output fits file.
+    hdul = list()
+    hdu = fits.PrimaryHDU()
+    hdu.header['DATE'] = (datetime.now().strftime('%Y-%m-%dT%H:%M:%S'), 'Date this file was created (UTC)')
+    hdu.header['ORIGIN'] = ('SOSS Team MTL', 'Orginazation responsible for creating file')
+    hdu.header['TELESCOP'] = ('JWST', 'Telescope used to acquire the data')
+    hdu.header['INSTRUME'] = ('NIRISS', 'Instrument used to acquire the data')
+    hdu.header['SUBARRAY'] = (subarray, 'Subarray used')
+    hdu.header['FILENAME'] = (filename, 'Name of the file')
+    hdu.header['REFTYPE'] = ('WAVEMAP', 'Reference file type')
+    hdu.header['PEDIGREE'] = ('GROUND', 'The pedigree of the refernce file')
+    hdu.header['DESCRIP'] = ('2D wavelength map', 'Desription of the reference file')
+    hdu.header['AUTHOR'] = ('Geert Jan Talens', 'Author of the reference file')
+    hdu.header['USEAFTER'] = ('2000-01-01T00:00:00', 'Use after date of the reference file')
+    hdu.header['EXP_TYPE'] = ('NIS_SOSS', 'Type of data in the exposure')
+    hdul.append(hdu)
 
-        # Start building the output fits file.
-        hdul = list()
-        hdu = fits.PrimaryHDU()
-        hdu.header['DATE'] = (datetime.now().strftime('%Y-%m-%dT%H:%M:%S'), 'Date this file was created (UTC)')
-        hdu.header['ORIGIN'] = ('SOSS Team MTL', 'Orginazation responsible for creating file')
-        hdu.header['TELESCOP'] = ('JWST', 'Telescope used to acquire the data')
-        hdu.header['INSTRUME'] = ('NIRISS', 'Instrument used to acquire the data')
-        hdu.header['SUBARRAY'] = (subarray, 'Subarray used')
-        hdu.header['FILENAME'] = (filename, 'Name of the file')
-        hdu.header['REFTYPE'] = ('WAVEMAP', 'Reference file type')
-        hdu.header['PEDIGREE'] = ('GROUND', 'The pedigree of the refernce file')
-        hdu.header['DESCRIP'] = ('2D wavelength map', 'Desription of the reference file')
-        hdu.header['AUTHOR'] = ('Geert Jan Talens', 'Author of the reference file')
-        hdu.header['USEAFTER'] = ('2000-01-01T00:00:00', 'Use after date of the reference file')
-        hdu.header['EXP_TYPE'] = ('NIS_SOSS', 'Type of data in the exposure')
-        hdul.append(hdu)
+    # The order 1 wavelength map.
+    hdu = fits.ImageHDU(wave_map_2d[lrow:urow, lcol:ucol, 0].astype('float32'))
+    hdu.header['ORDER'] = (1, 'Spectral order.')
+    hdu.header['OVERSAMP'] = (oversample, 'Pixel oversampling.')
+    hdu.header['PADDING'] = (padding, 'Native pixel-size padding around the image.')
+    hdu.header['EXTNAME'] = 'ORDER'
+    hdu.header['EXTVER'] = 1
+    hdul.append(hdu)
 
-        for m in orders:
+    # The order 2 wavelength map.
+    hdu = fits.ImageHDU(wave_map_2d[lrow:urow, lcol:ucol, 1].astype('float32'))
+    hdu.header['ORDER'] = (2, 'Spectral order.')
+    hdu.header['OVERSAMP'] = (oversample, 'Pixel oversampling.')
+    hdu.header['PADDING'] = (padding, 'Native pixel-size padding around the image.')
+    hdu.header['EXTNAME'] = 'ORDER'
+    hdu.header['EXTVER'] = 2
+    hdul.append(hdu)
 
-            # Read the 1D trace reference file.
-            data = fits.getdata(soss_ref_trace_table, ext=m)
+    # The order 3 wavelength map.
+    hdu = fits.ImageHDU(wave_map_2d[lrow:urow, lcol:ucol, 2].astype('float32'))
+    hdu.header['ORDER'] = (3, 'Spectral order.')
+    hdu.header['OVERSAMP'] = (oversample, 'Pixel oversampling.')
+    hdu.header['PADDING'] = (padding, 'Native pixel-size padding around the image.')
+    hdu.header['EXTNAME'] = 'ORDER'
+    hdu.header['EXTVER'] = 3
+    hdul.append(hdu)
 
-            # Unpack the 1D trace info.
-            wave_grid = data['WAVELENGTH']
-            x_dms = data['X']
-            y_dms = data['Y']
-            tilt = data['TILT']
+    # Create HDU list.
+    hdul = fits.HDUList(hdul)
 
-            # Compute the 2D wavelength map.
-            wave_map_2d = calc_2d_wave_map(wave_grid, x_dms, y_dms, tilt, oversample=oversample, padding=padding)
-
-            # Add the 2D wavelength map to the fits file.
-            hdu = fits.ImageHDU(wave_map_2d[lrow:urow, lcol:ucol].astype('float32'))
-            hdu.header['ORDER'] = (m, 'Spectral order.')
-            hdu.header['OVERSAMP'] = (oversample, 'Pixel oversampling.')
-            hdu.header['PADDING'] = (padding, 'Native pixel-size padding around the image.')
-            hdu.header['EXTNAME'] = 'ORDER'
-            hdu.header['EXTVER'] = m
-            hdul.append(hdu)
-
-        hdul = fits.HDUList(hdul)
-        hdul.writeto(filename, overwrite=True)
-        hdul.writeto(filename + '.gz', overwrite=True)
-
-    return
+    return hdul
 
 
 # ==============================================================================
@@ -261,87 +256,81 @@ def init_wave_map():
 # ==============================================================================
 
 
-def init_spec_profile(profile_file=None):
+def init_spec_profile(profile_2d, oversample, padding, subarray, filename=None):
     """"""
 
-    if profile_file is None:
-        'files/2DTrace.fits'
+    # Default filename.
+    if filename is None:
+        filepattern = 'SOSS_ref_2D_profile_{}.fits'  # Output SOSS reference file.
+        filename = filepattern.format(subarray)
 
-    # Fixed parameters for the 2D wavelength map reference file.
-    padding = 10
-    oversample = 2
-    orders = [1, 2, 3]
-    subarrays = ['FULL', 'SUBSTRIP96', 'SUBSTRIP256']
-    filepattern = 'SOSS_ref_2D_profile_{}.fits'  # Output SOSS reference file.
+    # Find the indices in the FULL subarray for the requested subarrays.
+    if subarray == 'FULL':
+        lrow = 0
+        urow = oversample * (2048 + 2 * padding)
+        lcol = 0
+        ucol = oversample * (2048 + 2 * padding)
+    elif subarray == 'SUBSTRIP96':
+        lrow = oversample * (2048 - 246)
+        urow = oversample * (2048 - 150 + 2 * padding)
+        lcol = 0
+        ucol = oversample * (2048 + 2 * padding)
+    elif subarray == 'SUBSTRIP256':
+        lrow = oversample * (2048 - 256)
+        urow = oversample * (2048 + 2 * padding)
+        lcol = 0
+        ucol = oversample * (2048 + 2 * padding)
+    else:
+        raise ValueError('Unknown subarray: {}'.format(subarray))
 
-    for subarray in subarrays:
+    # Start building the output fits file.
+    hdul = list()
+    hdu = fits.PrimaryHDU()
+    hdu.header['DATE'] = (datetime.now().strftime('%Y-%m-%dT%H:%M:%S'), 'Date this file was created (UTC)')
+    hdu.header['ORIGIN'] = ('SOSS Team MTL', 'Orginazation responsible for creating file')
+    hdu.header['TELESCOP'] = ('JWST', 'Telescope used to acquire the data')
+    hdu.header['INSTRUME'] = ('NIRISS', 'Instrument used to acquire the data')
+    hdu.header['SUBARRAY'] = (subarray, 'Subarray used')
+    hdu.header['FILENAME'] = (filename, 'Name of the file')
+    hdu.header['REFTYPE'] = ('SPECPROFILE', 'Reference file type')
+    hdu.header['PEDIGREE'] = ('GROUND', 'The pedigree of the refernce file')
+    hdu.header['DESCRIP'] = ('2D trace profile', 'Desription of the reference file')
+    hdu.header['AUTHOR'] = ('Loic Albert', 'Author of the reference file')
+    hdu.header['USEAFTER'] = ('2000-01-01T00:00:00', 'Use after date of the reference file')
+    hdu.header['EXP_TYPE'] = ('NIS_SOSS', 'Type of data in the exposure')
+    hdul.append(hdu)
 
-        if subarray == 'FULL':
-            lrow = 0
-            urow = oversample * (2048 + 2 * padding)
-            lcol = 0
-            ucol = oversample * (2048 + 2 * padding)
-            filename = filepattern.format(subarray)
-        elif subarray == 'SUBSTRIP96':
-            lrow = oversample * (2048 - 246)
-            urow = oversample * (2048 - 150 + 2 * padding)
-            lcol = 0
-            ucol = oversample * (2048 + 2 * padding)
-            filename = filepattern.format(subarray)
-        elif subarray == 'SUBSTRIP256':
-            lrow = oversample * (2048 - 256)
-            urow = oversample * (2048 + 2 * padding)
-            lcol = 0
-            ucol = oversample * (2048 + 2 * padding)
-            filename = filepattern.format(subarray)
-        else:
-            raise ValueError('Unknown subarray: {}'.format(subarray))
+    # The order 1 profile.
+    hdu = fits.ImageHDU(profile_2d[lrow:urow, lcol:ucol, 0].astype('float32'))
+    hdu.header['ORDER'] = (1, 'Spectral order.')
+    hdu.header['OVERSAMP'] = (oversample, 'Pixel oversampling.')
+    hdu.header['PADDING'] = (padding, 'Native pixel-size padding around the image.')
+    hdu.header['EXTNAME'] = 'ORDER'
+    hdu.header['EXTVER'] = 1
+    hdul.append(hdu)
 
-        # Start building the output fits file.
-        hdul = list()
-        hdu = fits.PrimaryHDU()
-        hdu.header['DATE'] = (datetime.now().strftime('%Y-%m-%dT%H:%M:%S'), 'Date this file was created (UTC)')
-        hdu.header['ORIGIN'] = ('SOSS Team MTL', 'Orginazation responsible for creating file')
-        hdu.header['TELESCOP'] = ('JWST', 'Telescope used to acquire the data')
-        hdu.header['INSTRUME'] = ('NIRISS', 'Instrument used to acquire the data')
-        hdu.header['SUBARRAY'] = (subarray, 'Subarray used')
-        hdu.header['FILENAME'] = (filename, 'Name of the file')
-        hdu.header['REFTYPE'] = ('SPECPROFILE', 'Reference file type')
-        hdu.header['PEDIGREE'] = ('GROUND', 'The pedigree of the refernce file')
-        hdu.header['DESCRIP'] = ('2D trace profile', 'Desription of the reference file')
-        hdu.header['AUTHOR'] = ('Loic Albert', 'Author of the reference file')
-        hdu.header['USEAFTER'] = ('2000-01-01T00:00:00', 'Use after date of the reference file')
-        hdu.header['EXP_TYPE'] = ('NIS_SOSS', 'Type of data in the exposure')
-        hdul.append(hdu)
+    # The order 2 profile.
+    hdu = fits.ImageHDU(profile_2d[lrow:urow, lcol:ucol, 1].astype('float32'))
+    hdu.header['ORDER'] = (2, 'Spectral order.')
+    hdu.header['OVERSAMP'] = (oversample, 'Pixel oversampling.')
+    hdu.header['PADDING'] = (padding, 'Native pixel-size padding around the image.')
+    hdu.header['EXTNAME'] = 'ORDER'
+    hdu.header['EXTVER'] = 2
+    hdul.append(hdu)
 
-        for m in orders:
+    # The order 3 profile.
+    hdu = fits.ImageHDU(profile_2d[lrow:urow, lcol:ucol, 2].astype('float32'))
+    hdu.header['ORDER'] = (3, 'Spectral order.')
+    hdu.header['OVERSAMP'] = (oversample, 'Pixel oversampling.')
+    hdu.header['PADDING'] = (padding, 'Native pixel-size padding around the image.')
+    hdu.header['EXTNAME'] = 'ORDER'
+    hdu.header['EXTVER'] = 3
+    hdul.append(hdu)
 
-            # TODO Read file provided by Loïc, replace with function that generates this info in the future.
-            profile_2d = fits.getdata(profile_file, ext=0)
-            profile_2d = profile_2d[m - 1]
+    # Create HDU list.
+    hdul = fits.HDUList(hdul)
 
-            nrows, ncols = profile_2d.shape
-            dimy = oversample*(2048 + 2*padding)
-            dimx = oversample*(2048 + 2*padding)
-
-            tmp = np.full((dimy, dimx), fill_value=np.nan)
-            tmp[-nrows:] = profile_2d
-            profile_2d = tmp
-
-            # Add the 2D wavelength map to the fits file.
-            hdu = fits.ImageHDU(profile_2d[lrow:urow, lcol:ucol].astype('float32'))
-            hdu.header['ORDER'] = (m, 'Spectral order.')
-            hdu.header['OVERSAMP'] = (oversample, 'Pixel oversampling.')
-            hdu.header['PADDING'] = (padding, 'Native pixel-size padding around the image.')
-            hdu.header['EXTNAME'] = 'ORDER'
-            hdu.header['EXTVER'] = m
-            hdul.append(hdu)
-
-        hdul = fits.HDUList(hdul)
-        hdul.writeto(filename, overwrite=True)
-        hdul.writeto(filename + '.gz', overwrite=True)
-
-    return
+    return hdul
 
 
 # ==============================================================================
@@ -393,7 +382,7 @@ def init_spec_kernel(wavelengths, kernels, specos, halfwidth,
     hdu.header['INDCENTR'] = (specos*halfwidth + 1, 'Index of the kernel centroid.')
     hdul.append(hdu)
 
-    # Write the file to disk.
+    # Create HDU list.
     hdul = fits.HDUList(hdul)
 
     return hdul
