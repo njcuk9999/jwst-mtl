@@ -83,7 +83,7 @@ print(simuPars.pmodeltype[0])
 
 # Here one can manually edit the parameters but we encourage rather to change
 # the simulation parameter file directly.
-simuPars.noversample = 2  #example of changing a model parameter
+simuPars.noversample = 6  #example of changing a model parameter
 #simuPars.xout = 4000      #spectral axis
 #simuPars.yout = 300       #spatial (cross-dispersed axis)
 #simuPars.modelfile = 'CONSTANT_FNU'

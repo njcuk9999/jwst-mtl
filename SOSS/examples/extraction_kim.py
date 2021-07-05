@@ -87,11 +87,11 @@ simuPars = spgen.read_pars(pathPars.simulationparamfile, simuPars) #read in para
 m_order = 1  # For now, only option is 1.
 
 # CHOOSE OVERSAMPLE  !!!
-simuPars.noversample = 2
+simuPars.noversample = 8
 os = simuPars.noversample
 
 # SAVE FIGS? !!!
-save = False
+save = True
 #####################################
 
 

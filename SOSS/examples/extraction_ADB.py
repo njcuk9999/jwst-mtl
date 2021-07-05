@@ -10,7 +10,7 @@ from scipy.interpolate import interp1d
 from sys import path
 from Fake_data.simu_utils import load_simu
 
-# Imports from the extraction.
+# Imports from the extraction
 from extract.overlap import TrpzOverlap
 from extract.throughput import ThroughputSOSS
 from extract.convolution import WebbKer
@@ -59,14 +59,14 @@ simuPars = spgen.read_pars(pathPars.simulationparamfile, simuPars) #read in para
 m_order = 1  # For now, only option is 1.
 
 # CHOOSE OVERSAMPLE  !!!
-simuPars.noversample = 10
+simuPars.noversample = 8
 os = simuPars.noversample
 
 # CHOOSE ORDER(S) TO EXTRACT (ADB)  !!!
 only_order_1 = True
 
 # SAVE FIGS? !!!
-save = False
+save = True
 #####################################
 
 # Position of trace for box extraction
@@ -112,7 +112,7 @@ spat_pros_adb.append(fits.getdata("/home/kmorel/ongenesis/github/jwst-mtl/SOSS/e
 spat = fits.getdata("/genesis/jwst/userland-soss/loic_review/refs/map_profile_2D_native.fits").squeeze()
 spat_pros_la = spat[:2, -256:]   # Consider only order 1 & 2 and set to same size as data
 # Shift Loic's trace image to fit with the simulation (data)
-new_spat_la = np.zeros_like(spat_pros_la)
+new_spat_la = np.zeros_like(spat_pros_la, dtype=float)
 new_spat_la[:, :162] = spat_pros_la[:, 94:]
 hdu = fits.PrimaryHDU(new_spat_la)
 hdu.writeto(WORKING_DIR + "new_spat_pros.fits", overwrite = True)
@@ -185,13 +185,13 @@ else:
     delta_noisy = noisy_rateints[2].data[0]   # Error [adu/s]
     dq = noisy_rateints[3].data[0]            # Data quality
     i = np.where(dq %2 != 0)   # Odd values of dq = DO NOT USE these pixels
-    data_noisy[i[0], i[1]] = 0
-    delta_noisy[i[0], i[1]] = 0
+    data_noisy[i[0], i[1]] = 0.
+    delta_noisy[i[0], i[1]] = 0.
 
 # Images of traces
 plt.figure()
 plt.imshow(data_ref, origin="lower")   # Image of noisy traces
-#plt.plot(x_no_bin, y_no_bin, color="r", lw=1, label="Order 1 trace's position")   # Middle position of order 1 trace
+plt.plot(x_no_bin, y_no_bin, color="r", lw=1, ls='--', label="Order 1 trace's position")   # Middle position of order 1 trace
 plt.colorbar(label="[adu/s]", orientation='horizontal')
 plt.title("clear_trace_000000.fits, os={}".format(os))
 plt.show()
@@ -208,8 +208,8 @@ plt.show()
 # BOX EXTRACTIONS
 # EXTRACTED FLUX OF CLEAR TRACE(S)
 # Reference thin trace:
-fbox_ref_adu = box_kim.flambda_adu(x_no_bin, data_ref, y_no_bin, radius_pixel=10)   # Not binned [adu/s]
-fbox_ref_adu_bin = box_kim.flambda_adu(x, data_ref_bin, y, radius_pixel=10)         # Binned [adu/s]
+fbox_ref_adu = box_kim.flambda_adu(x_no_bin, data_ref, y_no_bin, radius_pixel=5)   # Not binned [adu/s]
+fbox_ref_adu_bin = box_kim.flambda_adu(x, data_ref_bin, y, radius_pixel=5)         # Binned [adu/s]
 
 # Convolved trace(s), not binned
 fbox_conv_inf_adu = box_kim.flambda_inf_radi_adu(data_conv)           # Infinite radius [adu/s] (only if order 1 only)
@@ -235,6 +235,11 @@ plt.ylabel(r"Extracted flux [adu/s]")
 plt.xlabel(r"Wavelength [$\mu$m]")
 plt.title("Extracted flux, reference trace")
 plt.legend()
+if save is True:
+    if only_order_1 is True:
+        plt.savefig(WORKING_DIR + "oversampling_{}/extracted_flux_ref_trace_order1.png".format(os))
+    else:
+        plt.savefig(WORKING_DIR + "oversampling_{}/extracted_flux_ref_trace.png".format(os))
 plt.show()
 
 plt.figure()
@@ -242,7 +247,13 @@ plt.plot(w_no_bin, fbox_conv_adu, lw=2, color='DeepPink', label='Convolved, not 
 plt.plot(w_no_bin, fbox_ref_adu, lw=2, color='Green', label='Reference trace, not binned')
 plt.ylabel(r"Extracted flux [adu/s]")
 plt.xlabel(r"Wavelength [$\mu$m]")
+plt.title('os = {}'.format(os))
 plt.legend()
+if save is True:
+    if only_order_1 is True:
+        plt.savefig(WORKING_DIR + "oversampling_{}/extracted_flux_ref_vs_conv_order1.png".format(os))
+    else:
+        plt.savefig(WORKING_DIR + "oversampling_{}/extracted_flux_ref_vs_conv.png".format(os))
 plt.show()
 
 
@@ -250,7 +261,7 @@ plt.show()
 ######################################
 # CHOOSE noiseless or noisy !!!
 noisy = False
-# True doesn't work
+# TODO : True doesn't work
 ######################################
 
 if noisy is False:
@@ -356,7 +367,7 @@ if only_order_1 is True:
     # Because w and lam_bin_list[0] are not the same
     f = interp1d(lam_bin_list[0], ftik_bin_list[0], fill_value='extrapolate')
     ftik_bin_interp = f(w)  # Extracted flux by Tikhonov interpolated on my wl grid
-    ax.plot(w, fbox_conv_inf_adu_bin, lw=2, label='Box extraction', color='DeepPink')
+    ax.plot(w, fbox_conv_inf_adu_bin, lw=2, label='Box extraction, radius = inf', color='DeepPink')
     ax.plot(lam_bin_list[0], ftik_bin_list[0], lw=2, ls='--', label="Tikhonov extraction", color='Blue')
 
     ax.set_ylabel("Extracted signal [counts (adu/s)]")
@@ -372,12 +383,12 @@ else:
             # Because w and lam_bin_list[0] are not the same
             f = interp1d(lam_bin_list[i_ord], ftik_bin_list[i_ord], fill_value='extrapolate')
             ftik_bin_interp = f(w)  # Extracted flux by Tikhonov interpolated on my wl grid
-            #if noisy is False:
-            ax[i_ord].plot(w, fbox_conv_adu_bin, lw=2, label='Box extraction, order {}'.format(label),
+            if noisy is False:
+                ax[i_ord].plot(w, fbox_conv_adu_bin, lw=2, label='Box extraction, order {}'.format(label),
                                color='DeepPink')
-            #elif noisy is True:
-             #   ax[i_ord].plot(w, fbox_noisy_adu, lw=2, label='Box extraction, order {}'.format(label),
-              #                 color='DeepPink')
+            elif noisy is True:
+                ax[i_ord].plot(w, fbox_noisy_adu, lw=2, label='Box extraction, order {}'.format(label),
+                               color='DeepPink')
 
         ax[i_ord].plot(lam_bin_list[i_ord], ftik_bin_list[i_ord], lw=2, label='Tikhonov, order {}'.format(label),
                        color='Blue')
@@ -443,9 +454,9 @@ plt.ylabel("Relative difference [ppm]")
 plt.title("Relative difference, Tikhonov vs box extraction, {}".format(title_noise))
 if save is True:
     if only_order_1 is True:
-        plt.savefig(WORKING_DIR + 'oversampling_{}/relat_diff_tik_box_order1.png'.format(os))
+        plt.savefig(WORKING_DIR + 'oversampling_{}/relat_diff_box_tik_order1.png'.format(os))
     else:
-        plt.savefig(WORKING_DIR + 'oversampling_{}/relat_diff_tik_box.png'.format(os))
+        plt.savefig(WORKING_DIR + 'oversampling_{}/relat_diff_box_tik.png'.format(os))
 plt.legend()
 plt.show()
 

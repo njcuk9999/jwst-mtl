@@ -21,7 +21,7 @@ def dispersion(wl):
     wl: Wavelengths array [microns]
     return: Dispersion [microns]
     """
-    dw = np.zeros_like(wl)
+    dw = np.zeros_like(wl, dtype=float)
     for i in range(len(wl)):
         if i == 0:
             dw[i] = wl[0] - wl[1]   #The wl array has to be reversed
@@ -40,7 +40,7 @@ def f_lambda(pixels, im_test, wl, y_trace, radius_pixel=30, area=area, gain=gain
     gain: Gain [e⁻/adu]
     return: Extracted flux [J/s/m²/micron]
     """
-    flux = np.zeros_like(pixels)  # Array for extracted spectrum
+    flux = np.zeros_like(pixels, dtype=float)  # Array for extracted spectrum
     for x_i in pixels:
         x_i = int(x_i)
         y_i = y_trace[x_i]
@@ -63,7 +63,7 @@ def flambda_adu(pixels, im_test, y_trace, radius_pixel=30):
     radius_pixel: Radius of extraction box. Default is 30. [pixels]
     return: Extracted flux [adu/s/colonne]
     """
-    flux = np.zeros_like(pixels)  # Array for extracted spectrum
+    flux = np.zeros_like(pixels, dtype=float)  # Array for extracted spectrum
     for x_i in pixels:
         x_i = int(x_i)
         y_i = y_trace[x_i]
@@ -122,7 +122,7 @@ def sigma_flambda(pixels, error, wl, y_trace, radius_pixel=30, area=area, gain=g
     """
     variance = error ** 2  # Variance of each pixel [adu²/s²]
 
-    vari = np.zeros_like(pixels)  # Array for variances
+    vari = np.zeros_like(pixels, dtype=float)  # Array for variances
     for x_i in pixels:
         x_i = int(x_i)
         y_i = y_trace[x_i]

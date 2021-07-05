@@ -24,13 +24,13 @@ simuPars = spgen.read_pars(pathPars.simulationparamfile, simuPars)   # Read in p
 
 ###############################
 # CHOOSE OVERSAMPLE  !!!
-simuPars.noversample = 10
+simuPars.noversample = 8
 ###############################
 
 
 clear_00 = fits.open(WORKING_DIR + "tmp/oversampling_{}/clear_000000.fits".format(simuPars.noversample))
-clear = np.empty(shape=(3, 256, 2048))
-map_clear = np.empty_like(clear)
+clear = np.empty(shape=(3, 256, 2048), dtype=float)
+map_clear = np.empty_like(clear, dtype=float)
 
 for i in range(len(clear_00[0].data)):
     if simuPars.noversample == 1:
