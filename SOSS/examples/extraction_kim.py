@@ -87,7 +87,7 @@ simuPars = spgen.read_pars(pathPars.simulationparamfile, simuPars) #read in para
 m_order = 1  # For now, only option is 1.
 
 # CHOOSE OVERSAMPLE  !!!
-simuPars.noversample = 8
+simuPars.noversample = 4
 os = simuPars.noversample
 
 # SAVE FIGS? !!!
@@ -116,11 +116,12 @@ padd = 10
 padd_os = padd * os   # Because of x_padding and y_padding
 noisy_rateints = fits.open(WORKING_DIR + "oversampling_{}/test_clear_noisy_rateints.fits".format(os))
 clear_00 = fits.open(WORKING_DIR + "tmp/oversampling_{}/clear_000000.fits".format(os))
+clear_tr_00 = fits.open(WORKING_DIR + "tmp/oversampling_{}/clear_trace_000000.fits".format(os))
 
 clear_conv = clear_00[0].data[:, padd_os:-padd_os, padd_os:-padd_os]    # Convolved traces, not binned
 if os != 1:
     # Bin to pixel native
-    clear_i = soss.rebin(clear_00[0].data, os)
+    clear_i = soss.rebin(clear_00[0].data, os, flux_method='sum')
     clear = clear_i[:, padd:-padd, padd:-padd]
 else:
     clear = np.copy(clear_conv)

@@ -24,26 +24,28 @@ simuPars = spgen.read_pars(pathPars.simulationparamfile, simuPars)   # Read in p
 
 ###############################
 # CHOOSE OVERSAMPLE  !!!
-simuPars.noversample = 8
+simuPars.noversample = 5
+os = simuPars.noversample
 ###############################
 
 
-clear_00 = fits.open(WORKING_DIR + "tmp/oversampling_{}/clear_000000.fits".format(simuPars.noversample))
+clear_00 = fits.open(WORKING_DIR + "tmp/oversampling_{}/clear_000000.fits".format(os))
 clear = np.empty(shape=(3, 256, 2048), dtype=float)
 map_clear = np.empty_like(clear, dtype=float)
 
+padd = 10   # Because of x_padding and y_padding
+
 for i in range(len(clear_00[0].data)):
-    if simuPars.noversample == 1:
-        clear[i] = clear_00[0].data[i, 10:-10, 10:-10]  # Because of x_padding and y_padding
+    if os == 1:
+        clear[i] = clear_00[0].data[i, padd:-padd, padd:-padd]
     else:
-        clear_i = soss.rebin(clear_00[0].data[i], simuPars.noversample)
-        clear[i] = clear_i[10:-10, 10:-10]   # Because of x_padding and y_padding
+        clear_i = soss.rebin(clear_00[0].data[i], os, flux_method='sum')
+        clear[i] = clear_i[padd:-padd, padd:-padd]
     sum_col = np.sum(clear[i], axis=0)
     map_clear[i] = clear[i] / sum_col
 
 map_clear[1, :, 1790:] = 0  # Problem with end of order 2 trace
 
-
 # Save map_profile
 hdu = fits.PrimaryHDU(map_clear)
-hdu.writeto(WORKING_DIR + "new_map_profile_clear_{}.fits".format(simuPars.noversample), overwrite=True)
+hdu.writeto(WORKING_DIR + "new_map_profile_clear_{}.fits".format(os), overwrite=True)

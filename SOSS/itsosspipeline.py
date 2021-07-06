@@ -1096,8 +1096,8 @@ def rebin(image, noversampling, flux_method='mean'):
             if flux_method == 'sum':
                 cube[i,:,:] = image2D.reshape(shape).sum(-1).sum(1)
             else:
-                #cube[i,:,:] = image2D.reshape(shape).mean(-1).mean(1)
-                cube[i, :, :] = image2D.reshape(shape).sum(1).mean(-1)
+                cube[i,:,:] = image2D.reshape(shape).mean(-1).mean(1)
+                #cube[i, :, :] = image2D.reshape(shape).sum(1).mean(-1)
         return cube
     else:
         print('rebin accepts 2D or 3D arrays, nothing else!')

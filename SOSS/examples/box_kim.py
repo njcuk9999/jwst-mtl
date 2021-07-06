@@ -1,3 +1,5 @@
+import sys
+
 import numpy as np
 import scipy.constants as sc_cst
 import SOSS.trace.tracepol as tp
@@ -73,6 +75,12 @@ def flambda_adu(pixels, im_test, y_trace, radius_pixel=30):
             im_test[int(first) + 1:int(last) + 1, x_i]) + im_test[int(last) + 1, x_i] * (last % int(last))
 
     return flux
+
+
+#def flux_no_bin(pixels, im_test, y_trace, radius_pixel=30):
+# TODO : Ask Loic parce que là pour comparer, je dois faire un genre de bin sur la trace pour calculer le flux? ce qui
+# revient à la même affaire
+
 
 def flambda_elec(pixels, im_test, y_trace, radius_pixel=30, gain=gain):
     """
@@ -150,4 +158,31 @@ def readtrace(os):  # From Loic
     x, w = x[ind], w[ind]
     wavelength = np.interp(x_index, x, w)
     y_index = np.interp(x_index, x, y)
+
     return x_index, np.flip(y_index), wavelength
+"""
+def rebin(image, noversampling, flux_method='mean'):
+    
+    Takes an oversampled image and bins it down to native pixel size, taking
+    the mean of the pixel values.
+    :param arr:
+    :param noversampling:
+    :return:
+    
+    ndim = image.ndim
+
+    dimz, dimy, dimx = np.shape(image)
+    newdimy, newdimx = int(dimy/noversampling), int(dimx/noversampling)
+    cube = np.zeros((dimz, newdimy, newdimx))
+    for i in range(dimz):
+        image2D = image[i,:,:]
+        shape = (newdimy, image2D.shape[0] // newdimy,
+                 newdimx, image2D.shape[1] // newdimx)
+        if flux_method == 'sum':
+            cube[i]
+            cube[i,:,:] = image2D.reshape(shape).sum(-1).sum(1)
+        else:
+            cube[i,:,:] = image2D.reshape(shape).mean(-1).mean(1)
+            #cube[i, :, :] = image2D.reshape(shape).sum(1).mean(-1)
+        return cube
+"""

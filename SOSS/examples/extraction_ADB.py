@@ -59,28 +59,31 @@ simuPars = spgen.read_pars(pathPars.simulationparamfile, simuPars) #read in para
 m_order = 1  # For now, only option is 1.
 
 # CHOOSE OVERSAMPLE  !!!
-simuPars.noversample = 8
+simuPars.noversample = 2
 os = simuPars.noversample
 
 # CHOOSE ORDER(S) TO EXTRACT (ADB)  !!!
 only_order_1 = True
 
 # SAVE FIGS? !!!
-save = True
+save = False
 #####################################
 
 # Position of trace for box extraction
 trace_file = "/genesis/jwst/jwst-ref-soss/trace_model/NIRISS_GR700_trace_extended.csv"
-x = np.arange(2048)    # Array of pixels
-x_no_bin = np.arange(2048 * os)    # Array of pixels
 pars = tp.get_tracepars(trace_file)   # Gives the middle position of order 1 trace
+x = np.arange(2048)    # Array of pixels
 w, tmp = tp.specpix_to_wavelength(x, pars, m=1)   # Returns wavelength for each x, order 1
-w_no_bin, tmp_no_bin = tp.specpix_to_wavelength(x_no_bin, pars, m=1, oversample=os)
-xnew, y, mask = tp.wavelength_to_pix(w, pars, m=1)   # Converts wavelenghths to pixel coordinates
-xnew_no_bin, y_no_bin, mask_no_bin = tp.wavelength_to_pix(w_no_bin, pars, m=1, oversample=os)
+xnew, y, mask = tp.wavelength_to_pix(w, pars, m=1)   # Converts wavelenghths to pixel coordinates  NOT GOOD
+
+x_os = np.arange(2048 * os)    # Array of pixels with os
+w_os, tmp_os = tp.specpix_to_wavelength(x_os, pars, m=1, oversample=os)  # Returns wavelength for each x, order 1, os
+xnew_os, y_os, mask_os = tp.wavelength_to_pix(w_os , pars, m=1, oversample=os)  # Converts wavelenghths to pixel coordinates, os  NOT GOOD
+
 #x, y, w = box_kim.readtrace(os=1)
-#x_no_bin, y_no_bin, w_no_bin = box_kim.readtrace(os=os)
+#x_os, y_os, w_os = box_kim.readtrace(os=os)
 # TODO: Problem with .readtrace
+
 
 # Read relevant files
 # List of orders to consider in the extraction
@@ -103,11 +106,11 @@ wave_maps_la = wave[:2]   # Consider only order 1 & 2
 
 #### Spatial profiles ####
 # _adb : Antoine's files
-spat_pros_adb = []
-spat_pros_adb.append(fits.getdata("/home/kmorel/ongenesis/github/jwst-mtl/SOSS/extract/Ref_files/"
-                                  "spat_profile_m1.fits").squeeze())
-spat_pros_adb.append(fits.getdata("/home/kmorel/ongenesis/github/jwst-mtl/SOSS/extract/Ref_files/"
-                                  "spat_profile_m2.fits").squeeze())
+#spat_pros_adb = []
+#spat_pros_adb.append(fits.getdata("/home/kmorel/ongenesis/github/jwst-mtl/SOSS/extract/Ref_files/"
+ #                                 "spat_profile_m1.fits").squeeze())
+#spat_pros_adb.append(fits.getdata("/home/kmorel/ongenesis/github/jwst-mtl/SOSS/extract/Ref_files/"
+  #                                "spat_profile_m2.fits").squeeze())
 # _la : Loic's files
 spat = fits.getdata("/genesis/jwst/userland-soss/loic_review/refs/map_profile_2D_native.fits").squeeze()
 spat_pros_la = spat[:2, -256:]   # Consider only order 1 & 2 and set to same size as data
@@ -119,6 +122,7 @@ hdu.writeto(WORKING_DIR + "new_spat_pros.fits", overwrite = True)
 # _clear : map created with clear000000.fits directly
 new_spat = fits.getdata(WORKING_DIR + "new_map_profile_clear_{}.fits".format(os))
 spat_pros_clear = new_spat[:2]
+
 
 # CHOOSE between Loic's and Antoine's maps
 wave_maps = wave_maps_la  # or wave_maps_adb
@@ -141,7 +145,7 @@ ker_list = [WebbKer(wv_map) for wv_map in wave_maps]
 # Put all inputs from reference files in a list
 ref_files_args = [spat_pros, wave_maps, thrpt_list, ker_list]
 
-# Load simulations
+# LOAD SIMULATIONS
 path.append("Fake_data")
 
 # ADB
@@ -152,15 +156,15 @@ noisy_rateints = fits.open(WORKING_DIR + "oversampling_{}/test_clear_noisy_ratei
 clear_00 = fits.open(WORKING_DIR + "tmp/oversampling_{}/clear_000000.fits".format(os))
 clear_tr_00 = fits.open(WORKING_DIR + "tmp/oversampling_{}/clear_trace_000000.fits".format(os))
 
-padd = 10
-padd_os = padd * os   # Because of x_padding and y_padding
+padd = 10   # Because of x_padding and y_padding
+padd_os = padd * os
 clear_tr_ref = clear_tr_00[0].data[:2, padd_os:-padd_os, padd_os:-padd_os]   # Reference thin trace, not binned
 clear_conv = clear_00[0].data[:2, padd_os:-padd_os, padd_os:-padd_os]        # Convolved traces, not binned
 if os != 1:
     # Bin to pixel native
-    ref_i = soss.rebin(clear_tr_00[0].data, os)
+    ref_i = soss.rebin(clear_tr_00[0].data, os, flux_method='sum')
     clear_ref_bin = ref_i[:2, padd:-padd, padd:-padd]   # Reference thin trace, binned
-    clear_i = soss.rebin(clear_00[0].data, os)
+    clear_i = soss.rebin(clear_00[0].data, os, flux_method='sum')
     clear_bin = clear_i[:2, padd:-padd, padd:-padd]     # Convolved traces, binned
 else:  # Os = 1
     clear_ref_bin = np.copy(clear_tr_ref)
@@ -188,19 +192,20 @@ else:
     data_noisy[i[0], i[1]] = 0.
     delta_noisy[i[0], i[1]] = 0.
 
+
 # Images of traces
 plt.figure()
 plt.imshow(data_ref, origin="lower")   # Image of noisy traces
-plt.plot(x_no_bin, y_no_bin, color="r", lw=1, ls='--', label="Order 1 trace's position")   # Middle position of order 1 trace
+plt.plot(x_os, y_os, color="r", lw=1, ls='--', label="Order 1 trace's position")   # Middle position of order 1 trace
 plt.colorbar(label="[adu/s]", orientation='horizontal')
 plt.title("clear_trace_000000.fits, os={}".format(os))
 plt.show()
 
 plt.figure()
-plt.imshow(data_conv, vmin=0, origin="lower")
-plt.plot(x_no_bin, y_no_bin, color="Lime", lw=1, label="Order 1 trace's position")   # Middle position of order 1 trace
+plt.imshow(data_ref_bin, vmin=0, origin="lower")
+plt.plot(x, y, color="Lime", lw=1, label="Order 1 trace's position")   # Middle position of order 1 trace
 plt.colorbar(label="[adu/s]", orientation='horizontal')
-plt.title("clear_000000.fits")
+plt.title("clear_trace_000000.fits, binned")
 plt.legend()
 plt.show()
 
@@ -208,12 +213,12 @@ plt.show()
 # BOX EXTRACTIONS
 # EXTRACTED FLUX OF CLEAR TRACE(S)
 # Reference thin trace:
-fbox_ref_adu = box_kim.flambda_adu(x_no_bin, data_ref, y_no_bin, radius_pixel=5)   # Not binned [adu/s]
+fbox_ref_adu = box_kim.flambda_adu(x_os, data_ref, y_os, radius_pixel=5)   # Not binned [adu/s]
 fbox_ref_adu_bin = box_kim.flambda_adu(x, data_ref_bin, y, radius_pixel=5)         # Binned [adu/s]
 
 # Convolved trace(s), not binned
 fbox_conv_inf_adu = box_kim.flambda_inf_radi_adu(data_conv)           # Infinite radius [adu/s] (only if order 1 only)
-fbox_conv_adu = box_kim.flambda_adu(x_no_bin, data_conv, y_no_bin, radius_pixel=radius_pixel * os)  # [adu/s]
+fbox_conv_adu = box_kim.flambda_adu(x_os, data_conv, y_os, radius_pixel=radius_pixel * os)  # [adu/s]
 
 # Convolved trace(s), binned
 fbox_conv_inf_adu_bin = box_kim.flambda_inf_radi_adu(data_conv_bin)   # Infinite radius [adu/s] (only if order 1 only)
@@ -229,11 +234,11 @@ if only_order_1 is False:
 
 
 plt.figure()
-plt.plot(w_no_bin, fbox_ref_adu, lw=2, color='MediumVioletRed', label='Not binned, os={}'.format(os))
-plt.plot(w, fbox_ref_adu_bin, lw=2, color='Green', label='Binned')
+plt.scatter(np.linspace(0, 2048, len(x_os)), fbox_ref_adu, s=4, color='MediumVioletRed', label='Not binned, os={}'.format(os))
+plt.scatter(x, fbox_ref_adu_bin, s=4, color='Green', label='Binned')
 plt.ylabel(r"Extracted flux [adu/s]")
-plt.xlabel(r"Wavelength [$\mu$m]")
-plt.title("Extracted flux, reference trace")
+plt.xlabel(r"x")
+plt.title("Extracted flux, reference thin trace")
 plt.legend()
 if save is True:
     if only_order_1 is True:
@@ -242,9 +247,11 @@ if save is True:
         plt.savefig(WORKING_DIR + "oversampling_{}/extracted_flux_ref_trace.png".format(os))
 plt.show()
 
+sys.exit()
+
 plt.figure()
-plt.plot(w_no_bin, fbox_conv_adu, lw=2, color='DeepPink', label='Convolved, not binned')
-plt.plot(w_no_bin, fbox_ref_adu, lw=2, color='Green', label='Reference trace, not binned')
+plt.plot(w_os, fbox_conv_adu, lw=2, color='DeepPink', label='Convolved, not binned')
+plt.plot(w_os, fbox_ref_adu, lw=2, color='Green', label='Reference thin trace, not binned')
 plt.ylabel(r"Extracted flux [adu/s]")
 plt.xlabel(r"Wavelength [$\mu$m]")
 plt.title('os = {}'.format(os))
