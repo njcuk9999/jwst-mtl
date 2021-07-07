@@ -1695,7 +1695,7 @@ class Tikhonov:
 
         # Include solution estimate if given
         if estimate is not None:
-            result += gamma_2.dot(estimate[index].T)
+            raise ValueError('`estimate` option is not implemented yet.')
 
         # Solve
         return spsolve(matrix, result)
