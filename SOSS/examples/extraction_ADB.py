@@ -72,26 +72,28 @@ save = False
 # Position of trace for box extraction
 trace_file = "/genesis/jwst/jwst-ref-soss/trace_model/NIRISS_GR700_trace_extended.csv"
 pars = tp.get_tracepars(trace_file)   # Gives the middle position of order 1 trace
-x = np.arange(2048)    # Array of pixels
-w, tmp = tp.specpix_to_wavelength(x, pars, m=1)   # Returns wavelength for each x, order 1
-xnew, y, mask = tp.wavelength_to_pix(w, pars, m=1)   # Converts wavelenghths to pixel coordinates  NOT GOOD
+#x = np.arange(2048)    # Array of pixels
+#w, tmp = tp.specpix_to_wavelength(x, pars, m=1)   # Returns wavelength for each x, order 1
+#xnew, y, mask = tp.wavelength_to_pix(w, pars, m=1)   # Converts wavelenghths to pixel coordinates  NOT GOOD
 
-x_os = np.arange(2048 * os)    # Array of pixels with os
-w_os, tmp_os = tp.specpix_to_wavelength(x_os, pars, m=1, oversample=os)  # Returns wavelength for each x, order 1, os
+#x_os = np.arange(2048 * os)    # Array of pixels with os
+#w_os, tmp_os = tp.specpix_to_wavelength(x_os, pars, m=1, oversample=os)  # Returns wavelength for each x, order 1, os
+#xnew_os, y_os, mask_os = tp.wavelength_to_pix(w_os , pars, m=1, oversample=os)  # Converts wavelenghths to pixel coordinates, os  NOT GOOD
+
+x, y_not, w = box_kim.readtrace(os=1)   # TODO: Problem with .readtrace
+x_os, y_os_not, w_os = box_kim.readtrace(os=os)
+
+xnew, y, mask = tp.wavelength_to_pix(w, pars, m=1)   # Converts wavelenghths to pixel coordinates  NOT GOOD
 xnew_os, y_os, mask_os = tp.wavelength_to_pix(w_os , pars, m=1, oversample=os)  # Converts wavelenghths to pixel coordinates, os  NOT GOOD
 
-#x, y, w = box_kim.readtrace(os=1)
-#x_os, y_os, w_os = box_kim.readtrace(os=os)
-# TODO: Problem with .readtrace
 
-
-# Read relevant files
 # List of orders to consider in the extraction
 if only_order_1 is True:
     order_list = [1]
 else:
     order_list = [1, 2]
 
+# Read relevant files
 #### Wavelength solution ####
 # _adb : Antoine's files
 wave_maps_adb = []
@@ -152,12 +154,14 @@ path.append("Fake_data")
 #simu = load_simu("/home/kmorel/ongenesis/github/jwst-mtl/SOSS/Fake_data/phoenix_teff_02300_scale_1.0e+02.fits")
 #data_clear = simu["data"]
 # LA
-noisy_rateints = fits.open(WORKING_DIR + "oversampling_{}/test_clear_noisy_rateints.fits".format(os))
-clear_00 = fits.open(WORKING_DIR + "tmp/oversampling_{}/clear_000000.fits".format(os))
 clear_tr_00 = fits.open(WORKING_DIR + "tmp/oversampling_{}/clear_trace_000000.fits".format(os))
+clear_00 = fits.open(WORKING_DIR + "tmp/oversampling_{}/clear_000000.fits".format(os))
+noisy_rateints = fits.open(WORKING_DIR + "oversampling_{}/test_clear_noisy_rateints.fits".format(os))
 
-padd = 10   # Because of x_padding and y_padding
+# Because of x_padding and y_padding
+padd = 10
 padd_os = padd * os
+
 clear_tr_ref = clear_tr_00[0].data[:2, padd_os:-padd_os, padd_os:-padd_os]   # Reference thin trace, not binned
 clear_conv = clear_00[0].data[:2, padd_os:-padd_os, padd_os:-padd_os]        # Convolved traces, not binned
 if os != 1:
@@ -214,28 +218,28 @@ plt.show()
 # EXTRACTED FLUX OF CLEAR TRACE(S)
 # Reference thin trace:
 fbox_ref_adu = box_kim.flambda_adu(x_os, data_ref, y_os, radius_pixel=5)   # Not binned [adu/s]
-fbox_ref_adu_bin = box_kim.flambda_adu(x, data_ref_bin, y, radius_pixel=5)         # Binned [adu/s]
+fbox_ref_adu_bin = box_kim.flambda_adu(x, data_ref_bin, y, radius_pixel=5) / os        # Binned [adu/s]
 
 # Convolved trace(s), not binned
 fbox_conv_inf_adu = box_kim.flambda_inf_radi_adu(data_conv)           # Infinite radius [adu/s] (only if order 1 only)
 fbox_conv_adu = box_kim.flambda_adu(x_os, data_conv, y_os, radius_pixel=radius_pixel * os)  # [adu/s]
 
 # Convolved trace(s), binned
-fbox_conv_inf_adu_bin = box_kim.flambda_inf_radi_adu(data_conv_bin)   # Infinite radius [adu/s] (only if order 1 only)
-fbox_conv_adu_bin = box_kim.flambda_adu(x, data_conv_bin, y, radius_pixel=radius_pixel)           # [adu/s]
-fbox_conv_elec_bin = box_kim.flambda_elec(x, data_conv_bin, y, radius_pixel=radius_pixel) * tint  # [e⁻]
-fbox_conv_energy_bin = box_kim.f_lambda(x, data_conv_bin, w, y, radius_pixel=radius_pixel)        # [J/s/m²/um]
+fbox_conv_inf_adu_bin = box_kim.flambda_inf_radi_adu(data_conv_bin) / os  # Infinite radius [adu/s] (only if order 1 only)
+fbox_conv_adu_bin = box_kim.flambda_adu(x, data_conv_bin, y, radius_pixel=radius_pixel) / os           # [adu/s]
+fbox_conv_elec_bin = box_kim.flambda_elec(x, data_conv_bin, y, radius_pixel=radius_pixel) / os * tint  # [e⁻]
+fbox_conv_energy_bin = box_kim.f_lambda(x, data_conv_bin, w, y, radius_pixel=radius_pixel) / os        # [J/s/m²/um]
 
 # EXTRACTED FLUX OF NOISY TRACE(S)
 if only_order_1 is False:
-    fbox_noisy_adu = box_kim.flambda_adu(x, data_noisy, y, radius_pixel=radius_pixel)           # [adu/s/colonne]
-    fbox_noisy_elec = box_kim.flambda_elec(x, data_noisy, y, radius_pixel=radius_pixel) * tint  # [e⁻/colonne]
+    fbox_noisy_adu = box_kim.flambda_adu(x, data_noisy, y, radius_pixel=radius_pixel)           # [adu/s]
+    fbox_noisy_elec = box_kim.flambda_elec(x, data_noisy, y, radius_pixel=radius_pixel) * tint  # [e⁻]
     fbox_noisy_energy = box_kim.f_lambda(x, data_noisy, w, y, radius_pixel=radius_pixel)        # [J/s/m²/um]
 
 
 plt.figure()
-plt.scatter(np.linspace(0, 2048, len(x_os)), fbox_ref_adu, s=4, color='MediumVioletRed', label='Not binned, os={}'.format(os))
-plt.scatter(x, fbox_ref_adu_bin, s=4, color='Green', label='Binned')
+plt.plot(np.linspace(0, 2048, len(x_os)), fbox_ref_adu, lw=2, color='MediumVioletRed', label='Not binned, os={}'.format(os))
+plt.plot(x, fbox_ref_adu_bin, lw=2, color='Green', label='Binned')
 plt.ylabel(r"Extracted flux [adu/s]")
 plt.xlabel(r"x")
 plt.title("Extracted flux, reference thin trace")
@@ -247,11 +251,10 @@ if save is True:
         plt.savefig(WORKING_DIR + "oversampling_{}/extracted_flux_ref_trace.png".format(os))
 plt.show()
 
-sys.exit()
 
 plt.figure()
 plt.plot(w_os, fbox_conv_adu, lw=2, color='DeepPink', label='Convolved, not binned')
-plt.plot(w_os, fbox_ref_adu, lw=2, color='Green', label='Reference thin trace, not binned')
+plt.plot(w, fbox_conv_adu_bin, lw=2, color='Green', label='Convolved, binned')
 plt.ylabel(r"Extracted flux [adu/s]")
 plt.xlabel(r"Wavelength [$\mu$m]")
 plt.title('os = {}'.format(os))
@@ -354,7 +357,6 @@ plt.show()
 
 # Bin in counts
 # Save the output in a list for different orders.
-
 ftik_bin_list = []  # Integrated flux
 lam_bin_list = []  # Wavelength grid
 
@@ -372,10 +374,10 @@ if only_order_1 is True:
 
     # For comparison:
     # Because w and lam_bin_list[0] are not the same
-    f = interp1d(lam_bin_list[0], ftik_bin_list[0], fill_value='extrapolate')
+    f = interp1d(lam_bin_list[0], ftik_bin_list[0] / os , fill_value='extrapolate')
     ftik_bin_interp = f(w)  # Extracted flux by Tikhonov interpolated on my wl grid
     ax.plot(w, fbox_conv_inf_adu_bin, lw=2, label='Box extraction, radius = inf', color='DeepPink')
-    ax.plot(lam_bin_list[0], ftik_bin_list[0], lw=2, ls='--', label="Tikhonov extraction", color='Blue')
+    ax.plot(lam_bin_list[0], ftik_bin_list[0] / os, lw=2, ls='--', label="Tikhonov extraction", color='Blue')
 
     ax.set_ylabel("Extracted signal [counts (adu/s)]")
     ax.set_xlabel("Wavelength [$\mu m$]")
@@ -388,7 +390,7 @@ else:
         if i_ord == 0:
             # For comparison:
             # Because w and lam_bin_list[0] are not the same
-            f = interp1d(lam_bin_list[i_ord], ftik_bin_list[i_ord], fill_value='extrapolate')
+            f = interp1d(lam_bin_list[i_ord], ftik_bin_list[i_ord] / os, fill_value='extrapolate')
             ftik_bin_interp = f(w)  # Extracted flux by Tikhonov interpolated on my wl grid
             if noisy is False:
                 ax[i_ord].plot(w, fbox_conv_adu_bin, lw=2, label='Box extraction, order {}'.format(label),
@@ -397,7 +399,7 @@ else:
                 ax[i_ord].plot(w, fbox_noisy_adu, lw=2, label='Box extraction, order {}'.format(label),
                                color='DeepPink')
 
-        ax[i_ord].plot(lam_bin_list[i_ord], ftik_bin_list[i_ord], lw=2, label='Tikhonov, order {}'.format(label),
+        ax[i_ord].plot(lam_bin_list[i_ord], ftik_bin_list[i_ord] / os, lw=2, label='Tikhonov, order {}'.format(label),
                        color='Blue')
 
     ax[0].set_ylabel("Extracted signal [counts]")
@@ -435,9 +437,9 @@ else:
 
 
 plt.figure()
-plt.plot(w_no_bin, diff_extra * 1e6, lw=1, color='Indigo', label='Convolved vs ref, not binned, os={}'.format(os))
-plt.plot(w, diff_extra_bin * 1e6, lw=1, color='Green', label='Convolved vs ref, binned')
-plt.plot(w, diff_extra_tik * 1e6, lw=1, color='Crimson', label='Tikhonov vs ref, binned')
+plt.plot(w_os, diff_extra * 1e6, lw=2, color='Indigo', label='Convolved vs ref, not binned, os={}'.format(os))
+plt.plot(w, diff_extra_bin * 1e6, lw=2, color='Green', label='Convolved vs ref, binned')
+plt.plot(w, diff_extra_tik * 1e6, lw=2, color='Crimson', label='Tikhonov vs ref, binned')
 plt.xlabel("Wavelength [$\mu m$]")
 plt.ylabel("Relative difference [ppm]")
 plt.title("Relative differences, compared to reference thin trace")
@@ -479,7 +481,7 @@ for i_ord in range(extract.n_ord):
 
     # Integrate.
     lam_bin, f_bin = extract.bin_to_pixel(f_k=f_k, i_ord=i_ord, throughput=throughput)
-                            # APPEND ?!?!?!?!? K.M.
+                            # APPEND ?!?!?!?!? K.M.  DIVIDE BY OS??
     # Plot
     label = extract.orders[i_ord]
     plt.plot(lam_bin_list[i_ord], ftik_bin_list[i_ord], label=label)

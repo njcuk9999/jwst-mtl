@@ -3,13 +3,13 @@ import sys
 import numpy as np
 import scipy.constants as sc_cst
 import SOSS.trace.tracepol as tp
+from scipy.interpolate import interp1d
 
 # Constants
 h = sc_cst.Planck
 c = sc_cst.speed_of_light
 gain = 1.6
 area = 25.
-
 
 def photon_energy(wl):
     """
@@ -76,22 +76,20 @@ def flambda_adu(pixels, im_test, y_trace, radius_pixel=30):
 
     return flux
 
-
-#def flux_no_bin(pixels, im_test, y_trace, radius_pixel=30):
-# TODO : Ask Loic parce que là pour comparer, je dois faire un genre de bin sur la trace pour calculer le flux? ce qui
-# revient à la même affaire
-
-
-def flambda_elec(pixels, im_test, y_trace, radius_pixel=30, gain=gain):
+def flambda_elec(pixels, im_test, y_trace, radius_pixel=30, gain=gain, ng=3, t_read=5.49):
     """
     pixels: Array of pixels
     im_test: Trace's image [adu/s]
     y_trace: Array for the positions of the center of the trace for each column
     radius_pixel: Radius of extraction box. Default is 30. [pixels]
     gain: Gain [e⁻/adu]
+    ng: NGROUP
+    t_read: Reading time (s)
     return: Extracted flux [e⁻/s/colonne]
     """
-    return flambda_adu(pixels, im_test, y_trace, radius_pixel=radius_pixel) * gain
+    tint = (ng - 1) * t_read  # Integration time [s]
+
+    return flambda_adu(pixels, im_test, y_trace, radius_pixel=radius_pixel) * gain * tint
 
 def flambda_inf_radi_adu(im_test):
     """
@@ -160,29 +158,66 @@ def readtrace(os):  # From Loic
     y_index = np.interp(x_index, x, y)
 
     return x_index, np.flip(y_index), wavelength
-"""
-def rebin(image, noversampling, flux_method='mean'):
-    
-    Takes an oversampled image and bins it down to native pixel size, taking
-    the mean of the pixel values.
-    :param arr:
-    :param noversampling:
-    :return:
-    
-    ndim = image.ndim
 
-    dimz, dimy, dimx = np.shape(image)
-    newdimy, newdimx = int(dimy/noversampling), int(dimx/noversampling)
-    cube = np.zeros((dimz, newdimy, newdimx))
-    for i in range(dimz):
-        image2D = image[i,:,:]
-        shape = (newdimy, image2D.shape[0] // newdimy,
-                 newdimx, image2D.shape[1] // newdimx)
-        if flux_method == 'sum':
-            cube[i]
-            cube[i,:,:] = image2D.reshape(shape).sum(-1).sum(1)
-        else:
-            cube[i,:,:] = image2D.reshape(shape).mean(-1).mean(1)
-            #cube[i, :, :] = image2D.reshape(shape).sum(1).mean(-1)
-        return cube
-"""
+def wl_filter(wl, pixels, length=85):
+    """
+    wl: Wavelengths array
+    pixels: Pixels array (same size as wl)
+    length: Length of window for which to compute median or mean
+    return: New wavelengths array matching filtered flux
+    """
+    if length%2==1:
+        new_w = wl[length//2:-length//2]
+    elif length%2==0:
+        pixels_new = pixels - 0.5
+        pixels_new[0] = 0
+        f = interp1d(pixels,wl)
+        w_me = f(pixels_new)
+        new_w = w_me[length//2:-length//2]
+    return new_w
+
+def median_window(flux, start, length):
+    """
+    flux: Extracted flux
+    start: Start point of window for which to compute median
+    length: Length of window for which to compute median
+    return: Median
+    """
+    list = flux[start : start + length]
+    return np.median(list)
+
+def median_filter(flux, length=85):
+    """
+    flux: Extracted flux
+    length: Length of window for which to compute median
+    return: Extracted flux with median filter applied
+    """
+    m = []
+    start = 0
+    while start + length < len(flux):
+        m.append(median_window(flux, start, length))
+        start += 1
+    return m
+
+def mean_window(flux, start, length):
+    """
+    flux: Extracted flux
+    start: Start point of window for which to compute mean
+    length: Length of window for which to compute mean
+    return: Mean
+    """
+    list = flux[start : start + length]
+    return np.mean(list)
+
+def mean_filter(flux, length=50):
+    """
+    flux: Extracted flux
+    length: Length of window for which to compute mean
+    return: Extracted flux with mean filter applied
+    """
+    m = []
+    start = 0
+    while start + length < len(flux):
+        m.append(mean_window(flux, start, length))
+        start += 1
+    return m
