@@ -761,7 +761,7 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
 
         return self.i_grid
 
-    def build_sys(self, data=None, error=True, mask=None, aperture=None, throughput=None):
+    def build_sys(self, **kwargs):
         """
         Build linear system arising from the logL maximisation.
         TIPS: To be quicker, only specify the psf (`p_list`) in kwargs.
@@ -794,6 +794,52 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
         Returns
         ------
         A and b from Ax = b beeing the system to solve.
+        """
+        # Get the detector model
+        b_matrix, data = self.get_detector_model(**kwargs)
+
+        # (B_T * B) * f = (data/sig)_T * B
+        # (matrix ) * f = result
+        matrix = b_matrix.T.dot(b_matrix)
+        result = data.dot(b_matrix)
+
+        return matrix, result.toarray().squeeze()
+    
+    def get_detector_model(self, data=None, error=True,
+                           mask=None, aperture=None, throughput=None):
+        """
+        Get the linear model of the detector pixel, B.dot(flux) = pixels
+        TIPS: To be quicker, only specify the psf (`p_list`) in kwargs.
+              There will be only one matrix multiplication:
+              (P/sig).(w.T.lambda.c_n).
+        Parameters
+        ----------
+        data : (N, M) array_like, optional
+            A 2-D array of real values representing the detector image.
+            Default is the object attribute `data`.
+        error: bool or (N, M) array_like, optional
+            Estimate of the error on each pixel.
+            If 2-d array, `sig` is the new error estimation map.
+            It is the same shape as `sig` initiation input. If bool,
+            wheter to apply sigma or not. The method will return
+            b_n/sigma if True or array_like and b_n if False. If True,
+            the default object attribute `sig` will be use.
+        mask : (N, M) array_like boolean, optional
+            Additionnal mask for a given exposure. Will be added
+            to the object general mask.
+        aperture : (N_ord, N, M) list or array of 2-D arrays, optional
+            A list or array of the spatial profile for each order
+            on the detector. It has to have the same (N, M) as `data`.
+            Default is the object attribute `p_list`
+        throughput : (N_ord [, N_k]) list or array of functions, optional
+            A list or array of the throughput at each order.
+            The functions depend on the wavelength
+            Default is the object attribute `t_list`
+
+        Returns
+        ------
+        B and pix_array from the linear equation
+        B.dot(flux) = pix_array
         """
 
         # Check if inputs are suited for quick mode;
@@ -851,12 +897,7 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
         # Take only valid pixels and apply `error` on data
         data = data[~mask]/error[~mask]
 
-        # (B_T * B) * f = (data/sig)_T * B
-        # (matrix ) * f = result
-        matrix = b_matrix.T.dot(b_matrix)
-        result = csr_matrix(data.T).dot(b_matrix)
-
-        return matrix, result.toarray().squeeze()
+        return b_matrix, csr_matrix(data)
 
     def set_tikho_matrix(self, t_mat=None, t_mat_func=None,
                          fargs=None, fkwargs=None):
@@ -955,20 +996,16 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
         """
 
         # Build the system to solve
-        matrix, result = self.build_sys(**kwargs)
-
-        # Get valid grid index
-        i_grid = self.get_i_grid(result)
+        b_matrix, pix_array = self.get_detector_model(**kwargs)
 
         if tikho is None:
             t_mat = self.get_tikho_matrix()
             default_kwargs = {'grid': self.wave_grid,
-                              'index': i_grid,
                               't_mat': t_mat}
             if tikho_kwargs is None:
                 tikho_kwargs = {}
             tikho_kwargs = {**default_kwargs, **tikho_kwargs}
-            tikho = engine_utils.Tikhonov(matrix, result, **tikho_kwargs)
+            tikho = engine_utils.Tikhonov(b_matrix, pix_array, **tikho_kwargs)
             self.tikho = tikho
 
         # Test all factors
@@ -981,19 +1018,14 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
         # use the same value to rebuild the detector.
         same = False
         for sln in tests['solution']:
-
-            # Init the spectrum (f_k) with nan, so it has the adequate shape
-            spectrum = np.ones(result.shape[-1]) * np.nan
-            spectrum[i_grid] = sln  # Assign valid values
-            logl_list.append(self.compute_likelihood(spectrum, same=same))  # log_l
+            logl_list.append(self.compute_likelihood(sln, same=same))  # log_l
             same = True
 
         # Save in tikho's tests
         tikho.test['-logl'] = -1 * np.array(logl_list)
 
         # Save also grid
-        tikho.test["grid"] = self.wave_grid[i_grid]
-        tikho.test["i_grid"] = i_grid
+        tikho.test["grid"] = self.wave_grid
 
         return tikho.test
 
@@ -1183,20 +1215,30 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
         return logl
 
     @staticmethod
-    def _solve(matrix, result, index=slice(None)):
+    def _solve(matrix, result):
         """
         Simply pass `matrix` and `result`
         to `scipy.spsolve` and apply index.
         """
+        # Get valid indices
+        idx = np.nonzero(result)[0]
 
-        return spsolve(matrix[index, :][:, index], result[index])
+        # Init solution with NaNs.
+        sln = np.ones(result.shape[-1]) * np.nan
+
+        # Only solve for valid indices, i.e. wavelengths that are
+        # covered by the pixels on the detector.
+        # It will be a singular matrix otherwise.
+        sln[idx] = spsolve(matrix[idx, :][:, idx], result[idx])
+        
+        return sln
 
     @staticmethod
-    def _solve_tikho(matrix, result, index=slice(None), **kwargs):
+    def _solve_tikho(matrix, result, **kwargs):
         """Solve system using Tikhonov regularisation"""
 
         # Note that the indexing is applied inside the function
-        return engine_utils.tikho_solve(matrix, result, index=index, **kwargs)
+        return engine_utils.tikho_solve(matrix, result, **kwargs)
 
     def extract(self, tikhonov=False, tikho_kwargs=None,  # TODO merge with __call__.
                 factor=None, **kwargs):
@@ -1240,27 +1282,16 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
         spectrum (f_k): solution of the linear system
         """
 
-        # Build the system to solve
-        matrix, result = self.build_sys(**kwargs)
-
-        # Get index of `wave_grid` convered by the pixel.
-        # `wave_grid` may cover more then the pixels.
-        i_grid = self.get_i_grid(result)
-
-        # Init spectrum with NaNs.
-        spectrum = np.ones(result.shape[-1]) * np.nan
-
         # Solve with the specified solver.
-        # Only solve for valid range `i_grid` (on the detector).
-        # It will be a singular matrix otherwise.
         if tikhonov:
+            # Build the system to solve
+            b_matrix, pix_array = self.get_detector_model(**kwargs)
 
             if factor is None:
                 raise ValueError("Please specify tikhonov `factor`.")
 
             t_mat = self.get_tikho_matrix()
             default_kwargs = {'grid': self.wave_grid,
-                              'index': i_grid,
                               't_mat': t_mat,
                               'factor': factor}
 
@@ -1268,10 +1299,15 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
                 tikho_kwargs = {}
 
             tikho_kwargs = {**default_kwargs, **tikho_kwargs}
-            spectrum[i_grid] = self._solve_tikho(matrix, result, **tikho_kwargs)
+            spectrum = self._solve_tikho(b_matrix, pix_array, **tikho_kwargs)
 
         else:
-            spectrum[i_grid] = self._solve(matrix, result, index=i_grid)
+            # Build the system to solve
+            matrix, result = self.build_sys(**kwargs)
+            
+            # Only solve for valid range `i_grid` (on the detector).
+            # It will be a singular matrix otherwise.
+            spectrum = self._solve(matrix, result)
 
         return spectrum
 
