@@ -1608,7 +1608,7 @@ class Tikhonov:
                    'second': finite_second_d}
 
     def __init__(self, a_mat, b_vec, t_mat=None,
-                 grid=None, verbose=True, index=None):
+                 grid=None, verbose=True, valid=True):
         """
         Parameters
         ----------
@@ -1623,8 +1623,9 @@ class Tikhonov:
             grid on which b-vec is projected. Used to compute derivative
         verbose: bool
             Print details or not
-        index: indexable, optional
-            index of the valid row of the b_vec.
+        valid: bool, optional
+            If True, solve the system only for valid indices. The 
+            invalid values will be set to np.nan. Default is True.
         """
 
         # b_vec will be passed to default_mat functions
@@ -1641,15 +1642,26 @@ class Tikhonov:
             self.type = 'custom'
         else:
             self.type = 'custom'
-
-        # Take all indices by default
-        if index is None:
-            index = slice(None)
-
-        self.a_mat = a_mat[index, :][:, index]
-        self.b_vec = b_vec[index]
-        self.t_mat = t_mat[index, :][:, index]
-        self.index = index
+        
+        # Save input matrix
+        self.a_mat = a_mat
+        self.b_vec = b_vec
+        self.t_mat = t_mat
+        
+        # Pre-compute some matrix for the linear system to solve
+        t_mat_2 = (t_mat.T).dot(t_mat)  # squared tikhonov matrix
+        a_mat_2 = a_mat.T.dot(a_mat)  # squared model matrix
+        result = (a_mat.T).dot(b_vec.T)
+        idx_valid =  (result != 0)  # valid indices to use if `valid` is True
+        
+        # Save pre-computed matrix
+        self.t_mat_2 = t_mat_2
+        self.a_mat_2 = a_mat_2
+        self.result = result
+        self.idx_valid = idx_valid
+        
+        # Save other attributes
+        self.valid = valid
         self.verbose = verbose
         self.test = None
 
@@ -1681,24 +1693,37 @@ class Tikhonov:
         Solution of the system (1d array)
         """
         # Get needed attributes
-        a_mat = self.a_mat
-        b_vec = self.b_vec
-        index = self.index
+        a_mat_2 = self.a_mat
+        result = self.result
+        t_mat_2 = self.t_mat_2
+        valid = self.valid
+        idx_valid = self.idx_valid
 
-        # Matrix gamma (with scale factor)
-        gamma = factor * self.t_mat
+        # Matrix gamma squared (with scale factor)
+        gamma_2 = factor**2 * self.t_mat_2
 
-        # Build system
-        gamma_2 = (gamma.T).dot(gamma)  # Gamma square
-        matrix = a_mat.T.dot(a_mat) + gamma_2
-        result = (a_mat.T).dot(b_vec.T)
+        # Finalize building the system
+        matrix = a_mat_2 + gamma_2
 
         # Include solution estimate if given
         if estimate is not None:
             raise ValueError('`estimate` option is not implemented yet.')
 
+        # Initialize solution
+        solution = np.full(matrix.shape[0], np.nan)
+        
+        # Consider only valid indices if in valid mode
+        if valid:
+            idx = idx_valid
+        else:
+            idx = slice(None)
+            
         # Solve
-        return spsolve(matrix, result)
+        matrix = matrix[idx, :][:, idx]
+        result = result[idx]
+        solution[idx] = spsolve(matrix, result)
+        
+        return solution
 
     def test_factors(self, factors, estimate=None):
         """
