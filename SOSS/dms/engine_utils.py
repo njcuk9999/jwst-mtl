@@ -1560,7 +1560,7 @@ def get_nyquist_matrix(grid, integrate=True, n_sampling=2,
 
 
 def tikho_solve(a_mat, b_vec, t_mat=None, grid=None,
-                verbose=True, factor=1.0, estimate=None, index=None):
+                verbose=True, factor=1.0, estimate=None):
     """
     Tikhonov solver to use as a function instead of a class.
 
@@ -1589,7 +1589,7 @@ def tikho_solve(a_mat, b_vec, t_mat=None, grid=None,
     Solution of the system (1d array)
     """
     tikho = Tikhonov(a_mat, b_vec, t_mat=t_mat,
-                     grid=grid, verbose=verbose, index=index)
+                     grid=grid, verbose=verbose)
 
     return tikho.solve(factor=factor, estimate=estimate)
 
@@ -1652,7 +1652,7 @@ class Tikhonov:
         t_mat_2 = (t_mat.T).dot(t_mat)  # squared tikhonov matrix
         a_mat_2 = a_mat.T.dot(a_mat)  # squared model matrix
         result = (a_mat.T).dot(b_vec.T)
-        idx_valid =  (result != 0)  # valid indices to use if `valid` is True
+        idx_valid = (result.toarray() != 0).squeeze()  # valid indices to use if `valid` is True
         
         # Save pre-computed matrix
         self.t_mat_2 = t_mat_2
@@ -1693,7 +1693,7 @@ class Tikhonov:
         Solution of the system (1d array)
         """
         # Get needed attributes
-        a_mat_2 = self.a_mat
+        a_mat_2 = self.a_mat_2
         result = self.result
         t_mat_2 = self.t_mat_2
         valid = self.valid
@@ -1716,7 +1716,7 @@ class Tikhonov:
         if valid:
             idx = idx_valid
         else:
-            idx = slice(None)
+            idx = np.full(len(solution), True)
             
         # Solve
         matrix = matrix[idx, :][:, idx]
