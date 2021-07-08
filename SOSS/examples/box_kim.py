@@ -157,7 +157,7 @@ def readtrace(os):  # From Loic
     wavelength = np.interp(x_index, x, w)
     y_index = np.interp(x_index, x, y)
 
-    return x_index, np.flip(y_index), wavelength
+    return x_index, y_index[::-1], wavelength
 
 def wl_filter(wl, pixels, length=85):
     """
