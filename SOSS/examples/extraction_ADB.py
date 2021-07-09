@@ -37,7 +37,7 @@ ng = 3   # NGROUP
 t_read = 5.49   # Reading time [s]
 tint = (ng - 1) * t_read   # Integration time [s]
 
-radius_pixel = 30
+radius_pixel = 36
 
 
 WORKING_DIR = '/home/kmorel/ongenesis/jwst-user-soss/'
@@ -59,7 +59,7 @@ simuPars = spgen.read_pars(pathPars.simulationparamfile, simuPars) #read in para
 m_order = 1  # For now, only option is 1.
 
 # CHOOSE OVERSAMPLE  !!!
-simuPars.noversample = 4
+simuPars.noversample = 8
 os = simuPars.noversample
 
 # CHOOSE ORDER(S) TO EXTRACT (ADB)  !!!
@@ -87,16 +87,13 @@ pars = tp.get_tracepars(trace_file)   # Gives the middle position of order 1 tra
 x, y_not, w = box_kim.readtrace(os=1)   # TODO: Problem with .readtrace
 x_os, y_os_not, w_os = box_kim.readtrace(os=os)
 
-xnew, y, mask = tp.wavelength_to_pix(w, pars, m=1)   # Converts wavelenghths to pixel coordinates  NOT GOOD
+xnew, y, mask = tp.wavelength_to_pix(w, pars, m=1, oversample=1)   # Converts wavelenghths to pixel coordinates  NOT GOOD
 xnew_os, y_os, mask_os = tp.wavelength_to_pix(w_os , pars, m=1, oversample=os)  # Converts wavelenghths to pixel coordinates, os  NOT GOOD
 
 #####################################################
 
 # List of orders to consider in the extraction
-if only_order_1 is True:
-    order_list = [1]
-else:
-    order_list = [1, 2]
+order_list = [1] if only_order_1 else [1, 2]
 
 #####################################################
 
@@ -128,8 +125,8 @@ spat_pros_la = spat[:2, -256:]   # Consider only order 1 & 2 and set to same siz
 # Shift Loic's trace image to fit with the simulation (data)
 new_spat_la = np.zeros_like(spat_pros_la, dtype=float)
 new_spat_la[:, :162] = spat_pros_la[:, 94:]
-hdu = fits.PrimaryHDU(new_spat_la)
-hdu.writeto(WORKING_DIR + "new_spat_pros.fits", overwrite = True)
+#hdu = fits.PrimaryHDU(new_spat_la)
+#hdu.writeto(WORKING_DIR + "new_spat_pros.fits", overwrite = True)
 
 # _clear : map created with clear000000.fits directly
 new_spat = fits.getdata(WORKING_DIR + "new_map_profile_clear_{}.fits".format(os))
@@ -161,7 +158,7 @@ ref_files_args = [spat_pros, wave_maps, thrpt_list, ker_list]
 #####################################################
 
 # LOAD SIMULATIONS
-path.append("Fake_data")
+#path.append("Fake_data")
 
 # ADB
 #simu = load_simu("/home/kmorel/ongenesis/github/jwst-mtl/SOSS/Fake_data/phoenix_teff_02300_scale_1.0e+02.fits")
@@ -196,13 +193,13 @@ if only_order_1 is True:
     data_ref = clear_tr_ref[0]         # Reference thin trace, not binned [adu/s]
     data_ref_bin = clear_ref_bin[0]    # Reference thin trace, binned [adu/s]
     data_conv = clear_conv[0]          # Convolved, not binned [adu/s]
-    data_conv_bin = clear_bin[0]       # Convolved, binned [adu/s]  (m1_clear_adu)
+    data_conv_bin = clear_bin[0]       # Convolved, binned [adu/s]
 else:
     # Sum traces 1 & 2
     data_ref = np.sum(clear_tr_ref, axis=0)         # Reference thin trace, not binned [adu/s]
     data_ref_bin = np.sum(clear_ref_bin, axis=0)    # Reference thin trace, binned [adu/s]
     data_conv = np.sum(clear_conv, axis=0)          # Convolved, not binned [adu/s]
-    data_conv_bin = np.sum(clear_bin, axis=0)       # Convolved, binned [adu/s]  (tot_clear_adu)
+    data_conv_bin = np.sum(clear_bin, axis=0)       # Convolved, binned [adu/s]
     if noisy is True:
         # Noisy images for extraction
         data_noisy = noisy_rateints[1].data[0]    # Image of flux [adu/s]
@@ -273,11 +270,7 @@ plt.show()
 #####################################################
 
 # TIKHONOV EXTRACTION  (done on convolved, binned traces)
-
-if noisy is False:
-    data = data_conv_bin
-else:
-    data = data_noisy
+data = data_noisy if noisy else data_conv_bin
 
 params = {}
 
@@ -304,9 +297,8 @@ extract = TrpzOverlap(*ref_files_args, **params)  # Precalculate matrices
 # Determine which factors to tests.
 factors = np.logspace(-25, -12, 14)
 
-# Noise estimate to weight the pixels.
-# Poisson noise + background noise.
-sig = np.sqrt(data + bkgd_noise**2)
+# Noise estimate to weight the pixels
+sig = np.sqrt(data + bkgd_noise**2)   # Poisson noise + background noise
 
 # Tests all these factors.
 tests = extract.get_tikho_tests(factors, data=data, sig=sig)
@@ -323,7 +315,6 @@ best_fac = extract.best_tikho_factor(tests=tests, i_plot=True)
 
 # Extract the oversampled spectrum 𝑓𝑘
 # Can be done in a loop for a timeseries and/or iteratively for different estimates of the reference files.
-# Extract the spectrum.
 f_k = extract.extract(data=data, sig=sig, tikhonov=True, factor=best_fac)
 # Could we make change this method to __call__?  # Very good idea!
 
@@ -346,15 +337,12 @@ if save is True:
 plt.show()
 
 # Bin to pixel native sampling
-#
-# To get a result comparable to typical extraction methods, we need to integrate the oversampled spectrum (𝑓𝑘
-# ) to a grid representative of the native pixel sampling (for each order). This integration is done according to the equation
-# bin𝑖=∫𝜆+𝑛𝑖𝜆−𝑛𝑖𝑇𝑛(𝜆)𝑓̃ 𝑛(𝜆)𝜆𝑑𝜆,
+# To get a result comparable to typical extraction methods, we need to integrate the oversampled spectrum (𝑓𝑘)
+# to a grid representative of the native pixel sampling (for each order).
+# This integration is done according to the equation bin𝑖=∫𝜆+𝑛𝑖𝜆−𝑛𝑖𝑇𝑛(𝜆)𝑓̃ 𝑛(𝜆)𝜆𝑑𝜆,
 # where 𝑛 is a given order, 𝑇𝑛 is the throughput of the order and 𝑓̃ 𝑛 is the underlying flux convolved to the order 𝑛
-#
 # resolution. The result of this integral will be in fake counts (it is not directly the sum of the counts
 # so that's why I call it fake).
-#
 # One could directly extract the integrated flux by setting the throughput to 𝑇𝑛(𝜆)=1
 # (see second example). The result would then be in flux units instead of counts.
 
@@ -422,21 +410,22 @@ plt.show()
 
 # Comparison
 if only_order_1 == True:
-    relatdiff_box_tik = (ftik_bin_interp - fbox_conv_inf_adu_bin) / fbox_conv_inf_adu_bin   # Tikhonov vs noiseless
+    relatdiff_box_tik = box_kim.relative_difference(ftik_bin_interp, fbox_conv_inf_adu_bin)  # Tikhonov vs noiseless
 
-    relatdiff_conv_ref = (fbox_conv_inf_adu - fbox_ref_adu) / fbox_ref_adu               # Convolved vs ref, not binned
-    relatdiff_conv_ref_bin = (fbox_conv_inf_adu_bin - fbox_ref_adu_bin) / fbox_ref_adu_bin   # Convolved vs ref, binned
-    relatdiff_tik_ref = (ftik_bin_interp - fbox_ref_adu_bin) / fbox_ref_adu_bin              # Tikhonov vs ref
+    relatdiff_conv_ref = box_kim.relative_difference(fbox_conv_inf_adu, fbox_ref_adu)    # Convolved vs ref, not binned
+    relatdiff_conv_ref_bin = box_kim.relative_difference(fbox_conv_inf_adu_bin, fbox_ref_adu_bin)  # Convolved vs ref, binned
+    relatdiff_tik_ref = box_kim.relative_difference(ftik_bin_interp, fbox_ref_adu_bin)             # Tikhonov vs ref
     print('Radius pixel = infinite (for fbox_conv_ in relative differences)')
+
 else:
     if noisy is False:
-        relatdiff_box_tik = (ftik_bin_interp - fbox_conv_adu_bin) / fbox_conv_adu_bin   # Tikhonov vs noiseless
+        relatdiff_box_tik = box_kim.relative_difference(ftik_bin_interp, fbox_conv_adu_bin)  # Tikhonov vs noiseless
     elif noisy is True:
-        relatdiff_box_tik = (ftik_bin_interp - fbox_noisy_adu) / fbox_noisy_adu         # Tikhonov vs noisy
+        relatdiff_box_tik = box_kim.relative_difference(ftik_bin_interp, fbox_noisy_adu)     # Tikhonov vs noisy
 
-    relatdiff_conv_ref = (fbox_conv_adu - fbox_ref_adu) / fbox_ref_adu               # Convolved vs ref, not binned
-    relatdiff_conv_ref_bin = (fbox_conv_adu_bin - fbox_ref_adu_bin) / fbox_ref_adu_bin   # Convolved vs ref, binned
-    relatdiff_tik_ref = (ftik_bin_interp - fbox_ref_adu_bin) / fbox_ref_adu_bin          # Tikhonov vs ref
+    relatdiff_conv_ref = box_kim.relative_difference(fbox_conv_adu, fbox_ref_adu)        # Convolved vs ref, not binned
+    relatdiff_conv_ref_bin = box_kim.relative_difference(fbox_conv_adu_bin, fbox_ref_adu_bin)  # Convolved vs ref, binned
+    relatdiff_tik_ref = box_kim.relative_difference(ftik_bin_interp, fbox_ref_adu_bin)         # Tikhonov vs ref
     print("Radius pixel = ", radius_pixel, '(for fbox_conv_ in relative differences)')
 
 
@@ -574,7 +563,4 @@ print("Oversample = {}".format(os))
 if only_order_1 is True:
     print("Order 1 only")
 else:
-    if noisy is True:
-        print('Noisy')
-    else:
-        print('Orders 1 & 2 summed')
+    print('Noisy') if noisy else print('Orders 1 & 2 summed')

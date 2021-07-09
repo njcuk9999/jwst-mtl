@@ -48,7 +48,7 @@ plt.figure()
 plt.imshow(data_ref)
 plt.show()
 
-print(data_ref[422, 502])  # 39, 1468
+print(data_ref[422, 502])
 print(data_ref_1[84, 100])
 
 # Extract flux

@@ -221,3 +221,12 @@ def mean_filter(flux, length=50):
         m.append(mean_window(flux, start, length))
         start += 1
     return m
+
+def relative_difference(data, ref_data):
+    """
+    data: Data to be compared
+    ref_data: Reference data with which to compare
+    !data and ref_data must be the same size!
+    return: Relative difference
+    """
+    return (data - ref_data) / ref_data
