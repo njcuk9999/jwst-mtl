@@ -230,3 +230,30 @@ def relative_difference(data, ref_data):
     return: Relative difference
     """
     return (data - ref_data) / ref_data
+
+def make_comb(wave, peak_spacing, peak_width):
+    """
+    wave: Wavelength array
+    peak_spacing: The wavelength spacing between peaks
+    peak_width: The spectral width of each peak
+    """
+    wave_range = wave[-1] - wave[0]
+    n_peaks = wave_range / peak_spacing
+    peaks = wave[0] + peak_spacing/2 + np.arange(n_peaks) * peak_spacing
+    comb = np.zeros_like(wave, dtype=float)
+    sigma = peak_width / 2.35
+    for p in peaks:
+        comb += np.exp(-(wave-p)**2 / 2 / sigma**2)
+    return comb, peaks
+
+def create_wave(R, w_min, w_max):
+    """
+    R: resolving power
+    w_min: Minimum wavelength value [um]
+    w_max: Maximum wavelength value [um]
+    return: Builds a wavelength array with constant resolving power R [um]
+    """
+    wave = [w_min]
+    while wave[-1] < w_max:
+        wave.append(wave[-1] + wave[-1]/R)
+    return np.array(wave)

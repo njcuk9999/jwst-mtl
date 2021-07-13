@@ -71,7 +71,7 @@ else:
 save = True
 
 ####################################################################################
-os_list = [1, 2, 4, 5, 8, 10]
+os_list = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
 
 ####################################################################################
 # Read relevant files
@@ -214,7 +214,7 @@ for i in range(len(os_list)):
 
     # Extract the oversampled spectrum 𝑓𝑘
     # Can be done in a loop for a timeseries and/or iteratively for different estimates of the reference files.
-    f_k = extract.extract(data=data, sig=sig, tikhonov=True, factor=best_fac)
+    f_k = extract.extract(data=data, sig=sig, tikhonov=True, factor=best_fac) / os
 
     # Bin to pixel native sampling
     # To get a result comparable to typical extraction methods, we need to integrate the oversampled spectrum (𝑓𝑘)
@@ -233,7 +233,7 @@ for i in range(len(os_list)):
     # For comparison:
     # Because w and lam_bin are not the same
     f = interp1d(lam_bin, ftik_bin, fill_value='extrapolate')
-    ftik_bin_interp = f(w) / os  # Extracted flux by Tikhonov interpolated on my wl grid
+    ftik_bin_interp = f(w)   # Extracted flux by Tikhonov interpolated on my wl grid
 
     # Comparison
     if only_order_1 is True:
@@ -244,21 +244,23 @@ for i in range(len(os_list)):
         relatdiff_tik_box[i] = box_kim.relative_difference(ftik_bin_interp, ref_data)
         print("Radius pixel = ", radius_pixel, '(for fbox_conv_ in relative differences)')
 
-    plt.plot(w[5 * os:-5 * os], relatdiff_tik_box[i, 5 * os:-5 * os] * 1e6, label=os)
+    plt.plot(w[5:-5], relatdiff_tik_box[i, 5:-5] * 1e6, label='os = {}'.format(os))
 
     print('Os = {} : Done'.format(os))
 
 # Apply median filter on all relative differences
 relatdiff_median = np.median(relatdiff_tik_box, axis=0)
-relatdiff_norm = relatdiff_tik_box / relatdiff_median
-relatdiff_std = np.std(relatdiff_norm)
+relatdiff_norm = relatdiff_tik_box - relatdiff_median
+relatdiff_std = np.std(relatdiff_norm[:, 5:-5], axis=1)
+
+print('Standard deviations: ', relatdiff_std)
 
 plt.plot(w[5:-5], relatdiff_median[5:-5] * 1e6, label='Median')
 title_noise = 'noisy' if noisy else 'noiseless'
 plt.title("Relative difference, Tikhonov vs box extraction, {}".format(title_noise))
 plt.xlabel("Wavelength [$\mu m$]")
 plt.ylabel("Relative difference [ppm]")
-plt.legend(title='Oversampling')
+plt.legend()
 if save is True:
     if only_order_1 is True:
         plt.savefig(WORKING_DIR + 'relatdiff_tik_box_order1.png')
@@ -277,9 +279,10 @@ plt.show()
 
 plt.figure()
 for i in range(len(os_list)):
-    plt.plot(w[5 :-5], relatdiff_norm[i, 5 :-5], label=os_list[i])
+    plt.plot(w[5 :-5], relatdiff_norm[i, 5 :-5] * 1e6, label=os_list[i])
 plt.xlabel("Wavelength [$\mu m$]")
-plt.ylabel("Normalized relative difference")
+plt.ylabel("Difference [ppm]")
+plt.title('Relative difference - median filter')
 plt.legend(title='Oversampling')
 if save is True:
     if only_order_1 is True:
@@ -289,4 +292,20 @@ if save is True:
             plt.savefig(WORKING_DIR + 'relatdiff_tik_box_norm_noisy.png')
         else:
             plt.savefig(WORKING_DIR + 'relatdiff_tik_box_norm.png')
+plt.show()
+
+plt.figure()
+plt.scatter(os_list, relatdiff_std * 1e6, color='r')
+plt.xticks(os_list, os_list)
+plt.xlabel('Oversampling')
+plt.ylabel('Standard deviation [ppm]')
+plt.title('Standard deviations from difference')
+if save is True:
+    if only_order_1 is True:
+        plt.savefig(WORKING_DIR + 'relatdiff_tik_box_std_order1.png')
+    else:
+        if noisy is True:
+            plt.savefig(WORKING_DIR + 'relatdiff_tik_box_std_noisy.png')
+        else:
+            plt.savefig(WORKING_DIR + 'relatdiff_tik_box_std.png')
 plt.show()

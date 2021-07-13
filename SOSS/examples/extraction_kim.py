@@ -23,7 +23,7 @@ ng = 3   # NGROUP
 t_read = 5.49   # Reading time [s]
 tint = (ng - 1) * t_read   # Integration time [s]
 
-radius_pixel = 30
+radius_pixel = 36
 length_med = 85    # Length of window for median filter  # For oscillations
 length_mean = 30   # Length of window for mean filter  # For oscillations
 
@@ -50,7 +50,7 @@ simuPars = spgen.read_pars(pathPars.simulationparamfile, simuPars) #read in para
 m_order = 1  # For now, only option is 1.
 
 # CHOOSE OVERSAMPLE  !!!
-simuPars.noversample = 5
+simuPars.noversample = 4
 os = simuPars.noversample
 
 # SAVE FIGS? !!!
@@ -60,7 +60,8 @@ save = False
 
 # Generate or read the star atmosphere model
 starmodel_angstrom, starmodel_flambda, ld_coeff = soss.starmodel(simuPars, pathPars)
-
+print(ld_coeff.shape)
+sys.exit()
 #########################################################
 # Position of trace
 trace_file = "/genesis/jwst/jwst-ref-soss/trace_model/NIRISS_GR700_trace_extended.csv"

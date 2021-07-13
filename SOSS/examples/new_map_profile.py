@@ -7,6 +7,7 @@ import sys
 import os
 import specgen.spgen as spgen
 import matplotlib.pyplot as plt
+import box_kim
 
 WORKING_DIR = '/home/kmorel/ongenesis/jwst-user-soss/'
 
@@ -24,7 +25,7 @@ simuPars = spgen.read_pars(pathPars.simulationparamfile, simuPars)   # Read in p
 
 ###############################
 # CHOOSE OVERSAMPLE  !!!
-simuPars.noversample = 5
+simuPars.noversample = 11
 os = simuPars.noversample
 ###############################
 
@@ -47,5 +48,20 @@ for i in range(len(clear_00[0].data)):
 map_clear[1, :, 1790:] = 0  # Problem with end of order 2 trace
 
 # Save map_profile
-hdu = fits.PrimaryHDU(map_clear)
-hdu.writeto(WORKING_DIR + "new_map_profile_clear_{}.fits".format(os), overwrite=True)
+#hdu = fits.PrimaryHDU(map_clear)
+#hdu.writeto(WORKING_DIR + "new_map_profile_clear_{}.fits".format(os), overwrite=True)
+
+
+#####################################################################
+# New wavelength map
+wave = box_kim.create_wave(R=65000, w_min=0.6, w_max=3.)
+comb, peaks = box_kim.make_comb(wave, peak_spacing=0.005, peak_width=0.001)
+
+plt.figure()
+plt.plot(wave, comb)
+plt.xlabel('Wavelength [um]')
+plt.ylabel('Flux')
+plt.show()
+
+print(peaks.shape)
+print(wave.shape, comb.shape)

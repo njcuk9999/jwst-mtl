@@ -457,9 +457,6 @@ def wavelength_to_pix(wavelength, tracepars, m=1, frame='dms', subarray='SUBSTRI
     return specpix, spatpix, mask
 
 
-
-
-
 def specpix_to_wavelength_new(specpix, tracepars, m=1, frame='dms', oversample=1):
     """Convert the spectral pixel coordinate to wavelength for order m.
 
@@ -493,9 +490,6 @@ def specpix_to_wavelength_new(specpix, tracepars, m=1, frame='dms', oversample=1
     mask = bounds_check(np.log(wavelength), tracepars[m]['spec_domain'][0], tracepars[m]['spec_domain'][1])
 
     return wavelength, mask
-
-
-
 
 
 def specpix_to_wavelength(specpix, tracepars, m=1, frame='dms', oversample=1):
