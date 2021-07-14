@@ -25,7 +25,7 @@ DEF_PATH = "/genesis/jwst/jwst-ref-soss/trace_model/"
 class ThroughputSOSS(interp1d):
     """
     Callable Throughput of SOSS mode for a given order.
-    Function oof wavelength in microns.
+    Function of wavelength in microns.
     """
     filename = FILE_SOSS
     path = DEF_PATH
@@ -42,7 +42,7 @@ class ThroughputSOSS(interp1d):
         # Get transmission
         key = 'SOSS_order{}'.format(order)
         tr = hdu[1].data[key].squeeze()
-        #tr = tr * 0 + 1   # KIM
+        tr = tr * 0 + 1   # KIM
 
         # Get wavelength
         wv = hdu[1].data['LAMBDA'].squeeze()
