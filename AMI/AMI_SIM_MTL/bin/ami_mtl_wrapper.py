@@ -104,6 +104,8 @@ def __main__(params):
     # =========================================================================
     # Analysis section
     # =========================================================================
+    # wrap around ami-cal analysis
+    wrap.amical_analysis(simulations)
 
     # =========================================================================
     # End of code
@@ -135,10 +137,8 @@ if __name__ == "__main__":
     # wrap around ami-cal extraction
     wrap.amical_extraction(simulations)
 
-    # TODO: wrap around ami-cal analysis
-
-    # TODO: write code to use simulations / targets / calibrators / companions
-    # wrap.amical_analysis(simulations)
+    # wrap around ami-cal analysis
+    wrap.amical_analysis(simulations)
 
     # run main code
     #ll = main()

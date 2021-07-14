@@ -385,9 +385,9 @@ Consts.add('MIRAGE-USE', value=True, dtype=bool, source=__NAME__,
 group = 'dms'
 
 # =============================================================================
-#   AMICAL constants
+#   AMICAL general constants
 # =============================================================================
-group = 'amical'
+group = 'amical-general'
 # Define switch to use ami-sim input (requied as may not want to use the
 #    ami-sim inputs)
 Consts.add('AMICAL-INPUT-AMISIM', value=True, dtype=bool, source=__NAME__,
@@ -417,6 +417,10 @@ Consts.add('AMICAL-ANALYSIS-USE', value=True, dtype=bool, source=__NAME__,
                        '(requires ami-cal extraction done)',
            path='amical.use.analysis')
 
+# =============================================================================
+#   AMICAL extraction constants
+# =============================================================================
+group = 'amical-ext'
 # Define whether object is fake (for amical extract save)
 #    - i.e. observables are extracted from simulated data this means simbad
 #    search is ignored
@@ -545,6 +549,174 @@ Consts.add('AMICAL_EXT_VERBOSE', value=False, dtype=bool, source=__NAME__,
            description='Define whether to print useful information during the '
                        'amical extract process',
            path='amical.extract.verbose')
+
+# Define path to save amical extraction files to / read ami-cal extraction from
+Consts.add('AMICAL_EXT_PATH', value=None, dtype=str, source=__NAME__,
+           user=True, argument=False, group=group,
+           description='Define path to save ami-cal extraction files to / '
+                       'read ami-cal extraction from',
+           path='amical.extract.path')
+
+# =============================================================================
+#   AMICAL extraction constants
+# =============================================================================
+group = 'amical-ana'
+# Define path to save amical analysis files to ami-cal.analysis.path
+Consts.add('AMICAL_ANA_PATH', value=None, dtype=str, source=__NAME__,
+           user=True, argument=False, group=group,
+           description='Define path to save ami-cal analysis files to',
+           path='amical.analysis.path')
+
+# Define whether to use candid in amical analysis
+Consts.add('AMICAL_ANA_USE_CANDID', value=True, dtype=bool, source=__NAME__,
+           user=True, argument=False, group=group,
+           description='Define whether to use candid in amical analysis',
+           path='amical.analysis.candid.use')
+
+# Define whether to use pymask in amical analysis
+Consts.add('AMICAL_ANA_USE_PYMASK', value=False, dtype=bool, source=__NAME__,
+           user=True, argument=False, group=group,
+           description='Define whether to use pymask in amical analysis',
+           path='amical.analysis.pymask.pymask')
+
+# Define candid inner radius of the grid [mas]
+Consts.add('AMICAL_CANDID_RMIN', value=None, dtype=int, source=__NAME__,
+           user=True, argument=False, group=group,
+           description='Define candid inner radius of the grid [mas]',
+           path='amical.analysis.candid.rmin')
+
+# Define candid outer radius of the grid [mas]
+Consts.add('AMICAL_CANDID_RMAX', value=None, dtype=int, source=__NAME__,
+           user=True, argument=False, group=group,
+           description='Define candid outer radius of the grid [mas]',
+           path='amical.analysis.candid.rmax')
+
+# Define candid grid sampling size
+Consts.add('AMICAL_CANDID_STEP', value=None, dtype=int, source=__NAME__,
+           user=True, argument=False, group=group,
+           description='Define candid grid sampling size',
+           path='amical.analysis.candid.step')
+
+# Define candid number of cores for multiprocessing
+Consts.add('AMICAL_CANDID_NCORE', value=1, dtype=int, source=__NAME__,
+           user=True, argument=False, group=group,
+           description='Define candid number of cores for multiprocessing',
+           path='amical.analysis.candid.ncore')
+
+# Define candid stellar diameter of the primary star [mas]
+Consts.add('AMICAL_CANDID_DIAM', value=0, dtype=int, source=__NAME__,
+           user=True, argument=False, group=group,
+           description='Define candid stellar diameter of the primary star [mas]',
+           path='amical.analysis.candid.diam')
+
+# Define the pymask prior on the separation
+Consts.add('AMICAL_PYMASK_SEP_PRIOR', value=None, dtype=list, source=__NAME__,
+           user=True, argument=False, group=group,
+           description='Define the pymask prior on the separation',
+           path='amical.analysis.pymask.sep_prior')
+
+# Define the pymask prior on the position angle
+Consts.add('AMICAL_PYMASK_PA_PRIOR', value=None, dtype=list, source=__NAME__,
+           user=True, argument=False, group=group,
+           description='Define the pymask prior on the position angle',
+           path='amical.analysis.pymask.pa_prior')
+
+# Define the pymask prior on the contrast ratio
+Consts.add('AMICAL_PYMASK_CR_PRIOR', value=None, dtype=list, source=__NAME__,
+           user=True, argument=False, group=group,
+           description='Define the pymask prior on the contrast ratio',
+           path='amical.analysis.pymask.cr_prior')
+
+# Define the pymask number of cores for multiprocessing
+Consts.add('AMICAL_PYMASK_NCORE', value=1, dtype=int, source=__NAME__,
+           user=True, argument=False, group=group,
+           description='Define the pymask number of cores for multiprocessing',
+           path='amical.analysis.pymask.ncore')
+
+# Define the extra error pymask parameter
+Consts.add('AMICAL_PYMASK_EXTRA_ERR', value=0, dtype=int, source=__NAME__,
+           user=True, argument=False, group=group,
+           description='Define the extra error pymask parameter',
+           path='amical.analysis.pymask.extra_error')
+
+# Define the error scale pymask parameter
+Consts.add('AMICAL_PYMASK_ERR_SCALE', value=0, dtype=int, source=__NAME__,
+           user=True, argument=False, group=group,
+           description='Define the extra error pymask parameter',
+           path='amical.analysis.pymask.err_scale')
+
+# Define the pymask mcmc number of iterations
+Consts.add('AMICAL_PYMASK_MCMC_NITERS', value=None, dtype=int, source=__NAME__,
+           user=True, argument=False, group=group,
+           description='Define the pymask mcmc number of iterations',
+           path='amical.analysis.pymask.mcmc.niters')
+
+# Define the pymask mcmc number of walkers
+Consts.add('AMICAL_PYMASK_MCMC_NWALKERS', value=None, dtype=int, source=__NAME__,
+           user=True, argument=False, group=group,
+           description='Define the pymask mcmc number of walkers',
+           path='amical.analysis.pymask.mcmc.walkers')
+
+# Define the pymask mcmc initial guess
+Consts.add('AMICAL_PYMASK_MCMC_IGUESS', value=None, dtype=list, source=__NAME__,
+           user=True, argument=False, group=group,
+           description='Define the pymask mcmc initial guess',
+           path='amical.analysis.pymask.mcmc.initial_guess')
+
+# Define the pymask mcmc burn in
+Consts.add('AMICAL_PYMASK_MCMC_NBURN', value=None, dtype=int, source=__NAME__,
+           user=True, argument=False, group=group,
+           description='Define the pymask mcmc burn in',
+           path='amical.analysis.pymask.mcmc.burn_in')
+
+# Define the pymask cr limit nsim parameter
+Consts.add('AMICAL_PYMASK_CR_NSIM', value=None, dtype=int, source=__NAME__,
+           user=True, argument=False, group=group,
+           description='Define the pymask cr limit nsim parameter',
+           path='amical.analysis.pymask.crlimit.nsim')
+
+# Define the pymask cr limit ncore parameter
+Consts.add('AMICAL_PYMASK_CR_NCORE', value=None, dtype=int, source=__NAME__,
+           user=True, argument=False, group=group,
+           description='Define the pymask cr limit ncore parameter',
+           path='amical.analysis.pymask.crlimit.ncore')
+
+# Define the pymask cr limit smax parameter
+Consts.add('AMICAL_PYMASK_CR_SMAX', value=None, dtype=int, source=__NAME__,
+           user=True, argument=False, group=group,
+           description='Define the pymask cr limit ncore parameter',
+           path='amical.analysis.pymask.crlimit.smax')
+
+# Define the pymask cr limit nsep parameter
+Consts.add('AMICAL_PYMASK_CR_NSEP', value=None, dtype=int, source=__NAME__,
+           user=True, argument=False, group=group,
+           description='Define the pymask cr limit nsep parameter',
+           path='amical.analysis.pymask.crlimit.nsep')
+
+# Define the pymask cr limit cmax parameter
+Consts.add('AMICAL_PYMASK_CR_CMAX', value=None, dtype=int, source=__NAME__,
+           user=True, argument=False, group=group,
+           description='Define the pymask cr limit cmax parameter',
+           path='amical.analysis.pymask.crlimit.cmax')
+
+# Define the pymask cr limit nth parameter
+Consts.add('AMICAL_PYMASK_CR_NTH', value=None, dtype=int, source=__NAME__,
+           user=True, argument=False, group=group,
+           description='Define the pymask cr limit nth parameter',
+           path='amical.analysis.pymask.crlimit.nth')
+
+# Define the pymask cr limit ncrat parameter
+Consts.add('AMICAL_PYMASK_CR_NCRAT', value=None, dtype=int, source=__NAME__,
+           user=True, argument=False, group=group,
+           description='Define the pymask cr limit ncrat parameter',
+           path='amical.analysis.pymask.crlimit.ncrat')
+
+# Define whether to plot candid and/or pymask results
+Consts.add('AMICAL_ANA_PLOT', value=True, dtype=bool, source=__NAME__,
+           user=True, argument=False, group=group,
+           description='Define whether to plot candid and/or pymask results',
+           path='amical.analysis.plot')
+
 
 # =============================================================================
 #   IMPLANEIA constants

@@ -14,7 +14,7 @@ import numpy as np
 import os
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List, Tuple, Union
 import matplotlib.pyplot as plt
 from mirage.apt import read_apt_xml
 import yaml
@@ -1255,12 +1255,21 @@ def run_amical_extraction(simname: str, observation: Observation,
         cal_target_outfilename = define_amical_ext_calname(simname,
                                                            observation.name,
                                                            mode, _filter)
+        cal_target_dir = define_amical_ext_dir(observation.params)
+
+        cal_target_abspath = os.path.join(cal_target_dir,
+                                          cal_target_outfilename)
         # save the results as oifits
         _ = amical.save(cal_target, oifits_file=cal_target_outfilename,
-                        fake_obj=observation.params['AMICAL_EXT_FAKE_OBJ'])
+                        fake_obj=observation.params['AMICAL_EXT_FAKE_OBJ'],
+                        datadir=cal_target_dir)
+        # print progress
+        margs = [cal_target_abspath]
+        params.log.info('AMI-CAL EXTRACTION: Saving to: {0}'.format(*margs))
+
         # push outfile into observation params
-        outkey = define_amical_ext_outkey(_filter)
-        observation.params[outkey] = cal_target_outfilename
+        outkey = define_amical_ext_outkey(_filter, mode)
+        observation.params[outkey] = cal_target_abspath
 
 
 def define_amical_ext_outname(simname: str, targetname: str, mode: str,
@@ -1293,19 +1302,309 @@ def define_amical_ext_calname(simname: str, targetname: str, mode: str,
     return '{0}_{1}_{2}_NIRISS_{3}.oifits'.format(*pargs)
 
 
-def define_amical_ext_outkey(_filter: str):
+def define_amical_ext_dir(params: ParamDict) -> str:
+    """
+    Define the AMICAL extraction directory
+
+    :param params: ParamDict, the parameter dictionary of constants
+
+    :return: str, the path to the AMICAL extraction directory
+    """
+    if params['AMICAL_EXT_PATH'] is None:
+        path = os.path.join(params['DIRECTORY'], 'amical-ext')
+    else:
+        path = str(params['AMICAL_EXT_PATH'])
+    # if directory doesn't exist create it
+    if not os.path.exists(path):
+        os.mkdir(path)
+    # return the path
+    return path
+
+
+def define_amical_ana_dir(params: ParamDict) -> str:
+    """
+    Define the AMICAL analysis directory
+
+    :param params: ParamDict, the parameter dictionary of constants
+
+    :return: str, the path to the AMICAL extraction directory
+    """
+    if params['AMICAL_ANA_PATH'] is None:
+        path = os.path.join(params['DIRECTORY'], 'amical-analysis')
+    else:
+        path = str(params['AMICAL_ANA_PATH'])
+    # if directory doesn't exist create it
+    if not os.path.exists(path):
+        os.mkdir(path)
+    # return the path
+    return path
+
+
+def define_amical_ext_outkey(_filter: str, mode: str) -> str:
     """
     Define the AMICAL extraction output key in the parameter dictionary
 
     :param _filter: str, the filter used
-    :return:
+    :param mode: str, the sim mode [ami-sim, mirage]
+
+    :return: str, the key for storing amical extraction output file
     """
-    return 'AMICAL-EXT-OUT_{0}'.format(_filter)
+    return 'AMICAL-EXT-OUT_{0}_{1}'.format(_filter, mode)
 
 
 # =============================================================================
 # Define AMICAL analysis functions
 # =============================================================================
+def amical_analysis(simulations: List[Simulation]):
+    """
+    Run the AMICAL analysis
+
+    :param simulations: list of simulation instances
+
+    :return: None
+    """
+    # loop around simulations
+    for simulation in simulations:
+        # simulate using AMISIM
+        cond1 = simulation.params['AMICAL-EXT-USE']
+        cond2 = simulation.params['AMICAL-INPUT-AMISIM']
+        cond3 = simulation.params['AMICAL-INPUT-MIRAGE']
+        if cond1 and cond2:
+            run_ami_analysis(simulation.target, mode='amisim')
+        # simulate using AMISIM
+        if cond1 and cond3:
+            run_ami_analysis(simulation.target, mode='mirage')
+
+
+def run_ami_analysis(observation: Observation, mode: str):
+    """
+    Run AMICAL analysis
+
+    based on example_analysis.py (AMICAL)
+
+    @author: Anthony Soulain (University of Sydney)
+
+    -------------------------------------------------------------------------
+    AMICAL: Aperture Masking Interferometry Calibration and Analysis Library
+    -------------------------------------------------------------------------
+
+    The idea is to provide the users with all the tools to analyze and
+    interpret their AMI data in the best possible way. We included with AMICAL
+    two additional (and independant) packages to perform this purposes.
+
+    CANDID developed by A. Merand & A. Gallenne
+           (https://github.com/amerand/CANDID)
+
+    and
+
+    Pymask developed by B. Pope & A. Cheetham
+           (https://github.com/AnthonyCheetham/pymask).
+
+    With AMICAL, we provide some easy interface between these codes and the
+    outputs of our extraction pipeline. We give below some example to analyze
+    and extract the quantitative values of our simulated binary.
+
+    --------------------------------------------------------------------
+    """
+    # get params from observation
+    params = observation.params
+    # whether to use candid and pymask
+    use_candid = params.get('AMICAL_ANA_USE_CANDID', False)
+    use_pymask = params.get('AMICAL_ANA_USE_PYMASK', False)
+    do_plot = params.get('AMICAL_ANA_PLOT', False)
+    # storage for parameters for analysis codes
+    candid_params = dict()
+    pymask_params = dict()
+    pymask_param_mcmc = dict()
+    pymask_param_cr= dict()
+    # ---------------------------------------------------------------------
+    # Load candid variables
+    # ---------------------------------------------------------------------
+    if use_candid:
+        # define parameters to load
+        names = ['rmin', 'rmax', 'step', 'ncore', 'diam']
+        variables = ['AMICAL_CANDID_RMIN', 'AMICAL_CANDID_RMAX',
+                     'AMICAL_CANDID_STEP', 'AMICAL_CANDID_NCORE',
+                     'AMICAL_CANDID_DIAM']
+        # loop around variables and store parameter
+        for it in range(len(names)):
+            # load parameters
+            if params[variables[it]] is not None:
+                candid_params[names[it]] = params[variables[it]]
+            else:
+                emsg = 'AMICAL ERROR: {0} must be set to use candid'
+                params.log.error(emsg.format(names[it]))
+                return
+    # ---------------------------------------------------------------------
+    # Load pymask variables
+    # ---------------------------------------------------------------------
+    if use_pymask:
+        # define pymask parameters to load
+        names = ['sep_prior', 'pa_prior', 'cr_prior', 'ncore', 'extra_error',
+                 'err_scale']
+        variables = ['AMICAL_PYMASK_SEP_PRIOR', 'AMICAL_PYMASK_PA_PRIOR',
+                     'AMICAL_PYMASK_CR_PRIOR', 'AMICAL_PYMASK_NCORE',
+                     'AMICAL_PYMASK_EXTRA_ERR', 'AMICAL_PYMASK_ERR_SCALE']
+        # loop around variables and store parameter
+        for it in range(len(names)):
+            # load parameters
+            if params[variables[it]] is not None:
+                pymask_params[names[it]] = params[variables[it]]
+            else:
+                emsg = 'AMICAL ERROR: {0} must be set to use pymask'
+                params.log.error(emsg.format(names[it]))
+                return
+        # ---------------------------------------------------------------------
+        # define pymask mcmc parameters to load
+        names = ['niters', 'walkers', 'initial_guess', 'burn_in']
+        variables = ['AMICAL_PYMASK_MCMC_NITERS', 'AMICAL_PYMASK_MCMC_NWALKERS',
+                     'AMICAL_PYMASK_MCMC_IGUESS', 'AMICAL_PYMASK_MCMC_NBURN']
+        # loop around variables and store parameter
+        for it in range(len(names)):
+            # load parameters
+            if params[variables[it]] is not None:
+                pymask_param_mcmc[names[it]] = params[variables[it]]
+            else:
+                emsg = 'AMICAL ERROR: {0} must be set to use pymask'
+                params.log.error(emsg.format(names[it]))
+                return
+        # ---------------------------------------------------------------------
+        # define pymask cr limit parameters
+        names = ['nsim', 'ncore', 'smax' , 'nsep', 'cmax', 'nth', 'ncrat']
+        variables = ['AMICAL_PYMASK_CR_NSIM', 'AMICAL_PYMASK_CR_NCORE',
+                     'AMICAL_PYMASK_CR_SMAX', 'AMICAL_PYMASK_CR_NSEP',
+                     'AMICAL_PYMASK_CR_CMAX', 'AMICAL_PYMASK_CR_NTH',
+                     'AMICAL_PYMASK_CR_NCRAT']
+        # loop around variables and store parameter
+        for it in range(len(names)):
+            # load parameters
+            if params[variables[it]] is not None:
+                pymask_param_cr[names[it]] = params[variables[it]]
+            else:
+                emsg = 'AMICAL ERROR: {0} must be set to use pymask'
+                params.log.error(emsg.format(names[it]))
+                return
+
+    # ---------------------------------------------------------------------
+    # loop around filters
+    # ---------------------------------------------------------------------
+    # loop around all filters to use
+    for _filter in observation.filters:
+        # push outfile into observation params
+        inkey = define_amical_ext_outkey(_filter, mode)
+        cal_target_abspath = str(observation.params[inkey])
+        # run the candid code (if we are using candid)
+        if use_candid:
+            cout = _amical_run_candid(params, cal_target_abspath, candid_params)
+        else:
+            cout = []
+        # run the pymask code (if we are using pymask)
+        if use_pymask:
+            pout = _amical_run_pymask(params, cal_target_abspath, pymask_params,
+                                      pymask_param_mcmc, pymask_param_cr)
+        else:
+            pout = []
+        # plot analysis plot
+        if do_plot:
+            _amical_analysis_plot(cout, pout)
+
+
+def _amical_run_candid(params: ParamDict, filename: str,
+                       kwargs: Dict[str, Any]
+                       ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """
+    Run CANDID for AMICAL
+
+    :param params: ParamDict, the parameter dictionary of constants
+    :param filename: str, the filename to load AMICAL extractions from
+    :param kwargs: dict, parameters to run candid
+
+    :return: tuple, 1. the candid fit dictionary, 2. the contrast limit
+             dictionary
+    """
+    # hide all text within module
+    with general.ModifyPrintouts(text='AMI-CAL-CANDID Output', flush=True,
+                                 logfile=params['LOGFILE']):
+        # fit using candid
+        fit_candid = amical.candid_grid(filename, **kwargs,
+                                        doNotFit=[])
+        # get the contrast ratio limit
+        cr_candid = amical.candid_cr_limit(filename, **kwargs,
+                                           fitComp=fit_candid['comp'])
+    # TODO: save something here?
+    return fit_candid, cr_candid
+
+
+def _amical_run_pymask(params: ParamDict, filename: str,
+                       kwargs1: Dict[str, Any], kwargs2: Dict[str, Any],
+                       kwargs3: Dict[str, Any]
+                       ) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
+    """
+    Run Pymask for AMICAL
+
+    :param params: ParamDict, the parameter dictionary of constants
+    :param filename: str, the filename to load AMICAL extractions from
+    :param kwargs1: dict, parameters to run pymask_grid
+    :param kwargs2: dict, parameters to run pymask_mcmc
+    :param kwargs3: dict, parameters to run pymask_cr_limit
+
+    :return: tuple, 1. the pymask_grid fit dictionary,
+                    2. the pymask_mcmc fit dictionary,
+                    3. the pymask_cr_limit dictionary
+    """
+    # hide all text within module
+    with general.ModifyPrintouts(text='AMI-CAL-PYMASK Output', flush=True,
+                                 logfile=params['LOGFILE']):
+        # get the pymask fit with a grid
+        fit_pymask1 = amical.pymask_grid(filename, **kwargs1)
+        # get the pymask fit with mcmc
+        fit_pymask2 = amical.pymask_mcmc(filename, **kwargs1, **kwargs2)
+        # get the contrast ratio limit
+        cr_pymask = amical.pymask_cr_limit(filename, **kwargs3)
+    # TODO: save something here?
+    return fit_pymask1, fit_pymask2, cr_pymask
+
+
+def _amical_analysis_plot(cout: Union[list, tuple], pout: Union[list, tuple]):
+    """
+    Plot the AMICAL analysis plot
+
+    :param cout: list or tuple, the output of _amical_run_candid
+    :param pout: list or tuple, the output of _amical_run_pymask
+
+    :return: None, plots a graph
+    """
+    # -------------------------------------------------------------------------
+    # set up plot
+    fig, frame = plt.subplots(ncols=1, nrows=1)
+    # -------------------------------------------------------------------------
+    # deal with candid
+    if len(cout) > 0:
+        # get the cr limits for candid
+        cr_candid = cout[1]
+        # plot
+        frame.plot(cr_candid['r'], cr_candid['cr_limit'],
+                   label='CANDID', alpha=0.5, lw=3)
+    # -------------------------------------------------------------------------
+    # deal with pymask
+    if len(pout) > 0:
+        # get the cr limits for pymask
+        cr_pymask = cout[2]
+        # plot
+        frame.plot(cr_pymask['r'], cr_pymask['cr_limit'],
+                   label='Pymask', alpha=0.5, lw=3)
+    # -------------------------------------------------------------------------
+    # set label
+    frame.set(xlabel='Separation [mask]',
+              ylabel='$\Delta \mathrm{Mag}_{3\sigma}$')
+    # set up legend
+    frame.legend(loc=0)
+    # add a grid to the plot
+    frame.grid()
+    # add a tight layout
+    plt.tight_layout()
+    # show plot
+    plt.show(block=True)
 
 
 # =============================================================================
