@@ -239,7 +239,7 @@ def make_comb(wave, peak_spacing, peak_width):
     """
     wave_range = wave[-1] - wave[0]
     n_peaks = wave_range / peak_spacing
-    peaks = wave[0] + peak_spacing/2 + np.arange(n_peaks) * peak_spacing
+    peaks = wave[0] + peak_spacing/8 + np.arange(n_peaks) * peak_spacing
     comb = np.zeros_like(wave, dtype=float)
     sigma = peak_width / 2.35
     for p in peaks:

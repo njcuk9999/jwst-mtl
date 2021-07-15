@@ -70,6 +70,9 @@ with fits.open(WORKING_DIR + "tmp/with_peaks/oversampling_1/clear_000000.fits") 
     yp = hdulist[0].header['ypadding']
     comb2D = comb2D[:, yp:-yp, xp:-xp]
 
+# Now we have the positions, we need to interpolate wavelength values over all pixels of the detector
+wave_map2D = np.zeros_like(comb2D, dtype=float)
+
 for order in [0, 1, 2]:
     if order == 0:
         x_max = 2048
@@ -92,7 +95,7 @@ for order in [0, 1, 2]:
     v = comb2D[order, :, :x_max].sum(axis=0)
 
     # Find peaks
-    pk_ind, _ = find_peaks(v, distance=16)
+    pk_ind, _ = find_peaks(v, distance=17, prominence=(1000, None))
 
     # Identify peaks
     pk_wave = np.flip(all_peaks[(all_peaks > w_range[0]) & (all_peaks < w_range[1])])
@@ -106,7 +109,6 @@ for order in [0, 1, 2]:
     modFitter = fitting.LevMarLSQFitter()   # Model fitter
     model = models.Gaussian1D(stddev=1., bounds={'stddev': (0.5, 2.)}) + models.Linear1D(0, 0)
     x_arr = np.arange(comb2D.shape[2])
-
 
     # To store measured positions
     x_meas = np.zeros(pk_ind.size * n_rows, dtype=float)
@@ -137,9 +139,6 @@ for order in [0, 1, 2]:
     x_meas = x_meas[:count]
     y_meas = y_meas[:count]
     z_meas = z_meas[:count]
-
-    # Now we have the positions, we need to interpolate wavelength values over all pixels of the detector
-    wave_map2D = np.zeros_like(comb2D, dtype=float)
 
     if False:
         # Interpolation in 2D doesn't work very well!
@@ -179,6 +178,15 @@ for order in [0, 1, 2]:
     plt.xlim(440, 470)
     plt.ylim(0, 155)
     plt.show()
+
+plt.figure()
+plt.imshow(wave_map2D[0], origin='lower', aspect='auto')
+plt.show()
+
+# Save wave_map2D
+hdu = fits.PrimaryHDU(wave_map2D)
+hdu.writeto(WORKING_DIR + "with_peaks/oversampling_1/wave_map2D.fits".format(os), overwrite=True)
+
 """
 # For verification of what going on for a specific peak fit
 order = 1

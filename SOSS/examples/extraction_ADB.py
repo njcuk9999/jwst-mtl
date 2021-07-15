@@ -108,9 +108,22 @@ wave_maps_adb.append(fits.getdata("/home/kmorel/ongenesis/github/jwst-mtl/SOSS/e
 i_zero = np.where(wave_maps_adb[1][0] == 0.)[0][0]   # Where Antoine put 0 in his 2nd order wl map
 
 # _la : Loic's files
-wave = fits.getdata("/genesis/jwst/userland-soss/loic_review/refs/map_wave_2D_native.fits")
-wave[1,:,i_zero:] = 0.  # Also set to 0 the same points as Antoine in Loic's 2nd order wl map
-wave_maps_la = wave[:2]   # Consider only orders 1 & 2
+wave_la = fits.getdata("/genesis/jwst/userland-soss/loic_review/refs/map_wave_2D_native.fits")
+#wave_la[1,:,i_zero:] = 0.  # Also set to 0 the same points as Antoine in Loic's 2nd order wl map
+wave_maps_la = wave_la[:2]   # Consider only orders 1 & 2
+
+# _clear
+wave_clear = fits.getdata(WORKING_DIR + "with_peaks/oversampling_1/wave_map2D.fits".format(os))
+wave_maps_clear = wave_clear[:2]   # Consider only orders 1 & 2
+
+diff_wave_map = (wave_la - wave_clear) / wave_clear
+
+plt.figure()
+plt.imshow(diff_wave_map[2], vmin=-0.10, vmax=0.7, origin='lower')
+plt.colorbar()
+plt.show()
+
+sys.exit()
 
 
 #### Spatial profiles ####
