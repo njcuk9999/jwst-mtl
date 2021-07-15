@@ -1850,7 +1850,7 @@ class Tikhonov:
 
                 # Default is euclidian norm of error.
                 # Similar to the chi^2.
-                y_val = (test['error']**2).sum(axis=-1)
+                y_val = np.nansum(test['error']**2, axis=-1)
             else:
                 y_val = test[test_key]
 
@@ -1907,10 +1907,10 @@ class Tikhonov:
 
         # Compute euclidian norm of error (||A.x - b||).
         # Similar to the chi^2.
-        err_norm = (test['error']**2).sum(axis=-1)
+        err_norm = np.nansum(test['error']**2, axis=-1)
 
         # Compute norm of regularisation term
-        reg_norm = (test['reg']**2).sum(axis=-1)
+        reg_norm = np.nansum(test['reg']**2, axis=-1)
 
         # Factors
         if factor_norm:
