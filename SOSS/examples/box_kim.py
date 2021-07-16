@@ -4,6 +4,7 @@ import numpy as np
 import scipy.constants as sc_cst
 import SOSS.trace.tracepol as tp
 from scipy.interpolate import interp1d
+from scipy.optimize import least_squares
 
 # Constants
 h = sc_cst.Planck
@@ -239,7 +240,7 @@ def make_comb(wave, peak_spacing, peak_width):
     """
     wave_range = wave[-1] - wave[0]
     n_peaks = wave_range / peak_spacing
-    peaks = wave[0] + peak_spacing/8 + np.arange(n_peaks) * peak_spacing
+    peaks = wave[0] + peak_spacing/4 + np.arange(n_peaks) * peak_spacing
     comb = np.zeros_like(wave, dtype=float)
     sigma = peak_width / 2.35
     for p in peaks:
@@ -257,3 +258,7 @@ def create_wave(R, w_min, w_max):
     while wave[-1] < w_max:
         wave.append(wave[-1] + wave[-1]/R)
     return np.array(wave)
+
+def robust_polyfit(fit_resFunc, x, y, p0):
+    res = least_squares(fit_resFunc, p0, loss='soft_l1', f_scale=0.1, args=(x, y))
+    return res.x

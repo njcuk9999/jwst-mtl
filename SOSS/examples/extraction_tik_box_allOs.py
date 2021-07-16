@@ -22,7 +22,7 @@ from matplotlib.colors import LogNorm  # For displaying of FITS images.
 import box_kim
 
 # MATPLOTLIB DEFAULTS
-plt.rc('figure', figsize=(12,7))
+plt.rc('figure', figsize=(13,7))
 plt.rc('font', size=14)
 plt.rc('image', cmap='inferno')
 plt.rc('lines', lw=1)
@@ -59,7 +59,7 @@ simuPars = spgen.read_pars(pathPars.simulationparamfile, simuPars)    # Read in 
 m_order = 1  # For now, only option is 1
 
 # CHOOSE ORDER(S) TO EXTRACT (ADB)  !!!
-only_order_1 = True
+only_order_1 = False
 
 # CHOOSE noiseless or noisy !!!
 if only_order_1 is False:
@@ -83,9 +83,16 @@ wave_maps_adb.append(fits.getdata("/home/kmorel/ongenesis/github/jwst-mtl/SOSS/e
 i_zero = np.where(wave_maps_adb[1][0] == 0.)[0][0]  # Where Antoine put 0 in his 2nd order wl map
 
 # Loic's files
-wave = fits.getdata("/genesis/jwst/userland-soss/loic_review/refs/map_wave_2D_native.fits")
-wave[1, :, i_zero:] = 0.  # Also set to 0 the same points as Antoine in Loic's 2nd order wl map
-wave_maps = [wave[0]] if only_order_1 else wave[:2]
+wave_la = fits.getdata("/genesis/jwst/userland-soss/loic_review/refs/map_wave_2D_native.fits")
+wave_la[1, :, i_zero:] = 0.  # Also set to 0 the same points as Antoine in Loic's 2nd order wl map
+wave_maps_la = [wave_la[0]] if only_order_1 else wave_la[:2]
+
+# _clear
+wave_clear = fits.getdata(WORKING_DIR + "with_peaks/oversampling_1/wave_map2D.fits".format(os))
+wave_maps_clear = [wave_clear[0]] if only_order_1 else wave_clear[:2]   # Consider only orders 1 & 2
+
+wave_maps = wave_maps_la
+
 # Convert data from fits files to float (fits precision is 1e-8)
 wave_maps = [wv.astype('float64') for wv in wave_maps]
 
@@ -260,7 +267,7 @@ title_noise = 'noisy' if noisy else 'noiseless'
 plt.title("Relative difference, Tikhonov vs box extraction, {}".format(title_noise))
 plt.xlabel("Wavelength [$\mu m$]")
 plt.ylabel("Relative difference [ppm]")
-plt.legend()
+plt.legend(bbox_to_anchor=(0.95,1))
 if save is True:
     if only_order_1 is True:
         plt.savefig(WORKING_DIR + 'relatdiff_tik_box_order1.png')

@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 from scipy.signal import find_peaks
 from astropy.modeling import models, fitting
 from scipy.interpolate import interp2d, interp1d
+from scipy.optimize import least_squares
 
 # Matplotlib defaults
 plt.rc('figure', figsize=(12,7))
@@ -95,7 +96,7 @@ for order in [0, 1, 2]:
     v = comb2D[order, :, :x_max].sum(axis=0)
 
     # Find peaks
-    pk_ind, _ = find_peaks(v, distance=17, prominence=(1000, None))
+    pk_ind, _ = find_peaks(v, distance=27, prominence=(1000, None))
 
     # Identify peaks
     pk_wave = np.flip(all_peaks[(all_peaks > w_range[0]) & (all_peaks < w_range[1])])
@@ -122,8 +123,8 @@ for order in [0, 1, 2]:
         for i, w in zip(pk_ind, pk_wave):
             if comb2D[order, j, i] < flux_threshold:   # flux too low, not a valid peak
                 continue
-            tmp_y = comb2D[order, j, i-3: i+4]   # subarray to use for fitting
-            tmp_x = x_arr[i-3: i+4]   # subarray to use for ftting
+            tmp_y = comb2D[order, j, i-5: i+6]   # subarray to use for fitting   # i-3: i+4
+            tmp_x = x_arr[i-5: i+6]   # subarray to use for ftting   # i-3: i+4
             model.amplitude_0 = tmp_y.max()
             model.mean_0.value = tmp_x[tmp_y.argmax()]
             model.mean_0.bounds = (i-2.5, i+2.5)
@@ -150,10 +151,22 @@ for order in [0, 1, 2]:
         # Do the interpolation in 1D, horizontally
         x = np.mgrid[:comb2D.shape[2]]
 
-        for j in range(j_min, j_max+1):   # Loop through each row of image
-            ind, = (y_meas == j).nonzero()
-            if ind.size < 5:
-                continue
+        for k in range(len(pk_wave)):
+            ind, = (z_meas == pk_wave[k]).nonzero()
+
+            def fit_resFunc(x, y, coeff):
+                p = np.poly1d(coeff)
+                return y - (p(x))
+
+            p0, p1 = robust_polyfit(fit_resFunc, x_meas[ind], y_meas[ind], [-1000, 1000])
+            new_p = np.poly1d([p0, p1])
+            new_y_meas = new_p(x_meas[ind])
+
+        #for j in range(j_min, j_max+1):   # Loop through each row of image
+        ### T'ES RENDU LÀ
+            #ind, = (y_meas == j).nonzero()
+            #if ind.size < 5:
+             #   continue
             interp_func = interp1d(x_meas[ind], z_meas[ind], kind='linear', bounds_error=False, fill_value='extrapolate')
             wave_map2D[order, j, :] = interp_func(x)
 
@@ -167,6 +180,8 @@ for order in [0, 1, 2]:
 
     plt.figure()
     plt.plot(x_meas, y_meas, '+', markersize=3)
+    plt.vlines(pk_ind, j_min, j_max, lw=1, color='r', label='pk_ind')
+    plt.legend()
     plt.show()
 
     plt.figure()
@@ -178,10 +193,6 @@ for order in [0, 1, 2]:
     plt.xlim(440, 470)
     plt.ylim(0, 155)
     plt.show()
-
-plt.figure()
-plt.imshow(wave_map2D[0], origin='lower', aspect='auto')
-plt.show()
 
 # Save wave_map2D
 hdu = fits.PrimaryHDU(wave_map2D)

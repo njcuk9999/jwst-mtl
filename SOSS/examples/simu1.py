@@ -110,7 +110,7 @@ tracePars = tp.get_tracepars(pathPars.tracefile)
 
 # TO CREATE THE NEW WAVELENGTH 2D MAP
 wave = box_kim.create_wave(R=65000, w_min=0.6, w_max=3.)
-comb, peaks = box_kim.make_comb(wave, peak_spacing=0.02, peak_width=0.004)
+comb, peaks = box_kim.make_comb(wave, peak_spacing=0.03, peak_width=0.006)
 starmodel_angstrom, starmodel_flambda  = wave * 10000., comb
 ld_coeff = soss.starlimbdarkening(starmodel_angstrom)
 hdu = fits.PrimaryHDU(peaks)

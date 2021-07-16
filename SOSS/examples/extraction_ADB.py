@@ -63,7 +63,7 @@ simuPars.noversample = 2
 os = simuPars.noversample
 
 # CHOOSE ORDER(S) TO EXTRACT (ADB)  !!!
-only_order_1 = False
+only_order_1 = True
 
 # CHOOSE noiseless or noisy !!!
 if only_order_1 is False:
@@ -72,7 +72,7 @@ else:
     noisy = False
 
 # SAVE FIGS? !!!
-save = True
+save = False
 #####################################################
 
 # Position of trace for box extraction
@@ -118,12 +118,10 @@ wave_maps_clear = wave_clear[:2]   # Consider only orders 1 & 2
 
 diff_wave_map = (wave_la - wave_clear) / wave_clear
 
-plt.figure()
-plt.imshow(diff_wave_map[2], vmin=-0.10, vmax=0.7, origin='lower')
-plt.colorbar()
-plt.show()
-
-sys.exit()
+#plt.figure()
+#plt.imshow(diff_wave_map[2], vmin=-0.10, vmax=0.7, origin='lower')
+#plt.colorbar()
+#plt.show()
 
 
 #### Spatial profiles ####
@@ -149,7 +147,7 @@ spat_pros_clear = new_spat[:2]
 
 
 # CHOOSE between Loic's and Antoine's maps
-wave_maps = wave_maps_la  # or wave_maps_adb
+wave_maps = wave_maps_clear  # or wave_maps_adb
 spat_pros = spat_pros_clear  # or new_spat_la   # or spat_pros_adb
 if only_order_1 is True:
     wave_maps = [wave_maps[0]]
