@@ -59,7 +59,7 @@ simuPars = spgen.read_pars(pathPars.simulationparamfile, simuPars)    # Read in 
 m_order = 1  # For now, only option is 1
 
 # CHOOSE ORDER(S) TO EXTRACT (ADB)  !!!
-only_order_1 = False
+only_order_1 = True
 
 # CHOOSE noiseless or noisy !!!
 if only_order_1 is False:
@@ -68,7 +68,7 @@ else:
     noisy = False
 
 # SAVE FIGS? !!!
-save = True
+save = False
 
 ####################################################################################
 os_list = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
@@ -91,7 +91,7 @@ wave_maps_la = [wave_la[0]] if only_order_1 else wave_la[:2]
 wave_clear = fits.getdata(WORKING_DIR + "with_peaks/oversampling_1/wave_map2D.fits".format(os))
 wave_maps_clear = [wave_clear[0]] if only_order_1 else wave_clear[:2]   # Consider only orders 1 & 2
 
-wave_maps = wave_maps_la
+wave_maps = wave_maps_clear
 
 # Convert data from fits files to float (fits precision is 1e-8)
 wave_maps = [wv.astype('float64') for wv in wave_maps]

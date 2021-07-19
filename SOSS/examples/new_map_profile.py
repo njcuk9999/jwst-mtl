@@ -11,6 +11,7 @@ from scipy.signal import find_peaks
 from astropy.modeling import models, fitting
 from scipy.interpolate import interp2d, interp1d
 from scipy.optimize import least_squares
+import box_kim
 
 # Matplotlib defaults
 plt.rc('figure', figsize=(12,7))
@@ -61,6 +62,10 @@ map_clear[1, :, 1790:] = 0  # Problem with end of order 2 trace
 """
 
 #####################################################################
+def fit_resFunc(coeff, x, y):
+    p = np.poly1d(coeff)
+    return (p(x)) - y
+
 # New wavelength map
 with fits.open(WORKING_DIR + "with_peaks/oversampling_1/peaks_wl.fits") as hdulist:
     all_peaks = hdulist[0].data
@@ -79,7 +84,7 @@ for order in [0, 1, 2]:
         x_max = 2048
         w_range = [0.8437, 2.833]   # Order 1
         j_min, j_max = 0, 153
-        flux_threshold = 150
+        flux_threshold = 700
     elif order == 1:
         x_max = 1754
         w_range = [0.6, 1.423]   # Order 2
@@ -140,7 +145,7 @@ for order in [0, 1, 2]:
     x_meas = x_meas[:count]
     y_meas = y_meas[:count]
     z_meas = z_meas[:count]
-
+    #plt.figure()
     if False:
         # Interpolation in 2D doesn't work very well!
         interp_func = interp2d(x_meas, y_meas, z_meas, kind='linear') #, fill_value=0)
@@ -150,24 +155,47 @@ for order in [0, 1, 2]:
     if True:
         # Do the interpolation in 1D, horizontally
         x = np.mgrid[:comb2D.shape[2]]
-
+        new_y_meas = np.zeros_like(y_meas, dtype=float)
+        new_x_meas = np.zeros(shape=(256, len(pk_wave)), dtype=float)    #zeros_like(x_meas)
+        new_z_meas = np.zeros(shape=(256, len(pk_wave)), dtype=float)   #np.zeros_like(z_meas, dtype=float)
+        nb = 0
         for k in range(len(pk_wave)):
-            ind, = (z_meas == pk_wave[k]).nonzero()
+            ind_z, = (z_meas == pk_wave[k]).nonzero()
+            new_z_meas[:, k] = pk_wave[k]
+            p1, p0 = box_kim.robust_polyfit(fit_resFunc, x_meas[ind_z], y_meas[ind_z], [-50, 60000])
+            #print(p1, p0)
+            new_p = np.poly1d([p1, p0])
+            fit_y_meas = new_p(x_meas[ind_z])
+            f = interp1d(fit_y_meas, x_meas[ind_z], kind='linear', bounds_error=False, fill_value='extrapolate')
+            y_range = np.arange(256)
+            new_x_meas[:, k] = f(y_range)
+            #new_y_meas[nb:nb + len(ind_z)] = y_meas[ind_z]  # sert à rien?
+            #new_z_meas[nb:nb + len(ind_z)] = z_meas[ind_z]
 
-            def fit_resFunc(x, y, coeff):
-                p = np.poly1d(coeff)
-                return y - (p(x))
+            if k == 40:
+                xx = np.arange(1216.5, 1221.1, 0.1)
+                plt.figure()
+                plt.plot(x_meas[ind_z], y_meas[ind_z], '+', markersize=3, label='meas')
+                plt.plot(xx, new_p(xx), color='r', lw=1, label='fit')
+                plt.plot(new_x_meas[:, k], y_range, label='interp fit')
+                plt.ylim(0, 255)
+                plt.legend()
+                plt.show()
+            nb += len(ind_z)
+        #plt.plot(x_meas, y_meas, '+', markersize=3, label='meas')
+        #plt.plot(new_x_meas, y_range, '+', markersize=3, label='fit meas.')
+        #plt.ylim(0, 255)
+        #plt.legend()
+        #plt.show()
 
-            p0, p1 = robust_polyfit(fit_resFunc, x_meas[ind], y_meas[ind], [-1000, 1000])
-            new_p = np.poly1d([p0, p1])
-            new_y_meas = new_p(x_meas[ind])
 
+        for j in y_range:   # Loop through each row of image
         #for j in range(j_min, j_max+1):   # Loop through each row of image
-        ### T'ES RENDU LÀ
-            #ind, = (y_meas == j).nonzero()
-            #if ind.size < 5:
+            #ind_y, = (new_y_meas == j).nonzero()
+            #if ind_y.size < 5:
              #   continue
-            interp_func = interp1d(x_meas[ind], z_meas[ind], kind='linear', bounds_error=False, fill_value='extrapolate')
+            interp_func = interp1d(new_x_meas[j], new_z_meas[j], kind='linear', bounds_error=False,
+                                   fill_value='extrapolate')
             wave_map2D[order, j, :] = interp_func(x)
 
     # We could try to fit a polynomial as well instead of interpolating ???
@@ -180,12 +208,12 @@ for order in [0, 1, 2]:
 
     plt.figure()
     plt.plot(x_meas, y_meas, '+', markersize=3)
-    plt.vlines(pk_ind, j_min, j_max, lw=1, color='r', label='pk_ind')
     plt.legend()
     plt.show()
 
     plt.figure()
     plt.imshow(wave_map2D[order, :, :], origin='lower', aspect='auto')
+    plt.show()
 
     plt.figure()
     plt.imshow(np.log10(comb2D[order, :, :]), origin='lower', cmap='gray', aspect='auto', vmin=2, vmax=6)
