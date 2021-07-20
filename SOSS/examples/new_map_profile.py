@@ -62,9 +62,9 @@ map_clear[1, :, 1790:] = 0  # Problem with end of order 2 trace
 """
 
 #####################################################################
-def fit_resFunc(coeff, x, y):
+def fit_resFunc(coeff, y, x):
     p = np.poly1d(coeff)
-    return (p(x)) - y
+    return (p(y)) - x
 
 # New wavelength map
 with fits.open(WORKING_DIR + "with_peaks/oversampling_1/peaks_wl.fits") as hdulist:
@@ -84,17 +84,17 @@ for order in [0, 1, 2]:
         x_max = 2048
         w_range = [0.8437, 2.833]   # Order 1
         j_min, j_max = 0, 153
-        flux_threshold = 700
+        flux_threshold = 600
     elif order == 1:
         x_max = 1754
         w_range = [0.6, 1.423]   # Order 2
         j_min, j_max = 0, 255
-        flux_threshold = 10
+        flux_threshold = 30
     elif order == 2:
         x_max = 1150
         w_range = [0.6, 0.956]   # Order 3
         j_min, j_max = 125, 255
-        flux_threshold = 250
+        flux_threshold = 260
     n_rows = j_max - j_min +1
 
     # First collapse the image along y to get a first estimate of peak positions, and identify peaks
@@ -145,7 +145,9 @@ for order in [0, 1, 2]:
     x_meas = x_meas[:count]
     y_meas = y_meas[:count]
     z_meas = z_meas[:count]
-    #plt.figure()
+
+    fig1, ax1 = plt.subplots(1, 1)
+    plt.ylim(0, 255)
     if False:
         # Interpolation in 2D doesn't work very well!
         interp_func = interp2d(x_meas, y_meas, z_meas, kind='linear') #, fill_value=0)
@@ -153,40 +155,41 @@ for order in [0, 1, 2]:
         y = np.mgrid[:comb2D.shape[1]]
         wave_map2D[order, :, :] = interp_func(x, y)
     if True:
-        # Do the interpolation in 1D, horizontally
+        # Do the interpolation in 1D
         x = np.mgrid[:comb2D.shape[2]]
-        new_y_meas = np.zeros_like(y_meas, dtype=float)
+
+        new_y_meas = np.zeros(shape=(256, len(pk_wave)), dtype=float)
         new_x_meas = np.zeros(shape=(256, len(pk_wave)), dtype=float)    #zeros_like(x_meas)
         new_z_meas = np.zeros(shape=(256, len(pk_wave)), dtype=float)   #np.zeros_like(z_meas, dtype=float)
         nb = 0
-        for k in range(len(pk_wave)):
+        for k in range(len(pk_wave)):   # Loop through each peak
             ind_z, = (z_meas == pk_wave[k]).nonzero()
-            new_z_meas[:, k] = pk_wave[k]
-            p1, p0 = box_kim.robust_polyfit(fit_resFunc, x_meas[ind_z], y_meas[ind_z], [-50, 60000])
-            #print(p1, p0)
-            new_p = np.poly1d([p1, p0])
-            fit_y_meas = new_p(x_meas[ind_z])
-            f = interp1d(fit_y_meas, x_meas[ind_z], kind='linear', bounds_error=False, fill_value='extrapolate')
-            y_range = np.arange(256)
-            new_x_meas[:, k] = f(y_range)
-            #new_y_meas[nb:nb + len(ind_z)] = y_meas[ind_z]  # sert à rien?
-            #new_z_meas[nb:nb + len(ind_z)] = z_meas[ind_z]
 
-            if k == 40:
-                xx = np.arange(1216.5, 1221.1, 0.1)
-                plt.figure()
-                plt.plot(x_meas[ind_z], y_meas[ind_z], '+', markersize=3, label='meas')
-                plt.plot(xx, new_p(xx), color='r', lw=1, label='fit')
-                plt.plot(new_x_meas[:, k], y_range, label='interp fit')
-                plt.ylim(0, 255)
-                plt.legend()
-                plt.show()
-            nb += len(ind_z)
-        #plt.plot(x_meas, y_meas, '+', markersize=3, label='meas')
-        #plt.plot(new_x_meas, y_range, '+', markersize=3, label='fit meas.')
-        #plt.ylim(0, 255)
-        #plt.legend()
-        #plt.show()
+            new_z_meas[:, k] = pk_wave[k]
+            p1, p0 = box_kim.robust_polyfit(fit_resFunc, y_meas[ind_z], x_meas[ind_z], [-0.005, pk_ind[k]+2])   # -50, 60000
+            print(p1, p0)
+            poly_fit = np.poly1d([p1, p0])
+            fit_x_meas = poly_fit(y_meas[ind_z])
+            #fit_y_meas = poly_fit(x_meas[ind_z])
+            y_range = np.arange(256)
+            new_x_meas[:, k] = poly_fit(y_range)
+            #new_x_meas[:, k] = (y_range - p0) / p1
+            new_y_meas[:, k] = y_range
+
+            if k == 5:
+                fig2, ax2 = plt.subplots(1, 1)
+                #plt.ylim(0, 255)
+                #plt.xlim(np.min(x_meas[ind_z])-0.5, np.max(x_meas[ind_z])+0.5)
+                ax2.plot(x_meas[ind_z], y_meas[ind_z], '+', markersize=3, label='meas')
+                #ax2.plot(x_meas[ind_z], fit_y_meas, color='r', label='fit')
+                ax2.plot(fit_x_meas, y_meas[ind_z], color='r', label='fit')
+                #ax2.plot(new_x_meas[:, k], y_range, '--', color='g', label='interp fit')
+
+            #nb += len(ind_z)
+        ax1.plot(x_meas, y_meas, '+', markersize=4, color='Blue', label='meas')
+        ax1.plot(new_x_meas, new_y_meas, '+', markersize=2, color='HotPink')
+        ax1.legend(), ax2.legend()
+        plt.show()
 
 
         for j in y_range:   # Loop through each row of image
@@ -204,21 +207,24 @@ for order in [0, 1, 2]:
 
     plt.figure()
     plt.plot(pk_ind, v[pk_ind], '.')
+    plt.title('Wavelengths of peaks')
+    plt.ylabel(r"Wavelength [$\mu m$]")
     plt.show()
 
     plt.figure()
-    plt.plot(x_meas, y_meas, '+', markersize=3)
-    plt.legend()
+    plt.plot(x_meas, y_meas, '+', color='MediumOrchid', markersize=3)
+    plt.title('Positions of peaks')
     plt.show()
 
     plt.figure()
-    plt.imshow(wave_map2D[order, :, :], origin='lower', aspect='auto')
+    plt.imshow(wave_map2D[order], origin='lower', aspect='auto')
+    plt.colorbar(label=r'Wavelength [$\mu m$]')
     plt.show()
 
     plt.figure()
     plt.imshow(np.log10(comb2D[order, :, :]), origin='lower', cmap='gray', aspect='auto', vmin=2, vmax=6)
     plt.plot(x_meas, y_meas, 'r+', markersize=3)
-    plt.xlim(440, 470)
+    plt.xlim(400, 470)
     plt.ylim(0, 155)
     plt.show()
 

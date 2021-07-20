@@ -132,6 +132,7 @@ for i in range(len(os_list)):
 
     ####################################################################################
     # LOAD SIMULATIONS
+    clear_tr_00 = fits.open(WORKING_DIR + "tmp/oversampling_{}/clear_trace_000000.fits".format(os))
     clear_00 = fits.open(WORKING_DIR + "tmp/oversampling_{}/clear_000000.fits".format(os))
     noisy_rateints = fits.open(WORKING_DIR + "oversampling_{}/test_clear_noisy_rateints.fits".format(os))
 
@@ -140,14 +141,18 @@ for i in range(len(os_list)):
 
     if os != 1:
         # Bin to pixel native
+        ref_i = soss.rebin(clear_tr_00[0].data, os, flux_method='sum')
+        clear_ref_bin = ref_i[:2, padd:-padd, padd:-padd]  # Reference thin trace, binned
         clear_i = soss.rebin(clear_00[0].data, os, flux_method='sum')
         clear_bin = clear_i[:2, padd:-padd, padd:-padd]  # Convolved traces, binned
     else:  # Os = 1
+        clear_ref_bin = clear_tr_00[0].data[:2, padd:-padd, padd:-padd]
         clear_bin = clear_00[0].data[:2, padd:-padd, padd:-padd]
 
     ####################################################################################
     # Noiseless images for extraction
     data_conv_bin = clear_bin[0] if only_order_1 else np.sum(clear_bin, axis=0)
+    data_ref_bin = clear_ref_bin[0] if only_order_1 else np.sum(clear_ref_bin, axis=0)
 
     if noisy is True:
         # Noisy images for extraction
@@ -157,12 +162,13 @@ for i in range(len(os_list)):
         i = np.where(dq % 2 != 0)  # Odd values of dq = DO NOT USE these pixels
         data_noisy[i[0], i[1]] = 0.
         delta_noisy[i[0], i[1]] = 0.
-        i_neg = np.where(data_noisy < 0.)
-        data_noisy[i_neg[0], i_neg[1]] = 0.
 
     ####################################################################################
     # BOX EXTRACTIONS
     # EXTRACTED FLUX OF NOISELESS TRACE(S)
+    # Reference thin trace:
+    fbox_ref_adu_bin = box_kim.flambda_adu(x, data_ref_bin, y, radius_pixel=5) / os  # Binned [adu/s]
+
     # Convolved trace(s), binned
     if only_order_1 is True:
         fbox_conv_inf_adu_bin = box_kim.flambda_inf_radi_adu(data_conv_bin) / os      # Infinite radius [adu/s]
@@ -204,7 +210,7 @@ for i in range(len(os_list)):
     factors = np.logspace(-25, -12, 14)
 
     # Noise estimate to weight the pixels
-    sig = np.sqrt(data + bkgd_noise ** 2)   # Poisson noise + background noise
+    sig = np.sqrt(np.abs(data) + bkgd_noise ** 2)   # Poisson noise + background noise
 
     # Tests all these factors.
     tests = extract.get_tikho_tests(factors, data=data, sig=sig)
@@ -244,10 +250,10 @@ for i in range(len(os_list)):
 
     # Comparison
     if only_order_1 is True:
-        relatdiff_tik_box[i] = box_kim.relative_difference(ftik_bin_interp, fbox_conv_inf_adu_bin)  # Tikhonov vs noiseless
+        relatdiff_tik_box[i] = box_kim.relative_difference(ftik_bin_interp, fbox_ref_adu_bin)  # Tikhonov vs noiseless   # fbox_conv_inf_adu_bin
         print('Radius pixel = infinite (for fbox_conv_ in relative differences)')
     else:
-        ref_data = fbox_noisy_adu if noisy else fbox_conv_adu_bin
+        ref_data = fbox_noisy_adu if noisy else fbox_ref_adu_bin   #fbox_conv_adu_bin
         relatdiff_tik_box[i] = box_kim.relative_difference(ftik_bin_interp, ref_data)
         print("Radius pixel = ", radius_pixel, '(for fbox_conv_ in relative differences)')
 
@@ -287,7 +293,7 @@ plt.show()
 plt.figure()
 for i in range(len(os_list)):
     plt.plot(w[5 :-5], relatdiff_norm[i, 5 :-5] * 1e6, label=os_list[i])
-plt.xlabel("Wavelength [$\mu m$]")
+plt.xlabel(r"Wavelength [$\mu m$]")
 plt.ylabel("Difference [ppm]")
 plt.title('Relative difference - median filter')
 plt.legend(title='Oversampling')

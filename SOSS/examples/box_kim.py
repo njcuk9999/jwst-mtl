@@ -259,6 +259,6 @@ def create_wave(R, w_min, w_max):
         wave.append(wave[-1] + wave[-1]/R)
     return np.array(wave)
 
-def robust_polyfit(fit_resFunc, x, y, p0):
-    res = least_squares(fit_resFunc, p0, loss='soft_l1', f_scale=0.1, args=(x, y))
+def robust_polyfit(fit_resFunc, y, x, p0):
+    res = least_squares(fit_resFunc, p0, loss='soft_l1', f_scale=0.1, args=(y, x))
     return res.x

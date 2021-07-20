@@ -118,11 +118,12 @@ wave_maps_clear = wave_clear[:2]   # Consider only orders 1 & 2
 
 diff_wave_map = (wave_la - wave_clear) / wave_clear
 
-#plt.figure()
-#plt.imshow(diff_wave_map[2], vmin=-0.10, vmax=0.7, origin='lower')
-#plt.colorbar()
-#plt.show()
+plt.figure()
+plt.imshow(diff_wave_map[0], origin='lower')
+plt.colorbar()
+plt.show()
 
+sys.exit()
 
 #### Spatial profiles ####
 # _adb : Antoine's files
@@ -213,8 +214,6 @@ else:
         i = np.where(dq %2 != 0)   # Odd values of dq = DO NOT USE these pixels
         data_noisy[i[0], i[1]] = 0.
         delta_noisy[i[0], i[1]] = 0.
-        #i_neg = np.where(data_noisy < 0.)
-        #data_noisy[i_neg[0], i_neg[1]] = 0.
 
 #####################################################
 # BOX EXTRACTIONS
@@ -365,7 +364,7 @@ else:
                        label='Tikhonov, order {}'.format(label))
 
     ax[0].set_ylabel("Extracted signal [counts]")
-    ax[1].set_xlabel("Wavelength [$\mu m$]")
+    ax[1].set_xlabel(r"Wavelength [$\mu m$]")
     ax[1].set_ylabel("Extracted signal [counts]")
     ax[0].legend(), ax[1].legend()
 
