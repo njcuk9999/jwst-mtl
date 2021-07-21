@@ -1594,6 +1594,201 @@ def tikho_solve(a_mat, b_vec, t_mat=None, grid=None,
     return tikho.solve(factor=factor, estimate=estimate)
 
 
+class TikhoTests(dict):
+    """
+    Class to save tikhonov tests for different factors.
+    Include plotting utilities like the `l_plot` which refers to
+    the l-curve used to find the optimal regularisation parameter
+    (here called `factors`).
+    All the tests are stored in the attribute `tests` as a dictionnary
+    """
+    def __init__(self, test_dict=None, name=None):
+        """
+        test_dict: dictionnary of tests.
+        name: string, name given to these tests
+        """
+        # Define the number of data points
+        # (length of the "b" vector in the tikhonov regularisation)
+        if test_dict is None:
+            print('Unable to get the number of data points. Setting `n_points` to 1')
+            n_points = 1
+        else:
+            n_points = len(test_dict['error'][0].squeeze())
+        
+        # Save attributes
+        self.n_points = n_points
+        self.name = None
+        
+        super().__init__(test_dict)
+        
+    def compute_chi2(self, tests=None, n_points=None):
+        
+        # Get number of data points
+        if n_points is None:
+            n_points = self.n_points
+        
+        # If not given, take the tests from the object
+        if tests is None:
+            tests = self
+
+        # Compute the (reduced?) chi^2 for all tests
+        chi2 = np.nansum(tests['error']**2, axis=-1)
+
+        # Normalize by the number of data points (squared)
+        chi2 /= n_points**2
+        
+        return chi2
+
+    def _check_plot_inputs(self, fig, ax, label, tests):
+        """
+        Method to manage inputs for plots methods.
+        """
+
+        # Use ax or fig if given. Else, init the figure
+        if (fig is None) and (ax is None):
+            fig, ax = plt.subplots(1, 1, sharex=True)
+        elif ax is None:
+            ax = fig.subplots(1, 1, sharex=True)
+
+        # Use the type of regularisation as label if None is given
+        if label is None:
+            label = self.name
+
+        if tests is None:
+            tests = self
+
+        return fig, ax, label, tests
+
+    def error_plot(self, fig=None, ax=None, label=None, tests=None,
+                   test_key=None, y_val=None):
+        """
+        Plot error as a function of factors
+        The keyword 'factors' is needed either in `tests` test input
+        or in `self.tests`.
+
+        Parameters
+        ----------
+        fig: matplotlib figure, optional
+            Figure to use for plot
+            If not given and ax is None, new figure is initiated
+        ax: matplotlib axis, optional
+            axis to use for plot. If not given, a new axis is initiated.
+        label: str, optional
+            label too put in legend
+        tests: dictionnary or TikhoTests, optional
+            tests. If not specified, `self.tests` is used
+        test_key: str, optional
+            which key to use in self.tests or the input kwargs `tests`.
+            If not specified, the euclidian norm of the 'error' key will be used.
+        y_val: array-like, optional
+            y values to plot. Same length as factors.
+
+        Returns
+        ------
+        fig, ax
+        """
+
+        # Manage method's inputs
+        args = (fig, ax, label, tests)
+        fig, ax, label, tests = self._check_plot_inputs(*args) 
+
+        # What y value do we plot?
+        if y_val is None:
+            # Use tests to plot y_val
+            if test_key is None:
+                # Default is euclidian norm of error.
+                # In other words, the chi^2.
+                y_val = self.compute_chi2()
+            else:
+                y_val = tests[test_key]
+                
+        # Take factors from test_dict
+        factors = tests['factors']
+
+        # Plot
+        ax.loglog(factors, y_val, label=label)
+
+        # Mark minimum value
+        i_min = np.argmin(y_val)
+        min_coord = factors[i_min], y_val[i_min]
+        ax.scatter(*min_coord, marker="x")
+        text = '{:2.1e}'.format(min_coord[0])
+        ax.text(*min_coord, text, va="top", ha="center")
+
+        # Show legend
+        ax.legend()
+
+        # Labels
+        ax.set_xlabel("Scale factor")
+        ylabel = r'System error '
+        ylabel += r'$\left(||\mathbf{Ax-b}||^2_2\right)$'
+        ax.set_ylabel(ylabel)
+
+        return fig, ax
+
+    def l_plot(self, fig=None, ax=None, label=None,
+               tests=None, text_label=True, factor_norm=False):
+        """
+        make an 'l curve'
+        The keywords 'factors', 'error' and 'reg' are needed either
+        in `tests` input or in `self.tests`.
+
+        Parameters
+        ----------
+        fig: matplotlib figure, optional
+            Figure to use for plot
+            If not given and ax is None, new figure is initiated
+        ax: matplotlib axis, optional
+            axis to use for plot. If not given, a new axis is initiated.
+        label: str, optional
+            label too put in legend
+        test: dictionnary or TikhoTests, optional
+            tests. If not specified, `self.tests` is used
+        text_label: bool, optional
+            If True, add label of the factor value to each points in the plot.
+
+        Returns
+        ------
+        fig, ax
+        """
+
+        # Manage method's inputs
+        args = (fig, ax, label, tests)
+        fig, ax, label, tests = self._check_plot_inputs(*args)
+        
+        # Get factors from test_dict
+        factors = tests['factors']
+
+        # Compute euclidian norm of error (||A.x - b||).
+        # In other words, the chi^2.
+        err_norm = self.compute_chi2()
+
+        # Compute norm of regularisation term
+        reg_norm = np.nansum(tests['reg']**2, axis=-1)
+
+        # Factors
+        if factor_norm:
+            reg_norm *= factors**2
+
+        # Plot
+        ax.loglog(err_norm, reg_norm, '.:', label=label)
+
+        # Add factor values as text
+        if text_label:
+            for f, x, y in zip(factors, err_norm, reg_norm):
+                plt.text(x, y, "{:2.1e}".format(f), va="center", ha="right")
+
+        # Legend
+        ax.legend()
+
+        # Labels
+        xlabel = r'$\left(||\mathbf{Ax-b}||^2_2\right)$'
+        ylabel = r'$\left(||\mathbf{\Gamma.x}||^2_2\right)$'
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
+
+        return fig, ax
+
 class Tikhonov:
     """
     Tikhonov regularisation to solve the ill-condition problem:
