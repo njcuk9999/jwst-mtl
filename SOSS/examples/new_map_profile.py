@@ -89,7 +89,7 @@ for order in [0, 1, 2]:
         x_max = 1754
         w_range = [0.6, 1.423]   # Order 2
         j_min, j_max = 0, 255
-        flux_threshold = 30
+        flux_threshold = 20
     elif order == 2:
         x_max = 1150
         w_range = [0.6, 0.956]   # Order 3
@@ -101,7 +101,7 @@ for order in [0, 1, 2]:
     v = comb2D[order, :, :x_max].sum(axis=0)
 
     # Find peaks
-    pk_ind, _ = find_peaks(v, distance=27, prominence=(1000, None))
+    pk_ind, _ = find_peaks(v, distance=18, prominence=(1000, None))
 
     # Identify peaks
     pk_wave = np.flip(all_peaks[(all_peaks > w_range[0]) & (all_peaks < w_range[1])])
@@ -206,7 +206,8 @@ for order in [0, 1, 2]:
     # wave_maps2D[order, :, :] *= (comb2D[order, :, :] > flux_threshold)
 
     plt.figure()
-    plt.plot(pk_ind, v[pk_ind], '.')
+    #plt.plot(pk_ind, v[pk_ind], '.')
+    plt.plot(pk_ind, pk_wave, '.')
     plt.title('Wavelengths of peaks')
     plt.ylabel(r"Wavelength [$\mu m$]")
     plt.show()

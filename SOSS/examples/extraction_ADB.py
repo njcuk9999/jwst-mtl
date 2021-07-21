@@ -118,10 +118,11 @@ wave_maps_clear = wave_clear[:2]   # Consider only orders 1 & 2
 
 diff_wave_map = (wave_la - wave_clear) / wave_clear
 
-plt.figure()
-plt.imshow(diff_wave_map[0], origin='lower')
-plt.colorbar()
-plt.show()
+for i in range(diff_wave_map.shape[0]):
+    plt.figure()
+    plt.imshow(diff_wave_map[i], origin='lower')
+    plt.colorbar()
+    plt.show()
 
 sys.exit()
 
