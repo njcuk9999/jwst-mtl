@@ -109,14 +109,15 @@ i_zero = np.where(wave_maps_adb[1][0] == 0.)[0][0]   # Where Antoine put 0 in hi
 
 # _la : Loic's files
 wave_la = fits.getdata("/genesis/jwst/userland-soss/loic_review/refs/map_wave_2D_native.fits")
-#wave_la[1,:,i_zero:] = 0.  # Also set to 0 the same points as Antoine in Loic's 2nd order wl map
+wave_la[1,:,i_zero:] = 0.  # Also set to 0 the same points as Antoine in Loic's 2nd order wl map
 wave_maps_la = wave_la[:2]   # Consider only orders 1 & 2
 
 # _clear
-wave_clear = fits.getdata(WORKING_DIR + "with_peaks/oversampling_1/wave_map2D.fits".format(os))
+wave_clear = fits.getdata(WORKING_DIR + "with_peaks/oversampling_1/wave_map2D.fits")
+wave_clear[1,:,i_zero:] = 0.  # Also set to 0 the same points as Antoine in clear's 2nd order wl map
 wave_maps_clear = wave_clear[:2]   # Consider only orders 1 & 2
 
-diff_wave_map = (wave_la - wave_clear) / wave_clear
+diff_wave_map = (wave_la - wave_clear) #/ wave_clear
 
 for i in range(diff_wave_map.shape[0]):
     plt.figure()

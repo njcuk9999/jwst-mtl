@@ -128,8 +128,8 @@ for order in [0, 1, 2]:
         for i, w in zip(pk_ind, pk_wave):
             if comb2D[order, j, i] < flux_threshold:   # flux too low, not a valid peak
                 continue
-            tmp_y = comb2D[order, j, i-5: i+6]   # subarray to use for fitting   # i-3: i+4
-            tmp_x = x_arr[i-5: i+6]   # subarray to use for ftting   # i-3: i+4
+            tmp_y = comb2D[order, j, i-4: i+5]   # subarray to use for fitting   # i-3: i+4
+            tmp_x = x_arr[i-4: i+5]   # subarray to use for ftting   # i-3: i+4
             model.amplitude_0 = tmp_y.max()
             model.mean_0.value = tmp_x[tmp_y.argmax()]
             model.mean_0.bounds = (i-2.5, i+2.5)
@@ -161,7 +161,7 @@ for order in [0, 1, 2]:
         new_y_meas = np.zeros(shape=(256, len(pk_wave)), dtype=float)
         new_x_meas = np.zeros(shape=(256, len(pk_wave)), dtype=float)    #zeros_like(x_meas)
         new_z_meas = np.zeros(shape=(256, len(pk_wave)), dtype=float)   #np.zeros_like(z_meas, dtype=float)
-        nb = 0
+
         for k in range(len(pk_wave)):   # Loop through each peak
             ind_z, = (z_meas == pk_wave[k]).nonzero()
 
@@ -178,26 +178,22 @@ for order in [0, 1, 2]:
 
             if k == 5:
                 fig2, ax2 = plt.subplots(1, 1)
-                #plt.ylim(0, 255)
-                #plt.xlim(np.min(x_meas[ind_z])-0.5, np.max(x_meas[ind_z])+0.5)
-                ax2.plot(x_meas[ind_z], y_meas[ind_z], '+', markersize=3, label='meas')
+                ax2.plot(x_meas[ind_z], y_meas[ind_z], '+', markersize=3, label='peaks meas.')
                 #ax2.plot(x_meas[ind_z], fit_y_meas, color='r', label='fit')
                 ax2.plot(fit_x_meas, y_meas[ind_z], color='r', label='fit')
                 #ax2.plot(new_x_meas[:, k], y_range, '--', color='g', label='interp fit')
 
-            #nb += len(ind_z)
         ax1.plot(x_meas, y_meas, '+', markersize=4, color='Blue', label='meas')
         ax1.plot(new_x_meas, new_y_meas, '+', markersize=2, color='HotPink')
         ax1.legend(), ax2.legend()
         plt.show()
-
 
         for j in y_range:   # Loop through each row of image
         #for j in range(j_min, j_max+1):   # Loop through each row of image
             #ind_y, = (new_y_meas == j).nonzero()
             #if ind_y.size < 5:
              #   continue
-            interp_func = interp1d(new_x_meas[j], new_z_meas[j], kind='linear', bounds_error=False,
+            interp_func = interp1d(new_x_meas[j, :], new_z_meas[j, :], kind='linear', bounds_error=False,
                                    fill_value='extrapolate')
             wave_map2D[order, j, :] = interp_func(x)
 
@@ -231,7 +227,7 @@ for order in [0, 1, 2]:
 
 # Save wave_map2D
 hdu = fits.PrimaryHDU(wave_map2D)
-hdu.writeto(WORKING_DIR + "with_peaks/oversampling_1/wave_map2D.fits".format(os), overwrite=True)
+hdu.writeto(WORKING_DIR + "with_peaks/oversampling_1/wave_map2D.fits", overwrite=True)
 
 """
 # For verification of what going on for a specific peak fit

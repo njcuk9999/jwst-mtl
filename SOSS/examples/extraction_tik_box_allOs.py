@@ -36,7 +36,7 @@ ng = 3   # NGROUP
 t_read = 5.49   # Reading time [s]
 tint = (ng - 1) * t_read   # Integration time [s]
 
-radius_pixel = 40
+radius_pixel = 34
 
 ####################################################################################
 
@@ -68,7 +68,7 @@ else:
     noisy = False
 
 # SAVE FIGS? !!!
-save = False
+save = True
 
 ####################################################################################
 os_list = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
@@ -89,9 +89,10 @@ wave_maps_la = [wave_la[0]] if only_order_1 else wave_la[:2]
 
 # _clear
 wave_clear = fits.getdata(WORKING_DIR + "with_peaks/oversampling_1/wave_map2D.fits".format(os))
+wave_clear[1, :, i_zero:] = 0.  # Also set to 0 the same points as Antoine in clear's 2nd order wl map
 wave_maps_clear = [wave_clear[0]] if only_order_1 else wave_clear[:2]   # Consider only orders 1 & 2
 
-wave_maps = wave_maps_la
+wave_maps = wave_maps_clear
 
 # Convert data from fits files to float (fits precision is 1e-8)
 wave_maps = [wv.astype('float64') for wv in wave_maps]
@@ -114,8 +115,9 @@ xnew, y, mask = tp.wavelength_to_pix(w, pars, m=1, oversample=1)  # Converts wav
 
 ####################################################################################
 relatdiff_tik_box = np.empty(shape=(len(os_list), len(w)), dtype=float)
+relatdiff_tik_box_ref = np.empty(shape=(len(os_list), len(w)), dtype=float)
 
-fig1, ax1 = plt.subplots(1, 1)
+fig1, ax1 = plt.subplots(2, 1, sharex=True)
 fig2, ax2 = plt.subplots(1, 1)
 for i in range(len(os_list)):
     os = os_list[i]
@@ -168,7 +170,7 @@ for i in range(len(os_list)):
     # BOX EXTRACTIONS
     # EXTRACTED FLUX OF NOISELESS TRACE(S)
     # Reference thin trace:
-    fbox_ref_adu_bin = box_kim.flambda_adu(x, data_ref_bin, y, radius_pixel=5) / os  # Binned [adu/s]
+    fbox_ref_adu_bin = box_kim.flambda_adu(x, data_ref_bin, y, radius_pixel=4) / os  # Binned [adu/s]
 
     # Convolved trace(s), binned
     if only_order_1 is True:
@@ -243,7 +245,6 @@ for i in range(len(os_list)):
     # Bin in counts
     # Integrate
     lam_bin, ftik_bin = extract.bin_to_pixel(f_k=f_k, i_ord=0)  # Only extract order 1
-    #w_bin, fbox_bin = extract.bin_to_pixel(f_k=fbox_conv_inf_adu_bin, i_ord=0)    # TEST
 
     # For comparison:
     # Because w and lam_bin are not the same
@@ -251,31 +252,33 @@ for i in range(len(os_list)):
     ftik_bin_interp = f(w)   # Extracted flux by Tikhonov interpolated on my wl grid   # w
     ff = interp1d(w, fbox_conv_inf_adu_bin, fill_value='extrapolate')
     fbox_conv_inf_adu_bin_interp = ff(lam_bin)
+    fff = interp1d(w, fbox_ref_adu_bin, fill_value='extrapolate')
+    fbox_ref_adu_bin_interp = fff(lam_bin)
 
     # Comparison
     if only_order_1 is True:
-        relatdiff_tik_box[i] = box_kim.relative_difference(np.flip(ftik_bin), fbox_ref_adu_bin)  # Tikhonov vs noiseless   # ftik_bin_interp, fbox_conv_inf_adu_bin
-        #relatdiff_tik_box[i] = box_kim.relative_difference(ftik_bin, fbox_conv_inf_adu_bin)  # Tikhonov vs noiseless
+        relatdiff_tik_box[i] = box_kim.relative_difference(ftik_bin, fbox_conv_inf_adu_bin_interp)  # Tikhonov vs noiseless   # np.flip(ftik_bin)
+        relatdiff_tik_box_ref[i] = box_kim.relative_difference(ftik_bin, fbox_ref_adu_bin_interp)  # Tikhonov vs noiseless
         print('Radius pixel = infinite (for fbox_conv_ in relative differences)')
     else:
-        ref_data = fbox_noisy_adu if noisy else fbox_ref_adu_bin   #fbox_conv_adu_bin
-        relatdiff_tik_box[i] = box_kim.relative_difference(ftik_bin_interp, ref_data)
+        ref_data = fbox_noisy_adu if noisy else fbox_conv_adu_bin_interp
+        relatdiff_tik_box[i] = box_kim.relative_difference(ftik_bin, ref_data)
+        relatdiff_tik_box_ref[i] = box_kim.relative_difference(ftik_bin, fbox_ref_adu_bin_interp)
+
         print("Radius pixel = ", radius_pixel, '(for fbox_conv_ in relative differences)')
 
-    #ax1..plot(w[5:-5], relatdiff_tik_box[i, 5:-5] * 1e6, label='os = {}'.format(os))
-    ax1.plot(np.flip(lam_bin[5:-5]), relatdiff_tik_box[i, 5:-5] * 1e6, label='os = {}'.format(os))
+    ax1[0].plot(lam_bin[5:-5], relatdiff_tik_box[i, 5:-5] * 1e6, label='os = {}'.format(os))
+    ax1[1].plot(lam_bin[5:-5], relatdiff_tik_box_ref[i, 5:-5] * 1e6, label='os = {}'.format(os))
 
     if os == 10:
-        #ax2.plot(w[5:-5], ftik_bin[5:-5], label='tikhonov, os = {}'.format(os))
         ax2.plot(lam_bin[5:-5], ftik_bin[5:-5], label='tikhonov, os = {}'.format(os))
-        #ax2.plot(w[5:-5], fbox_ref_adu_bin[5:-5], label='box')
         ax2.plot(np.flip(lam_bin[5:-5]), fbox_ref_adu_bin[5:-5], label='box')
 
     print('Os = {} : Done'.format(os))
 
 title_noise = 'noisy' if noisy else 'noiseless'
 
-ax2.set_title("Extracted fluxe, Tikhonov vs box extraction, {}".format(title_noise))
+ax2.set_title("Extracted flux, Tikhonov vs box extraction, {}".format(title_noise))
 ax2.set_xlabel("Wavelength [$\mu m$]")
 ax2.set_ylabel("Extracted flux")
 ax2.legend(bbox_to_anchor=(0.95,1))
@@ -284,18 +287,23 @@ ax2.legend(bbox_to_anchor=(0.95,1))
 relatdiff_median = np.median(relatdiff_tik_box, axis=0)
 relatdiff_norm = relatdiff_tik_box - relatdiff_median
 relatdiff_std = np.std(relatdiff_norm[:, 5:-5], axis=1)
-
 print('Standard deviations: ', relatdiff_std)
 
-#ax1.plot(w[5:-5], relatdiff_median[5:-5] * 1e6, label='Median')
-ax1.plot(np.flip(lam_bin[5:-5]), relatdiff_median[5:-5] * 1e6, label='Median')
-ax1.set_title("Relative difference, Tikhonov vs box extraction, {}".format(title_noise))
-ax1.set_xlabel("Wavelength [$\mu m$]")
-ax1.set_ylabel("Relative difference [ppm]")
-ax1.legend(bbox_to_anchor=(0.95,1))
+relatdiff_median_ref = np.median(relatdiff_tik_box_ref, axis=0)
+relatdiff_norm_ref = relatdiff_tik_box_ref - relatdiff_median_ref
+relatdiff_std_ref = np.std(relatdiff_norm_ref[:, 5:-5], axis=1)
+
+ax1[0].plot(lam_bin[5:-5], relatdiff_median[5:-5] * 1e6, label='Median')
+ax1[1].plot(lam_bin[5:-5], relatdiff_median_ref[5:-5] * 1e6, label='Median')
+ax1[0].set_title("Relative difference, Tikhonov vs box extraction, convolved, {}".format(title_noise))
+ax1[1].set_title("Relative difference, Tikhonov vs box extraction, thin trace, {}".format(title_noise))
+ax1[1].set_xlabel("Wavelength [$\mu m$]")
+ax1[0].set_ylabel("Relative difference [ppm]")
+ax1[1].set_ylabel("Relative difference [ppm]")
+ax1[1].legend(bbox_to_anchor=(0.96,1.5))
 if save is True:
     if only_order_1 is True:
-        fig1.savefig(WORKING_DIR + 'relatdiff_tik_box_order1.png')
+        fig1.savefig(WORKING_DIR + 'with_new_wl_map2D/relatdiff_tik_box_order1.png')
     else:
         if noisy is True:
             fig1.savefig(WORKING_DIR + 'relatdiff_tik_box_noisy.png')
@@ -306,39 +314,45 @@ if only_order_1 is True:
     print("Order 1 only")
 else:
     print('Noisy') if noisy else print('Orders 1 & 2 summed')
-
 plt.show()
 
-plt.figure()
+fig, ax = plt.subplots(2, 1, sharex=True)
 for i in range(len(os_list)):
-    #plt.plot(w[5 :-5], relatdiff_norm[i, 5 :-5] * 1e6, label=os_list[i])
-    plt.plot(np.flip(lam_bin[5:-5]), relatdiff_norm[i, 5:-5] * 1e6, label=os_list[i])
-plt.xlabel(r"Wavelength [$\mu m$]")
-plt.ylabel("Difference [ppm]")
-plt.title('Relative difference - median filter')
-plt.legend(title='Oversampling')
+    ax[0].plot(lam_bin[5:-5], relatdiff_norm[i, 5:-5] * 1e6, label=os_list[i])
+    ax[1].plot(lam_bin[5:-5], relatdiff_norm_ref[i, 5:-5] * 1e6, label=os_list[i])
+ax[1].set_xlabel(r"Wavelength [$\mu m$]")
+ax[0].set_ylabel("Difference [ppm]")
+ax[1].set_ylabel("Difference [ppm]")
+ax[0].set_title('Relative difference - median filter (convolved)')
+ax[1].set_title('Relative difference - median filter (thin trace)')
+ax[1].legend(title='Oversampling', bbox_to_anchor=(0.96,1.5))
 if save is True:
     if only_order_1 is True:
-        plt.savefig(WORKING_DIR + 'relatdiff_tik_box_norm_order1.png')
+        fig.savefig(WORKING_DIR + 'with_new_wl_map2D/relatdiff_tik_box_norm_order1.png')
     else:
         if noisy is True:
-            plt.savefig(WORKING_DIR + 'relatdiff_tik_box_norm_noisy.png')
+            fig.savefig(WORKING_DIR + 'relatdiff_tik_box_norm_noisy.png')
         else:
-            plt.savefig(WORKING_DIR + 'relatdiff_tik_box_norm.png')
+            fig.savefig(WORKING_DIR + 'relatdiff_tik_box_norm.png')
 plt.show()
 
-plt.figure()
-plt.scatter(os_list, relatdiff_std * 1e6, color='r')
-plt.xticks(os_list, os_list)
-plt.xlabel('Oversampling')
-plt.ylabel('Standard deviation [ppm]')
-plt.title('Standard deviations from difference')
+fig, ax = plt.subplots(2, 1, sharex=True)
+ax[0].scatter(os_list, relatdiff_std * 1e6, color='r')
+ax[1].scatter(os_list, relatdiff_std_ref * 1e6, color='r')
+ax[0].set_xticks(os_list, os_list), ax[1].set_xticks(os_list, os_list)
+ax[1].set_xlabel('Oversampling')
+ax[0].set_ylabel('Standard deviation [ppm]'), ax[1].set_ylabel('Standard deviation [ppm]')
+ax[0].set_title('Standard deviations from difference, convolved')
+ax[1].set_title('Standard deviations from difference, thin trace')
 if save is True:
     if only_order_1 is True:
-        plt.savefig(WORKING_DIR + 'relatdiff_tik_box_std_order1.png')
+        fig.savefig(WORKING_DIR + 'with_new_wl_map2D/relatdiff_tik_box_std_order1.png')
     else:
         if noisy is True:
-            plt.savefig(WORKING_DIR + 'relatdiff_tik_box_std_noisy.png')
+            fig.savefig(WORKING_DIR + 'relatdiff_tik_box_std_noisy.png')
         else:
-            plt.savefig(WORKING_DIR + 'relatdiff_tik_box_std.png')
+            fig.savefig(WORKING_DIR + 'relatdiff_tik_box_std.png')
 plt.show()
+
+# TODO : QUANTIFY DIFFERENCE BETWEEN LOIC'S MAP AND MINE
+# TODO:  DO IT FOR ORDER 2 INCLUDED (CHECK RADIUS ODD VS EVEN)
