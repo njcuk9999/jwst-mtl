@@ -78,6 +78,9 @@ with fits.open(WORKING_DIR + "tmp/with_peaks/oversampling_1/clear_000000.fits") 
 
 # Now we have the positions, we need to interpolate wavelength values over all pixels of the detector
 wave_map2D = np.zeros_like(comb2D, dtype=float)
+p1_list = []
+tilt_list = []
+pk_wave_list = []
 
 for order in [0, 1, 2]:
     if order == 0:
@@ -105,6 +108,7 @@ for order in [0, 1, 2]:
 
     # Identify peaks
     pk_wave = np.flip(all_peaks[(all_peaks > w_range[0]) & (all_peaks < w_range[1])])
+    pk_wave_list.append(pk_wave)
 
     if pk_ind.size != pk_wave.size:
         print('Problem in peak identification!!!')
@@ -162,12 +166,16 @@ for order in [0, 1, 2]:
         new_x_meas = np.zeros(shape=(256, len(pk_wave)), dtype=float)    #zeros_like(x_meas)
         new_z_meas = np.zeros(shape=(256, len(pk_wave)), dtype=float)   #np.zeros_like(z_meas, dtype=float)
 
+        p1_list_ord = []
+        tilt_list_ord = []
         for k in range(len(pk_wave)):   # Loop through each peak
             ind_z, = (z_meas == pk_wave[k]).nonzero()
 
             new_z_meas[:, k] = pk_wave[k]
             p1, p0 = box_kim.robust_polyfit(fit_resFunc, y_meas[ind_z], x_meas[ind_z], [-0.005, pk_ind[k]+2])   # -50, 60000
-            print(p1, p0)
+            p1_list_ord.append(p1)
+            tilt = np.arctan(p1)
+            tilt_list_ord.append(np.degrees(tilt))
             poly_fit = np.poly1d([p1, p0])
             fit_x_meas = poly_fit(y_meas[ind_z])
             #fit_y_meas = poly_fit(x_meas[ind_z])
@@ -186,7 +194,6 @@ for order in [0, 1, 2]:
         ax1.plot(x_meas, y_meas, '+', markersize=4, color='Blue', label='meas')
         ax1.plot(new_x_meas, new_y_meas, '+', markersize=2, color='HotPink')
         ax1.legend(), ax2.legend()
-        plt.show()
 
         for j in y_range:   # Loop through each row of image
         #for j in range(j_min, j_max+1):   # Loop through each row of image
@@ -197,6 +204,9 @@ for order in [0, 1, 2]:
                                    fill_value='extrapolate')
             wave_map2D[order, j, :] = interp_func(x)
 
+    p1_list.append(p1_list_ord)
+    tilt_list.append(tilt_list_ord)
+
     # We could try to fit a polynomial as well instead of interpolating ???
 
     # wave_maps2D[order, :, :] *= (comb2D[order, :, :] > flux_threshold)
@@ -206,28 +216,31 @@ for order in [0, 1, 2]:
     plt.plot(pk_ind, pk_wave, '.')
     plt.title('Wavelengths of peaks')
     plt.ylabel(r"Wavelength [$\mu m$]")
-    plt.show()
 
     plt.figure()
     plt.plot(x_meas, y_meas, '+', color='MediumOrchid', markersize=3)
     plt.title('Positions of peaks')
-    plt.show()
 
     plt.figure()
     plt.imshow(wave_map2D[order], origin='lower', aspect='auto')
     plt.colorbar(label=r'Wavelength [$\mu m$]')
-    plt.show()
 
     plt.figure()
     plt.imshow(np.log10(comb2D[order, :, :]), origin='lower', cmap='gray', aspect='auto', vmin=2, vmax=6)
     plt.plot(x_meas, y_meas, 'r+', markersize=3)
     plt.xlim(400, 470)
     plt.ylim(0, 155)
-    plt.show()
+plt.show()
 
 # Save wave_map2D
-hdu = fits.PrimaryHDU(wave_map2D)
-hdu.writeto(WORKING_DIR + "with_peaks/oversampling_1/wave_map2D.fits", overwrite=True)
+#hdu = fits.PrimaryHDU(wave_map2D)
+#hdu.writeto(WORKING_DIR + "with_peaks/oversampling_1/wave_map2D.fits", overwrite=True)
+
+plt.figure()
+plt.plot(pk_wave_list[0], tilt_list[0], '.')
+plt.ylabel('Tilt [degrees]')
+plt.xlabel(r"Wavelength [$\mu m$]")
+plt.show()
 
 """
 # For verification of what going on for a specific peak fit

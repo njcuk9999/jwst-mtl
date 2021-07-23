@@ -59,11 +59,11 @@ simuPars = spgen.read_pars(pathPars.simulationparamfile, simuPars) #read in para
 m_order = 1  # For now, only option is 1.
 
 # CHOOSE OVERSAMPLE  !!!
-simuPars.noversample = 2
+simuPars.noversample = 5
 os = simuPars.noversample
 
 # CHOOSE ORDER(S) TO EXTRACT (ADB)  !!!
-only_order_1 = True
+only_order_1 = False
 
 # CHOOSE noiseless or noisy !!!
 if only_order_1 is False:
@@ -72,7 +72,7 @@ else:
     noisy = False
 
 # SAVE FIGS? !!!
-save = False
+save = True
 #####################################################
 
 # Position of trace for box extraction
@@ -119,13 +119,16 @@ wave_maps_clear = wave_clear[:2]   # Consider only orders 1 & 2
 
 diff_wave_map = (wave_la - wave_clear) #/ wave_clear
 
-for i in range(diff_wave_map.shape[0]):
-    plt.figure()
-    plt.imshow(diff_wave_map[i], origin='lower')
-    plt.colorbar()
+if False:
+    fig, ax = plt.subplots(3, 1)
+    for i in range(diff_wave_map.shape[0]):
+        im = ax[i].imshow(diff_wave_map[i], origin='lower')
+        ax[i].set_title('Order {}'.format(i+1))
+        fig.colorbar(im, ax=ax[i])
+    if save is True:
+        hdu = fits.PrimaryHDU(diff_wave_map)
+        hdu.writeto(WORKING_DIR + "with_peaks/oversampling_1/wave_map2D_diff_laVSclear.fits", overwrite=True)
     plt.show()
-
-sys.exit()
 
 #### Spatial profiles ####
 # _adb : Antoine's files
@@ -150,7 +153,7 @@ spat_pros_clear = new_spat[:2]
 
 
 # CHOOSE between Loic's and Antoine's maps
-wave_maps = wave_maps_clear  # or wave_maps_adb
+wave_maps = wave_maps_clear # or wave_maps_adb
 spat_pros = spat_pros_clear  # or new_spat_la   # or spat_pros_adb
 if only_order_1 is True:
     wave_maps = [wave_maps[0]]
@@ -278,14 +281,14 @@ sig = np.sqrt(np.abs(data) + bkgd_noise**2)   # Poisson noise + background noise
 tests = extract.get_tikho_tests(factors, data=data, sig=sig)
 
 # Find the best factor.
-best_fac = extract.best_tikho_factor(tests=tests, i_plot=True)
+best_fac = extract.best_tikho_factor(tests=tests, i_plot=False)
 
 # Refine the grid (span 4 orders of magnitude).
 best_fac = np.log10(best_fac)
 factors = np.logspace(best_fac-2, best_fac+2, 20)
 
 tests = extract.get_tikho_tests(factors, data=data, sig=sig)
-best_fac = extract.best_tikho_factor(tests=tests, i_plot=True)
+best_fac = extract.best_tikho_factor(tests=tests, i_plot=False)
 
 # Extract the oversampled spectrum 𝑓𝑘
 # Can be done in a loop for a timeseries and/or iteratively for different estimates of the reference files.
@@ -301,13 +304,12 @@ plt.ylabel("Oversampled Spectrum $f_k$ [energy$\cdot s^{-1} \cdot \mu m^{-1}$]")
 plt.tight_layout()
 if save is True:
     if only_order_1 is True:
-        plt.savefig(WORKING_DIR + "oversampling_{}/oversampled_spectrum_tik_order1.png".format(os))
+        plt.savefig(WORKING_DIR + "oversampling_{}/with_newclear_wave_map2D/oversampled_spectrum_tik_order1.png".format(os))   #
     else:
         if noisy is True:
-            plt.savefig(WORKING_DIR + "oversampling_{}/oversampled_spectrum_tik_noisy.png".format(os))
+            plt.savefig(WORKING_DIR + "oversampling_{}/with_newclear_wave_map2D/oversampled_spectrum_tik_noisy.png".format(os))   # /with_newclear_wave_map2D
         else:
-            plt.savefig(WORKING_DIR + "oversampling_{}/oversampled_spectrum_tik.png".format(os))
-plt.show()
+            plt.savefig(WORKING_DIR + "oversampling_{}/with_newclear_wave_map2D/oversampled_spectrum_tik.png".format(os))   # /with_newclear_wave_map2D
 
 # Bin to pixel native sampling
 # To get a result comparable to typical extraction methods, we need to integrate the oversampled spectrum (𝑓𝑘)
@@ -338,8 +340,12 @@ if only_order_1 is True:
 
     # For comparison:
     # Because w and lam_bin_list[0] are not the same
-    f = interp1d(lam_bin_list[0], ftik_bin_list[0] , fill_value='extrapolate')
-    ftik_bin_interp = f(w)    # Extracted flux by Tikhonov interpolated on my wl grid
+    #f = interp1d(lam_bin_list[0], ftik_bin_list[0] , fill_value='extrapolate')
+    #ftik_bin_interp = f(w)    # Extracted flux by Tikhonov interpolated on my wl grid
+    ff = interp1d(w, fbox_conv_inf_adu_bin, fill_value='extrapolate')
+    fbox_conv_inf_adu_bin_interp = ff(lam_bin_list[0])
+    fff = interp1d(w, fbox_ref_adu_bin, fill_value='extrapolate')
+    fbox_ref_adu_bin_interp = fff(lam_bin_list[0])
     ax.plot(w, fbox_conv_inf_adu_bin, label='Box extraction, radius = inf', color='DeepPink')
     ax.plot(lam_bin_list[0], ftik_bin_list[0], ls='--', label="Tikhonov extraction", color='Blue')
 
@@ -355,87 +361,89 @@ else:
         if i_ord == 0:
             # For comparison:
             # Because w and lam_bin_list[0] are not the same
-            f = interp1d(lam_bin_list[i_ord], ftik_bin_list[i_ord], fill_value='extrapolate')
-            ftik_bin_interp = f(w)   # Extracted flux by Tikhonov interpolated on my wl grid
+            #f = interp1d(lam_bin_list[i_ord], ftik_bin_list[i_ord], fill_value='extrapolate')
+            #ftik_bin_interp = f(w)   # Extracted flux by Tikhonov interpolated on my wl grid
+            ff = interp1d(w, fbox_conv_adu_bin, fill_value='extrapolate')
+            fbox_conv_adu_bin_interp = ff(lam_bin_list[0])
+            ffff = interp1d(w, fbox_ref_adu_bin, fill_value='extrapolate')
+            fbox_ref_adu_bin_interp = ffff(lam_bin_list[0])
             if noisy is False:
                 ax[i_ord].plot(w, fbox_conv_adu_bin, color='DeepPink', label='Box extraction, order {}'.format(label))
             else:
+                fff = interp1d(w, fbox_noisy_adu, fill_value='extrapolate')
+                fbox_noisy_adu_interp = fff(lam_bin_list[0])
                 ax[i_ord].plot(w, fbox_noisy_adu, color='DeepPink', label='Box extraction, order {}'.format(label))
 
         ax[i_ord].plot(lam_bin_list[i_ord], ftik_bin_list[i_ord], color='Blue',
                        label='Tikhonov, order {}'.format(label))
-
-    ax[0].set_ylabel("Extracted signal [counts]")
+        ax[i_ord].set_ylabel("Extracted signal [counts]")
+        ax[i_ord].legend()
     ax[1].set_xlabel(r"Wavelength [$\mu m$]")
-    ax[1].set_ylabel("Extracted signal [counts]")
-    ax[0].legend(), ax[1].legend()
 
 plt.tight_layout()
 if save is True:
     if only_order_1 is True:
-        plt.savefig(WORKING_DIR + "oversampling_{}/extracted_signal_tik_box_order1.png".format(os))
+        plt.savefig(WORKING_DIR + "oversampling_{}/with_newclear_wave_map2D/extracted_signal_tik_box_order1.png".format(os))   #/with_newclear_wave_map2D
     else:
         if noisy is True:
-            plt.savefig(WORKING_DIR + "oversampling_{}/extracted_signal_tik_box_noisy.png".format(os))
+            plt.savefig(WORKING_DIR + "oversampling_{}/with_newclear_wave_map2D/extracted_signal_tik_box_noisy.png".format(os))   # /with_newclear_wave_map2D
         else:
-            plt.savefig(WORKING_DIR + "oversampling_{}/extracted_signal_tik_box.png".format(os))
-plt.show()
+            plt.savefig(WORKING_DIR + "oversampling_{}/with_newclear_wave_map2D/extracted_signal_tik_box.png".format(os))   #/with_newclear_wave_map2D
 
 
 # Comparison
 if only_order_1 == True:
-    relatdiff_box_tik = box_kim.relative_difference(ftik_bin_interp, fbox_conv_inf_adu_bin)  # Tikhonov vs noiseless
+    relatdiff_box_tik = box_kim.relative_difference(ftik_bin_list[0], fbox_conv_inf_adu_bin_interp)  # Tikhonov vs noiseless
 
     relatdiff_conv_ref = box_kim.relative_difference(fbox_conv_inf_adu, fbox_ref_adu)    # Convolved vs ref, not binned
     relatdiff_conv_ref_bin = box_kim.relative_difference(fbox_conv_inf_adu_bin, fbox_ref_adu_bin)  # Convolved vs ref, binned
-    relatdiff_tik_ref = box_kim.relative_difference(ftik_bin_interp, fbox_ref_adu_bin)             # Tikhonov vs ref
+    relatdiff_tik_ref = box_kim.relative_difference(ftik_bin_list[0], fbox_ref_adu_bin_interp)             # Tikhonov vs ref
     print('Radius pixel = infinite (for fbox_conv_ in relative differences)')
 
 else:
     if noisy is False:
-        relatdiff_box_tik = box_kim.relative_difference(ftik_bin_interp, fbox_conv_adu_bin)  # Tikhonov vs noiseless
+        relatdiff_box_tik = box_kim.relative_difference(ftik_bin_list[0], fbox_conv_adu_bin_interp)  # Tikhonov vs noiseless
     elif noisy is True:
-        relatdiff_box_tik = box_kim.relative_difference(ftik_bin_interp, fbox_noisy_adu)     # Tikhonov vs noisy
+        relatdiff_box_tik = box_kim.relative_difference(ftik_bin_list[0], fbox_noisy_adu_interp)     # Tikhonov vs noisy
 
     relatdiff_conv_ref = box_kim.relative_difference(fbox_conv_adu, fbox_ref_adu)        # Convolved vs ref, not binned
     relatdiff_conv_ref_bin = box_kim.relative_difference(fbox_conv_adu_bin, fbox_ref_adu_bin)  # Convolved vs ref, binned
-    relatdiff_tik_ref = box_kim.relative_difference(ftik_bin_interp, fbox_ref_adu_bin)         # Tikhonov vs ref
+    relatdiff_tik_ref = box_kim.relative_difference(ftik_bin_list[0], fbox_ref_adu_bin_interp)         # Tikhonov vs ref
     print("Radius pixel = ", radius_pixel, '(for fbox_conv_ in relative differences)')
 
 
 plt.figure()
 plt.plot(w_os, relatdiff_conv_ref * 1e6, color='Indigo', label='Noiseless convolved vs ref, not binned, os={}'.format(os))
 plt.plot(w, relatdiff_conv_ref_bin * 1e6, color='Green', label='Noiseless convolved vs ref, binned')
-plt.plot(w, relatdiff_tik_ref * 1e6, color='Crimson', label='Tikhonov vs ref, binned')
+plt.plot(lam_bin_list[0], relatdiff_tik_ref * 1e6, color='Crimson', label='Tikhonov vs ref, binned')
 plt.xlabel("Wavelength [$\mu m$]")
 plt.ylabel("Relative difference [ppm]")
 plt.title("Relative differences, compared to reference thin trace")
 plt.legend()
 if save is True:
     if only_order_1 is True:
-        plt.savefig(WORKING_DIR + 'oversampling_{}/relatdiff_vs_ref_order1.png'.format(os))
+        plt.savefig(WORKING_DIR + 'oversampling_{}/with_newclear_wave_map2D/relatdiff_vs_ref_order1.png'.format(os))   #/with_newclear_wave_map2D
     else:
         if noisy is True:
-            plt.savefig(WORKING_DIR + 'oversampling_{}/relatdiff_vs_ref_noisy.png'.format(os))
+            plt.savefig(WORKING_DIR + 'oversampling_{}/with_newclear_wave_map2D/relatdiff_vs_ref_noisy.png'.format(os))  #/with_newclear_wave_map2D
         else:
-            plt.savefig(WORKING_DIR + 'oversampling_{}/relatdiff_vs_ref.png'.format(os))
-plt.show()
+            plt.savefig(WORKING_DIR + 'oversampling_{}/with_newclear_wave_map2D/relatdiff_vs_ref.png'.format(os))   # /with_newclear_wave_map2D
 
 
 plt.figure()
-plt.plot(w[5:-5], relatdiff_box_tik[5:-5] * 1e6, color='DarkOrchid')
+plt.plot(lam_bin_list[0][5:-5], relatdiff_box_tik[5:-5] * 1e6, color='DarkOrchid')
 plt.xlabel("Wavelength [$\mu m$]")
 plt.ylabel("Relative difference [ppm]")
 title_noise = 'noisy' if noisy else 'noiseless'
 plt.title("Relative difference, Tikhonov vs box extraction, {}".format(title_noise))
 if save is True:
     if only_order_1 is True:
-        plt.savefig(WORKING_DIR + 'oversampling_{}/relatdiff_box_tik_order1.png'.format(os))
+        plt.savefig(WORKING_DIR + 'oversampling_{}/with_newclear_wave_map2D/relatdiff_box_tik_order1.png'.format(os))   #/with_newclear_wave_map2D
     else:
         if noisy is True:
-            plt.savefig(WORKING_DIR + 'oversampling_{}/relatdiff_box_tik_noisy.png'.format(os))
+            plt.savefig(WORKING_DIR + 'oversampling_{}/with_newclear_wave_map2D/relatdiff_box_tik_noisy.png'.format(os))   #/with_newclear_wave_map2D
         else:
-            plt.savefig(WORKING_DIR + 'oversampling_{}/relatdiff_box_tik.png'.format(os))
+            plt.savefig(WORKING_DIR + 'oversampling_{}/with_newclear_wave_map2D/relatdiff_box_tik.png'.format(os))   #/with_newclear_wave_map2D
 plt.show()
 
 
@@ -461,13 +469,12 @@ plt.tight_layout()
 plt.legend(title="Order")
 if save is True:
     if only_order_1 is True:
-        plt.savefig(WORKING_DIR + "oversampling_{}/convolved_flux_tik_order1.png".format(os))
+        plt.savefig(WORKING_DIR + "oversampling_{}/with_newclear_wave_map2D/convolved_flux_tik_order1.png".format(os))   #/with_newclear_wave_map2D
     else:
         if noisy is True:
-            plt.savefig(WORKING_DIR + "oversampling_{}/convolved_flux_tik_noisy.png".format(os))
+            plt.savefig(WORKING_DIR + "oversampling_{}/with_newclear_wave_map2D/convolved_flux_tik_noisy.png".format(os))   #/with_newclear_wave_map2D
         else:
-            plt.savefig(WORKING_DIR + "oversampling_{}/convolved_flux_tik.png".format(os))
-plt.show()
+            plt.savefig(WORKING_DIR + "oversampling_{}/with_newclear_wave_map2D/convolved_flux_tik.png".format(os))   # /with_newclear_wave_map2D
 
 # Quality estimate
 # Rebuild the detector
@@ -479,12 +486,12 @@ plt.colorbar(label="Error relative to noise", orientation='horizontal', aspect=4
 plt.tight_layout()
 if save is True:
     if only_order_1 is True:
-        plt.savefig(WORKING_DIR + "oversampling_{}/rebuild_tik_order1.png".format(os))
+        plt.savefig(WORKING_DIR + "oversampling_{}/with_newclear_wave_map2D/rebuild_tik_order1.png".format(os))   #/with_newclear_wave_map2D
     else:
         if noisy is True:
-            plt.savefig(WORKING_DIR + "oversampling_{}/rebuild_tik_noisy.png".format(os))
+            plt.savefig(WORKING_DIR + "oversampling_{}/with_newclear_wave_map2D/rebuild_tik_noisy.png".format(os))   #/with_newclear_wave_map2D
         else:
-            plt.savefig(WORKING_DIR + "oversampling_{}/rebuild_tik.png".format(os))
+            plt.savefig(WORKING_DIR + "oversampling_{}/with_newclear_wave_map2D/rebuild_tik.png".format(os))   #/with_newclear_wave_map2D
 plt.show()
 # (We can see that we are very close to the photon noise limit in this case. There are some small
 # structures in the 2nd order in the overlap region, but the extracted spectrum is dominated by the
@@ -502,10 +509,9 @@ else:
     plt.imshow(data_noisy, vmin=0, origin="lower")
     plt.title("test_clear_noisy_rateints.fits, os={}".format(os))
 #plt.plot(x, y_not, color="Lime", lw=1, label="Order 1 trace's position l.a.")   # Middle position of order 1 trace
-plt.plot(x, y, color="r", lw=1, label="Order 1 trace's position")   # Middle position of order 1 trace
+plt.plot(x_os, y_os, color="r", lw=1, label="Order 1 trace's position")   # Middle position of order 1 trace
 plt.colorbar(label="[adu/s]", orientation='horizontal')
 plt.legend()
-plt.show()
 
 
 plt.figure()
@@ -520,7 +526,6 @@ if save is True:
         plt.savefig(WORKING_DIR + "oversampling_{}/extracted_flux_ref_vs_conv_order1.png".format(os))
     else:
         plt.savefig(WORKING_DIR + "oversampling_{}/extracted_flux_ref_vs_conv.png".format(os))
-plt.show()
 
 
 # Extracted flux [J/s/m²/um]
@@ -533,21 +538,19 @@ if noisy is True:
     plt.ylabel(r"Extracted flux [adu/s]")
     plt.xlabel(r"Wavelength [$\mu$m]")
     plt.title(r"Extracted flux of order 1 trace from noisy traces")
-    plt.show()
 
     plt.figure()
     plt.plot(w[start:end], fbox_noisy_energy[start:end], color="HotPink")
     plt.xlabel(r"Wavelength [$\mu$m]")
     plt.ylabel(r"Extracted flux [J s⁻¹ m⁻² $\mu$m⁻¹]")
     plt.title("Extracted flux of order 1 from noisy traces")
-    plt.show()
 else:
     plt.figure()
     plt.plot(w[start:end], fbox_conv_energy_bin[start:end], color='MediumVioletRed')
     plt.ylabel(r"Extracted flux [J s⁻¹ m⁻² $\mu$m⁻¹]")
     plt.xlabel(r"Wavelength [$\mu$m]")
     plt.title("Extracted flux of noiseless, convolved binned trace")
-    plt.show()
+plt.show()
 
 
 print("Oversample = {}".format(os))

@@ -59,13 +59,16 @@ simuPars = spgen.read_pars(pathPars.simulationparamfile, simuPars)    # Read in 
 m_order = 1  # For now, only option is 1
 
 # CHOOSE ORDER(S) TO EXTRACT (ADB)  !!!
-only_order_1 = True
+only_order_1 = False
 
 # CHOOSE noiseless or noisy !!!
 if only_order_1 is False:
     noisy = False
 else:
     noisy = False
+
+# CHOOSE WHICH MAPS !!!
+map_la = False   # False gives the new clear map
 
 # SAVE FIGS? !!!
 save = True
@@ -82,17 +85,14 @@ wave_maps_adb.append(fits.getdata("/home/kmorel/ongenesis/github/jwst-mtl/SOSS/e
 wave_maps_adb.append(fits.getdata("/home/kmorel/ongenesis/github/jwst-mtl/SOSS/extract/Ref_files/wavelengths_m2.fits"))
 i_zero = np.where(wave_maps_adb[1][0] == 0.)[0][0]  # Where Antoine put 0 in his 2nd order wl map
 
-# Loic's files
-wave_la = fits.getdata("/genesis/jwst/userland-soss/loic_review/refs/map_wave_2D_native.fits")
-wave_la[1, :, i_zero:] = 0.  # Also set to 0 the same points as Antoine in Loic's 2nd order wl map
-wave_maps_la = [wave_la[0]] if only_order_1 else wave_la[:2]
-
-# _clear
-wave_clear = fits.getdata(WORKING_DIR + "with_peaks/oversampling_1/wave_map2D.fits".format(os))
-wave_clear[1, :, i_zero:] = 0.  # Also set to 0 the same points as Antoine in clear's 2nd order wl map
-wave_maps_clear = [wave_clear[0]] if only_order_1 else wave_clear[:2]   # Consider only orders 1 & 2
-
-wave_maps = wave_maps_clear
+if map_la is True:
+    # Loic's files
+    wave = fits.getdata("/genesis/jwst/userland-soss/loic_review/refs/map_wave_2D_native.fits")
+else:
+    # _clear
+    wave = fits.getdata(WORKING_DIR + "with_peaks/oversampling_1/wave_map2D.fits".format(os))
+wave[1, :, i_zero:] = 0.  # Also set to 0 the same points as Antoine in clear's 2nd order wl map
+wave_maps = [wave[0]] if only_order_1 else wave[:2]   # Consider only orders 1 & 2
 
 # Convert data from fits files to float (fits precision is 1e-8)
 wave_maps = [wv.astype('float64') for wv in wave_maps]
@@ -116,6 +116,8 @@ xnew, y, mask = tp.wavelength_to_pix(w, pars, m=1, oversample=1)  # Converts wav
 ####################################################################################
 relatdiff_tik_box = np.empty(shape=(len(os_list), len(w)), dtype=float)
 relatdiff_tik_box_ref = np.empty(shape=(len(os_list), len(w)), dtype=float)
+lam_bin_array = np.empty(shape=(len(os_list), len(w)), dtype=float)
+ftik_bin_array = np.empty(shape=(len(os_list), len(w)), dtype=float)
 
 fig1, ax1 = plt.subplots(2, 1, sharex=True)
 fig2, ax2 = plt.subplots(1, 1)
@@ -245,13 +247,15 @@ for i in range(len(os_list)):
     # Bin in counts
     # Integrate
     lam_bin, ftik_bin = extract.bin_to_pixel(f_k=f_k, i_ord=0)  # Only extract order 1
+    lam_bin_array[i] = lam_bin
+    ftik_bin_array[i] = ftik_bin
 
     # For comparison:
     # Because w and lam_bin are not the same
     f = interp1d(lam_bin, ftik_bin, fill_value='extrapolate')
     ftik_bin_interp = f(w)   # Extracted flux by Tikhonov interpolated on my wl grid   # w
-    ff = interp1d(w, fbox_conv_inf_adu_bin, fill_value='extrapolate')
-    fbox_conv_inf_adu_bin_interp = ff(lam_bin)
+    ff = interp1d(w, fbox_conv_adu_bin, fill_value='extrapolate')
+    fbox_conv_adu_bin_interp = ff(lam_bin)
     fff = interp1d(w, fbox_ref_adu_bin, fill_value='extrapolate')
     fbox_ref_adu_bin_interp = fff(lam_bin)
 
@@ -290,8 +294,8 @@ relatdiff_std = np.std(relatdiff_norm[:, 5:-5], axis=1)
 print('Standard deviations: ', relatdiff_std)
 
 relatdiff_median_ref = np.median(relatdiff_tik_box_ref, axis=0)
-relatdiff_norm_ref = relatdiff_tik_box_ref - relatdiff_median_ref
-relatdiff_std_ref = np.std(relatdiff_norm_ref[:, 5:-5], axis=1)
+diff_norm_ref = relatdiff_tik_box_ref - relatdiff_median_ref
+diff_std_ref = np.std(diff_norm_ref[:, 5:-5], axis=1)
 
 ax1[0].plot(lam_bin[5:-5], relatdiff_median[5:-5] * 1e6, label='Median')
 ax1[1].plot(lam_bin[5:-5], relatdiff_median_ref[5:-5] * 1e6, label='Median')
@@ -318,8 +322,8 @@ plt.show()
 
 fig, ax = plt.subplots(2, 1, sharex=True)
 for i in range(len(os_list)):
-    ax[0].plot(lam_bin[5:-5], relatdiff_norm[i, 5:-5] * 1e6, label=os_list[i])
-    ax[1].plot(lam_bin[5:-5], relatdiff_norm_ref[i, 5:-5] * 1e6, label=os_list[i])
+    ax[0].plot(lam_bin[5:-5], diff_norm[i, 5:-5] * 1e6, label=os_list[i])
+    ax[1].plot(lam_bin[5:-5], diff_norm_ref[i, 5:-5] * 1e6, label=os_list[i])
 ax[1].set_xlabel(r"Wavelength [$\mu m$]")
 ax[0].set_ylabel("Difference [ppm]")
 ax[1].set_ylabel("Difference [ppm]")
@@ -337,8 +341,8 @@ if save is True:
 plt.show()
 
 fig, ax = plt.subplots(2, 1, sharex=True)
-ax[0].scatter(os_list, relatdiff_std * 1e6, color='r')
-ax[1].scatter(os_list, relatdiff_std_ref * 1e6, color='r')
+ax[0].scatter(os_list, diff_std * 1e6, color='r')
+ax[1].scatter(os_list, diff_std_ref * 1e6, color='r')
 ax[0].set_xticks(os_list, os_list), ax[1].set_xticks(os_list, os_list)
 ax[1].set_xlabel('Oversampling')
 ax[0].set_ylabel('Standard deviation [ppm]'), ax[1].set_ylabel('Standard deviation [ppm]')
@@ -354,5 +358,35 @@ if save is True:
             fig.savefig(WORKING_DIR + 'relatdiff_tik_box_std.png')
 plt.show()
 
+
+if True:
+    hdu_ftik = fits.PrimaryHDU(ftik_bin_array)
+    hdu_lam = fits.PrimaryHDU(lam_bin_array)
+    if map_la is True:
+        hdu_ftik.writeto(WORKING_DIR + "ftik_bin_array_la_12.fits", overwrite=True)
+        hdu_lam.writeto(WORKING_DIR + "lam_bin_array_la_12.fits", overwrite=True)
+    else:
+        hdu_ftik.writeto(WORKING_DIR + "ftik_bin_array_clear_12.fits", overwrite=True)
+        hdu_lam.writeto(WORKING_DIR + "lam_bin_array_clear_12.fits", overwrite=True)
+"""
+
+ftik_bin_array_la = fits.getdata(WORKING_DIR + "ftik_bin_array_la.fits")
+lam_bin_array_la = fits.getdata(WORKING_DIR + "lam_bin_array_la.fits")
+ftik_bin_array_clear = fits.getdata(WORKING_DIR + "ftik_bin_array_clear.fits")
+lam_bin_array_clear = fits.getdata(WORKING_DIR + "lam_bin_array_clear.fits")
+
+plt.figure()
+for i in range(ftik_bin_array_la.shape[0]):
+    fct = interp1d(lam_bin_array_clear[i], ftik_bin_array_clear[i], fill_value='extrapolate')
+    ftik_bin_clear_interp = fct(lam_bin_array_la[i])
+    relatdiff_ftik = box_kim.relative_difference(ftik_bin_clear_interp, ftik_bin_array_la[i])
+    plt.plot(lam_bin_array_la[i], relatdiff_ftik * 1e6, label='os = {}'.format(os_list[i]))
+plt.ylabel("Relative difference [ppm]")
+plt.xlabel(r"Wavelength [$\mu m$]")
+plt.title('Relative difference between extracted fluxes (tikho.) with new wave_map2D vs old one')
+plt.legend(title='Oversampling', bbox_to_anchor=(0.96,1))
+plt.savefig(WORKING_DIR + 'relatdiff_ftik_order1.png')
+plt.show()
+"""
 # TODO : QUANTIFY DIFFERENCE BETWEEN LOIC'S MAP AND MINE
-# TODO:  DO IT FOR ORDER 2 INCLUDED (CHECK RADIUS ODD VS EVEN)
+# TODO:  DO IT FOR ORDER 2 INCLUDED
