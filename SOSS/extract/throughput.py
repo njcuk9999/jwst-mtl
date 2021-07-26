@@ -16,8 +16,11 @@ def get_module_path(file):
 
 # Default file parameters
 FILE_SOSS = "NIRISS_Throughput_STScI.fits"
+FILE_SOSS = 'NIRISS_Throughput_20210318.fits'
 
 DEF_PATH = get_module_path(__file__) + "Ref_files/"
+DEF_PATH = '/genesis/jwst/jwst-ref-soss/trace_model/'
+
 
 
 class ThroughputSOSS(interp1d):
@@ -45,6 +48,8 @@ class ThroughputSOSS(interp1d):
         wv = hdu[1].data['LAMBDA'].squeeze()
         # nm to microns
         wv /= 1000.
+
+        print('ello')
 
         # Interpolate
         super().__init__(wv, tr, kind='cubic',

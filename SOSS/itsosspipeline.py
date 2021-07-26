@@ -926,6 +926,7 @@ def generate_traces(savingprefix, pathPars, simuPars, tracePars, throughput,
     #nframes = np.size(simuPars.orderlist)
 
     # Defines the dimensions of the arrays, depends on the oversampling
+    print('Bug traceing. xpadding={:d} ypadding={:d}'.format(simuPars.xpadding, simuPars.ypadding))
     xmax = (simuPars.xout + 2*simuPars.xpadding) * simuPars.noversample
     ymax = (simuPars.yout + 2*simuPars.ypadding) * simuPars.noversample
     #xmax =simuPars.xout*simuPars.noversample
@@ -1076,6 +1077,7 @@ def rebin(image, noversampling, flux_method='mean'):
     :return:
     """
     ndim = image.ndim
+    print('rebin : image dimensions = {:}'.format(ndim))
     if ndim == 2:
         dimy, dimx = np.shape(image)
         newdimy, newdimx = int(dimy/noversampling), int(dimx/noversampling)
@@ -1086,7 +1088,7 @@ def rebin(image, noversampling, flux_method='mean'):
         else:
             return image.reshape(shape).mean(-1).mean(1)
     elif ndim == 3:
-        dimz, dimy, dimx = np.shape(image2D)
+        dimz, dimy, dimx = np.shape(image)
         newdimy, newdimx = int(dimy/noversampling), int(dimx/noversampling)
         cube = np.zeros((dimz, newdimy, newdimx))
         for i in range(dimz):
@@ -1154,6 +1156,7 @@ def write_dmsready_fits_init(imagelist, normalization_scale,
         if t == 0:
             # First image, use dimensiosn and create a large cube
             norders, dimy, dimx = np.shape(image)
+            print('Bug tracing - norder={:d} dimy={:d} dimx={:d}'.format(norders, dimy, dimx))
             fluxratecube = np.zeros((ntimesteps, dimy, dimx))
         # Scale the flux for each order by the normalization factor passed as input
         for m in range(norders):
@@ -1258,7 +1261,13 @@ def write_dmsready_fits(image, filename, os=1, xpadding=0, ypadding=0,
             print('Needs to have 2 to 4 dimensions.')
             sys.exit()
         # Now that data is in native pixels, remove the padding
+        if True:
+            print('Bug tracing: size of data before removing padding')
+            nint, ngroup, dimy, dimx = np.shape(data)
+            print('nint={:}, ngroup={:}, dimy={:}, dimx={:}'.format(nint, ngroup, dimy, dimx))
+            print('so?')
         data = data[:,:,ypadding:-ypadding,xpadding:-xpadding]
+
         # Reset the dimx, dimy parameters now that all is in native pixel size, unpadded
         nint, ngroup, dimy, dimx = np.shape(data)
     else:
