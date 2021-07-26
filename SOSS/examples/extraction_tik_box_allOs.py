@@ -59,7 +59,7 @@ simuPars = spgen.read_pars(pathPars.simulationparamfile, simuPars)    # Read in 
 m_order = 1  # For now, only option is 1
 
 # CHOOSE ORDER(S) TO EXTRACT (ADB)  !!!
-only_order_1 = False
+only_order_1 = True
 
 # CHOOSE noiseless or noisy !!!
 if only_order_1 is False:
@@ -74,7 +74,7 @@ map_la = False   # False gives the new clear map
 save = True
 
 ####################################################################################
-os_list = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+os_list = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]   # [1, 5, 10]
 
 ####################################################################################
 # Read relevant files
@@ -254,8 +254,8 @@ for i in range(len(os_list)):
     # Because w and lam_bin are not the same
     f = interp1d(lam_bin, ftik_bin, fill_value='extrapolate')
     ftik_bin_interp = f(w)   # Extracted flux by Tikhonov interpolated on my wl grid   # w
-    ff = interp1d(w, fbox_conv_adu_bin, fill_value='extrapolate')
-    fbox_conv_adu_bin_interp = ff(lam_bin)
+    ff = interp1d(w, fbox_conv_inf_adu_bin, fill_value='extrapolate')   # fbox_conv_adu_bin
+    fbox_conv_inf_adu_bin_interp = ff(lam_bin)    # fbox_conv_adu_bin_interp
     fff = interp1d(w, fbox_ref_adu_bin, fill_value='extrapolate')
     fbox_ref_adu_bin_interp = fff(lam_bin)
 
@@ -289,9 +289,9 @@ ax2.legend(bbox_to_anchor=(0.95,1))
 
 # Apply median filter on all relative differences
 relatdiff_median = np.median(relatdiff_tik_box, axis=0)
-relatdiff_norm = relatdiff_tik_box - relatdiff_median
-relatdiff_std = np.std(relatdiff_norm[:, 5:-5], axis=1)
-print('Standard deviations: ', relatdiff_std)
+diff_norm = relatdiff_tik_box - relatdiff_median
+diff_std = np.std(diff_norm[:, 5:-5], axis=1)
+print('Standard deviations: ', diff_std)
 
 relatdiff_median_ref = np.median(relatdiff_tik_box_ref, axis=0)
 diff_norm_ref = relatdiff_tik_box_ref - relatdiff_median_ref
@@ -310,9 +310,9 @@ if save is True:
         fig1.savefig(WORKING_DIR + 'with_new_wl_map2D/relatdiff_tik_box_order1.png')
     else:
         if noisy is True:
-            fig1.savefig(WORKING_DIR + 'relatdiff_tik_box_noisy.png')
+            fig1.savefig(WORKING_DIR + 'with_new_wl_map2D/relatdiff_tik_box_noisy.png')
         else:
-            fig1.savefig(WORKING_DIR + 'relatdiff_tik_box.png')
+            fig1.savefig(WORKING_DIR + 'with_new_wl_map2D/relatdiff_tik_box.png')
 
 if only_order_1 is True:
     print("Order 1 only")
@@ -335,9 +335,9 @@ if save is True:
         fig.savefig(WORKING_DIR + 'with_new_wl_map2D/relatdiff_tik_box_norm_order1.png')
     else:
         if noisy is True:
-            fig.savefig(WORKING_DIR + 'relatdiff_tik_box_norm_noisy.png')
+            fig.savefig(WORKING_DIR + 'with_new_wl_map2D/relatdiff_tik_box_norm_noisy.png')
         else:
-            fig.savefig(WORKING_DIR + 'relatdiff_tik_box_norm.png')
+            fig.savefig(WORKING_DIR + 'with_new_wl_map2D/relatdiff_tik_box_norm.png')
 plt.show()
 
 fig, ax = plt.subplots(2, 1, sharex=True)
@@ -353,13 +353,13 @@ if save is True:
         fig.savefig(WORKING_DIR + 'with_new_wl_map2D/relatdiff_tik_box_std_order1.png')
     else:
         if noisy is True:
-            fig.savefig(WORKING_DIR + 'relatdiff_tik_box_std_noisy.png')
+            fig.savefig(WORKING_DIR + 'with_new_wl_map2D/relatdiff_tik_box_std_noisy.png')
         else:
-            fig.savefig(WORKING_DIR + 'relatdiff_tik_box_std.png')
+            fig.savefig(WORKING_DIR + 'with_new_wl_map2D/relatdiff_tik_box_std.png')
 plt.show()
 
 
-if True:
+if False:
     hdu_ftik = fits.PrimaryHDU(ftik_bin_array)
     hdu_lam = fits.PrimaryHDU(lam_bin_array)
     if map_la is True:
@@ -368,7 +368,7 @@ if True:
     else:
         hdu_ftik.writeto(WORKING_DIR + "ftik_bin_array_clear_12.fits", overwrite=True)
         hdu_lam.writeto(WORKING_DIR + "lam_bin_array_clear_12.fits", overwrite=True)
-"""
+
 
 ftik_bin_array_la = fits.getdata(WORKING_DIR + "ftik_bin_array_la.fits")
 lam_bin_array_la = fits.getdata(WORKING_DIR + "lam_bin_array_la.fits")
@@ -387,6 +387,4 @@ plt.title('Relative difference between extracted fluxes (tikho.) with new wave_m
 plt.legend(title='Oversampling', bbox_to_anchor=(0.96,1))
 plt.savefig(WORKING_DIR + 'relatdiff_ftik_order1.png')
 plt.show()
-"""
-# TODO : QUANTIFY DIFFERENCE BETWEEN LOIC'S MAP AND MINE
-# TODO:  DO IT FOR ORDER 2 INCLUDED
+

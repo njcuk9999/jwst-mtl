@@ -76,9 +76,11 @@ with fits.open(WORKING_DIR + "tmp/with_peaks/oversampling_1/clear_000000.fits") 
     yp = hdulist[0].header['ypadding']
     comb2D = comb2D[:, yp:-yp, xp:-xp]
 
+wavelength, order1_tilt = np.loadtxt('/genesis/jwst/userland-soss/loic_review/SOSS_wavelength_dependent_tilt_extrapolated.txt',
+                                     unpack=True, usecols=(0, 1))   # [um], [degrees]
+
 # Now we have the positions, we need to interpolate wavelength values over all pixels of the detector
 wave_map2D = np.zeros_like(comb2D, dtype=float)
-p1_list = []
 tilt_list = []
 pk_wave_list = []
 
@@ -166,14 +168,13 @@ for order in [0, 1, 2]:
         new_x_meas = np.zeros(shape=(256, len(pk_wave)), dtype=float)    #zeros_like(x_meas)
         new_z_meas = np.zeros(shape=(256, len(pk_wave)), dtype=float)   #np.zeros_like(z_meas, dtype=float)
 
-        p1_list_ord = []
         tilt_list_ord = []
+
         for k in range(len(pk_wave)):   # Loop through each peak
             ind_z, = (z_meas == pk_wave[k]).nonzero()
 
             new_z_meas[:, k] = pk_wave[k]
             p1, p0 = box_kim.robust_polyfit(fit_resFunc, y_meas[ind_z], x_meas[ind_z], [-0.005, pk_ind[k]+2])   # -50, 60000
-            p1_list_ord.append(p1)
             tilt = np.arctan(p1)
             tilt_list_ord.append(np.degrees(tilt))
             poly_fit = np.poly1d([p1, p0])
@@ -204,7 +205,6 @@ for order in [0, 1, 2]:
                                    fill_value='extrapolate')
             wave_map2D[order, j, :] = interp_func(x)
 
-    p1_list.append(p1_list_ord)
     tilt_list.append(tilt_list_ord)
 
     # We could try to fit a polynomial as well instead of interpolating ???
@@ -237,9 +237,13 @@ plt.show()
 #hdu.writeto(WORKING_DIR + "with_peaks/oversampling_1/wave_map2D.fits", overwrite=True)
 
 plt.figure()
-plt.plot(pk_wave_list[0], tilt_list[0], '.')
-plt.ylabel('Tilt [degrees]')
-plt.xlabel(r"Wavelength [$\mu m$]")
+plt.plot(pk_wave_list[0], tilt_list[0], '.', color='Blue', label='tilts from fit')
+plt.plot(wavelength, order1_tilt, lw=1, color='r', label='SOSS data')
+plt.xlim(0.75, 2.80)
+plt.ylabel('Tilt [degrees]'), plt.xlabel(r"Wavelength [$\mu m$]")
+plt.title('Order 1 tilts')
+plt.legend()
+plt.savefig(WORKING_DIR + 'with_peaks/oversampling_1/order1_tilts.png', overwrite=True)
 plt.show()
 
 """
