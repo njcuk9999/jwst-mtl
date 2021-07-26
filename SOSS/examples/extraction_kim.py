@@ -347,7 +347,8 @@ if save is True:
 plt.show()
 
 plt.figure()
-plt.plot(w_os[start:end], fbox_conv1_inf_adu[start:end], color="HotPink", label="Data", zorder=0)
+plt.plot(w_os[start:end], fbox_conv1_inf_adu[start:end], color="HotPink", label="", zorder=0)
+plt.plot(w_os[start:end], fbox_ref1_adu[start:end], color="HotPink", label="Ref", zorder=0)
 #plt.plot(w_median_os, fbox_conv1_inf_adu_med, color="Lime", label="Median filter applied", zorder=5)
 plt.ylabel(r"Extracted flux [adu/s]")
 plt.xlabel(r"Wavelength [$\mu$m]")
