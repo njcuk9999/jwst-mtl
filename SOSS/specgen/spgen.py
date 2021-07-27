@@ -127,11 +127,20 @@ def read_pars(filename,pars):
                     elif command == 'subarray':
                         pars.subarray = columns[1]
                     elif command == 'flatthroughput':
-                        pars.flatthroughput = bool(columns[1])
+                        if isinstance(columns[1],str):
+                            pars.flatthroughput = (columns[1] == 'True')
+                        else:
+                            pars.flatthroughput = bool(columns[1])
                     elif command == 'flatquantumyield':
-                        pars.flatquantumyield = bool(columns[1])
+                        if isinstance(columns[1],str):
+                            pars.flatquantumyield = (columns[1] == 'True')
+                        else:
+                            pars.flatquantumyield = bool(columns[1])
                     elif command == 'addwings':
-                        pars.addwings = bool(columns[1])
+                        if isinstance(columns[1],str):
+                            pars.addwings = (columns[1] == 'True')
+                        else:
+                            pars.addwings = bool(columns[1])
                     elif command == 'granularity':
                         pars.granularity = columns[1]
                     elif command == 'xout':
@@ -1209,7 +1218,8 @@ def convolve_1wv(trace_image, kernel_psf, kernels_wv, wv_index, simuPars,
     # w_nopad = np.interp(x_nopad, x_init, w_init)
     # y_nopad = np.interp(x_nopad, x_init, y_init)
     #
-    dimx = (2048+2*simuPars.xpadding) * simuPars.noversample
+    # bug? dimx = (2048+2*simuPars.xpadding) * simuPars.noversample
+    dimx = (simuPars.xout+2*simuPars.xpadding) * simuPars.noversample
     x_pad = np.arange(dimx) - simuPars.xpadding * simuPars.noversample
     w_pad = np.interp(x_pad, x_init, w_init)
     # y_pad = np.interp(x_pad, x_init, y_init)
@@ -1223,7 +1233,7 @@ def convolve_1wv(trace_image, kernel_psf, kernels_wv, wv_index, simuPars,
     # Floor that weight to zero
     fac = np.amax([np.zeros_like(wavelength_i), weight], axis=0)
 
-    method='loic'
+    method='jason'
     if method == 'jason':
         # print('     Convolution method: {:}'.format(method))
         # Convolve the whole trace image with current wavelength's monochromatic PSF kernel

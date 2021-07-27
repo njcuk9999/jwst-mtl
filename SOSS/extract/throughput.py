@@ -15,17 +15,18 @@ def get_module_path(file):
 ###############################################
 
 # Default file parameters
-#FILE_SOSS = "NIRISS_Throughput_STScI.fits"
-FILE_SOSS = "NIRISS_Throughput_20210318.fits"
+FILE_SOSS = "NIRISS_Throughput_STScI.fits"
+FILE_SOSS = 'NIRISS_Throughput_20210318.fits'
 
-#DEF_PATH = get_module_path(__file__) + "Ref_files/"
-DEF_PATH = "/genesis/jwst/jwst-ref-soss/trace_model/"
+DEF_PATH = get_module_path(__file__) + "Ref_files/"
+DEF_PATH = '/genesis/jwst/jwst-ref-soss/trace_model/'
+
 
 
 class ThroughputSOSS(interp1d):
     """
     Callable Throughput of SOSS mode for a given order.
-    Function of wavelength in microns.
+    Function oof wavelength in microns.
     """
     filename = FILE_SOSS
     path = DEF_PATH
@@ -42,12 +43,13 @@ class ThroughputSOSS(interp1d):
         # Get transmission
         key = 'SOSS_order{}'.format(order)
         tr = hdu[1].data[key].squeeze()
-        tr = tr * 0 + 1   # KIM
 
         # Get wavelength
         wv = hdu[1].data['LAMBDA'].squeeze()
         # nm to microns
         wv /= 1000.
+
+        print('ello')
 
         # Interpolate
         super().__init__(wv, tr, kind='cubic',

@@ -95,39 +95,41 @@ hdu.writeto('/genesis/jwst/userland-soss/loic_review/box_aperture.fits', overwri
 flux4 = soss.aperture_extract(data4, x4, box_aperture, mask=None)
 Flambda4 = soss.elecflux_to_flambda(flux4, w4)
 
-# convolve binned to native
-data5 = soss.rebin(data1, os1)
-os5 = 1
-method_label5 = 'Noiseless Convolved Trace, grey pixels, rebin from os={:} to native'.format(os1)
-x5, y5, w5 = readtrace(os5)
-box_aperture = soss.box_aperture(data5, x5, y5, os=os5, box_width=75.0)
-hdu = fits.PrimaryHDU()
-hdu.data = box_aperture
-hdu.writeto('/genesis/jwst/userland-soss/loic_review/box_aperture.fits', overwrite=True)
-flux5 = soss.aperture_extract(data5, x5, box_aperture, mask=None)
-Flambda5 = soss.elecflux_to_flambda(flux5, w5)
+
 
 
 exposure_name = '/genesis/jwst/userland-soss/loic_review/tmp/clear_yspread.fits'
 exposure_name = '/genesis/jwst/userland-soss/loic_review/tmp/clear_000000.fits'
 data6, dimy6, dimx6, os6 = readsim(exposure_name)
 nint6 = 1
-method_label6 = 'Noiseless Convolved Trace, grey pixels, yspread, os={:}'.format(os6)
+method_label6 = 'Noiseless Convolved Trace, os={:}'.format(os6)
 x6, y6, w6 = readtrace(os6)
-box_aperture = soss.box_aperture(data6, x6, y6, os=os6, box_width=75.0)
+box_aperture = soss.box_aperture(data6, x6, y6, os=os6, box_width=275.0)
 hdu = fits.PrimaryHDU()
 hdu.data = box_aperture
 hdu.writeto('/genesis/jwst/userland-soss/loic_review/box_aperture.fits', overwrite=True)
 flux6 = soss.aperture_extract(data6, x6, box_aperture, mask=None)
 Flambda6 = soss.elecflux_to_flambda(flux6, w6)
 
+# convolve binned to native
+data5 = soss.rebin(data6, os6, flux_method='sum')
+os5 = 1
+method_label5 = 'Noiseless Convolved Trace, rebin from os={:} to native'.format(os6)
+x5, y5, w5 = readtrace(os5)
+box_aperture = soss.box_aperture(data5, x5, y5, os=os5, box_width=275.0)
+hdu = fits.PrimaryHDU()
+hdu.data = box_aperture
+hdu.writeto('/genesis/jwst/userland-soss/loic_review/box_aperture.fits', overwrite=True)
+flux5 = soss.aperture_extract(data5, x5, box_aperture, mask=None)
+Flambda5 = soss.elecflux_to_flambda(flux5, w5)
+
 exposure_name = '/genesis/jwst/userland-soss/loic_review/tmp/clear_trace_yspread.fits'
 exposure_name = '/genesis/jwst/userland-soss/loic_review/tmp/clear_trace_000000.fits'
 data7, dimy7, dimx7, os7 = readsim(exposure_name)
 nint7 = 1
-method_label7 = 'Noiseless Seed Trace, grey pixels, yspread, os={:}'.format(os7)
+method_label7 = 'Noiseless Seed Trace, os={:}'.format(os7)
 x7, y7, w7 = readtrace(os7)
-box_aperture = soss.box_aperture(data7, x7, y7, os=os7, box_width=75.0)
+box_aperture = soss.box_aperture(data7, x7, y7, os=os7, box_width=275.0)
 hdu = fits.PrimaryHDU()
 hdu.data = box_aperture
 hdu.writeto('/genesis/jwst/userland-soss/loic_review/box_aperture.fits', overwrite=True)
@@ -135,8 +137,8 @@ flux7 = soss.aperture_extract(data7, x7, box_aperture, mask=None)
 Flambda7 = soss.elecflux_to_flambda(flux7, w7)
 
 plt.figure()
-plt.plot(w1, Flambda1, label=method_label1)
-plt.plot(w2, Flambda2, label=method_label2)
+#plt.plot(w1, Flambda1, label=method_label1)
+#plt.plot(w2, Flambda2, label=method_label2)
 #plt.plot(w3, Flambda3, label=method_label3)
 #plt.plot(w4, Flambda4, label=method_label4)
 plt.plot(w5, Flambda5, label=method_label5)
