@@ -63,7 +63,7 @@ simuPars.noversample = 5
 os = simuPars.noversample
 
 # CHOOSE ORDER(S) TO EXTRACT (ADB)  !!!
-only_order_1 = False
+only_order_1 = True
 
 # CHOOSE noiseless or noisy !!!
 if only_order_1 is False:
@@ -72,7 +72,7 @@ else:
     noisy = False
 
 # SAVE FIGS? !!!
-save = True
+save = False
 #####################################################
 
 # Position of trace for box extraction
@@ -108,33 +108,34 @@ wave_maps_adb.append(fits.getdata("/home/kmorel/ongenesis/github/jwst-mtl/SOSS/e
 i_zero = np.where(wave_maps_adb[1][0] == 0.)[0][0]   # Where Antoine put 0 in his 2nd order wl map
 
 # _la : Loic's files
-wave_la = fits.getdata("/genesis/jwst/userland-soss/loic_review/refs/map_wave_2D_native.fits")
-wave_la[1,:,i_zero:] = 0.  # Also set to 0 the same points as Antoine in Loic's 2nd order wl map
-wave_maps_la = wave_la[:2]   # Consider only orders 1 & 2
+#wave_la = fits.getdata("/genesis/jwst/userland-soss/loic_review/refs/map_wave_2D_native.fits")
+#wave_la[1,:,i_zero:] = 0.  # Also set to 0 the same points as Antoine in Loic's 2nd order wl map
+#wave_maps_la = wave_la[:2]   # Consider only orders 1 & 2
 
 # _la : NEW Loic's files
-wave_la = fits.getdata("/genesis/jwst/userland-soss/loic_review/2D")
-wave_la[1,:,i_zero:] = 0.  # Also set to 0 the same points as Antoine in Loic's 2nd order wl map
+wave_la = fits.getdata("/genesis/jwst/userland-soss/loic_review/2DTrace_native_nopadding_20210726.fits")
+#wave_la[1,:,i_zero:] = 0.  # Also set to 0 the same points as Antoine in Loic's 2nd order wl map
 wave_maps_la = wave_la[:2]   # Consider only orders 1 & 2
 
 # _clear
 wave_clear = fits.getdata(WORKING_DIR + "with_peaks/oversampling_1/wave_map2D.fits")
-wave_clear[1,:,i_zero:] = 0.  # Also set to 0 the same points as Antoine in clear's 2nd order wl map
+#wave_clear[1,:,i_zero:] = 0.  # Also set to 0 the same points as Antoine in clear's 2nd order wl map
 wave_maps_clear = wave_clear[:2]   # Consider only orders 1 & 2
 
 diff_wave_map = (wave_la - wave_clear) #/ wave_clear
+diff_wave_map = wave_clear - wave_la
 
-if False:
+if True:
     fig, ax = plt.subplots(3, 1)
     for i in range(diff_wave_map.shape[0]):
-        im = ax[i].imshow(diff_wave_map[i], origin='lower')
+        im = ax[i].imshow(wave_la[i], origin='lower')
         ax[i].set_title('Order {}'.format(i+1))
         fig.colorbar(im, ax=ax[i])
     if save is True:
         hdu = fits.PrimaryHDU(diff_wave_map)
         hdu.writeto(WORKING_DIR + "with_peaks/oversampling_1/wave_map2D_diff_laVSclear.fits", overwrite=True)
     plt.show()
-
+sys.exit()
 #### Spatial profiles ####
 # _adb : Antoine's files
 #spat_pros_adb = []

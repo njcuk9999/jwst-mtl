@@ -12,11 +12,16 @@ from astropy.modeling import models, fitting
 from scipy.interpolate import interp2d, interp1d
 from scipy.optimize import least_squares
 import box_kim
+import SOSS.trace.tracepol as tp
 
 # Matplotlib defaults
 plt.rc('figure', figsize=(12,7))
 plt.rc('font', size=14)
 plt.rc('lines', lw=2)
+
+def fit_resFunc(coeff, y, x):
+    p = np.poly1d(coeff)
+    return (p(y)) - x
 
 WORKING_DIR = '/home/kmorel/ongenesis/jwst-user-soss/'
 
@@ -30,6 +35,12 @@ soss.readpaths(config_paths_filename, pathPars)
 # Create and read the simulation parameters
 simuPars = spgen.ModelPars()              # Set up default parameters
 simuPars = spgen.read_pars(pathPars.simulationparamfile, simuPars)   # Read in parameter file
+
+# Position of trace for box extraction (TEMPORARY VERSION)
+trace_file = "/genesis/jwst/jwst-ref-soss/trace_model/NIRISS_GR700_trace_extended.csv"
+pars = tp.get_tracepars(trace_file)  # Gives the middle position of order 1 trace
+x, y_not, w = box_kim.readtrace(os=1)  # TODO: Problem with .readtrace
+xnew, y, mask = tp.wavelength_to_pix(w, pars, m=1, oversample=1)  # Converts wavelenghths to pixel coordinates  NOT GOOD
 
 """
 ###############################
@@ -62,10 +73,6 @@ map_clear[1, :, 1790:] = 0  # Problem with end of order 2 trace
 """
 
 #####################################################################
-def fit_resFunc(coeff, y, x):
-    p = np.poly1d(coeff)
-    return (p(y)) - x
-
 # New wavelength map
 with fits.open(WORKING_DIR + "with_peaks/oversampling_1/peaks_wl.fits") as hdulist:
     all_peaks = hdulist[0].data
@@ -84,7 +91,7 @@ wave_map2D = np.zeros_like(comb2D, dtype=float)
 tilt_list = []
 pk_wave_list = []
 
-for order in [0, 1, 2]:
+for order in [0]:   # 1, 2
     if order == 0:
         x_max = 2048
         w_range = [0.8437, 2.833]   # Order 1
@@ -174,11 +181,18 @@ for order in [0, 1, 2]:
             ind_z, = (z_meas == pk_wave[k]).nonzero()
 
             new_z_meas[:, k] = pk_wave[k]
-            p1, p0 = box_kim.robust_polyfit(fit_resFunc, y_meas[ind_z], x_meas[ind_z], [-0.005, pk_ind[k]+2])   # -50, 60000
+            y_min = y[pk_ind[k]] - 11
+            y_max = y[pk_ind[k]] + 11
+            y_poly = np.array(y_meas[ind_z])
+            x_poly = np.array(x_meas[ind_z])
+            y_poly = y_poly[((y_poly >= y_min) & (y_poly <= y_max))]
+            x_poly = x_poly[np.where((y_poly >= y_min) & (y_poly <= y_max))[0]]
+            #p1, p0 = box_kim.robust_polyfit(fit_resFunc, y_meas[ind_z], x_meas[ind_z], [-0.005, pk_ind[k]+2])   # -50, 60000
+            p1, p0 = box_kim.robust_polyfit(fit_resFunc, y_poly, x_poly, [-0.005, pk_ind[k] + 2])
             tilt = np.arctan(p1)
             tilt_list_ord.append(np.degrees(tilt))
             poly_fit = np.poly1d([p1, p0])
-            fit_x_meas = poly_fit(y_meas[ind_z])
+            fit_x_meas = poly_fit(y_poly)   # y_meas[ind_z]
             #fit_y_meas = poly_fit(x_meas[ind_z])
             y_range = np.arange(256)
             new_x_meas[:, k] = poly_fit(y_range)
@@ -188,11 +202,12 @@ for order in [0, 1, 2]:
             if k == 5:
                 fig2, ax2 = plt.subplots(1, 1)
                 ax2.plot(x_meas[ind_z], y_meas[ind_z], '+', markersize=3, label='peaks meas.')
-                #ax2.plot(x_meas[ind_z], fit_y_meas, color='r', label='fit')
-                ax2.plot(fit_x_meas, y_meas[ind_z], color='r', label='fit')
+                ax2.plot(fit_x_meas, y_poly, color='r', label='fit')
+                #ax2.plot(fit_x_meas, y_meas[ind_z], color='r', label='fit')
                 #ax2.plot(new_x_meas[:, k], y_range, '--', color='g', label='interp fit')
-
-        ax1.plot(x_meas, y_meas, '+', markersize=4, color='Blue', label='meas')
+            ax1.plot(x_poly, y_poly, '+', markersize=4, color='Blue')
+        ax1.plot(x_poly, y_poly, '+', markersize=4, color='Blue', label='meas')
+        #ax1.plot(x_meas, y_meas, '+', markersize=4, color='Blue', label='meas')
         ax1.plot(new_x_meas, new_y_meas, '+', markersize=2, color='HotPink')
         ax1.legend(), ax2.legend()
 
@@ -243,7 +258,7 @@ plt.xlim(0.75, 2.80)
 plt.ylabel('Tilt [degrees]'), plt.xlabel(r"Wavelength [$\mu m$]")
 plt.title('Order 1 tilts')
 plt.legend()
-plt.savefig(WORKING_DIR + 'with_peaks/oversampling_1/order1_tilts.png', overwrite=True)
+#plt.savefig(WORKING_DIR + 'with_peaks/oversampling_1/order1_tilts.png', overwrite=True)
 plt.show()
 
 """
