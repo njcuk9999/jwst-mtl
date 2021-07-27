@@ -112,6 +112,11 @@ wave_la = fits.getdata("/genesis/jwst/userland-soss/loic_review/refs/map_wave_2D
 wave_la[1,:,i_zero:] = 0.  # Also set to 0 the same points as Antoine in Loic's 2nd order wl map
 wave_maps_la = wave_la[:2]   # Consider only orders 1 & 2
 
+# _la : NEW Loic's files
+wave_la = fits.getdata("/genesis/jwst/userland-soss/loic_review/2D")
+wave_la[1,:,i_zero:] = 0.  # Also set to 0 the same points as Antoine in Loic's 2nd order wl map
+wave_maps_la = wave_la[:2]   # Consider only orders 1 & 2
+
 # _clear
 wave_clear = fits.getdata(WORKING_DIR + "with_peaks/oversampling_1/wave_map2D.fits")
 wave_clear[1,:,i_zero:] = 0.  # Also set to 0 the same points as Antoine in clear's 2nd order wl map
