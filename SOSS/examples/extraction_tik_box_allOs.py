@@ -28,10 +28,6 @@ plt.rc('image', cmap='inferno')
 plt.rc('lines', lw=1)
 
 # CONSTANTS
-h = sc_cst.Planck
-c = sc_cst.speed_of_light
-gain = 1.6
-area = 25.
 ng = 3   # NGROUP
 t_read = 5.49   # Reading time [s]
 tint = (ng - 1) * t_read   # Integration time [s]
@@ -54,12 +50,11 @@ simuPars = spgen.ModelPars()              # Set up default parameters
 simuPars = spgen.read_pars(pathPars.simulationparamfile, simuPars)    # Read in parameter file
 
 ####################################################################################
-
 # CHOOSE ORDER (for box extraction)   !!!
 m_order = 1  # For now, only option is 1
 
 # CHOOSE ORDER(S) TO EXTRACT (ADB)  !!!
-only_order_1 = False
+only_order_1 = True
 
 # CHOOSE noiseless or noisy !!!
 if only_order_1 is False:
@@ -68,13 +63,13 @@ else:
     noisy = False
 
 # CHOOSE WHICH MAPS !!!
-map_la = False   # False gives the new clear map
+map_la = True   # False gives the new clear map
 
 # SAVE FIGS? !!!
-save = True
+save = False
 
 ####################################################################################
-os_list = [1, 5, 10]   # [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+os_list = [1, 5, 10, 11]   # [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
 
 ####################################################################################
 # Read relevant files
@@ -87,11 +82,11 @@ i_zero = np.where(wave_maps_adb[1][0] == 0.)[0][0]  # Where Antoine put 0 in his
 
 if map_la:
     # Loic's files
-    wave = fits.getdata("/genesis/jwst/userland-soss/loic_review/refs/map_wave_2D_native.fits")
+    wave = fits.getdata("/genesis/jwst/userland-soss/loic_review/refs/map_wave_2D_native.fits")   # 2DWave_native_nopadding_20210727.fits"
 else:
     # _clear
-    wave = fits.getdata(WORKING_DIR + "with_peaks/oversampling_1/wave_map2D.fits".format(os))
-wave[1, :, i_zero:] = 0.  # Also set to 0 the same points as Antoine in clear's 2nd order wl map
+    wave = fits.getdata(WORKING_DIR + "with_peaks/oversampling_1/wave_map2D.fits")
+#wave[1, :, i_zero:] = 0.  # Also set to 0 the same points as Antoine in clear's 2nd order wl map
 wave_maps = [wave[0]] if only_order_1 else wave[:2]   # Consider only orders 1 & 2
 
 # Convert data from fits files to float (fits precision is 1e-8)
@@ -128,9 +123,15 @@ for i in range(len(os_list)):
     simuPars.noversample = os
 
     #### Spatial profiles ####
-    # _clear : map created with clear000000.fits directly
-    new_spat = fits.getdata(WORKING_DIR + "new_map_profile_clear_{}.fits".format(os))
+    if map_la:
+        # Loic's files
+        #new_spat = fits.getdata("/genesis/jwst/userland-soss/loic_review/2DTrace_native_nopadding_20210727.fits")
+        new_spat = fits.getdata(WORKING_DIR + "new_map_profile_clear_{}.fits".format(os))   # TO REMOVE
+    else:
+        # _clear : map created with clear000000.fits directly
+        new_spat = fits.getdata(WORKING_DIR + "new_map_profile_clear_{}.fits".format(os))
     spat_pros = [new_spat[0]] if only_order_1 else new_spat[:2]
+
     # Convert data from fits files to float (fits precision is 1e-8)
     spat_pros = [p_ord.astype('float64') for p_ord in spat_pros]
 
@@ -291,7 +292,7 @@ for i in range(len(os_list)):
     ax1[0].plot(lam_bin[5:-5], relatdiff_tik_box[i, 5:-5] * 1e6, label='os = {}'.format(os))
     ax1[1].plot(lam_bin[5:-5], relatdiff_tik_box_ref[i, 5:-5] * 1e6, label='os = {}'.format(os))
 
-    if os == 10:
+    if os == 5:
         ax2.plot(lam_bin[5:-5], ftik_bin[5:-5], label='tikhonov, os = {}'.format(os))
         ax2.plot(np.flip(lam_bin[5:-5]), fbox_ref_adu_bin[5:-5], label='box')
 
@@ -375,7 +376,7 @@ if save:
             fig.savefig(WORKING_DIR + 'with_new_wl_map2D/relatdiff_tik_box_std_12.png')
 plt.show()
 
-if True:
+if False:
     hdu_ftik = fits.PrimaryHDU(ftik_bin_array)
     hdu_lam = fits.PrimaryHDU(lam_bin_array)
     o = 1 if only_order_1 else 12
@@ -403,7 +404,7 @@ plt.ylabel("Relative difference [ppm]")
 plt.xlabel(r"Wavelength [$\mu m$]")
 plt.title('Relative difference between extracted fluxes (tikho.) with new wave_map2D vs old one')
 plt.legend(title='Oversampling', bbox_to_anchor=(0.96,1))
-if save:
+if False:   # save
     if only_order_1:
         plt.savefig(WORKING_DIR + 'relatdiff_ftik_order1.png')
     else:

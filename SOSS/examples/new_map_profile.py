@@ -42,14 +42,13 @@ pars = tp.get_tracepars(trace_file)  # Gives the middle position of order 1 trac
 x, y_not, w = box_kim.readtrace(os=1)  # TODO: Problem with .readtrace
 xnew, y, mask = tp.wavelength_to_pix(w, pars, m=1, oversample=1)  # Converts wavelenghths to pixel coordinates  NOT GOOD
 
-"""
+
 ###############################
 # CHOOSE OVERSAMPLE  !!!
-simuPars.noversample = 11
+simuPars.noversample = 8
 os = simuPars.noversample
+
 ###############################
-
-
 clear_00 = fits.open(WORKING_DIR + "tmp/oversampling_{}/clear_000000.fits".format(os))
 clear = np.empty(shape=(3, 256, 2048), dtype=float)
 map_clear = np.empty_like(clear, dtype=float)
@@ -68,10 +67,11 @@ for i in range(len(clear_00[0].data)):
 map_clear[1, :, 1790:] = 0  # Problem with end of order 2 trace
 
 # Save map_profile
-#hdu = fits.PrimaryHDU(map_clear)
-#hdu.writeto(WORKING_DIR + "new_map_profile_clear_{}.fits".format(os), overwrite=True)
-"""
+hdu = fits.PrimaryHDU(map_clear)
+hdu.writeto(WORKING_DIR + "new_map_profile_clear_{}.fits".format(os), overwrite=True)
 
+
+"""
 #####################################################################
 # New wavelength map
 with fits.open(WORKING_DIR + "with_peaks/oversampling_1/peaks_wl.fits") as hdulist:
@@ -261,7 +261,6 @@ plt.legend()
 #plt.savefig(WORKING_DIR + 'with_peaks/oversampling_1/order1_tilts.png', overwrite=True)
 plt.show()
 
-"""
 # For verification of what going on for a specific peak fit
 order = 1
 j = 134

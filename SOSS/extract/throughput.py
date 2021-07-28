@@ -50,7 +50,7 @@ class ThroughputSOSS(interp1d):
         # nm to microns
         wv /= 1000.
 
-        print('ello')
+        print(tr)
 
         # Interpolate
         super().__init__(wv, tr, kind='cubic',
