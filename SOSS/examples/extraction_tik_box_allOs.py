@@ -50,9 +50,6 @@ simuPars = spgen.ModelPars()              # Set up default parameters
 simuPars = spgen.read_pars(pathPars.simulationparamfile, simuPars)    # Read in parameter file
 
 ####################################################################################
-# CHOOSE ORDER (for box extraction)   !!!
-m_order = 1  # For now, only option is 1
-
 # CHOOSE ORDER(S) TO EXTRACT (ADB)  !!!
 only_order_1 = True
 
@@ -63,15 +60,20 @@ else:
     noisy = False
 
 # CHOOSE WHICH MAPS !!!
-map_la = True   # False gives the new clear map
+map_la = True  # False gives the new clear map
 
 # SAVE FIGS? !!!
 save = False
 
 ####################################################################################
-os_list = [1, 5, 10, 11]   # [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+os_list = [4]  # [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
 
 ####################################################################################
+if map_la:
+    SAVE_DIR = WORKING_DIR + "with_old_loic_wl_map2D/"
+else:
+    SAVE_DIR = WORKING_DIR + "with_new_wl_map2D/"
+
 # Read relevant files
 #### Wavelength solution ####
 # _adb : Antoine's files
@@ -82,13 +84,16 @@ i_zero = np.where(wave_maps_adb[1][0] == 0.)[0][0]  # Where Antoine put 0 in his
 
 if map_la:
     # Loic's files
-    wave = fits.getdata("/genesis/jwst/userland-soss/loic_review/refs/map_wave_2D_native.fits")   # 2DWave_native_nopadding_20210727.fits"
+    #wave = fits.getdata("/genesis/jwst/userland-soss/loic_review/refs/map_wave_2D_native.fits")
+    #wave = fits.getdata("/genesis/jwst/userland-soss/loic_review/2DWave_native_nopadding_20210729.fits")
+    #wave = fits.getdata("/genesis/jwst/userland-soss/loic_review/cartewaveGJT.fits")
+    #wave_maps = [wave]
+    wave = fits.getdata(WORKING_DIR + "with_peaks/wave_map2D.fits")   # TO REMOVE
 else:
     # _clear
-    wave = fits.getdata(WORKING_DIR + "with_peaks/oversampling_1/wave_map2D.fits")
+    wave = fits.getdata(WORKING_DIR + "with_peaks/wave_map2D.fits")
 #wave[1, :, i_zero:] = 0.  # Also set to 0 the same points as Antoine in clear's 2nd order wl map
 wave_maps = [wave[0]] if only_order_1 else wave[:2]   # Consider only orders 1 & 2
-
 # Convert data from fits files to float (fits precision is 1e-8)
 wave_maps = [wv.astype('float64') for wv in wave_maps]
 
@@ -125,8 +130,8 @@ for i in range(len(os_list)):
     #### Spatial profiles ####
     if map_la:
         # Loic's files
-        #new_spat = fits.getdata("/genesis/jwst/userland-soss/loic_review/2DTrace_native_nopadding_20210727.fits")
-        new_spat = fits.getdata(WORKING_DIR + "new_map_profile_clear_{}.fits".format(os))   # TO REMOVE
+        new_spat = fits.getdata("/genesis/jwst/userland-soss/loic_review/2DTrace_native_nopadding_20210729.fits")
+        #new_spat = fits.getdata(WORKING_DIR + "new_map_profile_clear_{}.fits".format(os))   # TO REMOVE
     else:
         # _clear : map created with clear000000.fits directly
         new_spat = fits.getdata(WORKING_DIR + "new_map_profile_clear_{}.fits".format(os))
@@ -140,12 +145,15 @@ for i in range(len(os_list)):
 
     ####################################################################################
     # LOAD SIMULATIONS
-    clear_tr_00 = fits.open(WORKING_DIR + "tmp/oversampling_{}/clear_trace_000000.fits".format(os))
-    clear_00 = fits.open(WORKING_DIR + "tmp/oversampling_{}/clear_000000.fits".format(os))
+    #clear_tr_00 = fits.open(WORKING_DIR + "tmp/oversampling_{}/clear_trace_000000.fits".format(os))
+    clear_tr_00 = fits.open('/genesis/jwst/userland-soss/loic_review/tmp/clear_trace_000000.fits')   # timeseries_20210729_forGJ/nint1/clear_trace_000000.fits
+    #clear_00 = fits.open(WORKING_DIR + "tmp/oversampling_{}/clear_000000.fits".format(os))
+    clear_00 = fits.open('/genesis/jwst/userland-soss/loic_review/tmp/clear_000000_constantflambda.fits')   # timeseries_20210729_forGJ/nint1/clear_000000.fits
     noisy_rateints = fits.open(WORKING_DIR + "oversampling_{}/test_clear_noisy_rateints.fits".format(os))
 
     # Because of x_padding and y_padding
-    padd = 10
+    #padd = 10
+    padd = 100
 
     if os != 1:
         # Bin to pixel native
@@ -230,20 +238,20 @@ for i in range(len(os_list)):
     factors = np.logspace(-25, -12, 14)
 
     # Noise estimate to weight the pixels
-    sig = np.sqrt(np.abs(data) + bkgd_noise ** 2)   # Poisson noise + background noise
+    sig = np.sqrt(np.abs(data) + bkgd_noise ** 2) * 0 + 1e-20
 
     # Tests all these factors.
     tests = extract.get_tikho_tests(factors, data=data, sig=sig)
 
     # Find the best factor.
-    best_fac = extract.best_tikho_factor(tests=tests, i_plot=False)
+    best_fac = extract.best_tikho_factor(tests=tests, i_plot=True)
 
     # Refine the grid (span 4 orders of magnitude).
     best_fac = np.log10(best_fac)
     factors = np.logspace(best_fac - 2, best_fac + 2, 20)
 
     tests = extract.get_tikho_tests(factors, data=data, sig=sig)
-    best_fac = extract.best_tikho_factor(tests=tests, i_plot=False)
+    best_fac = extract.best_tikho_factor(tests=tests, i_plot=True)
 
     # Extract the oversampled spectrum 𝑓𝑘
     # Can be done in a loop for a timeseries and/or iteratively for different estimates of the reference files.
@@ -292,11 +300,19 @@ for i in range(len(os_list)):
     ax1[0].plot(lam_bin[5:-5], relatdiff_tik_box[i, 5:-5] * 1e6, label='os = {}'.format(os))
     ax1[1].plot(lam_bin[5:-5], relatdiff_tik_box_ref[i, 5:-5] * 1e6, label='os = {}'.format(os))
 
-    if os == 5:
+    if os == 4:
         ax2.plot(lam_bin[5:-5], ftik_bin[5:-5], label='tikhonov, os = {}'.format(os))
         ax2.plot(np.flip(lam_bin[5:-5]), fbox_ref_adu_bin[5:-5], label='box')
 
     print('Os = {} : Done'.format(os))
+
+    # Rebuild the detector
+    rebuilt = extract.rebuild(f_k * os)
+
+    plt.subplot(111, aspect='equal')
+    plt.pcolormesh((rebuilt - data)/data * 1e6)   #
+    plt.colorbar(label="(rebuilt - data)/data [ppm]", orientation='horizontal', aspect=40)   #/data [ppm]
+    plt.tight_layout()
 
 title_noise = 'noisy' if noisy else 'noiseless'
 
@@ -324,13 +340,13 @@ ax1[0].set_ylabel("Relative difference [ppm]"), ax1[1].set_ylabel("Relative diff
 ax1[1].legend(bbox_to_anchor=(0.96,1.5))
 if save:
     if only_order_1:
-        fig1.savefig(WORKING_DIR + 'with_new_wl_map2D/relatdiff_tik_box_order1.png')
+        fig1.savefig(SAVE_DIR + 'relatdiff_tik_box_order1.png')
         fig3.savefig(WORKING_DIR + 'relatdiff_box_convVSref_order1.png')
     else:
         if noisy:
-            fig1.savefig(WORKING_DIR + 'with_new_wl_map2D/relatdiff_tik_box_noisy.png')
+            fig1.savefig(SAVE_DIR + 'relatdiff_tik_box_noisy.png')
         else:
-            fig1.savefig(WORKING_DIR + 'with_new_wl_map2D/relatdiff_tik_box_12.png')
+            fig1.savefig(SAVE_DIR + 'relatdiff_tik_box_12.png')
             fig3.savefig(WORKING_DIR + 'relatdiff_box_convVSref_12.png')
 
 if only_order_1:
@@ -350,12 +366,12 @@ ax[1].set_title('Relative difference - median filter (thin trace)')
 ax[1].legend(title='Oversampling', bbox_to_anchor=(0.96,1.5))
 if save:
     if only_order_1:
-        fig.savefig(WORKING_DIR + 'with_new_wl_map2D/relatdiff_tik_box_norm_order1.png')
+        fig.savefig(SAVE_DIR + 'relatdiff_tik_box_norm_order1.png')
     else:
         if noisy:
-            fig.savefig(WORKING_DIR + 'with_new_wl_map2D/relatdiff_tik_box_norm_noisy.png')
+            fig.savefig(SAVE_DIR + 'relatdiff_tik_box_norm_noisy.png')
         else:
-            fig.savefig(WORKING_DIR + 'with_new_wl_map2D/relatdiff_tik_box_norm_12.png')
+            fig.savefig(SAVE_DIR + 'relatdiff_tik_box_norm_12.png')
 plt.show()
 
 fig, ax = plt.subplots(2, 1, sharex=True)
@@ -368,15 +384,15 @@ ax[0].set_title('Standard deviations from difference, convolved')
 ax[1].set_title('Standard deviations from difference, thin trace')
 if save:
     if only_order_1:
-        fig.savefig(WORKING_DIR + 'with_new_wl_map2D/relatdiff_tik_box_std_order1.png')
+        fig.savefig(SAVE_DIR + 'relatdiff_tik_box_std_order1.png')
     else:
         if noisy:
-            fig.savefig(WORKING_DIR + 'with_new_wl_map2D/relatdiff_tik_box_std_noisy.png')
+            fig.savefig(SAVE_DIR + 'relatdiff_tik_box_std_noisy.png')
         else:
-            fig.savefig(WORKING_DIR + 'with_new_wl_map2D/relatdiff_tik_box_std_12.png')
+            fig.savefig(SAVE_DIR + 'relatdiff_tik_box_std_12.png')
 plt.show()
 
-if False:
+if save:
     hdu_ftik = fits.PrimaryHDU(ftik_bin_array)
     hdu_lam = fits.PrimaryHDU(lam_bin_array)
     o = 1 if only_order_1 else 12

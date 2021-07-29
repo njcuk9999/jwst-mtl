@@ -54,7 +54,7 @@ simuPars = spgen.read_pars(pathPars.simulationparamfile, simuPars) #read in para
 m_order = 1  # For now, only option is 1.
 
 # CHOOSE OVERSAMPLE  !!!
-simuPars.noversample = 5
+simuPars.noversample = 4
 os = simuPars.noversample
 
 # CHOOSE ORDER(S) TO EXTRACT (ADB)  !!!
@@ -74,9 +74,9 @@ save = False
 
 #####################################################
 if map_la:
-    SAVE_DIR = WORKING_DIR + "oversampling_{}/with_new_loic_maps/"
+    SAVE_DIR = WORKING_DIR + "oversampling_{}/with_new_loic_maps/".format(os)
 else:
-    SAVE_DIR = WORKING_DIR + "oversampling_{}/with_newclear_wave_map2D/"
+    SAVE_DIR = WORKING_DIR + "oversampling_{}/with_newclear_wave_map2D/".format(os)
 
 # Position of trace for box extraction
 trace_file = "/genesis/jwst/jwst-ref-soss/trace_model/NIRISS_GR700_trace_extended.csv"
@@ -109,13 +109,17 @@ wave_maps_adb.append(fits.getdata("/home/kmorel/ongenesis/github/jwst-mtl/SOSS/e
 i_zero = np.where(wave_maps_adb[1][0] == 0.)[0][0]   # Where Antoine put 0 in his 2nd order wl map
 
 # Loic's files
-wave_la = fits.getdata("/genesis/jwst/userland-soss/loic_review/2DWave_native_nopadding_20210727.fits")   # refs/map_wave_2D_native.fits : old one
+wave_la = fits.getdata("/genesis/jwst/userland-soss/loic_review/2DWave_native_nopadding_20210729.fits")
+wave_la = fits.getdata("/genesis/jwst/userland-soss/loic_review/refs/map_wave_2D_native.fits")
+wave_la = fits.getdata("/genesis/jwst/userland-soss/loic_review/2DWave_native_nopadding_20210729.fits")
+wave_la = fits.getdata("/genesis/jwst/userland-soss/loic_review/cartewaveGJT.fits")
+# wave_maps = [wave]
 wave_la = [wv.astype('float64') for wv in wave_la]   # Convert data from fits files to float (fits precision is 1e-8)
 #wave_la[1,:,i_zero:] = 0.  # Also set to 0 the same points as Antoine in Loic's 2nd order wl map
 wave_maps_la = wave_la[:2]   # Consider only orders 1 & 2
 
 # _clear
-wave_clear = fits.getdata(WORKING_DIR + "with_peaks/oversampling_1/wave_map2D.fits")
+wave_clear = fits.getdata(WORKING_DIR + "with_peaks/wave_map2D.fits")
 wave_clear = [wv.astype('float64') for wv in wave_clear]   # Convert data from fits files to float (fits precision is 1e-8)
 #wave_clear[1,:,i_zero:] = 0.  # Also set to 0 the same points as Antoine in clear's 2nd order wl map
 wave_maps_clear = wave_clear[:2]   # Consider only orders 1 & 2
@@ -135,7 +139,7 @@ if True:
 
 #### Spatial profiles ####
 # _la : Loic's files
-spat_la = fits.getdata("/genesis/jwst/userland-soss/loic_review/2DTrace_native_nopadding_20210727.fits")    # refs/map_profile_2D_native.fits
+spat_la = fits.getdata("/genesis/jwst/userland-soss/loic_review/2DTrace_native_nopadding_20210729.fits")    # refs/map_profile_2D_native.fits
 spat_la = [p_ord.astype('float64') for p_ord in spat_la]   # Convert data from fits files to float (fits precision is 1e-8)
 spat_pros_la = spat_la[:2]   # Consider only orders 1 & 2
 #spat_pros_la = spat_la[:2, -256:]   # Consider only order 1 & 2 and set to same size as data
@@ -160,7 +164,7 @@ if True:
         fig.colorbar(im, ax=ax[i])
     if save:
         hdu = fits.PrimaryHDU(diff_spat_map)
-        hdu.writeto(WORKING_DIR + "with_peaks/oversampling_1/spat_map2D_diff_laVSclear.fits", overwrite=True)
+        hdu.writeto(WORKING_DIR + "with_peaks/spat_map2D_diff_laVSclear.fits", overwrite=True)
     plt.show()
 sys.exit()
 # CHOOSE between Loic's and Antoine's maps
@@ -282,7 +286,7 @@ extract = TrpzOverlap(*ref_files_args, **params)  # Precalculate matrices
 factors = np.logspace(-25, -12, 14)
 
 # Noise estimate to weight the pixels
-sig = np.sqrt(np.abs(data) + bkgd_noise**2)   # Poisson noise + background noise
+sig = np.sqrt(np.abs(data) + bkgd_noise**2) * 1e-20   # Poisson noise + background noise
 
 # Tests all these factors.
 tests = extract.get_tikho_tests(factors, data=data, sig=sig)
