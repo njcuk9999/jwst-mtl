@@ -48,11 +48,11 @@ simuPars = spgen.read_pars(pathPars.simulationparamfile, simuPars) #read in para
 m_order = 1  # For now, only option is 1.
 
 # CHOOSE OVERSAMPLE  !!!
-simuPars.noversample = 4
+simuPars.noversample = 1
 os = simuPars.noversample
 
 # SAVE FIGS? !!!
-save = True
+save = False
 
 #########################################################
 # Generate or read the star atmosphere model
@@ -61,7 +61,7 @@ starmodel_angstrom, starmodel_flambda, ld_coeff = soss.starmodel(simuPars, pathP
 #########################################################
 # Position of trace
 trace_file = "/genesis/jwst/jwst-ref-soss/trace_model/NIRISS_GR700_trace_extended.csv"
-pars = tp.get_tracepars(trace_file)   # Gives the middle position of order 1 trace
+pars = tp.get_tracepars(trace_file, disable_rotation=False)   # Gives the middle position of order 1 trace
 #x = np.arange(2048)    # Array of pixels
 #w, tmp = tp.specpix_to_wavelength(x, pars, m=1)   # Returns wavelength for each x, order 1
 #xnew, y, mask = tp.wavelength_to_pix(w, pars, m=1)   # Converts wavelenghths to pixel coordinates  NOT GOOD
@@ -70,11 +70,11 @@ pars = tp.get_tracepars(trace_file)   # Gives the middle position of order 1 tra
 #w_os, tmp_os = tp.specpix_to_wavelength(x_os, pars, m=1, oversample=os)  # Returns wavelength for each x, order 1, os
 #xnew_os, y_os, mask_os = tp.wavelength_to_pix(w_os , pars, m=1, oversample=os)  # Converts wavelenghths to pixel coordinates, os  NOT GOOD
 
-x, y_not, w = box_kim.readtrace(os=1)   # TODO: Problem with .readtrace
-x_os, y_os_not, w_os = box_kim.readtrace(os=os)
+x, y, w = box_kim.readtrace(os=1)   # TODO: Problem with .readtrace
+x_os, y_os, w_os = box_kim.readtrace(os=os)
 
-xnew, y, mask = tp.wavelength_to_pix(w, pars, m=1)   # Converts wavelenghths to pixel coordinates  NOT GOOD
-xnew_os, y_os, mask_os = tp.wavelength_to_pix(w_os , pars, m=1, oversample=os)  # Converts wavelenghths to pixel coordinates, os  NOT GOOD
+#xnew, y, mask = tp.wavelength_to_pix(w, pars, m=1)   # Converts wavelenghths to pixel coordinates  NOT GOOD
+#xnew_os, y_os, mask_os = tp.wavelength_to_pix(w_os , pars, m=1, oversample=os)  # Converts wavelenghths to pixel coordinates, os  NOT GOOD
 
 #########################################################
 # LOADING IMAGES
@@ -253,8 +253,10 @@ plt.rc('lines', lw=2)
 
 #"""
 # Images of traces
+spat = fits.getdata("/genesis/jwst/userland-soss/loic_review/2DTrace_native_nopadding_20210729.fits")
+
 plt.figure()
-plt.imshow(data_noisy, vmin=0, origin="lower")
+plt.imshow(data_ref1, vmin=0, origin="lower")
 plt.plot(x, y, color="r", lw=1, label="Order 1 trace's position")
 plt.colorbar(label="[adu/s]", orientation='horizontal')
 plt.title("test_clear_noisy_rateints.fits")
@@ -262,7 +264,7 @@ plt.legend()
 if save is True:
     plt.savefig(WORKING_DIR + "oversampling_{}/noisy_rateints.png".format(os))
 plt.show()
-
+sys.exit()
 plt.figure()
 plt.imshow(data_conv1_bin, origin="lower")
 plt.plot(x, y, color="r", lw=1, label="Order 1 trace's position")

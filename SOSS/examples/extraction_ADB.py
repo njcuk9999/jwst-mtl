@@ -84,21 +84,8 @@ else:
     order_title = 'noisy' if noisy else 12
 
 # Position of trace for box extraction
-trace_file = "/genesis/jwst/jwst-ref-soss/trace_model/NIRISS_GR700_trace_extended.csv"
-pars = tp.get_tracepars(trace_file)   # Gives the middle position of order 1 trace
-#x = np.arange(2048)    # Array of pixels
-#w, tmp = tp.specpix_to_wavelength(x, pars, m=1)   # Returns wavelength for each x, order 1
-#xnew, y, mask = tp.wavelength_to_pix(w, pars, m=1)   # Converts wavelenghths to pixel coordinates  NOT GOOD
-
-#x_os = np.arange(2048 * os)    # Array of pixels with os
-#w_os, tmp_os = tp.specpix_to_wavelength(x_os, pars, m=1, oversample=os)  # Returns wavelength for each x, order 1, os
-#xnew_os, y_os, mask_os = tp.wavelength_to_pix(w_os , pars, m=1, oversample=os)  # Converts wavelenghths to pixel coordinates, os  NOT GOOD
-
-x, y_not, w = box_kim.readtrace(os=1)   # TODO: Problem with .readtrace
-x_os, y_os_not, w_os = box_kim.readtrace(os=os)
-
-xnew, y, mask = tp.wavelength_to_pix(w, pars, m=1, oversample=1)   # Converts wavelenghths to pixel coordinates  NOT GOOD
-xnew_os, y_os, mask_os = tp.wavelength_to_pix(w_os , pars, m=1, oversample=os)  # Converts wavelenghths to pixel coordinates, os  NOT GOOD
+x, y, w = box_kim.readtrace(os=1)
+x_os, y_os, w_os = box_kim.readtrace(os=os)
 
 #####################################################
 # List of orders to consider in the extraction

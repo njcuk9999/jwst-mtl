@@ -28,10 +28,10 @@ def dispersion(wl):
             dw[i] = wl[i - 1] - wl[i]
     return dw
 
-def f_lambda(pixels, im_test, wl, y_trace, radius_pixel=30, area=25., gain=1.6):
+def f_lambda(pixels, trace_im, wl, y_trace, radius_pixel=30, area=25., gain=1.6):
     """
     pixels: Array of pixels
-    im_test: Trace's image [adu/s]
+    trace_im: Trace's image [adu/s]
     wl: Array of wavelengths (same size as pixels)  [microns]
     y_trace: Array for the positions of the center of the trace for each column
     radius_pixel: Radius of extraction box [pixels]
@@ -45,8 +45,8 @@ def f_lambda(pixels, im_test, wl, y_trace, radius_pixel=30, area=25., gain=1.6):
         y_i = y_trace[x_i]
         first = y_i - radius_pixel
         last = y_i + radius_pixel
-        flux[x_i] = im_test[int(first), x_i] * (1 - first % int(first)) + np.sum(
-            im_test[int(first) + 1:int(last) + 1, x_i]) + im_test[int(last) + 1, x_i] * (last % int(last))
+        flux[x_i] = trace_im[int(first), x_i] * (1 - first % int(first)) + np.sum(
+            trace_im[int(first) + 1:int(last) + 1, x_i]) + trace_im[int(last) + 1, x_i] * (last % int(last))
 
     # Calculate the flux in J/s/m²/um
     phot_ener = photon_energy(wl)  # Energy of each photon [J/photon]
@@ -54,10 +54,10 @@ def f_lambda(pixels, im_test, wl, y_trace, radius_pixel=30, area=25., gain=1.6):
 
     return flux * gain * phot_ener / area / dw
 
-def flambda_adu(pixels, im_test, y_trace, radius_pixel=30):
+def flambda_adu(pixels, trace_im, y_trace, radius_pixel=30):
     """
     pixels: Array of pixels
-    im_test: Trace's image [adu/s]
+    trace_im: Trace's image [adu/s]
     y_trace: Array for the positions of the center of the trace for each column
     radius_pixel: Radius of extraction box. Default is 30. [pixels]
     return: Extracted flux [adu/s/colonne]
@@ -68,15 +68,15 @@ def flambda_adu(pixels, im_test, y_trace, radius_pixel=30):
         y_i = y_trace[x_i]
         first = y_i - radius_pixel
         last = y_i + radius_pixel
-        flux[x_i] = im_test[int(first), x_i] * (1 - first % int(first)) + np.sum(
-            im_test[int(first) + 1:int(last) + 1, x_i]) + im_test[int(last) + 1, x_i] * (last % int(last))
+        flux[x_i] = trace_im[int(first), x_i] * (1 - first % int(first)) + np.sum(
+            trace_im[int(first) + 1:int(last) + 1, x_i]) + trace_im[int(last) + 1, x_i] * (last % int(last))
 
     return flux
 
-def flambda_elec(pixels, im_test, y_trace, radius_pixel=30, gain=1.6, ng=3, t_read=5.49):
+def flambda_elec(pixels, trace_im, y_trace, radius_pixel=30, gain=1.6, ng=3, t_read=5.49):
     """
     pixels: Array of pixels
-    im_test: Trace's image [adu/s]
+    trace_im: Trace's image [adu/s]
     y_trace: Array for the positions of the center of the trace for each column
     radius_pixel: Radius of extraction box. Default is 30. [pixels]
     gain: Gain [e⁻/adu]. Default is 1.6.
@@ -86,25 +86,25 @@ def flambda_elec(pixels, im_test, y_trace, radius_pixel=30, gain=1.6, ng=3, t_re
     """
     tint = (ng - 1) * t_read  # Integration time [s]
 
-    return flambda_adu(pixels, im_test, y_trace, radius_pixel=radius_pixel) * gain * tint
+    return flambda_adu(pixels, trace_im, y_trace, radius_pixel=radius_pixel) * gain * tint
 
-def flambda_inf_radi_adu(im_test):
+def flambda_inf_radi_adu(trace_im):
     """
-    im_test: Trace's image [adu/s]
+    trace_im: Trace's image [adu/s]
     return: Extracted flux for infinite radius [J/s/m²/um]
     """
-    flux = np.sum(im_test,axis=0)
+    flux = np.sum(trace_im,axis=0)
     return flux
 
-def flambda_inf_radi_ener(im_test, wl, area=25., gain=1.6):
+def flambda_inf_radi_ener(trace_im, wl, area=25., gain=1.6):
     """
-    im_test: Trace's image [adu/s]
+    trace_im: Trace's image [adu/s]
     wl: Array of wavelengths (same size as pixels)  [um]
     area: Area of photons collection surface [m²]. Default is 25.
     gain: Gain [e⁻/adu]. Default is 1.6.
     return: Extracted flux for infinite radius [J/s/m²/um]
     """
-    flux = flambda_inf_radi_adu(im_test)
+    flux = flambda_inf_radi_adu(trace_im)
 
     # Calculate the flux in J/s/m²/um
     phot_ener = photon_energy(wl)  # Energy of each photon [J/photon]
@@ -150,11 +150,11 @@ def readtrace(os):  # From Loic
     x_index = np.arange(2048 * os)
     # np.interp needs ordered x
     ind = np.argsort(x)
-    x, w = x[ind], w[ind]
+    x, y, w = x[ind], y[ind], w[ind]
     wavelength = np.interp(x_index, x, w)
     y_index = np.interp(x_index, x, y)
 
-    return x_index, y_index[::-1], wavelength
+    return x_index, y_index, wavelength
 
 def wl_filter(wl, pixels, length=85):
     """

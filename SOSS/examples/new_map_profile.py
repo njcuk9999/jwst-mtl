@@ -37,23 +37,21 @@ simuPars = spgen.ModelPars()              # Set up default parameters
 simuPars = spgen.read_pars(pathPars.simulationparamfile, simuPars)   # Read in parameter file
 
 # Position of trace for box extraction (TEMPORARY VERSION)
-trace_file = "/genesis/jwst/jwst-ref-soss/trace_model/NIRISS_GR700_trace_extended.csv"
-pars = tp.get_tracepars(trace_file)  # Gives the middle position of order 1 trace
-x, y_not, w = box_kim.readtrace(os=1)  # TODO: Problem with .readtrace
-xnew, y, mask = tp.wavelength_to_pix(w, pars, m=1, oversample=1)  # Converts wavelenghths to pixel coordinates  NOT GOOD
+x, y, w = box_kim.readtrace(os=1)
 
-"""
 ###############################
 # CHOOSE OVERSAMPLE  !!!
-simuPars.noversample = 10
+simuPars.noversample = 4
 os = simuPars.noversample
 
 ###############################
-clear_00 = fits.open(WORKING_DIR + "tmp/oversampling_{}/clear_000000.fits".format(os))
+clear_00 = fits.open('/genesis/jwst/userland-soss/loic_review/timeseries_20210730_normalizedPSFs/clear_trace_000000.fits')
+#clear_00 = fits.open(WORKING_DIR + "tmp/oversampling_{}/clear_000000.fits".format(os))
 clear = np.empty(shape=(3, 256, 2048), dtype=float)
 map_clear = np.empty_like(clear, dtype=float)
 
-padd = 10   # Because of x_padding and y_padding
+#padd = 10
+padd = 100   # Because of x_padding and y_padding
 
 for i in range(len(clear_00[0].data)):
     if os == 1:
@@ -68,7 +66,8 @@ map_clear[1, :, 1790:] = 0  # Problem with end of order 2 trace
 
 # Save map_profile
 hdu = fits.PrimaryHDU(map_clear)
-hdu.writeto(WORKING_DIR + "new_map_profile_clear_{}.fits".format(os), overwrite=True)
+#hdu.writeto(WORKING_DIR + "new_map_profile_clear_{}.fits".format(os), overwrite=True)
+hdu.writeto(WORKING_DIR + "new_map_profile_ref_clear_{}.fits".format(os), overwrite=True)
 
 
 """
@@ -260,7 +259,7 @@ plt.title('Order 1 tilts')
 plt.legend()
 plt.savefig(WORKING_DIR + 'with_peaks/order1_tilts.png', overwrite=True)
 plt.show()
-"""
+
 # For verification of what going on for a specific peak fit
 order = 1
 j = 134
