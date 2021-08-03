@@ -559,7 +559,8 @@ def do_not_use_bin_star_model(mod_w, mod_f, mod_ldcoeff, w_grid, dw_grid):
     return
 
 
-def seed_trace_geometry(simuPars, tracePars, spectral_order, models_grid_wv):
+def seed_trace_geometry(simuPars, tracePars, spectral_order, models_grid_wv,
+                        specpix_offset=0, spatpix_offset=0):
     '''
     Sets up the seed trace image dimensions, position of the trace, left and
     right bounds of each spectral pixel, wavelength and width of each spectral
@@ -569,6 +570,8 @@ def seed_trace_geometry(simuPars, tracePars, spectral_order, models_grid_wv):
     :param tracePars:
     :param spectral_order:
     :param models_grid_wv:
+    :param specpix_offset: trace position offset to apply along the spectral direction
+    :param spatpix_offset: trace position offset to apply along the spatial direction
     :return:
     x1, x2 : the left and right position bounds of a pixel in pixel coordinates
              if pixel is 0, then x1 = -0.5 and x2 = 0.5
@@ -582,7 +585,7 @@ def seed_trace_geometry(simuPars, tracePars, spectral_order, models_grid_wv):
 
     # Will need to pass these down at the input line
     # TODO: implement a non-zero dx,dy functionality and stick it here
-    specmov, spatmov = 0.0, 0.0
+    specmov, spatmov = np.copy(specpix_offset), np.copy(spatpix_offset)
 
     # Dimensions of the real (unpadded but oversampled) image
     dimx = simuPars.xout * simuPars.noversample
@@ -627,13 +630,30 @@ def seed_trace_geometry(simuPars, tracePars, spectral_order, models_grid_wv):
     return x1, x2, y1, y2, w, dw, paddimy, paddimx, padposx, padposy
 
 
-def loictrace(simuPars, response, bin_models_wv, bin_starmodel_flux, bin_ld_coeff,
-    bin_planetmodel_rprs, time, itime, solin, spectral_order, tracePars):
 
+def loictrace(simuPars, response, bin_models_wv, bin_starmodel_flux, bin_ld_coeff,
+              bin_planetmodel_rprs, time, itime, solin, spectral_order, tracePars,
+              specpix_trace_offset=0, spatpix_trace_offset=0):
+    '''
+    :param simuPars:
+    :param response:
+    :param bin_models_wv:
+    :param bin_starmodel_flux:
+    :param bin_ld_coeff:
+    :param bin_planetmodel_rprs:
+    :param time:
+    :param itime:
+    :param solin:
+    :param spectral_order:
+    :param tracePars:
+    :param specpix_trace_offset:
+    :param spatpix_trace_offset:
+    :return:
+    '''
     # Get the pixel bounds, central wavelength and seed image dimensions
     x1, x2, y1, y2, w, dw, paddimy, paddimx, padposx, padposy = seed_trace_geometry(
-                simuPars, tracePars, spectral_order, bin_models_wv)
-
+                simuPars, tracePars, spectral_order, bin_models_wv,
+                specpix_offset=specpix_trace_offset, spatpix_offset=spatpix_trace_offset)
 
     # Create functions to interpolate over response and quantum yield
     quantum_yield_spline_function = interpolate.splrep(response.wv, response.quantum_yield, s=0)
@@ -836,9 +856,9 @@ def add_wings(convolved_slice, noversample):
 def generate_traces(savingprefix, pathPars, simuPars, tracePars, throughput,
                     star_angstrom, star_flux, ld_coeff,
                     planet_angstrom, planet_rprs,
-                    timesteps, granularitytime):
+                    timesteps, granularitytime,
+                    specpix_trace_offset=0.0, spatpix_trace_offset=0.0):
     '''
-
     :param pathPars:
     :param simuPars:
     :param tracePars:
@@ -850,6 +870,7 @@ def generate_traces(savingprefix, pathPars, simuPars, tracePars, throughput,
     :param planet_rprs:
     :param timesteps: clock time of the whole frame or integration series (in seconds)
     :param granularitytime: time duration of each frame or integration (in seconds)
+    :param trace_position_dxdy:
     :return:
     '''
 
@@ -932,6 +953,21 @@ def generate_traces(savingprefix, pathPars, simuPars, tracePars, throughput,
     #xmax =simuPars.xout*simuPars.noversample
     #ymax =simuPars.yout*simuPars.noversample
 
+    # If a time-dependent trace position offset array was passed as input,
+    # then use it.
+    # First initialize the offset arrays
+    specpix_offset_array = np.copy(specpix_trace_offset)
+    spatpix_offset_array = np.copy(spatpix_trace_offset)
+    # If a scalar value (a constant) was passed then make it an array matching the number of time steps
+    if (np.size(specpix_trace_offset) == 1):
+        specpix_offset_array = np.zeros_like(timesteps) + specpix_trace_offset
+    if (np.size(spatpix_trace_offset) == 1):
+        spatpix_offset_array = np.zeros_like(timesteps) + spatpix_trace_offset
+    # Make sure that the offset arrays have the same size as timesteps array
+    if np.size(specpix_offset_array) != np.size(spatpix_offset_array):
+        print('Error in generate_traces(), trace position offsets must be a constant or have the same size as timesteps.')
+        sys.exit()
+
     # Initialize the array that will contain all orders at a given time step
     nimage = len(simuPars.orderlist)
     convolved_image=np.zeros((nimage,ymax,xmax))
@@ -956,8 +992,10 @@ def generate_traces(savingprefix, pathPars, simuPars, tracePars, throughput,
             else:
                 print('     Seeding flux onto a narrow trace on a 2D image')
                 pixels_t = loictrace(simuPars, throughput, star_angstrom_bin, star_flux_bin,
-                                      ld_coeff_bin, planet_rprs_bin,
-                                      currenttime, exposetime, solin, spectral_order, tracePars)
+                                     ld_coeff_bin, planet_rprs_bin,
+                                     currenttime, exposetime, solin, spectral_order, tracePars,
+                                     specpix_trace_offset=specpix_offset_array[t],
+                                     spatpix_trace_offset=spatpix_offset_array[t])
 
 
 

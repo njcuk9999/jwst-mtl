@@ -60,6 +60,7 @@ class ModelPars:
     prodtype='cal'
     orderlist = np.array([-1,0,1,2,3],dtype=np.int) # the spectral orders to simulate
     orderlist = np.array([1,2,3], dtype=np.int)
+    #orderlist = np.array([1], dtype=np.int)
     frametime = np.nan # not selectable in the config file. Will be filled in the code.
     nint = np.nan # not selectable in the config file. Will be filled in the code.
     nintf277 = np.nan
@@ -1029,6 +1030,9 @@ def readkernels(psfdir, wls=0.5, wle=5.2, dwl=0.05, os=1):
         # kernel_1=hdulist[0].data.T
         # Extract data (of PSFs generated in the DMS coordinates)
         kernel_1 = hdulist[0].data
+        # Normalize PSF flux to 1
+        kernel_1 = kernel_1 / np.sum(kernel_1)
+        # Stack up each wavelength's PSF
         kernels.append(np.copy(kernel_1))
         kernels_wv.append(np.float(wl))
         
@@ -1075,7 +1079,7 @@ def gen_unconv_image(pars,response,bin_starmodel_wv,bin_starmodel_flux,bin_ld_co
     order_index = np.where(np.array(response.response_order) == spectral_order)[0][0]
     # Interpolate over response and quantum yield
     response_spl = interpolate.splrep(response.wv, response.response[order_index], s=0)
-    quantum_yield_spl  = interpolate.splrep(response.wv, response.quantum_yield, s=0)
+    quantum_yield_spl = interpolate.splrep(response.wv, response.quantum_yield, s=0)
     # Maximum and minimum wavelengths present in the response class
     rmax=np.max(response.wv)
     rmin=np.min(response.wv)

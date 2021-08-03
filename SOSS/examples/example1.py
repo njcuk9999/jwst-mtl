@@ -92,12 +92,15 @@ simuPars.xpadding = 100
 simuPars.ypadding = 100
 #simuPars.modelfile = 'BLACKBODY'
 #simuPars.modelfile = 't6000g450p000_ldnl.dat'
-#simuPars.modelfile = 'lte06000-4.50-0.0.PHOENIX-ACES-AGSS-COND-2011.JWST-RF.simu-SOSS.dat'
-simuPars.modelfile = 'CONSTANT_FLAMBDA'
+simuPars.modelfile = 'lte06000-4.50-0.0.PHOENIX-ACES-AGSS-COND-2011.JWST-RF.simu-SOSS.dat'
+simuPars.modelfile = 'lte02300-4.50-0.0.PHOENIX-ACES-AGSS-COND-2011.JWST-RF.simu-SOSS.dat'
+#simuPars.modelfile = 'CONSTANT_FLAMBDA'
+#simuPars.f277wcal = True
 simuPars.f277wcal = False
+#simuPars.tend = -1.80
 #simuPars.tend = -1.97
-#simuPars.flatthroughput = True
-#simuPars.flatquantumyield = True
+simuPars.flatthroughput = False
+simuPars.flatquantumyield = True
 
 
 # Instrument Throughput (Response)
@@ -172,6 +175,16 @@ if True:
         nint, len(timesteps), frametime))
     print('Generated time steps (in seconds): ', timesteps)
 
+    # Generate a constant trace position offsets
+    specpix_offset = 0.0
+    spatpix_offset = 5.0
+    # Generate a time-dependent trace position offsets
+    #specpix_offset = np.zeros_like(timesteps)
+    #spatpix_offset = np.linspace(0.0, 5.0, np.size(timesteps))
+    print('Trace position offsets (as a function of time, or constant):')
+    print('specpix_offset = ', specpix_offset)
+    print('spatpix_offset = ', spatpix_offset)
+
     # Generate the Time-Series simulation
     norders = len(simuPars.orderlist)
     dimy, dimx = simuPars.yout, simuPars.xout
@@ -184,7 +197,8 @@ if True:
                                          pathPars, simuPars, tracePars, throughput,
                                          starmodel_angstrom, starmodel_flambda, ld_coeff,
                                          planetmodel_angstrom, planetmodel_rprs,
-                                         timesteps, tintopen)
+                                         timesteps, tintopen, specpix_trace_offset=specpix_offset,
+                                         spatpix_trace_offset=spatpix_offset)
     else:
         imagelist = glob.glob(pathPars.path_userland+'tmp/clear*.fits')
         for i in range(np.size(imagelist)):
