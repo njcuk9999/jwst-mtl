@@ -61,12 +61,14 @@ else:
 # CHOOSE WHICH MAPS !!!
 wl_la_old = False   # Old wavelength map2D of Loïc
 wl_la_new = False   # New wavelength map2D of Loïc
-wl_km = False        # My wavelength map2D (with peaks)
-wl_gjt = True     # Geert Jan's wavelength map2D
+wl_km = False       # My wavelength map2D (with peaks)
+wl_gjt = True       # Geert Jan's wavelength map2D
+wl_notilt = False   # Wavelength maps without tilt
 
 sp_la_new = True   # New spatial profile map2D of Loïc
 sp_km = False      # My spatial profile map2D (with clear_000000.fits)
 sp_ref = False      # Spatial profile map2D done with Loïc's clear_trace_000000.fits
+sp_corr = False     # Loïc's spatial profile corrected with rebuilt
 
 # CHOOSE WHICH SIMUS !!!
 simu_km = False   # My simulations from simu1.py
@@ -76,14 +78,14 @@ simu_la = True   # Loïc's simulations from his code
 save = False
 
 ####################################################################################
-os_list = [4] #if simu_la else [1, 4, 5, 10, 11]
+os_list = [4]  # if simu_la else [1, 4, 5, 10, 11]
 
 ####################################################################################
-if wl_la_old + wl_la_new + wl_km + wl_gjt != 1:
+if wl_la_old + wl_la_new + wl_km + wl_gjt + wl_notilt!= 1:
     print('Choose only ONE wavelength map!!!')
     sys.exit()
 
-if sp_la_new + sp_km + sp_ref != 1:
+if sp_la_new + sp_km + sp_ref + sp_corr != 1:
     print('Choose only ONE spatial profile map!!!')
     sys.exit()
 
@@ -99,6 +101,8 @@ elif wl_km:
     wl_title = 'wl_km'
 elif wl_gjt:
     wl_title = 'wl_gjt'
+elif wl_notilt:
+    wl_title = 'wl_notilt'
 
 if sp_la_new:
     sp_title = 'sp_la_new'
@@ -106,6 +110,8 @@ elif sp_km:
     sp_title = 'sp_km'
 elif sp_ref:
     sp_title = 'sp_ref'
+elif sp_corr:
+    sp_title = 'sp_corr'
 
 if simu_km:
     simu_title = 'simu_kim'
@@ -136,36 +142,25 @@ i_zero = np.where(wave_maps_adb[1][0] == 0.)[0][0]  # Where Antoine put 0 in his
 
 if wl_la_old:
     wave = fits.getdata("/genesis/jwst/userland-soss/loic_review/refs/map_wave_2D_native.fits")
+    wave_maps = [wave[0]] if only_order_1 else wave[:2]  # Consider only orders 1 & 2
 elif wl_la_new:
     wave = fits.getdata("/genesis/jwst/userland-soss/loic_review/2DWave_native_nopadding_20210729.fits")
+    wave_maps = [wave[0]] if only_order_1 else wave[:2]  # Consider only orders 1 & 2
 elif wl_km:
     wave = fits.getdata(WORKING_DIR + "with_peaks/wave_map2D.fits")
+    wave_maps = [wave[0]] if only_order_1 else wave[:2]  # Consider only orders 1 & 2
 elif wl_gjt:
     wave = fits.getdata("/genesis/jwst/userland-soss/loic_review/cartewaveGJT.fits")
     wave_maps = [wave]
+elif wl_notilt:
+    wave = np.tile(w, (256, 1))
+    wave_maps = [wave]
 
 #wave[1, :, i_zero:] = 0.  # Also set to 0 the same points as Antoine in clear's 2nd order wl map
-if wl_gjt is False:
-    wave_maps = [wave[0]] if only_order_1 else wave[:2]    # Consider only orders 1 & 2
 
-# Convert data from fits files to float (fits precision is 1e-8)
-wave_maps = [wv.astype('float64') for wv in wave_maps]
-
-wave_notilt = np.tile(w, (256, 1))
-wave_maps = [wave_notilt]
-"""
-wl_diff = np.full_like(wave_maps[0], np.nan)
-for i in range(len(y)):
-    y_pos = int(np.around(y[i]))
-    wl_diff[y_pos,i] = wave_maps[0][y_pos, i] - w[i]
-   
-plt.figure()
-plt.pcolormesh(wl_diff)
-plt.colorbar(label=r"[$\mu m$]")
-plt.title("Difference between Geert Jan's wavelength map and wavelengths from tracepol")
-plt.savefig(WORKING_DIR + 'diff_wave_map2D_gjt_tracepol.png')
-plt.show()
-"""
+if wl_notilt is False:
+    # Convert data from fits files to float (fits precision is 1e-8)
+    wave_maps = [wv.astype('float64') for wv in wave_maps]
 
 ####################################################################################
 # List of orders to consider in the extraction
@@ -198,14 +193,24 @@ for i in range(len(os_list)):
     #### Spatial profiles ####
     if sp_la_new:
         spat = fits.getdata("/genesis/jwst/userland-soss/loic_review/2DTrace_native_nopadding_20210729.fits")
+        spat_pros = [spat[0]] if only_order_1 else spat[:2]
     elif sp_km:
         spat = fits.getdata(WORKING_DIR + "new_map_profile_clear_{}.fits".format(os))
+        spat_pros = [spat[0]] if only_order_1 else spat[:2]
     elif sp_ref:
         spat = fits.getdata(WORKING_DIR + "new_map_profile_ref_clear_{}.fits".format(os))
-    spat_pros = [spat[0]] if only_order_1 else spat[:2]
+        spat_pros = [spat[0]] if only_order_1 else spat[:2]
+    elif sp_corr:
+        spat = fits.getdata(WORKING_DIR + "spat_pros_corrected_{}.fits".format(os))
+        spat_pros = [spat]
 
     # Convert data from fits files to float (fits precision is 1e-8)
     spat_pros = [p_ord.astype('float64') for p_ord in spat_pros]
+
+    spat_ones = np.array(spat_pros[0])
+    spat_ones = spat_ones > 1e-4
+    spat_ones = spat_ones.astype('float64')
+    spat_pros = [spat_ones]
 
     # Put all inputs from reference files in a list
     ref_files_args = [spat_pros, wave_maps, thrpt_list, ker_list]
@@ -220,18 +225,24 @@ for i in range(len(os_list)):
         clear_tr_00 = fits.open('/genesis/jwst/userland-soss/loic_review/timeseries_20210730_normalizedPSFs/clear_trace_000000.fits')
         clear_00 = fits.open('/genesis/jwst/userland-soss/loic_review/timeseries_20210730_normalizedPSFs/clear_000000.fits')
 
+    # Convert data from fits files to float (fits precision is 1e-8)
+    clear_tr = [im_ord.astype('float64') for im_ord in clear_tr_00[0].data]
+    clear = [im_ord.astype('float64') for im_ord in clear_00[0].data]
+    clear_tr = np.array(clear_tr)
+    clear = np.array(clear)
+
     # Because of x_padding and y_padding
     padd = 10 if simu_km else 100
 
     if os != 1:
         # Bin to pixel native
-        ref_i = soss.rebin(clear_tr_00[0].data, os, flux_method='sum')
+        ref_i = soss.rebin(clear_tr, os, flux_method='sum')
         clear_ref_bin = ref_i[:2, padd:-padd, padd:-padd]  # Reference thin trace, binned
-        clear_i = soss.rebin(clear_00[0].data, os, flux_method='sum')
+        clear_i = soss.rebin(clear, os, flux_method='sum')
         clear_bin = clear_i[:2, padd:-padd, padd:-padd]  # Convolved traces, binned
     else:  # Os = 1
-        clear_ref_bin = clear_tr_00[0].data[:2, padd:-padd, padd:-padd]
-        clear_bin = clear_00[0].data[:2, padd:-padd, padd:-padd]
+        clear_ref_bin = clear_tr[:2, padd:-padd, padd:-padd]
+        clear_bin = clear[:2, padd:-padd, padd:-padd]
 
     ####################################################################################
     # Noiseless images for extraction
@@ -241,7 +252,9 @@ for i in range(len(os_list)):
     if noisy:
         # Noisy images for extraction
         data_noisy = noisy_rateints[1].data[0]  # Image of flux [adu/s]
+        data_noisy = data_noisy.astype('float64', copy=False)
         delta_noisy = noisy_rateints[2].data[0]  # Error [adu/s]
+        delta_noisy = delta_noisy.astype('float64', copy=False)
         dq = noisy_rateints[3].data[0]  # Data quality
         i = np.where(dq % 2 != 0)  # Odd values of dq = DO NOT USE these pixels
         data_noisy[i[0], i[1]] = 0.
@@ -280,9 +293,9 @@ for i in range(len(os_list)):
 
     ####################################################################################
     # TIKHONOV EXTRACTION  (done on convolved, binned traces)
-    #data = data_noisy if noisy else data_conv_bin
+    data = data_noisy if noisy else data_conv_bin
     #data = data_ref_bin
-    data = spat_pros[0]
+    #data = spat_pros[0]
 
     params = {}
 
@@ -322,13 +335,15 @@ for i in range(len(os_list)):
     # Refine the grid (span 4 orders of magnitude).
     best_fac = np.log10(best_fac)
     factors = np.logspace(best_fac - 2, best_fac + 2, 20)
+
     plt.figure()
     tests = extract.get_tikho_tests(factors, data=data, sig=sig)
     best_fac = extract.best_tikho_factor(tests=tests, i_plot=True)
 
     # Extract the oversampled spectrum 𝑓𝑘
     # Can be done in a loop for a timeseries and/or iteratively for different estimates of the reference files.
-    f_k = extract.extract(data=data, sig=sig, tikhonov=True, factor=best_fac) /os
+    #f_k = extract.extract(data=data, sig=sig, tikhonov=True, factor=best_fac) /os
+    f_k = np.ones(shape=(2048,), dtype='float')
 
     # Bin to pixel native sampling
     # To get a result comparable to typical extraction methods, we need to integrate the oversampled spectrum (𝑓𝑘)
@@ -362,17 +377,30 @@ for i in range(len(os_list)):
 
     if os == 4:
         ax2.plot(lam_bin, ftik_bin, label='tikhonov, os = {}'.format(os))
-        ax2.plot(lam_bin, fbox_ref_adu_bin, label='box')
+        ax2.plot(lam_bin, fbox_ref_adu_bin, label='ref, box')
 
     print('Os = {} : Done'.format(os))
 
     # Rebuild the detector
-    rebuilt = extract.rebuild(f_k * os)
-    rebuilt_1d = np.ravel((rebuilt - data)/data)
+    rebuilt = extract.rebuild(f_k)    # * os
+    relatdiff_rebuilt = box_kim.relative_difference(rebuilt, data)
+    rebuilt_1d = np.ravel(relatdiff_rebuilt)
+
+    plt.figure()
+    plt.subplot(111)
+    x = np.arange(1100, 1111)
+    y = np.arange(0, 131)
+    plt.pcolormesh(x, y, rebuilt[:131, 1100:1111])
+    plt.title('rebuilt')
+    plt.colorbar(orientation='horizontal', aspect=40)
+    plt.tight_layout()
+    plt.show()
+
+    sys.exit()
 
     plt.figure()
     plt.subplot(111, aspect='equal')
-    plt.pcolormesh((rebuilt - data)/data * 1e6)
+    plt.pcolormesh(relatdiff_rebuilt * 1e6)
     plt.title('(rebuilt - data)/data')
     plt.colorbar(label="[ppm]", orientation='horizontal', aspect=40)
     plt.tight_layout()
@@ -392,6 +420,20 @@ for i in range(len(os_list)):
     plt.tight_layout()
     if save:
         plt.savefig(WORKING_DIR + '{}/rebuilt_{}_{}_{}.png'.format(simu_title, order_title, wl_title, sp_title))
+
+    """
+    spat_corr = spat_pros[0] - relatdiff_rebuilt * spat_pros[0]
+    np.nan_to_num(spat_corr, copy=False)
+
+    plt.figure()
+    plt.pcolormesh(spat_corr)
+    plt.colorbar(orientation='horizontal', aspect=40)
+    plt.title('Corrected spatial profile')
+    plt.tight_layout()
+
+    hdu = fits.PrimaryHDU(spat_corr)
+    hdu.writeto(WORKING_DIR + "spat_pros_corrected_{}.fits".format(os), overwrite=True)
+    """
 
 title_noise = 'noisy' if noisy else 'noiseless'
 
@@ -416,7 +458,7 @@ ax1[0].set_title("Relative difference, Tikhonov vs box extraction, convolved, {}
 ax1[1].set_title("Relative difference, Tikhonov vs box extraction, thin trace, {}".format(title_noise))
 ax1[1].set_xlabel(r"Wavelength [$\mu m$]")
 ax1[0].set_ylabel("Relative difference [ppm]"), ax1[1].set_ylabel("Relative difference [ppm]")
-ax1[0].legend(bbox_to_anchor=(1.1,0.05))
+ax1[0].legend(bbox_to_anchor=(1.1, 0.05))
 if save:
     fig1.savefig(WORKING_DIR + '{}/relatdiff_tik_box_{}_{}_{}.png'.format(simu_title, order_title, wl_title, sp_title))
     fig3.savefig(WORKING_DIR + '{}/relatdiff_box_convVSref_{}.png'.format(simu_title, order_title))
