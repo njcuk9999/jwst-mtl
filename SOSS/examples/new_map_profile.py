@@ -59,8 +59,7 @@ for i in range(len(clear_00[0].data)):
     else:
         clear_i = soss.rebin(clear_00[0].data[i], os, flux_method='sum')
         clear[i] = clear_i[padd:-padd, padd:-padd]
-    sum_col = np.sum(clear[i], axis=0)
-    map_clear[i] = clear[i] / sum_col
+    map_clear[i] = box_kim.normalize_map(clear[i])
 
 map_clear[1, :, 1790:] = 0  # Problem with end of order 2 trace
 

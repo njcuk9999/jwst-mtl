@@ -258,3 +258,8 @@ def create_wave(R, w_min, w_max):
 def robust_polyfit(fit_resFunc, y, x, p0):
     res = least_squares(fit_resFunc, p0, loss='soft_l1', f_scale=0.1, args=(y, x))
     return res.x
+
+def normalize_map(map):
+    sum_col = np.sum(map, axis=0)
+    norm_map = map / sum_col
+    return norm_map
