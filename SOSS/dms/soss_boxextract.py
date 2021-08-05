@@ -46,82 +46,71 @@ def get_box_weights(cols, centroid, n_pix, shape):
     return out
 
 
-def box_extract(data, uncert, box_weights, cols=None, mask=None):
-    '''
-    Make a box extraction
-    Parameters
-    ----------
-    data: 2d array of shape (n_row, n_columns)
+def box_extract(scidata, scierr, scimask, box_weights, cols=None):
+    """ Perform a box extraction.
+
+    :param scidata: 2d array of shape (n_row, n_columns)
         scidata
-    uncert: 2d array of shape (n_row, n_columns)
+    :param scierr: 2d array of shape (n_row, n_columns)
         uncertainty map
-    box_weights: 2d array, same shape as data
-        pre-computed weights for box extraction.
-    lam_col: 1d array of shape (n_columns)
-        wavelength associated with each columns. If not given,
-        the column position is taken as ordinates.
-    cols: 1d-array, integer
-        Which columns to extract
-    mask: 2d array, boolean, same shape as data
+    :param scimask: 2d array, boolean, same shape as data
         masked pixels
-    Output
-    ------
-    (column position, spectrum, spectrum_variance)
+    :param box_weights: 2d array, same shape as data
+        pre-computed weights for box extraction.
+    :param cols: 1d-array, integer
+        Which columns to extract
 
-    Example
-    -------
-    Assume you have an array of column position `good_cols`
-    and the `centroid` associated with these columnns.
-    It can be define for a subset of some columns of the detector.
-    Then we can first compute a weight map for a box aperture
-    of 20 pixels on the :
+    :type scidata: array[float]
+    :type scierr: array[float]
+    :type scimask: array[bool]
+    :type box_weights: array[float]
+    :type cols: array[int]
 
-    >>> box_weights = get_box_weights(good_cols, centroid, 20, data.shape)
+    :returns: cols, flux, flux_var - The indices of the extracted columns, the
+        flux in each column, and the variance of each column.
+    :rtype: Tuple(array[int], array[float], array[float])
+    """
 
-    The output map will have the same shape as `data`. Then we can extract:
-
-    >>> x_col, spectrum, var = box_extract(data, box_weights, mask=~np.isfinite(data))
-
-    '''
     # Use all columns if not specified
     if cols is None:
-        cols = np.arange(data.shape[1])
-
-    # Define mask if not given
-    if mask is None:
-        # False everywhere
-        mask = np.zeros(data.shape, dtype=bool)
+        cols = np.arange(scidata.shape[1])
 
     # Keep only needed columns and make a copy
     # so it is not modified outside of the function
-    data = data[:, cols].copy()
-    uncert = uncert[:, cols].copy()
+    # TODO is this needed at all? Why not just keep weights zero?
+    data = scidata[:, cols].copy()
+    uncert = scierr[:, cols].copy()
     box_weights = box_weights[:, cols].copy()
-    mask = mask[:, cols].copy()
+    mask = scimask[:, cols].copy()
 
     # Check if there are some invalid values
     # in the non masked regions of the 2d inputs
+    # TODO This seems like a good check to have but can be improved on...
     for map_2d in (data, uncert):
         non_masked = map_2d[~mask]
+
         if not np.isfinite(non_masked).all():
             message = 'Non masked pixels have invalid values.'
             raise ValueError(message)
 
     # Apply to weights
-    box_weights[mask] = np.nan
+    box_weights[mask] = np.nan  # TODO why not set weights to zero?
 
     # Extract spectrum (sum over columns)
-    spectrum = np.nansum(box_weights * data, axis=0)
+    flux = np.nansum(box_weights*data, axis=0)  # TODO what about missing flux due to bad pixels?
 
     # Extract error variance (sum of variances)
-    pix_var = uncert ** 2
-    col_var = np.nansum(box_weights * pix_var, axis=0)
+    pix_var = uncert**2
+    flux_var = np.nansum(box_weights*pix_var, axis=0)
+    flux_err = np.sqrt(flux_var)
 
-    # Things to add to output:
-    # - dq
-    # - sum of poisson variances?
-    # - sum of read noise?
-    # - sum of variance falt field?
-    # - extract bkgrnd spectrum?
+    return cols, flux, flux_err
 
-    return cols, spectrum, col_var
+
+def main():
+
+    return
+
+
+if __name__ == '__main__':
+    main()
