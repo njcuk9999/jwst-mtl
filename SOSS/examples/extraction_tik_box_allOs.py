@@ -62,8 +62,8 @@ else:
 wl_la_old = False   # Old wavelength map2D of Loïc
 wl_la_new = False   # New wavelength map2D of Loïc
 wl_km = False       # My wavelength map2D (with peaks)
-wl_gjt = False       # Geert Jan's wavelength map2D
-wl_notilt = True   # Wavelength maps without tilt
+wl_gjt = True       # Geert Jan's wavelength map2D
+wl_notilt = False   # Wavelength maps without tilt
 
 sp_la_new = True   # New spatial profile map2D of Loïc
 sp_km = False      # My spatial profile map2D (with clear_000000.fits)
@@ -309,8 +309,10 @@ for i in range(len(os_list)):
     # Dispersions from Loïc
     disp_order1 = np.genfromtxt('/genesis/jwst/userland-soss/loic_review/dispersion_order1.ecsv')
     wavelength, x_value, dispersion = disp_order1[:,0], disp_order1[:,1], disp_order1[:,2]
-    f = interp1d(wavelength, dispersion, fill_value='extrapolate')
-    disp_interp = f(w)
+    np.nan_to_num(dispersion, copy=False)
+    disp_norm = dispersion / np.mean(dispersion)
+    f = interp1d(x_value, disp_norm, fill_value='extrapolate')
+    disp_interp = f(np.arange(2048))
 
     ####################################################################################
     # TIKHONOV EXTRACTION  (done on convolved, binned traces)
@@ -321,7 +323,7 @@ for i in range(len(os_list)):
     params = {}
 
     # Map of expected noise (standard deviation).
-    bkgd_noise = 20. * 0.   # In counts?
+    bkgd_noise = 20.   # In counts?
 
     # Wavelength extraction grid oversampling.
     params["n_os"] = 5
@@ -382,6 +384,19 @@ for i in range(len(os_list)):
     lam_bin_array[i] = lam_bin
     ftik_bin_array[i] = ftik_bin
 
+    relatdiff_tik_box_ref[i] = box_kim.relative_difference(ftik_bin, fbox_ref_adu_bin)  # Tikhonov vs ref thin trace
+
+    if True:
+        plt.figure()
+        plt.plot(disp_interp, relatdiff_tik_box_ref[i])
+        plt.xlabel('Dispersion [um]')
+        plt.ylabel('Relative difference')
+
+        sp_title += 'dispersionCorrected'
+
+    fbox_conv_inf_adu_bin *= disp_interp
+    fbox_ref_adu_bin *= disp_interp
+
     # Comparison
     if only_order_1:
         relatdiff_tik_box[i] = box_kim.relative_difference(ftik_bin, fbox_conv_inf_adu_bin)   # Tikhonov vs noiseless
@@ -391,18 +406,7 @@ for i in range(len(os_list)):
         relatdiff_tik_box[i] = box_kim.relative_difference(ftik_bin, ref_data)
         print("Radius pixel = ", radius_pixel, '(for fbox_conv_ in relative differences)')
 
-    relatdiff_tik_box_ref[i] = box_kim.relative_difference(ftik_bin, fbox_ref_adu_bin)   # Tikhonov vs ref thin trace
-
-    if False:
-        plt.figure()
-        plt.plot(disp_interp, relatdiff_tik_box_ref[i])
-        plt.xlabel('Dispersion [um]')
-        plt.ylabel('Relative difference')
-
-        relatdiff_tik_box[i] *= disp_interp
-        relatdiff_tik_box_ref[i] *= disp_interp
-
-        sp_title += 'dispersionCorrected'
+    relatdiff_tik_box_ref[i] = box_kim.relative_difference(ftik_bin, fbox_ref_adu_bin)  # Tikhonov vs ref thin trace
 
     ax1[0].plot(lam_bin, relatdiff_tik_box[i] * 1e6, label='os = {}'.format(os))
     ax1[1].plot(lam_bin, relatdiff_tik_box_ref[i] * 1e6, label='os = {}'.format(os))

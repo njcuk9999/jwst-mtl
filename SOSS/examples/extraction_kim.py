@@ -15,20 +15,16 @@ from scipy.interpolate import interp1d
 import box_kim
 
 # Constants
-h = sc_cst.Planck
-c = sc_cst.speed_of_light
-gain = 1.6
-area = 25.
 ng = 3   # NGROUP
 t_read = 5.49   # Reading time [s]
 tint = (ng - 1) * t_read   # Integration time [s]
 
-radius_pixel = 30
+radius_pixel = 34
 length_med = 85    # Length of window for median filter  # For oscillations
 
 start, end = 5, -5   # To avoid problems with the extremities
 
-#########################################################
+###############################################################
 WORKING_DIR = '/home/kmorel/ongenesis/jwst-user-soss/'
 
 #sys.path.insert(0,"/home/kmorel/ongenesis/github/jwst-mtl/SOSS/specgen/utils/")
@@ -43,10 +39,7 @@ soss.readpaths(config_paths_filename, pathPars)
 simuPars = spgen.ModelPars()              #Set up default parameters
 simuPars = spgen.read_pars(pathPars.simulationparamfile, simuPars) #read in parameter file
 
-#########################################################
-# CHOOSE ORDER   !!!
-m_order = 1  # For now, only option is 1.
-
+###############################################################
 # CHOOSE OVERSAMPLE  !!!
 simuPars.noversample = 1
 os = simuPars.noversample
@@ -54,27 +47,24 @@ os = simuPars.noversample
 # SAVE FIGS? !!!
 save = False
 
-#########################################################
+###############################################################
 # Generate or read the star atmosphere model
 starmodel_angstrom, starmodel_flambda, ld_coeff = soss.starmodel(simuPars, pathPars)
 
-#########################################################
+###############################################################
 # Position of trace
+"""
 trace_file = "/genesis/jwst/jwst-ref-soss/trace_model/NIRISS_GR700_trace_extended.csv"
 pars = tp.get_tracepars(trace_file, disable_rotation=False)   # Gives the middle position of order 1 trace
-#x = np.arange(2048)    # Array of pixels
-#w, tmp = tp.specpix_to_wavelength(x, pars, m=1)   # Returns wavelength for each x, order 1
-#xnew, y, mask = tp.wavelength_to_pix(w, pars, m=1)   # Converts wavelenghths to pixel coordinates  NOT GOOD
-
-#x_os = np.arange(2048 * os)    # Array of pixels with os
-#w_os, tmp_os = tp.specpix_to_wavelength(x_os, pars, m=1, oversample=os)  # Returns wavelength for each x, order 1, os
-#xnew_os, y_os, mask_os = tp.wavelength_to_pix(w_os , pars, m=1, oversample=os)  # Converts wavelenghths to pixel coordinates, os  NOT GOOD
-
-x, y, w = box_kim.readtrace(os=1)   # TODO: Problem with .readtrace
+x = np.arange(2048)    # Array of pixels
+w, tmp = tp.specpix_to_wavelength(x, pars, m=1)   # Returns wavelength for each x, order 1
+xnew, y, mask = tp.wavelength_to_pix(w, pars, m=1)   # Converts wavelenghths to pixel coordinates  NOT GOOD
+x_os = np.arange(2048 * os)    # Array of pixels with os
+w_os, tmp_os = tp.specpix_to_wavelength(x_os, pars, m=1, oversample=os)  # Returns wavelength for each x, order 1, os
+xnew_os, y_os, mask_os = tp.wavelength_to_pix(w_os , pars, m=1, oversample=os)  # Converts wavelenghths to pixel coordinates, os  NOT GOOD
+"""
+x, y, w = box_kim.readtrace(os=1)
 x_os, y_os, w_os = box_kim.readtrace(os=os)
-
-#xnew, y, mask = tp.wavelength_to_pix(w, pars, m=1)   # Converts wavelenghths to pixel coordinates  NOT GOOD
-#xnew_os, y_os, mask_os = tp.wavelength_to_pix(w_os , pars, m=1, oversample=os)  # Converts wavelenghths to pixel coordinates, os  NOT GOOD
 
 #########################################################
 # LOADING IMAGES
@@ -98,14 +88,15 @@ else:  # Os = 1
     clear_ref_bin = np.copy(clear_tr_ref)
     clear_bin = np.copy(clear_conv)
 
-
+###############################################################
 # IMAGES ARRAYS
 # Noiseless
 # Order 1 only
-data_ref1 = clear_tr_ref[m_order-1]         # Reference thin trace, not binned [adu/s]
-data_ref1_bin = clear_ref_bin[m_order-1]    # Reference thin trace, binned [adu/s]
-data_conv1 = clear_conv[m_order-1]          # Convolved, not binned [adu/s]
-data_conv1_bin = clear_bin[m_order-1]       # Convolved, binned [adu/s]
+data_ref1 = clear_tr_ref[0]         # Reference thin trace, not binned [adu/s]
+data_ref1_bin = clear_ref_bin[0]    # Reference thin trace, binned [adu/s]
+data_conv1 = clear_conv[0]          # Convolved, not binned [adu/s]
+data_conv1_bin = clear_bin[0]       # Convolved, binned [adu/s]
+
 # Orders 1 & 2 summed
 data_ref12 = np.sum(clear_tr_ref, axis=0)        # Reference thin trace, not binned [adu/s]
 data_ref12_bin = np.sum(clear_ref_bin, axis=0)   # Reference thin trace, binned [adu/s]
@@ -120,7 +111,7 @@ i = np.where(dq %2 != 0)   # Odd values of dq = DO NOT USE these pixels
 data_noisy[i[0], i[1]] = 0
 delta_noisy[i[0], i[1]] = 0
 
-#########################################################
+###############################################################
 # EXTRACTIONS
 
 # EXTRACTED FLUX OF NOISELESS TRACE, ORDER 1 ONLY
@@ -137,8 +128,7 @@ fbox_conv1_inf_adu_bin = box_kim.flambda_inf_radi_adu(data_conv1_bin) / os      
 fbox_conv1_adu_bin = box_kim.flambda_adu(x, data_conv1_bin, y, radius_pixel=radius_pixel) / os       # [adu/s]
 fbox_conv1_elec_bin = box_kim.flambda_elec(x, data_conv1_bin, y, radius_pixel=radius_pixel) / os     # [e⁻]
 fbox_conv1_energy_bin = box_kim.f_lambda(x, data_conv1_bin, w, y, radius_pixel=radius_pixel) / os    # [J/s/m²/um]
-fbox_conv1_inf_ener_bin = box_kim.flambda_inf_radi_ener(data_conv1_bin, w)           # Infinite radius [J/s/m²/um]
-
+fbox_conv1_inf_ener_bin = box_kim.flambda_inf_radi_ener(data_conv1_bin, w) / os      # Infinite radius [J/s/m²/um]
 
 # EXTRACTED FLUX OF NOISELESS TRACES, ORDERS 1 & 2 SUMMED
 # Reference thin trace:
@@ -153,7 +143,6 @@ fbox_conv12_adu_bin = box_kim.flambda_adu(x, data_conv12_bin, y, radius_pixel=ra
 fbox_conv12_elec_bin = box_kim.flambda_elec(x, data_conv12_bin, y, radius_pixel=radius_pixel) / os      # [e⁻]
 fbox_conv12_energy_bin = box_kim.f_lambda(x, data_conv12_bin, w, y, radius_pixel=radius_pixel) / os     # [J/s/m²/um]
 
-
 # EXTRACTED FLUX OF NOISY TRACES
 fbox_noisy_adu = box_kim.flambda_adu(x, data_noisy, y, radius_pixel=radius_pixel) / os       # [adu/s]
 fbox_noisy_elec = box_kim.flambda_elec(x, data_noisy, y, radius_pixel=radius_pixel) / os     # [e⁻]
@@ -162,7 +151,7 @@ fbox_noisy_energy = box_kim.f_lambda(x, data_noisy, w, y, radius_pixel=radius_pi
 # Error on extracted flux
 #sigma_fbox_noisy_ener = box_kim.sigma_flambda(x, delta_noisy, w, y, radius_pixel=radius_pixel) # [J/s/m²/um]
 
-#########################################################
+###############################################################
 """
 # WHEN THERE WERE OSCILLATIONS...
 
@@ -208,11 +197,11 @@ fbox_noisy_med_norm = fbox_noisy_adu[length_med//2:-length_med//2] / fbox_noisy_
 std_noisy_med_norm = np.std(fbox_noisy_med_norm)                                      # Standard deviation
 print("Standard deviation (noisy, normalized) =", std_noisy_med_norm)
 
-#########################################################
+###############################################################
 """
 
 """
-#########################################################
+###############################################################
 # ESTIMATED PHOTON NOISES ON CONVOLVED, BINNED TRACE(S)
 dw = box_kim.dispersion(w)             # Dispersion [um]
 phot_ener = box_kim.photon_energy(w)   # Energy of photons [J]
@@ -230,73 +219,36 @@ fbox_conv1_energy_bin_minus = fbox_conv1_energy_bin - sigma_noise_conv1_bin_ener
 fbox_conv1_energy_bin_plus = fbox_conv1_energy_bin + sigma_noise_conv1_bin_ener
 fbox_conv12_energy_bin_minus = fbox_conv12_energy_bin - sigma_noise_conv12_bin_ener
 fbox_conv12_energy_bin_plus = fbox_conv12_energy_bin + sigma_noise_conv12_bin_ener
-#########################################################
+###############################################################
 """
 
-#########################################################
+###############################################################
 # COMPARISONS
 # Relative difference
 relatdiff_conv_energy_bin = box_kim.relative_difference(fbox_conv12_energy_bin, fbox_conv1_energy_bin)
 relatdiff_noisy_energy = box_kim.relative_difference(fbox_noisy_energy, fbox_conv1_energy_bin)
 
-#########################################################
+###############################################################
 print("Oversample = {}".format(os))
 print('Radius pixel = ', radius_pixel)
 
-#########################################################
+###############################################################
 # GRAPHICS
 
 # Matplotlib defaults
 plt.rc('figure', figsize=(12, 7))
 plt.rc('font', size=14)
-plt.rc('lines', lw=2)
+plt.rc('lines', lw=1)
 
-#"""
 # Images of traces
-spat = fits.getdata("/genesis/jwst/userland-soss/loic_review/2DTrace_native_nopadding_20210729.fits")
-
 plt.figure()
-plt.imshow(data_ref1, vmin=0, origin="lower")
-plt.plot(x, y, color="r", lw=1, label="Order 1 trace's position")
+plt.imshow(data_conv1_bin, vmin=0, origin="lower")
+plt.title("clear_000000.fits")
+plt.plot(x, y, color="r", label="Order 1 trace's position")
 plt.colorbar(label="[adu/s]", orientation='horizontal')
-plt.title("test_clear_noisy_rateints.fits")
 plt.legend()
-if save is True:
-    plt.savefig(WORKING_DIR + "oversampling_{}/noisy_rateints.png".format(os))
-plt.show()
-sys.exit()
-plt.figure()
-plt.imshow(data_conv1_bin, origin="lower")
-plt.plot(x, y, color="r", lw=1, label="Order 1 trace's position")
-plt.colorbar(label="[adu/s]", orientation='horizontal')
-plt.title("clear_000000.fits, order 1")
-plt.legend()
-if save is True:
-    plt.savefig(WORKING_DIR + "oversampling_{}/clear1_000000.png".format(os))
-plt.show()
-
-plt.figure()
-plt.imshow(data_conv12_bin, origin="lower")
-plt.plot(x, y, color="r", lw=1, label="Order 1 trace's position")
-plt.colorbar(label="[adu/s]", orientation='horizontal')
-plt.title("clear_000000.fits, orders 1 & 2")
-plt.legend()
-if save is True:
-    plt.savefig(WORKING_DIR + "oversampling_{}/clear12_000000.png".format(os))
-plt.show()
-#"""
 
 # Extracted flux [J/s/m²/um]
-
-plt.figure()
-plt.plot(w[start:end], fbox_noisy_energy[start:end], color="HotPink")
-plt.xlabel(r"Wavelength [$\mu$m]")
-plt.ylabel(r"Extracted flux [J s⁻¹ m⁻² $\mu$m⁻¹]")
-plt.title("Extracted flux of order 1 from noisy traces")
-if save is True:
-    plt.savefig(WORKING_DIR + "oversampling_{}/fbox_noisy_energy.png".format(os))
-plt.show()
-
 plt.figure()
 plt.plot(w[start:end], fbox_conv1_energy_bin[start:end], color='r', label = "Order 1 only")
 plt.plot(w[start:end], fbox_conv12_energy_bin[start:end], color='b', label="Orders 1 & 2 summed")
@@ -312,18 +264,24 @@ plt.ylabel(r"Extracted flux [J s⁻¹ m⁻² $\mu$m⁻¹]")
 plt.xlabel(r"Wavelength [$\mu$m]")
 plt.title('Extracted flux of order 1 from noiseless trace(s)')
 plt.legend()
-if save is True:
+if save:
     plt.savefig(WORKING_DIR + "oversampling_{}/fbox_conv_energy_bin.png".format(os))
-plt.show()
 
 plt.figure()
-plt.plot(w[start:end], fbox_conv1_inf_ener_bin[start:end], color="Purple")
+plt.plot(w[start:end], fbox_noisy_energy[start:end], color="BlueViolet")
+plt.xlabel(r"Wavelength [$\mu$m]")
+plt.ylabel(r"Extracted flux [J s⁻¹ m⁻² $\mu$m⁻¹]")
+plt.title("Extracted flux of order 1 from noisy traces")
+if save:
+    plt.savefig(WORKING_DIR + "oversampling_{}/fbox_noisy_energy.png".format(os))
+
+plt.figure()
+plt.plot(w[start:end], fbox_conv1_inf_ener_bin[start:end], color="BlueViolet")
 plt.ylabel(r"Extracted flux [J s⁻¹ m⁻² $\mu$m⁻¹]")
 plt.xlabel(r"Wavelength [$\mu$m]")
 plt.title("Extracted flux with infinite radius of noiseless order 1 trace")
-if save is True:
+if save:
     plt.savefig(WORKING_DIR + "oversampling_{}/fbox_conv1_inf_ener_bin.png".format(os))
-plt.show()
 
 """
 # Model
@@ -332,44 +290,39 @@ plt.plot(starmodel_angstrom, starmodel_flambda, color='Aqua')
 plt.xlabel(r"Wavelength [angstrom]")
 plt.ylabel(r"Flux")
 plt.title("Model")
-plt.show()
 """
 
 # Extracted flux [adu/s]
-# Median filter
 plt.figure()
-plt.plot(w_os[start:end], fbox_ref1_adu[start:end], color="HotPink", label="Data", zorder=0)
+plt.plot(w_os[start:end], fbox_ref1_adu[start:end], color="BlueViolet", label="Data", zorder=0)
 #plt.plot(w_median_os, fbox_ref1_adu_med, color="Lime", label="Median filter applied", zorder=5)
 plt.ylabel(r"Extracted flux [adu/s]")
 plt.xlabel(r"Wavelength [$\mu$m]")
 plt.title(r"Extracted flux of reference thin trace, order 1 not binned")
-plt.legend()
-if save is True:
+#plt.legend()
+if save:
     plt.savefig(WORKING_DIR + "oversampling_{}/fbox_ref1_adu.png".format(os))
-plt.show()
 
 plt.figure()
-plt.plot(w_os[start:end], fbox_conv1_inf_adu[start:end], color="HotPink", label="", zorder=0)
-plt.plot(w_os[start:end], fbox_ref1_adu[start:end], color="HotPink", label="Ref", zorder=0)
+plt.plot(w_os[start:end], fbox_conv1_inf_adu[start:end], color="BlueViolet", label="Convolved", zorder=0)
+plt.plot(w_os[start:end], fbox_ref1_adu[start:end], color="MediumSeaGreen", label="Thin trace", zorder=0)
 #plt.plot(w_median_os, fbox_conv1_inf_adu_med, color="Lime", label="Median filter applied", zorder=5)
 plt.ylabel(r"Extracted flux [adu/s]")
 plt.xlabel(r"Wavelength [$\mu$m]")
 plt.title(r"Extracted flux of noiseless, convolved, not binned order 1 trace (rad. = inf)")
 plt.legend()
-if save is True:
-    plt.savefig(WORKING_DIR + "oversampling_{}/fbox_conv1_inf_adu.png".format(os))
-plt.show()
+if save:
+    plt.savefig(WORKING_DIR + "oversampling_{}/fbox_conv1VSref1_adu.png".format(os))
 
 plt.figure()
-plt.plot(w[start:end], fbox_conv1_adu_bin[start:end], color="HotPink", label="Data", zorder=0)
+plt.plot(w[start:end], fbox_conv1_adu_bin[start:end], color="BlueViolet", label="Data", zorder=0)
 #plt.plot(w_median, fbox_conv1_adu_bin_med, color="Lime", label="Median filter applied", zorder=5)
 plt.ylabel(r"Extracted flux [adu/s]")
 plt.xlabel(r"Wavelength [$\mu$m]")
 plt.title(r"Extracted flux of noiseless, convolved, binned order 1 trace")
-plt.legend()
-if save is True:
+#plt.legend()
+if save:
     plt.savefig(WORKING_DIR + "oversampling_{}/fbox_conv1_bin_adu.png".format(os))
-plt.show()
 
 """
 # When there were oscillations
@@ -389,15 +342,14 @@ plt.show()
 """
 
 plt.figure()
-plt.plot(w[start:end], fbox_conv1_inf_ener_bin[start:end], color="HotPink", label="Data", zorder=0)
+plt.plot(w[start:end], fbox_conv1_inf_ener_bin[start:end], color="BlueViolet", label="Data", zorder=0)
 #plt.plot(w_median, fbox_conv1_inf_ener_bin_med, color="Lime", label="Median filter applied", zorder=5)
 plt.ylabel(r"Extracted flux [J/s/m²/um]")
 plt.xlabel(r"Wavelength [$\mu$m]")
 plt.title(r"Extracted flux of noiseless, convolved, binned order 1 trace")
-plt.legend()
-if save is True:
-    plt.savefig(WORKING_DIR + "oversampling_{}/fbox_conv1_ener_bin.png".format(os))
-plt.show()
+#plt.legend()
+if save:
+    plt.savefig(WORKING_DIR + "oversampling_{}/fbox_conv1_inf_ener_bin.png".format(os))
 
 """
 # When there were oscillations
@@ -411,18 +363,18 @@ if save is True:
 plt.show()
 """
 
-"""
+
 plt.figure()
-plt.plot(w[start:end], fbox_conv12_adu_bin[start:end], color="HotPink", label="Data", zorder=0)
+plt.plot(w[start:end], fbox_conv12_adu_bin[start:end], color="BlueViolet", label="Data", zorder=0)
 #plt.plot(w_filter, fbox_conv12_adu_bin_med, color="Lime", label="Median filter applied", zorder=5)
 plt.ylabel(r"Extracted flux [adu/s]")
 plt.xlabel(r"Wavelength [$\mu$m]")
 plt.title(r"Extracted flux of noiseless, convolved, binned orders 1 & 2 traces summed")
-plt.legend()
-if save is True:
+#plt.legend()
+if save:
     plt.savefig(WORKING_DIR + "oversampling_{}/fbox_conv12_adu_bin.png".format(os))
-plt.show()
 
+"""
 # When there were oscillations
 plt.figure()
 plt.plot(w_filter[start:], fbox_conv12_bin_med_norm[start:], color="Lime")
@@ -435,15 +387,14 @@ plt.show()
 """
 
 plt.figure()
-plt.plot(w[start:end], fbox_noisy_adu[start:end], color="HotPink", label="Data", zorder=0)
+plt.plot(w[start:end], fbox_noisy_adu[start:end], color="BlueViolet", label="Data", zorder=0)
 #plt.plot(w_median, fbox_noisy_adu_med, color="Lime", label="Median filter applied", zorder=5)
 plt.ylabel(r"Extracted flux [adu/s]")
 plt.xlabel(r"Wavelength [$\mu$m]")
 plt.title(r"Extracted flux from noisy traces")
-plt.legend()
-if save is True:
+#plt.legend()
+if save:
     plt.savefig(WORKING_DIR + "oversampling_{}/fbox_noisy_adu.png".format(os))
-plt.show()
 
 """
 # When there were oscillations
@@ -459,20 +410,20 @@ plt.show()
 
 # Comparisons
 plt.figure()
-plt.plot(w[start:end], relatdiff_conv_energy_bin[start:end], color="HotPink")
-plt.ylabel("Relative difference")
+plt.plot(w[start:end], relatdiff_conv_energy_bin[start:end] * 1e6, color="MediumVioletRed")
+plt.ylabel("Relative difference [ppm]")
 plt.xlabel(r"Wavelength [$\mu$m]")
 plt.title('Relative difference between extracted flux for convolved, binned traces: \nOrders 1 & 2 '
           'summed vs order 1, noiseless')
-if save is True:
+if save:
     plt.savefig(WORKING_DIR + "oversampling_{}/relatdiff_conv_energy_bin.png".format(os))
-plt.show()
 
 plt.figure()
-plt.plot(w[start:end], relatdiff_noisy_energy[start:end], color="Green")
-plt.ylabel("Relative difference")
+plt.plot(w[start:end], relatdiff_noisy_energy[start:end] * 1e6, color="MediumVioletRed")
+plt.ylabel("Relative difference [ppm]")
 plt.xlabel(r"Wavelength [$\mu$m]")
 plt.title('Relative difference between extracted flux for convolved, binned traces: \nNoisy vs order 1 noiseless')
-if save is True:
+if save:
     plt.savefig(WORKING_DIR + "oversampling_{}/relatdiff_noisy_energy.png".format(os))
+
 plt.show()

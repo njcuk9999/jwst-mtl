@@ -49,10 +49,7 @@ soss.readpaths(config_paths_filename, pathPars)
 simuPars = spgen.ModelPars()              #Set up default parameters
 simuPars = spgen.read_pars(pathPars.simulationparamfile, simuPars) #read in parameter file
 
-#####################################################
-# CHOOSE ORDER (for box extraction)   !!!
-m_order = 1  # For now, only option is 1.
-
+####################################################################################
 # CHOOSE OVERSAMPLE  !!!
 simuPars.noversample = 4
 os = simuPars.noversample
@@ -66,57 +63,56 @@ if only_order_1 is False:
 else:
     noisy = False
 
-# CHOOSE WHICH MAPS !!!
-map_la = True   # False means clear
+# CHOOSE WHICH SIMUS !!!
+simu_km = False   # My simulations from simu1.py
+simu_la = True   # Loïc's simulations from his code
 
 # SAVE FIGS? !!!
 save = False
 
-#####################################################
-if map_la:
-    SAVE_DIR = WORKING_DIR + "oversampling_{}/with_new_loic_maps/".format(os)
-else:
-    SAVE_DIR = WORKING_DIR + "oversampling_{}/with_newclear_wave_map2D/".format(os)
-
+####################################################################################
 if only_order_1:
     order_title = 'order1'
 else:
     order_title = 'noisy' if noisy else 12
 
+####################################################################################
 # Position of trace for box extraction
 x, y, w = box_kim.readtrace(os=1)
 x_os, y_os, w_os = box_kim.readtrace(os=os)
 
-#####################################################
-# List of orders to consider in the extraction
-order_list = [1] if only_order_1 else [1, 2]
-
-#####################################################
-# Read relevant files
+####################################################################################
 #### Wavelength solution ####
+"""
 # _adb : Antoine's files
 wave_maps_adb = []
 wave_maps_adb.append(fits.getdata("/home/kmorel/ongenesis/github/jwst-mtl/SOSS/extract/Ref_files/wavelengths_m1.fits"))
 wave_maps_adb.append(fits.getdata("/home/kmorel/ongenesis/github/jwst-mtl/SOSS/extract/Ref_files/wavelengths_m2.fits"))
 i_zero = np.where(wave_maps_adb[1][0] == 0.)[0][0]   # Where Antoine put 0 in his 2nd order wl map
-
+"""
 # Loic's files
-#wave_la = fits.getdata("/genesis/jwst/userland-soss/loic_review/2DWave_native_nopadding_20210729.fits")
-#wave_la = fits.getdata("/genesis/jwst/userland-soss/loic_review/refs/map_wave_2D_native.fits")
-#wave_la = fits.getdata("/genesis/jwst/userland-soss/loic_review/2DWave_native_nopadding_20210729.fits")
-wave_la = fits.getdata("/genesis/jwst/userland-soss/loic_review/cartewaveGJT.fits")
-wave_maps = [wave_la]
-wave_la = [wv.astype('float64') for wv in wave_la]   # Convert data from fits files to float (fits precision is 1e-8)
+wl_la_new = fits.getdata("/genesis/jwst/userland-soss/loic_review/2DWave_native_nopadding_20210729.fits")
+wl_la_old = fits.getdata("/genesis/jwst/userland-soss/loic_review/refs/map_wave_2D_native.fits")
+wl_km = fits.getdata(WORKING_DIR + "with_peaks/wave_map2D.fits")
+wl_gjt = fits.getdata("/genesis/jwst/userland-soss/loic_review/cartewaveGJT.fits")
+wl_notilt = np.tile(w, (256, 1))
+
+### CHOOSE WAVELENGTH MAP !!!  ###
+wave = wl_gjt
+
+if wave == wl_la_old or wave == wl_la_new or wave == wl_km:
+    wave_maps = [wave[0]] if only_order_1 else wave[:2]  # Consider only orders 1 & 2
+elif wave == wl_gjt or wave == wl_notilt:
+    wave_maps = [wave]
+
+if wave != wl_notilt:
+    # Convert data from fits files to float (fits precision is 1e-8)
+    wave_maps = [wv.astype('float64') for wv in wave_maps]
+
 #wave_la[1,:,i_zero:] = 0.  # Also set to 0 the same points as Antoine in Loic's 2nd order wl map
-wave_maps_la = wave_la[:2]   # Consider only orders 1 & 2
 
-# _clear
-wave_clear = fits.getdata(WORKING_DIR + "with_peaks/wave_map2D.fits")
-wave_clear = [wv.astype('float64') for wv in wave_clear]   # Convert data from fits files to float (fits precision is 1e-8)
-#wave_clear[1,:,i_zero:] = 0.  # Also set to 0 the same points as Antoine in clear's 2nd order wl map
-wave_maps_clear = wave_clear[:2]   # Consider only orders 1 & 2
-
-diff_wave_map = box_kim.relative_difference(np.array(wave_la), np.array(wave_clear))
+"""
+diff_wave_map = box_kim.relative_difference(np.array(wl_la_new), np.array(wl_km))
 
 if False:
     fig, ax = plt.subplots(3, 1)
@@ -126,14 +122,27 @@ if False:
         fig.colorbar(im, ax=ax[i])
     if save:
         hdu = fits.PrimaryHDU(diff_wave_map)
-        hdu.writeto(WORKING_DIR + "with_peaks/wave_map2D_diff_laVSclear.fits", overwrite=True)
+        hdu.writeto(WORKING_DIR + "wave_map2D_diff_gjtVSkm.fits", overwrite=True)
     plt.show()
+"""
 
+####################################################################################
 #### Spatial profiles ####
 # _la : Loic's files
-spat_la = fits.getdata("/genesis/jwst/userland-soss/loic_review/2DTrace_native_nopadding_20210729.fits")    # refs/map_profile_2D_native.fits
-spat_la = [p_ord.astype('float64') for p_ord in spat_la]   # Convert data from fits files to float (fits precision is 1e-8)
-spat_pros_la = spat_la[:2]   # Consider only orders 1 & 2
+sp_la_new = fits.getdata("/genesis/jwst/userland-soss/loic_review/2DTrace_native_nopadding_20210729.fits")    # refs/map_profile_2D_native.fits
+sp_km = fits.getdata(WORKING_DIR + "new_map_profile_clear_{}.fits".format(os))
+sp_ref = fits.getdata(WORKING_DIR + "new_map_profile_ref_clear_{}.fits".format(os))
+sp_corr = fits.getdata(WORKING_DIR + "spat_pros_corrected_{}.fits".format(os))
+sp_adu_cst = fits.getdata("/genesis/jwst/userland-soss/loic_review/2DTrace_native_nopadding_20210804.fits")
+
+spat = sp_la_new
+
+if spat == sp_la_new or spat == sp_km or spat == sp_ref or spat == sp_adu_cst:
+    spat_pros = [spat[0]] if only_order_1 else spat[:2]
+if spat == sp_corr:
+    spat_pros = [spat]
+spat_pros = [p_ord.astype('float64') for p_ord in spat_la]   # Convert data from fits files to float (fits precision is 1e-8)
+
 #spat_pros_la = spat_la[:2, -256:]   # Consider only order 1 & 2 and set to same size as data
 # Shift Loic's trace image to fit with the simulation (data)
 #new_spat_la = np.zeros_like(spat_pros_la, dtype=float)
@@ -141,17 +150,12 @@ spat_pros_la = spat_la[:2]   # Consider only orders 1 & 2
 #hdu = fits.PrimaryHDU(new_spat_la)
 #hdu.writeto(WORKING_DIR + "new_spat_pros.fits", overwrite = True)
 
-# _clear : map created with clear000000.fits directly
-spat_clear = fits.getdata(WORKING_DIR + "new_map_profile_clear_{}.fits".format(os))
-spat_clear = [p_ord.astype('float64') for p_ord in spat_clear]   # Convert data from fits files to float (fits precision is 1e-8)
-spat_pros_clear = spat_clear[:2]
-
-diff_spat_map = box_kim.relative_difference(np.array(spat_clear), np.array(spat_la))
+diff_spat_map = box_kim.relative_difference(np.array(spat_la_new), np.array(spat_adu_cst))
 
 if False:
     fig, ax = plt.subplots(3, 1)
     for i in range(diff_spat_map.shape[0]):
-        im = ax[i].imshow(spat_clear[i], origin='lower')
+        im = ax[i].imshow(spat[i], origin='lower')
         ax[i].set_title('Order {}'.format(i+1))
         fig.colorbar(im, ax=ax[i])
     if save:
@@ -159,14 +163,10 @@ if False:
         hdu.writeto(WORKING_DIR + "with_peaks/spat_map2D_diff_laVSclear.fits", overwrite=True)
     plt.show()
 
-# CHOOSE between Loic's and Antoine's maps
-#wave_maps = wave_maps_la # or wave_maps_adb
-spat_pros = spat_pros_la  # or new_spat_la   # or spat_pros_adb
-if only_order_1:
-    #wave_maps = [wave_maps[0]]
-    spat_pros = [spat_pros[0]]
+####################################################################################
+# List of orders to consider in the extraction
+order_list = [1] if only_order_1 else [1, 2]
 
-#####################################################
 #### Throughputs ####
 thrpt_list = [ThroughputSOSS(order) for order in order_list]   # Has been changed to 1 everywhere in throughput.py  K.M.
 
@@ -178,17 +178,18 @@ ref_files_args = [spat_pros, wave_maps, thrpt_list, ker_list]
 
 #####################################################
 # LOAD SIMULATIONS
-
 # LA
-#clear_tr_00 = fits.open(WORKING_DIR + "tmp/oversampling_{}/clear_trace_000000.fits".format(os))
-#clear_00 = fits.open(WORKING_DIR + "tmp/oversampling_{}/clear_000000.fits".format(os))
-#noisy_rateints = fits.open(WORKING_DIR + "oversampling_{}/test_clear_noisy_rateints.fits".format(os))
-clear_tr_00 = fits.open('/genesis/jwst/userland-soss/loic_review/timeseries_20210730_normalizedPSFs/clear_trace_000000.fits')
-clear_00 = fits.open('/genesis/jwst/userland-soss/loic_review/timeseries_20210730_normalizedPSFs/clear_000000.fits')
+# LOAD SIMULATIONS
+if simu_km:
+    clear_tr_00 = fits.open(WORKING_DIR + "tmp/oversampling_{}/clear_trace_000000.fits".format(os))
+    clear_00 = fits.open(WORKING_DIR + "tmp/oversampling_{}/clear_000000.fits".format(os))
+    noisy_rateints = fits.open(WORKING_DIR + "oversampling_{}/test_clear_noisy_rateints.fits".format(os))
+elif simu_la:
+    clear_tr_00 = fits.open('/genesis/jwst/userland-soss/loic_review/timeseries_20210730_normalizedPSFs/clear_trace_000000.fits')
+    clear_00 = fits.open('/genesis/jwst/userland-soss/loic_review/timeseries_20210730_normalizedPSFs/clear_000000.fits')
 
 # Because of x_padding and y_padding
-#padd = 10
-padd = 100
+padd = 10 if simu_km else 100
 padd_os = padd * os
 
 clear_tr_ref = clear_tr_00[0].data[:2, padd_os:-padd_os, padd_os:-padd_os]   # Reference thin trace, not binned
@@ -278,10 +279,10 @@ extract = TrpzOverlap(*ref_files_args, **params)  # Precalculate matrices
 # This takes some time, so it's better to do it once if the exposures are part of a time series observation,
 # i.e. observations of the same object at similar SNR
 # Determine which factors to tests.
-factors = np.logspace(-25, -12, 14)
+factors = np.logspace(-25, 5, 20)
 
 # Noise estimate to weight the pixels
-sig = np.sqrt(np.abs(data) + bkgd_noise**2) * 1e-20   # Poisson noise + background noise
+sig = np.sqrt(np.abs(data) + bkgd_noise**2) * 0 + 1.   # Poisson noise + background noise
 
 # Tests all these factors.
 tests = extract.get_tikho_tests(factors, data=data, sig=sig)
@@ -304,8 +305,8 @@ f_k = extract.extract(data=data, sig=sig, tikhonov=True, factor=best_fac) / os
 # Plot the extracted spectrum.
 plt.figure()
 plt.plot(extract.lam_grid, f_k, color='Blue')
-plt.xlabel("Wavelength [$\mu m$]")
-plt.ylabel("Oversampled Spectrum $f_k$ [energy$\cdot s^{-1} \cdot \mu m^{-1}$]")
+plt.xlabel(r"Wavelength [$\mu m$]")
+plt.ylabel(r"Oversampled Spectrum $f_k$ [energy$\cdot s^{-1} \cdot \mu m^{-1}$]")
 # For now, arbitrairy units, but it should be the flux that hits the detector, so energy/time/wavelength
 plt.tight_layout()
 if save:
@@ -333,7 +334,7 @@ lam_bin_list = []  # Wavelength grid
 for i_ord in range(extract.n_ord):
 
     # Integrate.
-    lam_bin, f_bin = extract.bin_to_pixel(f_k=f_k, i_ord=i_ord, throughput=throughput)
+    lam_bin, f_bin = extract.bin_to_pixel(f_k=f_k, grid_pix=w, i_ord=i_ord, throughput=throughput)
 
     # Save.
     ftik_bin_list.append(f_bin)
@@ -343,13 +344,6 @@ if only_order_1:
     fig, ax = plt.subplots(1, 1, sharex=True)
 
     # For comparison:
-    # Because w and lam_bin_list[0] are not the same
-    #f = interp1d(lam_bin_list[0], ftik_bin_list[0] , fill_value='extrapolate')
-    #ftik_bin_interp = f(w)    # Extracted flux by Tikhonov interpolated on my wl grid
-    ff = interp1d(w, fbox_conv_inf_adu_bin, fill_value='extrapolate')
-    fbox_conv_inf_adu_bin_interp = ff(lam_bin_list[0])
-    fff = interp1d(w, fbox_ref_adu_bin, fill_value='extrapolate')
-    fbox_ref_adu_bin_interp = fff(lam_bin_list[0])
     ax.plot(w, fbox_conv_inf_adu_bin, label='Box extraction, radius = inf', color='DeepPink')
     ax.plot(lam_bin_list[0], ftik_bin_list[0], ls='--', label="Tikhonov extraction", color='Blue')
 
@@ -364,22 +358,12 @@ else:
 
         if i_ord == 0:
             # For comparison:
-            # Because w and lam_bin_list[0] are not the same
-            #f = interp1d(lam_bin_list[i_ord], ftik_bin_list[i_ord], fill_value='extrapolate')
-            #ftik_bin_interp = f(w)   # Extracted flux by Tikhonov interpolated on my wl grid
-            ff = interp1d(w, fbox_conv_adu_bin, fill_value='extrapolate')
-            fbox_conv_adu_bin_interp = ff(lam_bin_list[0])
-            ffff = interp1d(w, fbox_ref_adu_bin, fill_value='extrapolate')
-            fbox_ref_adu_bin_interp = ffff(lam_bin_list[0])
             if noisy:
-                fff = interp1d(w, fbox_noisy_adu, fill_value='extrapolate')
-                fbox_noisy_adu_interp = fff(lam_bin_list[0])
                 ax[i_ord].plot(w, fbox_noisy_adu, color='DeepPink', label='Box extraction, order {}'.format(label))
             else:
                 ax[i_ord].plot(w, fbox_conv_adu_bin, color='DeepPink', label='Box extraction, order {}'.format(label))
 
-        ax[i_ord].plot(lam_bin_list[i_ord], ftik_bin_list[i_ord], color='Blue',
-                       label='Tikhonov, order {}'.format(label))
+        ax[i_ord].plot(lam_bin_list[i_ord], ftik_bin_list[i_ord], color='Blue', label='Tikhonov, order {}'.format(label))
         ax[i_ord].set_ylabel("Extracted signal [counts]")
         ax[i_ord].legend()
     ax[1].set_xlabel(r"Wavelength [$\mu m$]")
@@ -391,21 +375,21 @@ if save:
 
 # Comparison
 if only_order_1:
-    relatdiff_box_tik = box_kim.relative_difference(ftik_bin_list[0], fbox_conv_inf_adu_bin_interp)  # Tikhonov vs noiseless
+    relatdiff_box_tik = box_kim.relative_difference(ftik_bin_list[0], fbox_conv_inf_adu_bin)  # Tikhonov vs noiseless
 
     relatdiff_conv_ref = box_kim.relative_difference(fbox_conv_inf_adu, fbox_ref_adu)    # Convolved vs ref, not binned
     relatdiff_conv_ref_bin = box_kim.relative_difference(fbox_conv_inf_adu_bin, fbox_ref_adu_bin)  # Convolved vs ref, binned
-    relatdiff_tik_ref = box_kim.relative_difference(ftik_bin_list[0], fbox_ref_adu_bin_interp)             # Tikhonov vs ref
+    relatdiff_tik_ref = box_kim.relative_difference(ftik_bin_list[0], fbox_ref_adu_bin)             # Tikhonov vs ref
     print('Radius pixel = infinite (for fbox_conv_ in relative differences)')
 else:
     if noisy:
-        relatdiff_box_tik = box_kim.relative_difference(ftik_bin_list[0], fbox_noisy_adu_interp)  # Tikhonov vs noisy
+        relatdiff_box_tik = box_kim.relative_difference(ftik_bin_list[0], fbox_noisy_adu)  # Tikhonov vs noisy
     else:
-        relatdiff_box_tik = box_kim.relative_difference(ftik_bin_list[0], fbox_conv_adu_bin_interp)  # Tikhonov vs noiseless
+        relatdiff_box_tik = box_kim.relative_difference(ftik_bin_list[0], fbox_conv_adu_bin)  # Tikhonov vs noiseless
 
     relatdiff_conv_ref = box_kim.relative_difference(fbox_conv_adu, fbox_ref_adu)        # Convolved vs ref, not binned
     relatdiff_conv_ref_bin = box_kim.relative_difference(fbox_conv_adu_bin, fbox_ref_adu_bin)  # Convolved vs ref, binned
-    relatdiff_tik_ref = box_kim.relative_difference(ftik_bin_list[0], fbox_ref_adu_bin_interp)         # Tikhonov vs ref
+    relatdiff_tik_ref = box_kim.relative_difference(ftik_bin_list[0], fbox_ref_adu_bin)         # Tikhonov vs ref
     print("Radius pixel = ", radius_pixel, '(for fbox_conv_ in relative differences)')
 
 
