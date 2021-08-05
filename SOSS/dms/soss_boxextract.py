@@ -2,46 +2,44 @@ import numpy as np
 
 
 def get_box_weights(cols, centroid, n_pix, shape):
+    """ Return the weights of a box aperture given the centroid and the width of
+    the box in pixels. All pixels will have the same weights except at the ends
+    of the box aperture.
+
+    :param cols: Column indices of good columns Used if the centroid is defined
+        for specific columns or a subrange of columns.
+    :param centroid: Position of the centroid (in rows). Same shape as `cols`
+    :param n_pix: Width of the extraction box in pixels.
+    :param shape: Shape of the output image. (n_row, n_column)
+
+    :type cols: array[int]
+    :type centroid: array[float]
+    :type n_pix: float
+    :type shape: Tuple(int, int)
+
+    :returns: weights - An array of pixel weights to use with the box extraction.
+    :rtype: array[float]
     """
-    Return the weights of a box aperture given the centroid
-    and the width of the box in pixels.
-    All pixels will have the same weights except at the
-    ends of the box aperture.
-    Parameters
-    ----------
-    cols: 1d array, integer
-        Columns index positions. Useful if the centroid is defined for
-        specific columns or a subrange of columns.
-    centroid: 1d array
-        Position of the centroid (in rows). Same shape as `cols`
-    n_pix: float
-        full width of the extraction box in pixels.
-    shape: 2 integers tuple
-        shape of the output image. (n_row, n_column)
-    Ouput
-    -----
-    2d image of the box weights
-    """
-    # Row centers of all pixels
+
+    # Row centers of all pixels.
     rows = np.indices((shape[0], len(cols)))[0]
 
-    # Pixels that are entierly inside the box are set to one
+    # Pixels that are entierly inside the box are set to one.
     cond = (rows <= (centroid - 0.5 + n_pix / 2))
     cond &= ((centroid + 0.5 - n_pix / 2) <= rows)
     weights = cond.astype(float)
 
-    # Upper bound
+    # Fractional weights at the upper bound.
     cond = (centroid - 0.5 + n_pix / 2) < rows
     cond &= (rows < (centroid + 0.5 + n_pix / 2))
     weights[cond] = (centroid + n_pix / 2 - (rows - 0.5))[cond]
 
-    # Lower bound
+    # Fractional weights at the lower bound.
     cond = (rows < (centroid + 0.5 - n_pix / 2))
     cond &= ((centroid - 0.5 - n_pix / 2) < rows)
     weights[cond] = (rows + 0.5 - (centroid - n_pix / 2))[cond]
 
-    # Return with the specified shape
-    # with zeros where the box is not define
+    # Return with the specified shape with zeros where the box is not defined.
     out = np.zeros(shape, dtype=float)
     out[:, cols] = weights
 
