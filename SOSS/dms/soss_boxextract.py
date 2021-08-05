@@ -1,7 +1,7 @@
 import numpy as np
 
 
-def get_box_weights(cols, centroid, n_pix, shape):
+def get_box_weights(centroid, n_pix, shape, cols=None):
     """ Return the weights of a box aperture given the centroid and the width of
     the box in pixels. All pixels will have the same weights except at the ends
     of the box aperture.
@@ -21,8 +21,14 @@ def get_box_weights(cols, centroid, n_pix, shape):
     :rtype: array[float]
     """
 
+    nrows, ncols = shape
+
+    # Use all columns if not specified
+    if cols is None:
+        cols = np.arange(ncols)
+
     # Row centers of all pixels.
-    rows = np.indices((shape[0], len(cols)))[0]
+    rows = np.indices((nrows, len(cols)))[0]
 
     # Pixels that are entierly inside the box are set to one.
     cond = (rows <= (centroid - 0.5 + n_pix / 2))
@@ -46,6 +52,7 @@ def get_box_weights(cols, centroid, n_pix, shape):
     return out
 
 
+# TODO what about missing flux due to bad pixels?
 def box_extract(scidata, scierr, scimask, box_weights, cols=None):
     """ Perform a box extraction.
 
@@ -71,37 +78,35 @@ def box_extract(scidata, scierr, scimask, box_weights, cols=None):
     :rtype: Tuple(array[int], array[float], array[float])
     """
 
+    nrows, ncols = scidata.shape
+
     # Use all columns if not specified
     if cols is None:
-        cols = np.arange(scidata.shape[1])
+        cols = np.arange(ncols)
 
-    # Keep only needed columns and make a copy
-    # so it is not modified outside of the function
-    # TODO is this needed at all? Why not just keep weights zero?
+    # Keep only required columns and make a copy.
     data = scidata[:, cols].copy()
-    uncert = scierr[:, cols].copy()
-    box_weights = box_weights[:, cols].copy()
+    error = scierr[:, cols].copy()
     mask = scimask[:, cols].copy()
+    box_weights = box_weights[:, cols].copy()
 
-    # Check if there are some invalid values
-    # in the non masked regions of the 2d inputs
-    # TODO This seems like a good check to have but can be improved on...
-    for map_2d in (data, uncert):
-        non_masked = map_2d[~mask]
+    # Check that all invalid values are masked.
+    if not np.isfinite(data[~mask]).all():
+        message = 'scidata contains un-masked invalid values.'
+        raise ValueError(message)
 
-        if not np.isfinite(non_masked).all():
-            message = 'Non masked pixels have invalid values.'
-            raise ValueError(message)
+    if not np.isfinite(error[~mask]).all():
+        message = 'scierr contains un-masked invalid values.'
+        raise ValueError(message)
 
-    # Apply to weights
-    box_weights[mask] = np.nan  # TODO why not set weights to zero?
+    # Set the weights of masked pixels to zero.
+    box_weights[mask] = 0.
 
-    # Extract spectrum (sum over columns)
-    flux = np.nansum(box_weights*data, axis=0)  # TODO what about missing flux due to bad pixels?
+    # Extract total flux (sum over columns).
+    flux = np.nansum(box_weights*data, axis=0)
 
-    # Extract error variance (sum of variances)
-    pix_var = uncert**2
-    flux_var = np.nansum(box_weights*pix_var, axis=0)
+    # Extract flux error (sum of variances).
+    flux_var = np.nansum(box_weights*error**2, axis=0)
     flux_err = np.sqrt(flux_var)
 
     return cols, flux, flux_err
