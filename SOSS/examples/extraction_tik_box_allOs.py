@@ -65,10 +65,10 @@ wl_km = False       # My wavelength map2D (with peaks)
 wl_gjt = True       # Geert Jan's wavelength map2D
 wl_notilt = False   # Wavelength maps without tilt
 
-sp_la_new = True   # New spatial profile map2D of Loïc
+sp_la_new = False   # New spatial profile map2D of Loïc
 sp_km = False      # My spatial profile map2D (with clear_000000.fits)
 sp_ref = False      # Spatial profile map2D done with Loïc's clear_trace_000000.fits
-sp_corr = False    # Loïc's spatial profile corrected with rebuilt
+sp_corr = True    # Loïc's spatial profile corrected with rebuilt
 sp_adu_cst = False   # Simulation of constant flux in terms of adu
 
 # CHOOSE WHICH SIMUS !!!
@@ -76,7 +76,7 @@ simu_km = False   # My simulations from simu1.py
 simu_la = True   # Loïc's simulations from his code
 
 # SAVE FIGS? !!!
-save = True
+save = False
 
 ####################################################################################
 os_list = [4]  # if simu_la else [1, 4, 5, 10, 11]
@@ -386,7 +386,7 @@ for i in range(len(os_list)):
 
     relatdiff_tik_box_ref[i] = box_kim.relative_difference(ftik_bin, fbox_ref_adu_bin)  # Tikhonov vs ref thin trace
 
-    if True:
+    if False:
         plt.figure()
         plt.plot(disp_interp, relatdiff_tik_box_ref[i])
         plt.xlabel('Dispersion [um]')
@@ -394,8 +394,8 @@ for i in range(len(os_list)):
 
         sp_title += 'dispersionCorrected'
 
-    fbox_conv_inf_adu_bin *= disp_interp
-    fbox_ref_adu_bin *= disp_interp
+        fbox_conv_inf_adu_bin *= disp_interp
+        fbox_ref_adu_bin *= disp_interp
 
     # Comparison
     if only_order_1:

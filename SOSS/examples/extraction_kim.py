@@ -76,7 +76,7 @@ noisy_rateints = fits.open(WORKING_DIR + "oversampling_{}/test_clear_noisy_ratei
 padd = 10
 padd_os = padd * os
 
-clear_tr_ref = clear_tr_00[0].data[:2, padd_os:-padd_os, padd_os:-padd_os]   # Reference thin trace, not binned
+clear_tr_ref = clear_tr_00[0].data[:, padd_os:-padd_os, padd_os:-padd_os]   # Reference thin trace, not binned
 clear_conv = clear_00[0].data[:, padd_os:-padd_os, padd_os:-padd_os]    # Convolved traces, not binned
 if os != 1:
     # Bin to pixel native
@@ -242,11 +242,12 @@ plt.rc('lines', lw=1)
 
 # Images of traces
 plt.figure()
-plt.imshow(data_conv1_bin, vmin=0, origin="lower")
-plt.title("clear_000000.fits")
-plt.plot(x, y, color="r", label="Order 1 trace's position")
-plt.colorbar(label="[adu/s]", orientation='horizontal')
-plt.legend()
+plt.imshow(data_conv12_bin, origin="lower", cmap='viridis')
+#plt.title("clear_000000.fits")
+#plt.plot(x, y, color="r", label="Order 1 trace's position")
+#plt.colorbar(label="[adu/s]", orientation='horizontal')
+#plt.legend()
+plt.show()
 
 # Extracted flux [J/s/m²/um]
 plt.figure()
@@ -283,14 +284,16 @@ plt.title("Extracted flux with infinite radius of noiseless order 1 trace")
 if save:
     plt.savefig(WORKING_DIR + "oversampling_{}/fbox_conv1_inf_ener_bin.png".format(os))
 
-"""
+
 # Model
 plt.figure()
-plt.plot(starmodel_angstrom, starmodel_flambda, color='Aqua')
-plt.xlabel(r"Wavelength [angstrom]")
+plt.plot(starmodel_angstrom / 1e4, starmodel_flambda, color='DarkTurquoise')
+plt.xlabel(r"Wavelength [$\mu$m]")
 plt.ylabel(r"Flux")
-plt.title("Model")
-"""
+#plt.title("Model")
+plt.show()
+
+sys.exit()
 
 # Extracted flux [adu/s]
 plt.figure()

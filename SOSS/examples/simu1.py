@@ -93,8 +93,8 @@ simuPars.noversample = 1  #example of changing a model parameter
 #simuPars.modelfile = 't6000g450p000_ldnl.dat'
 #simuPars.modelfile = 'lte06900-5.00-0.0.PHOENIX-ACES-AGSS-COND-2011.JWST-RF.simu-SOSS.dat'
 simuPars.f277wcal = False
-simuPars.flatthroughput = True
-simuPars.flatquantumyield = True
+simuPars.flatthroughput = False
+simuPars.flatquantumyield = False
 
 
 # Instrument Throughput (Response)
@@ -105,17 +105,18 @@ throughput = spgen.read_response(pathPars.throughputfile, set_response_to_unity=
 tracePars = tp.get_tracepars(pathPars.tracefile)
 
 # Generate or read the star atmosphere model
-#starmodel_angstrom, starmodel_flambda, ld_coeff = soss.starmodel(simuPars, pathPars)
+starmodel_angstrom, starmodel_flambda, ld_coeff = soss.starmodel(simuPars, pathPars)
 
 
 # TO CREATE THE NEW WAVELENGTH 2D MAP
+"""
 wave = box_kim.create_wave(R=65000, w_min=0.6, w_max=3.)
 comb, peaks = box_kim.make_comb(wave, peak_spacing=0.02, peak_width=0.004)
 starmodel_angstrom, starmodel_flambda  = wave * 10000., comb
 ld_coeff = soss.starlimbdarkening(starmodel_angstrom)
 hdu = fits.PrimaryHDU(peaks)
 hdu.writeto(WORKING_DIR + "with_peaks/peaks_wl.fits", overwrite=True)
-
+"""
 
 # Anchor star spectrum on a photometric band magnitude
 starmodel_flambda = smag.anchor_spectrum(starmodel_angstrom/10000., starmodel_flambda, simuPars.filter,
@@ -147,16 +148,16 @@ print('norders={:} dimy={:} dimx={:}'.format(norders,dimy,dimx))
 # The cube has all spectral orders in separate slices.
 # The list of such fits cube file names is returned.
 if True:
-    imagelist = soss.generate_traces(WORKING_DIR + 'tmp/with_peaks/clear'.format(simuPars.noversample),   #oversampling_{}
+    imagelist = soss.generate_traces(WORKING_DIR + 'tmp/clear'.format(simuPars.noversample),   #oversampling_{}
                                      pathPars, simuPars, tracePars, throughput, starmodel_angstrom,
                                      starmodel_flambda, ld_coeff, planetmodel_angstrom, planetmodel_rprs,
                                      timesteps, tintopen)
 else:
     SIMUDIR = '/home/kmorel/ongenesis/jwst-user-soss/tmp/'
-    imagelist = glob.glob(WORKING_DIR + 'tmp/with_peaks/clear*.fits'.format(simuPars.noversample))   # oversampling_{}
+    imagelist = glob.glob(SIMUDIR + 'clear*.fits'.format(simuPars.noversample))   # oversampling_{}
     #imagelist = os.listdir(SIMUDIR)
     for i in range(np.size(imagelist)):
-        imagelist[i] = os.path.join(SIMUDIR + 'with_peaks/'.format(simuPars.noversample), imagelist[i])    # oversampling_{}
+        imagelist[i] = os.path.join(SIMUDIR, imagelist[i])    # oversampling_{}
     print(imagelist)
 
 
@@ -193,19 +194,19 @@ data = soss.write_dmsready_fits_init(imagelist, normalization_scale,
 # All simulations (e-/sec) are converted to up-the-ramp images.
 #soss.write_dmsready_fits(data[:,:,0:256,0:2048], os.path.join(WORKING_DIR,'test_clear.fits'),
                     #os=simuPars.noversample, input_frame='sim')
-soss.write_dmsready_fits(data, os.path.join(WORKING_DIR + 'with_peaks/'.format(simuPars.noversample),   # oversampling_{}
+soss.write_dmsready_fits(data, os.path.join(WORKING_DIR,   # oversampling_{}
                                             'test_clear.fits'), os=simuPars.noversample, input_frame='dms',
                          xpadding=simuPars.xpadding, ypadding=simuPars.ypadding)
 
 # Add detector noise to the noiseless data
-detector.add_noise(os.path.join(WORKING_DIR + 'with_peaks/'.format(simuPars.noversample), 'test_clear.fits'),    # oversampling_{}
-                   outputfilename=os.path.join(WORKING_DIR + 'with_peaks/'.format(simuPars.noversample),    # oversampling_{}
+detector.add_noise(os.path.join(WORKING_DIR, 'test_clear.fits'),    # oversampling_{}
+                   outputfilename=os.path.join(WORKING_DIR,    # oversampling_{}
                                                'test_clear_noisy.fits'))
 
 # Process the data through the DMS level 1 pipeline
-result = Detector1Pipeline.call(os.path.join(WORKING_DIR + 'with_peaks/'.format(simuPars.noversample),   # oversampling_{}
+result = Detector1Pipeline.call(os.path.join(WORKING_DIR,   # oversampling_{}
                                              'test_clear_noisy.fits'), output_file='test_clear_noisy',
-                                output_dir=WORKING_DIR + 'with_peaks/'.format(simuPars.noversample))   # oversampling_{}
+                                output_dir=WORKING_DIR)   # oversampling_{}
 
 
 """

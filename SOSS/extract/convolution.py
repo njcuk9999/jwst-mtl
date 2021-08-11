@@ -520,8 +520,8 @@ class WebbKer():
             wv = np.ma.masked_all(i_surround.shape)
             # Closest pixel wv
             i_row, i_col = np.unravel_index(
-                np.argmin(np.abs(wv_map-wv_c)), wv_map.shape
-            )
+                np.argmin(np.abs(wv_map-wv_c)), wv_map.shape)
+
             # Update wavelength center value
             # (take the nearest pixel center value)
             wv_center[i_cen] = wv_map[i_row, i_col]
