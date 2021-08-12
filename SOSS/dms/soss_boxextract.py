@@ -104,12 +104,17 @@ def box_extract(scidata, scierr, scimask, box_weights, cols=None):
 
     # Extract total flux (sum over columns).
     flux = np.nansum(box_weights*data, axis=0)
+    npix = np.nansum(box_weights, axis=0)
 
     # Extract flux error (sum of variances).
     flux_var = np.nansum(box_weights*error**2, axis=0)
     flux_err = np.sqrt(flux_var)
 
-    return cols, flux, flux_err
+    # Set empty columns to NaN.
+    flux = np.where(npix > 0, flux, np.nan)
+    flux_err = np.where(npix > 0, flux_err, np.nan)
+
+    return cols, flux, flux_err, npix
 
 
 def main():
