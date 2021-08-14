@@ -42,7 +42,7 @@ simuPars = spgen.read_pars(pathPars.simulationparamfile, simuPars)    # Read in 
 # List of orders to consider in the extraction
 order_list = [1, 2]
 
-"""
+
 ####################################################################################
 #### Wavelength solution ####
 wave_maps = []
@@ -67,9 +67,10 @@ ker_list = [WebbKer(wv_map) for wv_map in wave_maps]
 
 # Put all inputs from reference files in a list
 ref_files_args = [spat_pros, wave_maps, thrpt_list, ker_list]
-"""
+
 ####################################################################################
 # LOAD SIMULATIONS
+"""
 noisy_rateints = fits.open('/genesis/jwst/userland-soss/loic_review/timeseries_20210806_forKim/'
                            'IDTSOSS_clear_noisy_rateints.fits')
 
@@ -87,6 +88,11 @@ i = np.where(dq % 2 != 0)  # Odd values of dq = DO NOT USE these pixels
 data_noisy[i[0], i[1], i[2]] = 0.
 delta_noisy[i[0], i[1], i[2]] = 0.
 """
+clear = fits.open('/genesis/jwst/userland-soss/loic_review/timeseries_20210806_forKim/IDTSOSS_clear.fits')
+
+data_clear = clear[1].data[:,-1]  # Images of flux [adu/s]
+data_clear = [im_ord.astype('float64') for im_ord in data_clear]
+
 ####################################################################################
 # EXTRACTION PARAMETERS
 params = {}
@@ -104,7 +110,7 @@ params["thresh"] = 1e-4  # Same units as the spatial profiles
 # List of orders considered
 params["orders"] = order_list
 
-data = data_noisy[0]
+data = data_clear[0]
 
 ####################################################################################
 # INITIATE EXTRACTION OBJECT
@@ -119,7 +125,7 @@ factors = np.logspace(-25, -12, 14)   # (-25, 5, 20)
 
 # Noise estimate to weigh the pixels
 # Poisson noise + background noise
-sig = np.sqrt(data + bkgd_noise**2)
+sig = np.sqrt(data + bkgd_noise**2) * 0 + 1.
 
 # Tests all these factors
 tests = extract.get_tikho_tests(factors, data=data, sig=sig)
@@ -137,17 +143,17 @@ tests = extract.get_tikho_tests(factors, data=data, sig=sig)
 best_fac = extract.best_tikho_factor(tests=tests, i_plot=True)
 
 ####################################################################################
-lam_bin_array = np.zeros(shape=(np.shape(data_noisy)[0], np.shape(data_noisy)[2]), dtype='float')
-f_bin_array = np.zeros(shape=(np.shape(data_noisy)[0], np.shape(data_noisy)[2]), dtype='float')
+lam_bin_array = np.zeros(shape=(np.shape(data_clear)[0], np.shape(data_clear)[2]), dtype='float')
+f_bin_array = np.zeros(shape=(np.shape(data_clear)[0], np.shape(data_clear)[2]), dtype='float')
 
-for t in range(np.shape(data_noisy)[0]):  # For each image of the timeseries
-    data = data_noisy[t]
+for t in range(np.shape(data_clear)[0]):  # For each image of the timeseries
+    data = data_clear[t]
 
     # Extract the oversampled spectrum 𝑓𝑘
     # Extract the spectrum
     f_k = extract.extract(data=data, sig=sig, tikhonov=True, factor=best_fac)
 
-    
+    """
     # Plot the extracted spectrum.
     plt.plot(extract.lam_grid, f_k)
     plt.xlabel("Wavelength [$\mu m$]")
@@ -155,7 +161,7 @@ for t in range(np.shape(data_noisy)[0]):  # For each image of the timeseries
     # For now, arbitrairy units, but it should be the flux that hits the detector, so energy/time/wavelength
     plt.tight_layout()
     plt.show()
-    
+    """
 
     ####################################################################################
     # Bin to pixel native sampling
@@ -182,7 +188,7 @@ for t in range(np.shape(data_noisy)[0]):  # For each image of the timeseries
         f_bin_list.append(f_bin)
         lam_bin_list.append(lam_bin)
 
-        
+        """
         fig, ax = plt.subplots(2, 1, sharex=True, figsize=(12, 6))
 
         for i_ord in range(extract.n_ord):
@@ -196,9 +202,9 @@ for t in range(np.shape(data_noisy)[0]):  # For each image of the timeseries
 
         plt.tight_layout()
         plt.show()
-        
+        """
 
-        
+        """
         # Bin in flux units
         # Set throughput to 1
 
@@ -229,7 +235,7 @@ for t in range(np.shape(data_noisy)[0]):  # For each image of the timeseries
         plt.tight_layout()
         plt.legend(title="Order")
         plt.show()
-        
+        """
 
     lam_bin_array[t] = lam_bin_list[0]
     f_bin_array[t] = f_bin_list[0]
@@ -237,10 +243,11 @@ for t in range(np.shape(data_noisy)[0]):  # For each image of the timeseries
     print('t = {}: Done'.format(t))
 
 hdu_lam = fits.PrimaryHDU(lam_bin_array)
-hdu_lam.writeto(WORKING_DIR + "timeseries/lam_bin_array.fits", overwrite=True)
+hdu_lam.writeto(WORKING_DIR + "timeseries/lam_bin_array_clear.fits", overwrite=True)
 hdu_f = fits.PrimaryHDU(f_bin_array)
-hdu_f.writeto(WORKING_DIR + "timeseries/f_bin_array.fits", overwrite=True)
-"""
+hdu_f.writeto(WORKING_DIR + "timeseries/f_bin_array_clear.fits", overwrite=True)
+
+sys.exit()
 
 ####################################################################################
 # PLOT
@@ -255,61 +262,93 @@ def fit_resFunc(coeff, x, y):
 
 
 with fits.open(WORKING_DIR + "timeseries/lam_bin_array.fits") as hdulist:
-    lam_array = hdulist[0].data
-    lam_array = lam_array[0]
+    lam_array = hdulist[0].data   # [um]
+    lam_array = lam_array[0]   # [um]
 
 with fits.open(WORKING_DIR + "timeseries/f_bin_array.fits") as hdulist:
     f_array = hdulist[0].data * 1.6   # [é/s]
 
+f_array = np.nan_to_num(f_array)
 f_white_sum = np.sum(data_noisy, axis=(1, 2))
 
-time = np.arange(f_array.shape[0]) * 5. * 5.491 / 60.  # [min]
+time = np.arange(f_array.shape[0])
+time_min = time * 5. * 5.491 / 60.  # [min]
 
+start = 5
 t1 = 100   # * 5. * 5.491 / 60  # [min]
-t2 = 160   # Might be bigger than reality
-t3 = 285   # Might be less than reality
+t2 = 144   # * 5. * 5.491 / 60  # [min]
+t3 = 290   # * 5. * 5.491 / 60  # [min]
 t4 = 340   # * 5. * 5.491 / 60  # [min]
 
 i = np.where(np.abs(lam_array - 1.) == np.min(np.abs(lam_array - 1.)))[0][0]
-
+lam_i = lam_array[i]   # [um]
 f_i = f_array[:, i]
-f_array_nonan = np.nan_to_num(f_array)
-f_white = np.sum(f_array_nonan, axis=1)
+f_i = normalization(f_i, t1, t4)
 
-# f_white = normalization(f_white, t1, t4)
+# White light curve
+f_white = np.sum(f_array, axis=1)
+f_white_norm = normalization(f_white, t1, t4)
 
-# Fit a linear curve
-p3_coeff = []
-p2_coeff = []
-p1_coeff = []
-p0_coeff = []
-
-time_fit = np.concatenate((time[4:t1], time[t4:]))
-f_fit = np.concatenate((f_white[4:t1], f_white[t4:]))
-
-p3, p2, p1, p0 = box_kim.robust_polyfit(fit_resFunc, time_fit, f_fit, [-0.05, 10., -1000., 1.1e7])
+# Fit a polynomial curve
+time_fit = np.concatenate((time[start:t1], time[t4:]))
+f_fit = np.concatenate((f_white_norm[start:t1], f_white_norm[t4:]))
+p3, p2, p1, p0 = box_kim.robust_polyfit(fit_resFunc, time_fit, f_fit, [-2e-10, 2e-7, -5e-5, 1.005])   # [-0.05, 10., -1000., 1.1e7]
 poly_fit = np.poly1d([p3, p2, p1, p0])
-fit_y = poly_fit(time)
-p3_coeff.append(p3), p2_coeff.append(p2), p1_coeff.append(p1), p0_coeff.append(p0)
+poly_white = poly_fit(time)
+print(p3, p2, p1, p0)
 
-print(p3_coeff, p2_coeff, p1_coeff, p0_coeff)
+new_f_white = f_white / poly_white
 
-new_f_white = f_white / fit_y
+# Deviations
+hors_t_white = np.concatenate((new_f_white[start:t1], new_f_white[t4:]))
+np.nan_to_num(hors_t_white, copy=False)
+std_dev = np.std(hors_t_white)
+photon_noise = np.sqrt(hors_t_white)
+rapport_white = std_dev / photon_noise
 
-hors_t = np.concatenate((f_i[:t1+1], f_i[t4:]))
-np.nan_to_num(hors_t, copy=False)
-std_dev = np.std(hors_t)
-photon_noise = np.sqrt(hors_t)
-rapport = std_dev / photon_noise
+
+# For each wavelength
+new_f_array = np.copy(f_array)
+rapport_array = np.zeros(shape=(len(time_fit), f_array.shape[1]))
+
+for n in range(f_array.shape[1]):
+    f_fit = normalization(f_array[:, n], t1, t4)
+    f_fit = np.concatenate((f_fit[start:t1], f_fit[t4:]))
+    np.nan_to_num(f_fit, copy=False)
+    p3_n, p2_n, p1_n, p0_n = box_kim.robust_polyfit(fit_resFunc, time_fit, f_fit, [p3, p2, p1, p0])
+    poly_fit = np.poly1d([p3_n, p2_n, p1_n, p0_n])
+    poly_f_n = poly_fit(time)
+    new_f_array[:, n] /= poly_f_n
+
+    # Deviations
+    hors_t = np.concatenate((new_f_array[start:t1, n], new_f_array[t4:, n]))
+    np.nan_to_num(hors_t, copy=False)
+    std_dev = np.std(hors_t)
+    photon_noise = np.sqrt(hors_t)
+    rapport_array[:, n] = std_dev / photon_noise
 
 plt.figure()
-plt.plot(time, f_white, '.', color='b')
-plt.plot(time, fit_y, '--', color='r')
+plt.plot(time_min[start:], f_white_norm[start:], '.', color='b')
+plt.plot(time_min[start:], poly_white[start:], '--', color='r')
 plt.xlabel('Time [min]')
-plt.ylabel('Relative flux')
+plt.ylabel(r'Flux [$e⁻$]')
 
 plt.figure()
-plt.plot(time[5:], new_f_white[5:], '.', color='b')
+plt.plot(time_min[start:], new_f_array[start:, i], '.', color='b', label=r'$\lambda$ = {} $\mu$m'.format(lam_i))
+plt.xlabel('Time [min]')
+plt.ylabel(r'Flux [$e⁻$]')
+plt.legend()
+
+plt.figure()
+plt.plot(time_min[start:], new_f_white[start:], '.', color='b')
+plt.xlabel('Time [min]')
+plt.ylabel(r'Flux [$e⁻$]')
+
+plt.figure()
+plt.plot(time_fit * 5. * 5.491 / 60, rapport_white, '.', color='b' , label='white light curve')
+plt.xlabel('Time [min]')
+plt.ylabel('Std dev. / photon noise')
+plt.legend()
 
 plt.show()
 

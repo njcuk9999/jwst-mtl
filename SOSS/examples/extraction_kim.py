@@ -41,11 +41,11 @@ simuPars = spgen.read_pars(pathPars.simulationparamfile, simuPars) #read in para
 
 ###############################################################
 # CHOOSE OVERSAMPLE  !!!
-simuPars.noversample = 1
+simuPars.noversample = 5
 os = simuPars.noversample
 
 # SAVE FIGS? !!!
-save = False
+save = True
 
 ###############################################################
 # Generate or read the star atmosphere model
@@ -247,7 +247,7 @@ plt.imshow(data_conv12_bin, origin="lower", cmap='viridis')
 #plt.plot(x, y, color="r", label="Order 1 trace's position")
 #plt.colorbar(label="[adu/s]", orientation='horizontal')
 #plt.legend()
-plt.show()
+
 
 # Extracted flux [J/s/m²/um]
 plt.figure()
@@ -277,23 +277,20 @@ if save:
     plt.savefig(WORKING_DIR + "oversampling_{}/fbox_noisy_energy.png".format(os))
 
 plt.figure()
-plt.plot(w[start:end], fbox_conv1_inf_ener_bin[start:end], color="BlueViolet")
+plt.plot(w[start:end], fbox_conv1_inf_ener_bin[start:end], lw=2, color="BlueViolet")
 plt.ylabel(r"Extracted flux [J s⁻¹ m⁻² $\mu$m⁻¹]")
 plt.xlabel(r"Wavelength [$\mu$m]")
 plt.title("Extracted flux with infinite radius of noiseless order 1 trace")
 if save:
     plt.savefig(WORKING_DIR + "oversampling_{}/fbox_conv1_inf_ener_bin.png".format(os))
-
-
+plt.show()
+sys.exit()
 # Model
 plt.figure()
-plt.plot(starmodel_angstrom / 1e4, starmodel_flambda, color='DarkTurquoise')
+plt.plot(starmodel_angstrom / 1e4, starmodel_flambda, color='DarkViolet')
 plt.xlabel(r"Wavelength [$\mu$m]")
 plt.ylabel(r"Flux")
 #plt.title("Model")
-plt.show()
-
-sys.exit()
 
 # Extracted flux [adu/s]
 plt.figure()
