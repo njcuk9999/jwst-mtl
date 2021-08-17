@@ -283,14 +283,15 @@ plt.xlabel(r"Wavelength [$\mu$m]")
 plt.title("Extracted flux with infinite radius of noiseless order 1 trace")
 if save:
     plt.savefig(WORKING_DIR + "oversampling_{}/fbox_conv1_inf_ener_bin.png".format(os))
-plt.show()
-sys.exit()
+
 # Model
 plt.figure()
 plt.plot(starmodel_angstrom / 1e4, starmodel_flambda, color='DarkViolet')
 plt.xlabel(r"Wavelength [$\mu$m]")
 plt.ylabel(r"Flux")
-#plt.title("Model")
+plt.title("Model")
+plt.show()
+sys.exit()
 
 # Extracted flux [adu/s]
 plt.figure()
