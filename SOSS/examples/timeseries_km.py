@@ -271,14 +271,14 @@ def fit_resFunc(coeff, x, y):
 ####################################################################################
 # CLEAR
 data = data_noiseless
-if True:
+if True:  # Tikhonov extraction
     with fits.open(WORKING_DIR + "timeseries/lam_bin_array_clear.fits") as hdulist:
         lam_array = hdulist[0].data   # [um]
         lam_array = lam_array[0]   # [um]
 
     with fits.open(WORKING_DIR + "timeseries/f_bin_array_clear.fits") as hdulist:
         f_array = hdulist[0].data * 1.6   # [é/s]
-if False:
+if False:   # Box extraction
     lam_array = w
     f_array = fbox_noiseless
 
@@ -344,14 +344,14 @@ depth_clear = np.copy(depth)
 ####################################################################################
 # NOISY
 data = data_noisy
-if True:
+if True:   # Tikhonov extraction
     with fits.open(WORKING_DIR + "timeseries/lam_bin_array.fits") as hdulist:
         lam_array = hdulist[0].data   # [um]
         lam_array = lam_array[0]   # [um]
 
     with fits.open(WORKING_DIR + "timeseries/f_bin_array.fits") as hdulist:
         f_array = hdulist[0].data * 1.6   # [é/s]
-if False:
+if False:   # Tikhonov extraction
     lam_array = w
     f_array = fbox_noisy
 
@@ -395,8 +395,6 @@ for n in range(f_array.shape[1]):
     p3_n, p2_n, p1_n, p0_n = box_kim.robust_polyfit(fit_resFunc, time_fit, f_fit, [p3, p2, p1, p0])
     poly_fit = np.poly1d([p3_n, p2_n, p1_n, p0_n])
     poly_f_n = poly_fit(time)
-    if n == 6:
-        print(np.mean(np.concatenate((f_array[start:t1, n], f_array[t4:, n]))))
     new_f_array[:, n] /= poly_f_n
 
     # Deviations
@@ -429,6 +427,14 @@ depth_noisy = np.copy(depth)
 
 ####################################################################################
 relatDiff_depth = box_kim.relative_difference(depth_noisy, depth_clear)
+
+with fits.open(WORKING_DIR + "timeseries/wavs_mod_interp.fits") as hdulist:
+    wavs_mod_interp = hdulist[0].data   # [um]
+
+with fits.open(WORKING_DIR + "timeseries/convdata.fits") as hdulist:
+    convdata = hdulist[0].data   # [ppm]
+print(wavs_mod_interp)
+print(convdata)
 ####################################################################################
 """
 hdu = fits.PrimaryHDU(time_min)
@@ -468,10 +474,20 @@ if True:
 
 if True:
     plt.figure()
-    plt.plot(lam_array_clear,depth_clear * 1e6, color='b')
-    #plt.scatter(lam_array[4], depth[4], color='r')
+    plt.plot(lam_array_clear, depth_clear * 1e6, color='b', label='Data (noiseless)')
+    plt.plot(wavs_mod_interp, convdata, color='Orange', label='Model')
     plt.xlabel(r"Wavelength [$\mu m$]")
     plt.ylabel(r'$(R_p/R_s)²$ [ppm]')
+    plt.xlim(np.min(lam_array_clear), np.max(lam_array_clear))
+    plt.legend()
+
+if True:
+    plt.figure()
+    plt.plot(lam_array_noisy,relatDiff_depth * 1e6, color='b')
+    #plt.scatter(lam_array[4], depth[4], color='r')
+    plt.xlabel(r"Wavelength [$\mu m$]")
+    plt.ylabel(r'Relative difference ($(R_p/R_s)²$) [ppm]')
+
 
 print(rapport_white_noisy)
 
