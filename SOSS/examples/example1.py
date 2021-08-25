@@ -35,6 +35,8 @@ import pyfftw
 
 import multiprocessing as mp
 
+import json as json
+
 import scipy.fft
 
 from matplotlib.colors import LogNorm
@@ -85,23 +87,30 @@ print(simuPars.pmodeltype[0])
 
 # Here one can manually edit the parameters but we encourage rather to change
 # the simulation parameter file directly.
-simuPars.noversample = 4  #example of changing a model parameter
-simuPars.xout = 2048      #spectral axis
-simuPars.yout = 256       #spatial (cross-dispersed axis)
-simuPars.xpadding = 100
-simuPars.ypadding = 100
+#simuPars.noversample = 4  #example of changing a model parameter
+#simuPars.xout = 2048      #spectral axis
+#simuPars.yout = 256       #spatial (cross-dispersed axis)
+#simuPars.xpadding = 100
+#simuPars.ypadding = 100
 #simuPars.modelfile = 'BLACKBODY'
 #simuPars.modelfile = 't6000g450p000_ldnl.dat'
-simuPars.modelfile = 'lte06000-4.50-0.0.PHOENIX-ACES-AGSS-COND-2011.JWST-RF.simu-SOSS.dat'
-simuPars.modelfile = 'lte02300-4.50-0.0.PHOENIX-ACES-AGSS-COND-2011.JWST-RF.simu-SOSS.dat'
+#simuPars.modelfile = 'lte06000-4.50-0.0.PHOENIX-ACES-AGSS-COND-2011.JWST-RF.simu-SOSS.dat'
+#simuPars.modelfile = 'lte02300-4.50-0.0.PHOENIX-ACES-AGSS-COND-2011.JWST-RF.simu-SOSS.dat'
 #simuPars.modelfile = 'CONSTANT_FLAMBDA'
+#simuPars.modelfile = 'CONSTANT_ADU'
 #simuPars.f277wcal = True
-simuPars.f277wcal = False
+#simuPars.f277wcal = False
 #simuPars.tend = -1.80
 #simuPars.tend = -1.97
-simuPars.flatthroughput = False
+#simuPars.flatthroughput = False
 simuPars.flatquantumyield = True
 
+# Save the input parameters to disk
+# TODO: Implement a working version for saving simulation input parameters
+#filename = pathPars.path_userland+'tmp/'+'input_parameters.json'
+#handle = open(filename, 'w')
+#json.dump(simuPars, handle)
+#handle.close()
 
 # Instrument Throughput (Response)
 throughput = spgen.read_response(pathPars.throughputfile, set_response_to_unity=simuPars.flatthroughput,
@@ -111,7 +120,12 @@ throughput = spgen.read_response(pathPars.throughputfile, set_response_to_unity=
 tracePars = tp.get_tracepars(pathPars.tracefile)
 
 # Generate or read the star atmosphere model
-starmodel_angstrom, starmodel_flambda, ld_coeff = soss.starmodel(simuPars, pathPars)
+starmodel_angstrom, starmodel_flambda, ld_coeff = soss.starmodel(simuPars, pathPars, tracePars, throughput)
+
+plt.figure()
+plt.plot(starmodel_angstrom, starmodel_flambda)
+plt.show()
+#sys.exit()
 
 # Anchor star spectrum on a photometric band magnitude
 starmodel_flambda = smag.anchor_spectrum(starmodel_angstrom/10000., starmodel_flambda, simuPars.filter,
@@ -157,15 +171,6 @@ else:
     # sys.exit()
 
 
-
-
-# Resample the star and planet models on a common grid
-# No need to run this step here as it is ran internally in generate_traces anyway
-# if False:
-#     resampled_arrays = soss.resample_models(starmodel_angstrom, starmodel_flambda, ld_coeff,
-#                                         planetmodel_angstrom, planetmodel_rprs, 5000, 55000, resolving_power = 100000)
- #    bin_starmodel_angstrom,  = resampled_arrays
-
 if True:
 
     # Generate the time steps array
@@ -177,7 +182,7 @@ if True:
 
     # Generate a constant trace position offsets
     specpix_offset = 0.0
-    spatpix_offset = 5.0
+    spatpix_offset = 0.0 #5.0
     # Generate a time-dependent trace position offsets
     #specpix_offset = np.zeros_like(timesteps)
     #spatpix_offset = np.linspace(0.0, 5.0, np.size(timesteps))
@@ -243,12 +248,20 @@ if True:
                              xpadding=simuPars.xpadding, ypadding=simuPars.ypadding)
 
     # Add detector noise to the noiseless data
-    if True:
+    if False: # Should be True by default
         detector.add_noise(os.path.join(pathPars.path_userland,'IDTSOSS_clear.fits'),
                        outputfilename=os.path.join(pathPars.path_userland, 'IDTSOSS_clear_noisy.fits'))
+    else: # here is the option to investigate individual noise sources
+        detector.add_noise(os.path.join(pathPars.path_userland,'IDTSOSS_clear.fits'),
+                           normalize=False, flatfield=False, darkframe=False,
+                           nonlinearity=False, superbias=False, detector=False,
+                           outputfilename=os.path.join(pathPars.path_userland, 'IDTSOSS_clear_noisy.fits'))
 
     # Process the data through the DMS level 1 pipeline
-    if True:
+    if False: # Should be True by default
+        result = Detector1Pipeline.call(os.path.join(pathPars.path_userland, 'IDTSOSS_clear_noisy.fits'),
+                                    output_file='IDTSOSS_clear_noisy', output_dir=pathPars.path_userland)
+    else: # here is the option to investigate individual noise sources
         result = Detector1Pipeline.call(os.path.join(pathPars.path_userland, 'IDTSOSS_clear_noisy.fits'),
                                     output_file='IDTSOSS_clear_noisy', output_dir=pathPars.path_userland)
 
