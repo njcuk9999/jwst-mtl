@@ -262,6 +262,7 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
     def update_kernels(self, kernels, c_kwargs):
 
         # Verify the c_kwargs. TODO Be explict here?
+        # TODO Specify better default c_kwargs
         if c_kwargs is None:
             c_kwargs = [{} for _ in range(self.n_orders)]
 
@@ -889,9 +890,9 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
             # Get sparse pixel mapping matrix.
             b_matrix += self.get_pixel_mapping(i_order, error=error, quick=quick)
 
-        # Build system
-        # Fisrt get `sig` which have been update`
-        # when calling `get_b_n`
+        # Build detector pixels' array
+        # Fisrt get `error` which have been update`
+        # when calling `get_pixel_mapping`
         error = self.error
 
         # Take only valid pixels and apply `error` on data
@@ -956,7 +957,7 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
 
         return self.tikho_mat
 
-    def get_tikho_tests(self, factors, tikho=None, estimate=None,
+    def get_tikho_tests(self, factors, tikho=None,
                         tikho_kwargs=None, **kwargs):
         """
         Test different factors for Tikhonov regularisation.
@@ -1009,7 +1010,7 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
             self.tikho = tikho
 
         # Test all factors
-        tests = tikho.test_factors(factors, estimate)
+        tests = tikho.test_factors(factors)
 
         # Generate logl using solutions for each factors
         logl_list = []
@@ -1022,12 +1023,15 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
             same = True
 
         # Save in tikho's tests
-        tikho.test['-logl'] = -1 * np.array(logl_list)
+        tests['-logl'] = -1 * np.array(logl_list)
 
         # Save also grid
-        tikho.test["grid"] = self.wave_grid
+        tests["grid"] = self.wave_grid
+        
+        # Save as attribute
+        self.tikho_tests = tests
 
-        return tikho.test
+        return tests
 
     def best_tikho_factor(self, tests=None, interpolate=True,
                           interp_index=None, i_plot=False):
@@ -1066,7 +1070,7 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
 
         # Use pre-run tests if not specified
         if tests is None:
-            tests = self.tikho.tests
+            tests = self.tikho_tests
 
         # Get relevant quantities from tests
         factors = tests["factors"]
