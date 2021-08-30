@@ -1589,9 +1589,9 @@ def tikho_solve(a_mat, b_vec, t_mat=None, grid=None,
     Solution of the system (1d array)
     """
     tikho = Tikhonov(a_mat, b_vec, t_mat=t_mat,
-                     grid=grid, verbose=verbose)
+                     grid=grid, verbose=verbose, estimate=estimate)
 
-    return tikho.solve(factor=factor, estimate=estimate)
+    return tikho.solve(factor=factor)
 
 
 class TikhoTests(dict):
@@ -1634,8 +1634,8 @@ class TikhoTests(dict):
         # Compute the (reduced?) chi^2 for all tests
         chi2 = np.nansum(tests['error']**2, axis=-1)
 
-        # Normalize by the number of data points (squared)
-        chi2 /= n_points**2
+        # Normalize by the number of data points
+        chi2 /= n_points
         
         return chi2
 
@@ -1803,7 +1803,7 @@ class Tikhonov:
                    'second': finite_second_d}
 
     def __init__(self, a_mat, b_vec, t_mat=None,
-                 grid=None, verbose=True, valid=True):
+                 grid=None, verbose=True, valid=True, estimate=None):
         """
         Parameters
         ----------
@@ -1842,6 +1842,7 @@ class Tikhonov:
         self.a_mat = a_mat
         self.b_vec = b_vec
         self.t_mat = t_mat
+        self.estimate = estimate
         
         # Pre-compute some matrix for the linear system to solve
         t_mat_2 = (t_mat.T).dot(t_mat)  # squared tikhonov matrix
@@ -1849,10 +1850,21 @@ class Tikhonov:
         result = (a_mat.T).dot(b_vec.T)
         idx_valid = (result.toarray() != 0).squeeze()  # valid indices to use if `valid` is True
         
+        # Compute estimate term if given
+        if estimate is None:
+            estimate_term = None
+        else:
+            # The input is 1-d array, so need
+            # to create an additionnal dimension
+            estimate = estimate[:, None]
+            # Compute term
+            estimate_term = t_mat_2.dot(estimate)
+        
         # Save pre-computed matrix
         self.t_mat_2 = t_mat_2
         self.a_mat_2 = a_mat_2
         self.result = result
+        self.estimate_term = estimate_term
         self.idx_valid = idx_valid
         
         # Save other attributes
@@ -1870,18 +1882,18 @@ class Tikhonov:
 
         return
 
-    def solve(self, factor=1.0, estimate=None):
+    def solve(self, factor=1.0):
         """
         Minimize the equation ||A.x - b||^2 + ||gamma.x||^2
-        by solving (A_T.A + gamma_T.gamma).x = A_T.b
+        by solving (A_T.A + gamma_T.gamma).x = A_T.b + gamma_T.gamma.x_estimate
         gamma is the Tikhonov matrix multiplied by a scale factor
 
         Parameters
         ----------
         factor: float, optional
             multiplicative constant of the regularisation matrix
-        estimate: vector-like object (1d)
-            Estimate oof the solution of the system.
+        estimate: array-like object (1d)
+            Estimate of the solution of the system.
 
         Returns
         ------
@@ -1893,16 +1905,17 @@ class Tikhonov:
         t_mat_2 = self.t_mat_2
         valid = self.valid
         idx_valid = self.idx_valid
+        estimate_term = self.estimate_term
+        
+        # Apply estimate to result vector
+        if estimate_term is not None:
+            result = result + factor**2 * estimate_term
 
         # Matrix gamma squared (with scale factor)
-        gamma_2 = factor**2 * self.t_mat_2
+        gamma_2 = factor**2 * t_mat_2
 
-        # Finalize building the system
+        # Finalize building matrix
         matrix = a_mat_2 + gamma_2
-
-        # Include solution estimate if given
-        if estimate is not None:
-            raise ValueError('`estimate` option is not implemented yet.')
 
         # Initialize solution
         solution = np.full(matrix.shape[0], np.nan)
@@ -1920,7 +1933,7 @@ class Tikhonov:
         
         return solution
 
-    def test_factors(self, factors, estimate=None):
+    def test_factors(self, factors):
         """
         test multiple factors
 
@@ -1942,6 +1955,7 @@ class Tikhonov:
         b_vec = self.b_vec
         a_mat = self.a_mat
         t_mat = self.t_mat
+        estimate = self.estimate
 
         # Init outputs
         sln, err, reg = [], [], []
@@ -1950,13 +1964,17 @@ class Tikhonov:
         for i_fac, factor in enumerate(factors):
 
             # Save solution
-            sln.append(self.solve(factor, estimate))
+            sln.append(self.solve(factor))
 
             # Save error A.x - b
             err.append(a_mat.dot(sln[-1]) - b_vec)
 
             # Save regulatisation term
-            reg.append(t_mat.dot(sln[-1]))
+            if estimate is None:
+                reg_i = t_mat.dot(sln[-1])
+            else:
+                reg_i = t_mat.dot(sln[-1] - estimate)
+            reg.append(reg_i)
 
             # Print
             message = '{}/{}'.format(i_fac, len(factors))
@@ -1972,12 +1990,13 @@ class Tikhonov:
         reg = np.array(reg)
 
         # Save in a dictionnary
-        self.test = {'factors': factors,
-                     'solution': sln,
-                     'error': err,
-                     'reg': reg}
+        
+        tests = TikhoTests({'factors': factors,
+                            'solution': sln,
+                            'error': err,
+                            'reg': reg})
 
-        return self.test
+        return tests
 
     def _check_plot_inputs(self, fig, ax, label, factors, test):
         """
