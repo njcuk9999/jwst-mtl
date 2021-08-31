@@ -1512,6 +1512,62 @@ def finite_zeroth_d(grid):
     return identity(len(grid))
 
 
+def curvature_finite(factors, log_reg2, log_chi2):
+    ''' 
+    Compute the curvature in log space using finite differences
+    
+    Parameters:
+    -----------
+    factors: array_like
+        regularisation factors (not in log).
+    log_reg2: array_like
+        norm-2 of the regularisation term (in log10).
+    log_chi2: array-like
+        norm-2 of the chi2 term (in log10).
+
+    Return:
+    -------
+    curvature
+    '''
+    # Make sure it is sorted according to the factors
+    idx = np.argsort(factors)
+    factors, log_chi2, log_reg2 = factors[idx], log_chi2[idx], log_reg2[idx]
+    
+    # Get first and second derivatives
+    chi2_deriv = get_finite_derivatives(factors, log_chi2)
+    reg2_deriv = get_finite_derivatives(factors, log_reg2)
+    
+    # Compute the curvature according to Hansen 2001
+    # 
+    # Numerator of the curvature
+    numerator = chi2_deriv[0] * reg2_deriv[1]
+    numerator -= reg2_deriv[0] * chi2_deriv[1]
+    # Denominator of the curvature
+    denom = reg2_deriv[0]**2 + chi2_deriv[0]**2
+    # Combined
+    curv = 2 * numerator / np.power(denom, 3/2)
+    
+    # Since the curvature is not define at the ends of the array,
+    # cut the factors array
+    factors = factors[1:-1]
+    
+    return factors, curv
+
+
+def get_finite_derivatives(x_array, y_array):
+    ''' Compute first and second finite derivatives'''
+    
+    # Compute first finite derivative
+    first_d = np.diff(y_array) / np.diff(x_array)
+    # Take the mean of the left and right derivative
+    mean_first_d = 0.5 * (first_d[1:] + first_d[:-1])
+    
+    # Compute second finite derivative
+    second_d = 0.5 * np.diff(first_d) / (x_array[2:] - x_array[:-2])
+    
+    return mean_first_d, second_d
+
+
 def get_nyquist_matrix(grid, integrate=True, n_sampling=2,
                        thresh=1e-5, **kwargs):
     """
