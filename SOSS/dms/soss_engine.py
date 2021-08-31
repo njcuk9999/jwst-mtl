@@ -1032,12 +1032,13 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
         self.tikho_tests = tests
 
         return tests
-
+    
     def best_tikho_factor(self, tests=None, interpolate=True,
-                          interp_index=None, i_plot=False):
+                          interp_index=None, i_plot=False, mode='curvature'):
         """Compute the best scale factor for Tikhonov regularisation.
         It is determine by taking the factor giving the highest logL on
-        the detector.
+        the detector or the highest curvature of the l-curve,
+        depending on the chosen mode.
 
         Parameters
         ----------
@@ -1059,6 +1060,8 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
             i_min + i1 and i_min + i2 - 1
         i_plot: bool, optional
             Plot the result of the minimization
+        mode: string
+            What to optimize: 'logl' or 'curvature'.
 
         Returns
         -------
@@ -1074,26 +1077,51 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
 
         # Get relevant quantities from tests
         factors = tests["factors"]
-        logl = tests["-logl"]
+        # Depending of the mode (what do we minimize?)
+        if mode=='curvature':
+            # Compute the curvature...
+            # Get chi2 from TikhoTests method
+            chi2 = tests.compute_chi2().squeeze()
+            # Get the norm-2 of the regularisation term
+            reg2 = np.nansum(tests['reg']**2, axis=-1)
 
-        # Get position of the minimum value
-        i_min = np.argmin(logl)
+            # Compute curvature in log space
+            args = (factors, np.log10(chi2), np.log10(reg2))
+            factors, curv = engine_utils.curvature_finite(*args)
+            # Take the absolute value
+            val_to_minimize = curv
+            
+        elif mode=='logl':
+            # Simply take the -logl
+            val_to_minimize = tests['-logl']
+            
+        else:
+            raise ValueError(f'`mode`={mode} is not valid.')
+            
+        # Only keep finite values
+        idx_finite = np.isfinite(val_to_minimize)
+        factors = factors[idx_finite]
+        val_to_minimize = val_to_minimize[idx_finite]
 
-        # Interpolate to get a finer value
+        # Get position the minimum
+        idx_min = np.argmin(val_to_minimize)
+
+        # Interpolate to get a finer estimate
         if interpolate:
 
             # Only around the best value
-            i_range = [i_min + d_i for d_i in interp_index]
+            idx_range = [idx_min + d_idx for d_idx in interp_index]
 
             # Make sure it's still a valid index
-            i_range[0] = np.max([i_range[0], 0])
-            i_range[-1] = np.min([i_range[-1], len(logl) - 1])
+            idx_range[0] = np.max([idx_range[0], 0])
+            length = len(val_to_minimize)
+            idx_range[-1] = np.min([idx_range[-1], length - 1])
 
             # Which index to use
-            index = np.arange(*i_range, 1)
+            index = np.arange(*idx_range, 1)
 
             # Akima spline in log space
-            x_val, y_val = np.log10(factors[index]), np.log10(logl[index])
+            x_val, y_val = np.log10(factors[index]), val_to_minimize[index]
             i_sort = np.argsort(x_val)
             x_val, y_val = x_val[i_sort], y_val[i_sort]
             fct = Akima1DInterpolator(x_val, y_val)
@@ -1108,7 +1136,7 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
             if i_plot:
 
                 # Original grid
-                plt.plot(np.log10(factors), np.log10(logl), ":")
+                plt.plot(np.log10(factors), val_to_minimize, ":")
 
                 # Fit sub-grid
                 plt.plot(x_val, y_val, ".")
@@ -1128,11 +1156,12 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
             # Return to linear scale
             min_fac = 10.**min_fac
 
-        # Simply return the minimum value if no interpolation required
+        # Simply return the min value
+        # if no interpolation required
         else:
-            min_fac = factors[i_min]
+            min_fac = factors[idx_min]
 
-        # Return scale factor minimizing the logL
+        # Return estimated best scale factor
         return min_fac
 
     def rebuild(self, spectrum=None, i_orders=None, same=False):
