@@ -116,7 +116,7 @@ class TimeSeries(object):
 
         # Select the appropriate subarray.
         if self.subarray == 'SUBSTRIP96':
-            slc = slice(1792, 1888)
+            slc = slice(1802, 1898)
         elif self.subarray == 'SUBSTRIP256':
             slc = slice(1792, 2048)
         elif self.subarray == 'FULL':

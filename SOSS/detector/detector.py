@@ -12,7 +12,7 @@ import timeseries
 
 
 def add_noise(filelist, normalize=False, zodibackg=True, flatfield=True, darkframe=True, nonlinearity=True,
-              superbias=True, detector=True, outputfilename=None):
+              superbias=True, detector=True, outputfilename=None, gain=1.61):
     """
     A function to add detector noise to the simulations.
 
@@ -24,6 +24,7 @@ def add_noise(filelist, normalize=False, zodibackg=True, flatfield=True, darkfra
     :param nonlinearity: bool, include the effect of non-linearity, default True.
     :param superbias: bool, include the effect of bias, default True.
     :param detector: bool, include the effects of detector noise, default True.
+    :param gain: float, the electron per adu detector gain.
 
     :type filelist: list[str]
     :type normalize: bool
@@ -75,7 +76,7 @@ def add_noise(filelist, normalize=False, zodibackg=True, flatfield=True, darkfra
             tso.add_superbias()
 
         if detector:
-            tso.add_detector_noise()
+            tso.add_detector_noise(gain=gain)
 
         tso.write_to_fits(outputfilename)
 
