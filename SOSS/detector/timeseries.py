@@ -25,16 +25,16 @@ import hxrg
 import matplotlib.pyplot as plt
 
 # Global variables.
-GAIN = 1.61
-DARKVALUE = 0.0414
-FULL_WELL = 72000.
+#GAIN = 1.61
+#DARKVALUE = 0.0414
+#FULL_WELL = 72000.
 
 # TODO header section which files and values were used.
 
 
 class TimeSeries(object):
 
-    def __init__(self, ima_path):
+    def __init__(self, ima_path, gain=1.61, dark_value=0.0414, full_well=72000):
         """Make a TimeSeries object from a series of synthetic images."""
 
         self.ima_path = ima_path
@@ -63,12 +63,17 @@ class TimeSeries(object):
         # USER_PATH is the parameter in that file
         self.output_path = '/genesis/jwst/userland-soss/'
 
-    def get_normfactor(self, full_well=FULL_WELL):
+        # Gain, dark, full well
+        self.gain = gain
+        self.dark_value = dark_value
+        self.full_well = full_well
+
+    def get_normfactor(self):
         """Determine a re-normalization factor so that the highest pixel value in the simulation
          will match the full well capacity"""
 
         max_value = np.amax(self.data)
-        normfactor = full_well/max_value
+        normfactor = self.full_well/max_value
 
         return normfactor
 
@@ -101,7 +106,7 @@ class TimeSeries(object):
 
         self.modif_str = self.modif_str + '_poisson_noise'
 
-    def add_non_linearity(self, coef_file=None, gain=GAIN):
+    def add_non_linearity(self, coef_file=None):
         """Add non-linearity on top of the linear integration-long ramp."""
 
         if coef_file is None:
@@ -130,7 +135,7 @@ class TimeSeries(object):
         for i in range(self.nintegs):
             # select part of the time series lying within this integration
             # (i.e., ith sequence of ngroups groups)
-            new_integ = deepcopy(self.data[i, :, :, :])/gain  # [ADU] because the non-linearity correction works on ADU.
+            new_integ = deepcopy(self.data[i, :, :, :])/self.gain  # [ADU] because the non-linearity correction works on ADU.
 
             # Iterate over groups
             for g in range(self.ngroups):
@@ -142,11 +147,11 @@ class TimeSeries(object):
 
                 new_integ[g, :, :] = corr
 
-            self.data[i, :, :, :] = deepcopy(new_integ)*gain  # [electrons] convert back to electrons for next steps.
+            self.data[i, :, :, :] = deepcopy(new_integ)*self.gain  # [electrons] convert back to electrons for next steps.
 
         self.modif_str = self.modif_str + '_nonlin'
     
-    def add_detector_noise(self, offset=500., gain=GAIN, pca0_file=None, noise_seed=None, dark_seed=None):
+    def add_detector_noise(self, offset=500., pca0_file=None, noise_seed=None, dark_seed=None):
         """Add read-noise, 1/f noise, kTC noise, and alternating column noise
         using the HxRG noise generator.
         """
@@ -181,7 +186,7 @@ class TimeSeries(object):
 
         # Bias pattern.
         bias_amp = 0.  # Do not use PCA0 component.
-        bias_offset = offset*gain  # [electrons]
+        bias_offset = offset*self.gain  # [electrons]
 
         # Dark current.
         dark_current = 0.0  # [electrons/frame] Unused because pca0_amp = 0.
@@ -202,8 +207,8 @@ class TimeSeries(object):
             # Generate a noise-cube for this integration.
             noisecube = noisegenerator.mknoise(c_pink=c_pink, u_pink=u_pink, bias_amp=bias_amp, bias_offset=bias_offset,
                                                acn=acn, pca0_amp=pca0_amp, rd_noise=rd_noise, pedestal=pedestal,
-                                               dark_current=dark_current, dc_seed=dark_seed, noise_seed=seed1,
-                                               gain=gain)
+                                               dark_current=self.dark_current, dc_seed=dark_seed, noise_seed=seed1,
+                                               gain=self.gain)
 
             # Ensure the noise-cube has the correct dimensions (when Ngroups = 1).
             if noisecube.ndim == 2:
@@ -230,7 +235,7 @@ class TimeSeries(object):
 
         # Select the appropriate subarray.
         if self.subarray == 'SUBSTRIP96':
-            slc = slice(1792, 1888)
+            slc = slice(1802, 1898)
         elif self.subarray == 'SUBSTRIP256':
             slc = slice(1792, 2048)
         elif self.subarray == 'FULL':
@@ -245,7 +250,7 @@ class TimeSeries(object):
 
         self.modif_str = self.modif_str + '_flat'
 
-    def add_superbias(self, gain=GAIN, biasfile=None):
+    def add_superbias(self, biasfile=None):
         """Add the bias level to the simulation."""
 
         if biasfile is None:
@@ -255,11 +260,11 @@ class TimeSeries(object):
         with fits.open(biasfile) as hdu:
             superbias = hdu[1].data  # [ADU]
 
-        superbias = superbias*gain  # [electrons]
+        superbias = superbias*self.gain  # [electrons]
 
         # Select the appropriate subarray.
         if self.subarray == 'SUBSTRIP96':
-            slc = slice(1792, 1888)
+            slc = slice(1802, 1898)
         elif self.subarray == 'SUBSTRIP256':
             slc = slice(1792, 2048)
         elif self.subarray == 'FULL':
@@ -274,7 +279,7 @@ class TimeSeries(object):
 
         self.modif_str = self.modif_str + '_bias'
 
-    def add_simple_dark(self, darkvalue=DARKVALUE):  # TODO dark should be lower in the voids.
+    def add_simple_dark(self):  # TODO dark should be lower in the voids.
         """Add a simple dark current to the simulation.
 
         .. note::
@@ -284,7 +289,7 @@ class TimeSeries(object):
 
         # Generate the dark ramps for the simulation.
         # TODO loop over integrations to save memory?
-        dark = rdm.poisson(darkvalue*self.tgroup, size=self.data.shape).astype('float32')  # [electrons]
+        dark = rdm.poisson(self.dark_value*self.tgroup, size=self.data.shape).astype('float32')  # [electrons]
         darkramp = np.cumsum(dark, axis=1)
 
         # Add the dark ramps to the simulation.
@@ -304,7 +309,7 @@ class TimeSeries(object):
 
         # Select the appropriate subarray.
         if self.subarray == 'SUBSTRIP96':
-            slc = slice(1792, 1888)
+            slc = slice(1802, 1898)
         elif self.subarray == 'SUBSTRIP256':
             slc = slice(1792, 2048)
         elif self.subarray == 'FULL':
@@ -329,11 +334,11 @@ class TimeSeries(object):
 
         self.modif_str = self.modif_str + '_zodibackg'
 
-    def write_to_fits(self, filename=None, gain=GAIN):
+    def write_to_fits(self, filename=None):
         """Write to a .fits file the new header and data."""
 
         hdu_new = self.hdu_ideal
-        hdu_new[1].data = (self.data/gain).astype('uint16')  # Convert to ADU in 16 bit integers.
+        hdu_new[1].data = (self.data/self.gain).astype('uint16')  # Convert to ADU in 16 bit integers.
 
         if filename is None:
             print('Forging output noisy file...')
