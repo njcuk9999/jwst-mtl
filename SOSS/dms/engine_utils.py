@@ -1692,8 +1692,7 @@ def get_nyquist_matrix(grid, integrate=True, n_sampling=2,
     return t_mat
 
 
-def tikho_solve(a_mat, b_vec, t_mat=None, grid=None,
-                verbose=True, factor=1.0, estimate=None):
+def tikho_solve(a_mat, b_vec, t_mat, verbose=True, factor=1.0):
     """
     Tikhonov solver to use as a function instead of a class.
 
@@ -1703,26 +1702,18 @@ def tikho_solve(a_mat, b_vec, t_mat=None, grid=None,
         matrix A in the system to solve A.x = b
     b_vec: vector-like object (1d)
         vector b in the system to solve A.x = b
-    t_mat: matrix-like object (2d), optional
+    t_mat: matrix-like object (2d)
         Tikhonov regularisation matrix to be applied on b_vec.
-        Default is the default of the Tikhonov class. (Identity matrix)
-    grid: array-like 1d, optional
-        grid on which b-vec is projected. Used to compute derivative
     verbose: bool
         Print details or not
     factor: float, optional
         multiplicative constant of the regularisation matrix
-    estimate: vector-like object (1d)
-        Estimate oof the solution of the system.
-    index: indexable, optional
-        index of the valid row of the b_vec.
 
     Returns
     ------
     Solution of the system (1d array)
     """
-    tikho = Tikhonov(a_mat, b_vec, t_mat=t_mat,
-                     grid=grid, verbose=verbose, estimate=estimate)
+    tikho = Tikhonov(a_mat, b_vec, t_mat, verbose=verbose)
 
     return tikho.solve(factor=factor)
 
@@ -2023,12 +2014,9 @@ class Tikhonov:
     ||A.x - b||^2 + ||gamma.x||^2
     Where gamma is the Tikhonov regularisation matrix.
     """
-    default_mat = {'zeroth': finite_zeroth_d,
-                   'first': finite_first_d,
-                   'second': finite_second_d}
 
-    def __init__(self, a_mat, b_vec, t_mat=None,
-                 grid=None, verbose=True, valid=True, estimate=None):
+    def __init__(self, a_mat, b_vec, t_mat,
+                 verbose=True, valid=True):
         """
         Parameters
         ----------
@@ -2036,60 +2024,30 @@ class Tikhonov:
             matrix A in the system to solve A.x = b
         b_vec: vector-like object (1d)
             vector b in the system to solve A.x = b
-        t_mat: matrix-like object (2d), optional
+        t_mat: matrix-like object (2d)
             Tikhonov regularisation matrix to be applied on b_vec.
-            Default is the default of the Tikhonov class. (Identity matrix)
-        grid: array-like 1d, optional
-            grid on which b-vec is projected. Used to compute derivative
         verbose: bool
             Print details or not
         valid: bool, optional
             If True, solve the system only for valid indices. The 
             invalid values will be set to np.nan. Default is True.
         """
-
-        # b_vec will be passed to default_mat functions
-        # if grid not given.
-        if grid is None and t_mat is None:
-            grid = b_vec
-
-        # If string, search in the default Tikhonov matrix
-        if t_mat is None:
-            self.type = 'zeroth'
-            t_mat = self.default_mat['zeroth'](grid)
-        elif callable(t_mat):
-            t_mat = t_mat(grid)
-            self.type = 'custom'
-        else:
-            self.type = 'custom'
         
         # Save input matrix
         self.a_mat = a_mat
         self.b_vec = b_vec
         self.t_mat = t_mat
-        self.estimate = estimate
-        
+
         # Pre-compute some matrix for the linear system to solve
         t_mat_2 = (t_mat.T).dot(t_mat)  # squared tikhonov matrix
         a_mat_2 = a_mat.T.dot(a_mat)  # squared model matrix
         result = (a_mat.T).dot(b_vec.T)
         idx_valid = (result.toarray() != 0).squeeze()  # valid indices to use if `valid` is True
         
-        # Compute estimate term if given
-        if estimate is None:
-            estimate_term = None
-        else:
-            # The input is 1-d array, so need
-            # to create an additionnal dimension
-            estimate = estimate[:, None]
-            # Compute term
-            estimate_term = t_mat_2.dot(estimate)
-        
         # Save pre-computed matrix
         self.t_mat_2 = t_mat_2
         self.a_mat_2 = a_mat_2
         self.result = result
-        self.estimate_term = estimate_term
         self.idx_valid = idx_valid
         
         # Save other attributes
@@ -2110,15 +2068,13 @@ class Tikhonov:
     def solve(self, factor=1.0):
         """
         Minimize the equation ||A.x - b||^2 + ||gamma.x||^2
-        by solving (A_T.A + gamma_T.gamma).x = A_T.b + gamma_T.gamma.x_estimate
+        by solving (A_T.A + gamma_T.gamma).x = A_T.b
         gamma is the Tikhonov matrix multiplied by a scale factor
 
         Parameters
         ----------
         factor: float, optional
             multiplicative constant of the regularisation matrix
-        estimate: array-like object (1d)
-            Estimate of the solution of the system.
 
         Returns
         ------
@@ -2130,11 +2086,6 @@ class Tikhonov:
         t_mat_2 = self.t_mat_2
         valid = self.valid
         idx_valid = self.idx_valid
-        estimate_term = self.estimate_term
-        
-        # Apply estimate to result vector
-        if estimate_term is not None:
-            result = result + factor**2 * estimate_term
 
         # Matrix gamma squared (with scale factor)
         gamma_2 = factor**2 * t_mat_2
@@ -2166,8 +2117,6 @@ class Tikhonov:
         ----------
         factors: 1d array-like
             factors to test
-        estimate: array like
-            estimate of the solution
 
         Returns
         ------
@@ -2180,7 +2129,6 @@ class Tikhonov:
         b_vec = self.b_vec
         a_mat = self.a_mat
         t_mat = self.t_mat
-        estimate = self.estimate
 
         # Init outputs
         sln, err, reg = [], [], []
@@ -2195,10 +2143,7 @@ class Tikhonov:
             err.append(a_mat.dot(sln[-1]) - b_vec)
 
             # Save regulatisation term
-            if estimate is None:
-                reg_i = t_mat.dot(sln[-1])
-            else:
-                reg_i = t_mat.dot(sln[-1] - estimate)
+            reg_i = t_mat.dot(sln[-1])
             reg.append(reg_i)
 
             # Print
@@ -2248,6 +2193,7 @@ class Tikhonov:
 
         return fig, ax, label, test
 
+    # TODO: Remove these plotting method. Use TikhoTests instead.
     def error_plot(self, fig=None, ax=None, factors=None,
                    label=None, test=None, test_key=None, y_val=None):
         """

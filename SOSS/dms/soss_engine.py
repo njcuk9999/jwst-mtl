@@ -1005,12 +1005,9 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
 
         if tikho is None:
             t_mat = self.get_tikho_matrix()
-            default_kwargs = {'grid': self.wave_grid,
-                              't_mat': t_mat}
             if tikho_kwargs is None:
                 tikho_kwargs = {}
-            tikho_kwargs = {**default_kwargs, **tikho_kwargs}
-            tikho = engine_utils.Tikhonov(b_matrix, pix_array, **tikho_kwargs)
+            tikho = engine_utils.Tikhonov(b_matrix, pix_array, t_mat, **tikho_kwargs)
 
         # Test all factors
         tests = tikho.test_factors(factors)
@@ -1253,11 +1250,11 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
         return sln
 
     @staticmethod
-    def _solve_tikho(matrix, result, **kwargs):
+    def _solve_tikho(matrix, result, t_mat, **kwargs):
         """Solve system using Tikhonov regularisation"""
 
         # Note that the indexing is applied inside the function
-        return engine_utils.tikho_solve(matrix, result, **kwargs)
+        return engine_utils.tikho_solve(matrix, result, t_mat, **kwargs)
 
     def extract(self, tikhonov=False, tikho_kwargs=None,  # TODO merge with __call__.
                 factor=None, **kwargs):
@@ -1310,15 +1307,11 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
                 raise ValueError("Please specify tikhonov `factor`.")
 
             t_mat = self.get_tikho_matrix()
-            default_kwargs = {'grid': self.wave_grid,
-                              't_mat': t_mat,
-                              'factor': factor}
 
             if tikho_kwargs is None:
                 tikho_kwargs = {}
 
-            tikho_kwargs = {**default_kwargs, **tikho_kwargs}
-            spectrum = self._solve_tikho(b_matrix, pix_array, **tikho_kwargs)
+            spectrum = self._solve_tikho(b_matrix, pix_array, t_mat, factor=factor, **tikho_kwargs)
 
         else:
             # Build the system to solve
