@@ -926,15 +926,20 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
 
             # Default function if not specified
             if t_mat_func is None:
-
-                # Use the nyquist sampled gaussian kernel
-                t_mat_func = engine_utils.get_nyquist_matrix
+                # Use the `engine_utils.get_tikho_matrix`
+                # The default arguments will return the 1rst derivative
+                # as the tikhonov matrix
+                t_mat_func = engine_utils.get_tikho_matrix
 
             # Default args
             if fargs is None:
-                fargs = (self.wave_grid, )
+                # The arguments for `engine_utils.get_tikho_matrix` are
+                # `grid` and `n_derivative`
+                fargs = (self.wave_grid, 1)
             if fkwargs is None:
-                fkwargs = {"integrate": True}
+                # The kwargs for `engine_utils.get_tikho_matrix` are
+                # d_grid = True, estimate = None, pwr_law = 0
+                fkwargs = {'d_grid': True, 'estimate': None, 'pwr_law': 0}
 
             # Call function
             t_mat = t_mat_func(*fargs, **fkwargs)
@@ -1007,6 +1012,7 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
                 tikho_kwargs = {}
             tikho_kwargs = {**default_kwargs, **tikho_kwargs}
             tikho = engine_utils.Tikhonov(b_matrix, pix_array, **tikho_kwargs)
+            # TODO: Remove self.tikho. Not necessary since the tikho_tests can be used instead
             self.tikho = tikho
 
         # Test all factors
@@ -1015,6 +1021,8 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
         # Generate logl using solutions for each factors
         logl_list = []
 
+        # TODO: Remove all '-logl' references and replace by 'chi2' and
+        # save chi2 in tikho tests automatically
         # Compute b_n only the first iteration. Then
         # use the same value to rebuild the detector.
         same = False
@@ -1075,24 +1083,15 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
         if tests is None:
             tests = self.tikho_tests
 
-        # Get relevant quantities from tests
-        factors = tests["factors"]
         # Depending of the mode (what do we minimize?)
         if mode=='curvature':
-            # Compute the curvature...
-            # Get chi2 from TikhoTests method
-            chi2 = tests.compute_chi2().squeeze()
-            # Get the norm-2 of the regularisation term
-            reg2 = np.nansum(tests['reg']**2, axis=-1)
-
-            # Compute curvature in log space
-            args = (factors, np.log10(chi2), np.log10(reg2))
-            factors, curv = engine_utils.curvature_finite(*args)
-            # Take the absolute value
+            # Compute the curvature
+            factors, curv = tests.compute_curvature()
             val_to_minimize = curv
             
         elif mode=='logl':
-            # Simply take the -logl
+            # Simply take the -logl and factors
+            factors = tests['factors']
             val_to_minimize = tests['-logl']
             
         else:
@@ -1134,23 +1133,28 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
 
             # Plot the fit if required
             if i_plot:
+                # Init plot
+                plt.figure()
 
                 # Original grid
-                plt.plot(np.log10(factors), val_to_minimize, ":")
+                plt.semilogx(factors, val_to_minimize, ":")
 
-                # Fit sub-grid
-                plt.plot(x_val, y_val, ".")
+                # Fitted sub-grid
+                plt.semilogx(10.**x_val, y_val, ".")
 
                 # Show akima spline
                 x_new = np.linspace(*bounds, 100)
-                plt.plot(x_new, fct(x_new))
+                plt.plot(10.**x_new, fct(x_new))
 
                 # Show minimum found
-                plt.plot(min_fac, fct(min_fac), "x")
+                plt.semilogx(10.**min_fac, fct(min_fac), "x")
 
                 # Labels
-                plt.xlabel(r"$\log_{10}$(factor)")
-                plt.ylabel(r"$\log_{10}( - \log L)$")
+                plt.xlabel(r"factor")
+                if mode=='logl':
+                    plt.ylabel(r"$\log_{10}($\chi ^2$)$")
+                elif mode=='curvature':
+                    plt.ylabel("Curvature")
                 plt.tight_layout()
 
             # Return to linear scale
