@@ -7,7 +7,7 @@ from warnings import warn
 from scipy.integrate import AccuracyWarning
 from scipy.sparse import find, diags, identity, csr_matrix
 from scipy.sparse.linalg import spsolve
-from scipy.interpolate import interp1d, RectBivariateSpline
+from scipy.interpolate import interp1d, RectBivariateSpline, UnivariateSpline
 
 # Plotting.
 import matplotlib.pyplot as plt
@@ -735,8 +735,8 @@ class WebbKernel:  # TODO could probably be cleaned-up somewhat, may need furthe
         # of the pixels (so depends on wv solution).
         wave_center = wave_kernels[0, :]
 
-        # Use the wavelength solution to create a mapping.
-        # First find the kernels that fall on the detector.
+        # Use the wavelength solution to create a mapping between pixels and wavelengths
+        # First find the all kernels that fall on the detector.
         wave_min = np.amin(wave_map[wave_map > 0])
         wave_max = np.amax(wave_map[wave_map > 0])
         i_min = np.searchsorted(wave_center, wave_min)  # TODO searchsorted has offsets?
@@ -1512,6 +1512,83 @@ def finite_zeroth_d(grid):
     return identity(len(grid))
 
 
+def get_tikho_matrix(grid, n_derivative, d_grid=True, estimate=None, pwr_law=0):
+    """
+    Wrapper to return the tikhonov matrix given a grid and the derivative degree.
+    Parameters
+    ----------
+    grid: 1d array-like
+        grid where the tikhonov matrix is projected
+    n_derivative: int
+        degree of derivative. Possible values are 1 or 2
+    d_grid: bool
+        Whether to divide the differential operator by the grid differences,
+        which corresponds to an actual approximation of the derivative,
+        or not.
+    estimate: callable (preferably scipy.interpolate.UnivariateSpline)
+        Estimate of the solution on which the tikhonov matrix is applied.
+        Must be a function of `grid`. If UnivariateSpline, then the derivatives
+        are given directly (so best option), otherwise the tikhonov matrix will be
+        applied to `estimate(grid)`. Note that it is better to use `d_grid=True`
+    pwr_law: float
+        Power law applied to the scale differentiated estimate,
+        so the estimate of tikhonov_matrix.dot(solution).
+        It will be applied as follow:
+        norm_factor * scale_factor.dot(tikhonov_matrix)
+        where scale_factor = 1/(estimate_derivative)**pwr_law
+        and norm_factor = 1/sum(scale_factor)
+
+    Returns
+    -------
+    The tikhonov matrix
+    """
+    if d_grid:
+        input_grid = grid
+    else:
+        input_grid = np.arange(len(grid))
+
+    if n_derivative == 1:
+        t_mat = finite_first_d(input_grid)
+    elif n_derivative == 2:
+        t_mat = finite_second_d(input_grid)
+    else:
+        raise ValueError('Mode not valid')
+
+    if estimate is not None:
+        if hasattr(estimate, 'derivative'):
+            # Get the derivatives directly from the spline
+            if n_derivative == 1:
+                derivative = estimate.derivative(n=n_derivative)
+                tikho_factor_scale = derivative(grid[:-1])
+            elif n_derivative == 2:
+                derivative = estimate.derivative(n=n_derivative)
+                tikho_factor_scale = derivative(grid[1:-1])
+        else:
+            # Apply tikho matrix on estimate
+            tikho_factor_scale = t_mat.dot(estimate(grid))
+
+        # Make sure all positive
+        tikho_factor_scale = np.abs(tikho_factor_scale)
+        # Apply power law
+        # (similar to 'kunasz1973'?)
+        tikho_factor_scale = np.power(tikho_factor_scale, -pwr_law)
+        # Normalize
+        valid = np.isfinite(tikho_factor_scale)
+        tikho_factor_scale /= np.sum(tikho_factor_scale[valid])
+
+        # If some values are not finite, set to the max value
+        # so it will be more regularized
+        valid = np.isfinite(tikho_factor_scale)
+        if not valid.all():
+            value = np.max(tikho_factor_scale[valid])
+            tikho_factor_scale[~valid] = value
+
+        # Apply to tikhonov matrix
+        t_mat = diags(tikho_factor_scale).dot(t_mat)
+
+    return t_mat
+
+
 def curvature_finite(factors, log_reg2, log_chi2):
     ''' 
     Compute the curvature in log space using finite differences
@@ -1555,7 +1632,7 @@ def curvature_finite(factors, log_reg2, log_chi2):
 
 
 def get_finite_derivatives(x_array, y_array):
-    ''' Compute first and second finite derivatives'''
+    """ Compute first and second finite derivatives """
     
     # Compute first finite derivative
     first_d = np.diff(y_array) / np.diff(x_array)
@@ -1689,11 +1766,34 @@ class TikhoTests(dict):
 
         # Compute the (reduced?) chi^2 for all tests
         chi2 = np.nansum(tests['error']**2, axis=-1)
+        # Remove residual dimensions
+        chi2 = chi2.squeeze()
 
         # Normalize by the number of data points
         chi2 /= n_points
         
         return chi2
+
+    def compute_curvature(self, tests=None):
+
+        # If not given, take the tests from the object
+        if tests is None:
+            tests = self
+
+        # Get relevant quantities from tests
+        factors = tests["factors"]
+
+        # Compute the curvature...
+        # Get chi2 from TikhoTests method
+        chi2 = tests.compute_chi2()
+        # Get the norm-2 of the regularisation term
+        reg2 = np.nansum(tests['reg'] ** 2, axis=-1)
+
+        # Compute curvature in log space
+        args = (factors, np.log10(chi2), np.log10(reg2))
+        factors, curv = curvature_finite(*args)
+
+        return factors, curv
 
     def _check_plot_inputs(self, fig, ax, label, tests):
         """
@@ -1778,6 +1878,71 @@ class TikhoTests(dict):
         ax.set_xlabel("Scale factor")
         ylabel = r'System error '
         ylabel += r'$\left(||\mathbf{Ax-b}||^2_2\right)$'
+        ax.set_ylabel(ylabel)
+
+        return fig, ax
+
+    def d_error_plot(self, fig=None, ax=None, label=None, tests=None,
+                   test_key=None, y_val=None):
+        """
+        Plot error derivative as a function of factors.
+        The keyword 'factors' is needed either in `tests` input
+        or in `self.tests`.
+
+        Parameters
+        ----------
+        fig: matplotlib figure, optional
+            Figure to use for plot
+            If not given and ax is None, new figure is initiated
+        ax: matplotlib axis, optional
+            axis to use for plot. If not given, a new axis is initiated.
+        label: str, optional
+            label too put in legend
+        tests: dictionnary or TikhoTests, optional
+            tests. If not specified, `self.tests` is used
+        test_key: str, optional
+            which key to use in self.tests or the input kwargs `tests`.
+            If not specified, the mean of the euclidian norm-2
+            of the 'error' key will be used. This corresponds to the reduced chi^2.
+        y_val: array-like, optional
+            y values to plot. Same length as factors.
+
+        Returns
+        ------
+        fig, ax
+        """
+
+        # Manage method's inputs and defaults
+        args = (fig, ax, label, tests)
+        fig, ax, label, tests = self._check_plot_inputs(*args)
+
+        # What y value do we plot?
+        if y_val is None:
+            # Use tests to plot y_val
+            if test_key is None:
+                # Default is euclidian norm of error.
+                # In other words, the chi^2.
+                y_val = self.compute_chi2()
+            else:
+                y_val = tests[test_key]
+
+        # Take factors from test_dict
+        factors = tests['factors']
+
+        # Compute finite derivative
+        x_log = np.log10(factors)
+        y_val = np.diff(y_val) / np.diff(x_log)
+
+        # Update size of factors to fit derivatives
+        # Equivalent to derivative on the left side of the nodes
+        factors = factors[1:]
+
+        # Plot
+        ax.semilogx(factors, y_val, label=label)
+
+        # Labels
+        ax.set_xlabel("Scale factor")
+        ylabel = r'System error derivative'
         ax.set_ylabel(ylabel)
 
         return fig, ax
