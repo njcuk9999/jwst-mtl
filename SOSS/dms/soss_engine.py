@@ -182,7 +182,6 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
         # Init the pixel mapping (b_n) matrices. Matrices that transforms the 1D spectrum to a the image pixels.
         self.pixel_mapping = [None for _ in range(self.n_orders)]
         self.i_grid = None
-        self.tikho = None
         self.tikho_mat = None
         self.w_t_wave_c = None
 
@@ -1012,26 +1011,9 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
                 tikho_kwargs = {}
             tikho_kwargs = {**default_kwargs, **tikho_kwargs}
             tikho = engine_utils.Tikhonov(b_matrix, pix_array, **tikho_kwargs)
-            # TODO: Remove self.tikho. Not necessary since the tikho_tests can be used instead
-            self.tikho = tikho
 
         # Test all factors
         tests = tikho.test_factors(factors)
-
-        # Generate logl using solutions for each factors
-        logl_list = []
-
-        # TODO: Remove all '-logl' references and replace by 'chi2' and
-        # save chi2 in tikho tests automatically
-        # Compute b_n only the first iteration. Then
-        # use the same value to rebuild the detector.
-        same = False
-        for sln in tests['solution']:
-            logl_list.append(self.compute_likelihood(sln, same=same))  # log_l
-            same = True
-
-        # Save in tikho's tests
-        tests['-logl'] = -1 * np.array(logl_list)
 
         # Save also grid
         tests["grid"] = self.wave_grid
@@ -1089,10 +1071,10 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
             factors, curv = tests.compute_curvature()
             val_to_minimize = curv
             
-        elif mode=='logl':
-            # Simply take the -logl and factors
+        elif mode=='chi2':
+            # Simply take the chi2 and factors
             factors = tests['factors']
-            val_to_minimize = tests['-logl']
+            val_to_minimize = tests['chi2']
             
         else:
             raise ValueError(f'`mode`={mode} is not valid.')
@@ -1151,7 +1133,7 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
 
                 # Labels
                 plt.xlabel(r"factor")
-                if mode=='logl':
+                if mode=='chi2':
                     plt.ylabel(r"$\log_{10}($\chi ^2$)$")
                 elif mode=='curvature':
                     plt.ylabel("Curvature")
@@ -1515,19 +1497,16 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
         """
 
         # Use tikhonov extraction from object
-        tikho = self.tikho
+        tikho_tests = self.tikho_tests
 
         # Init figure
         fig, ax = plt.subplots(2, 1, sharex=True, figsize=(8, 6))
 
-        # logl plot
-        tikho.error_plot(ax=ax[0], test_key='-logl')
+        # Chi2 plot
+        tikho_tests.error_plot(ax=ax[0])
 
-        # Error plot
-        tikho.error_plot(ax=ax[1])
-
-        # Labels
-        ax[0].set_ylabel(r'$\log{L}$ on detector')
+        # Derivative of the chi2
+        tikho_tests.d_error_plot(ax=ax[1])
 
         # Other details
         fig.tight_layout()
