@@ -1751,8 +1751,12 @@ class TikhoTests(dict):
         # Save attributes
         self.n_points = n_points
         self.name = None
-        
+
+        # Initialize so it behaves like a dictionnary
         super().__init__(test_dict)
+
+        # Save the chi2
+        self['chi2'] = self.compute_chi2()
         
     def compute_chi2(self, tests=None, n_points=None):
         
@@ -1785,7 +1789,7 @@ class TikhoTests(dict):
 
         # Compute the curvature...
         # Get chi2 from TikhoTests method
-        chi2 = tests.compute_chi2()
+        chi2 = self['chi2']
         # Get the norm-2 of the regularisation term
         reg2 = np.nansum(tests['reg'] ** 2, axis=-1)
 
@@ -1854,7 +1858,7 @@ class TikhoTests(dict):
             if test_key is None:
                 # Default is euclidian norm of error.
                 # In other words, the chi^2.
-                y_val = self.compute_chi2()
+                y_val = self['chi2']
             else:
                 y_val = tests[test_key]
                 
@@ -1922,7 +1926,7 @@ class TikhoTests(dict):
             if test_key is None:
                 # Default is euclidian norm of error.
                 # In other words, the chi^2.
-                y_val = self.compute_chi2()
+                y_val = self['chi2']
             else:
                 y_val = tests[test_key]
 
@@ -1982,7 +1986,7 @@ class TikhoTests(dict):
 
         # Compute euclidian norm of error (||A.x - b||).
         # In other words, the chi^2.
-        err_norm = self.compute_chi2()
+        err_norm = self['chi2']
 
         # Compute norm of regularisation term
         reg_norm = np.nansum(tests['reg']**2, axis=-1)
