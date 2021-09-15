@@ -17,9 +17,8 @@ import webbpsf
 from SOSS.trace import tracepol as tp
 from SOSS.extract.empirical_trace import centroid as ctd
 from SOSS.extract.empirical_trace import plotting as plotting
-from SOSS.extract.overlap import TrpzOverlap, TrpzBox
-from SOSS.extract.throughput import ThroughputSOSS
-from SOSS.extract.convolution import WebbKer
+from SOSS.dms.soss_engine import ExtractionEngine
+from SOSS.extract.engine_legacy import ThroughputSOSS, WebbKer
 
 
 def build_empirical_trace(clear, F277W, filename='spatial_profile.fits',
@@ -479,7 +478,7 @@ def construct_order2(clear, ref_file_args, extract_params):
     '''
 
     # Set up the extraction.
-    extra = TrpzOverlap(*ref_file_args, **extract_params)
+    extra = ExtractionEngine(*ref_file_args, **extract_params)
     # Preform the extraction with only the first order.
     f_k = extra.extract(data=clear)
     # Rebuild the detector.
@@ -532,7 +531,7 @@ def get_ref_file_args(o1frame):
     ker_list = [WebbKer(wv_map) for wv_map in wave_maps]
 
     # Put all inputs from reference files in a list
-    ref_file_args = [spat_pros, wave_maps, thrpt_list, ker_list]
+    ref_file_args = [wave_maps, spat_pros, thrpt_list, ker_list]
 
     return ref_file_args
 

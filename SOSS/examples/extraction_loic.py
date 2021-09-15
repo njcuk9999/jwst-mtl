@@ -45,31 +45,33 @@ def readtrace(os):
 
 # Start of debugging code
 
+if False:
+    exposure_name = '/genesis/jwst/userland-soss/loic_review/tmp/clear_grayseed.fits'
+    data1, dimy1, dimx1, os1 = readsim(exposure_name)
+    nint1 = 1
+    method_label1 = 'Noiseless Convolved Trace, grey pixels, os={:}'.format(os1)
+    x1, y1, w1 = readtrace(os1)
+    box_aperture = soss.box_aperture(data1, x1, y1, os=os1, box_width=75.0)
+    hdu = fits.PrimaryHDU()
+    hdu.data = box_aperture
+    hdu.writeto('/genesis/jwst/userland-soss/loic_review/box_aperture.fits', overwrite=True)
+    flux1 = soss.aperture_extract(data1, x1, box_aperture, mask=None)
+    Flambda1 = soss.elecflux_to_flambda(flux1, w1)
 
-exposure_name = '/genesis/jwst/userland-soss/loic_review/tmp/clear_grayseed.fits'
-data1, dimy1, dimx1, os1 = readsim(exposure_name)
-nint1 = 1
-method_label1 = 'Noiseless Convolved Trace, grey pixels, os={:}'.format(os1)
-x1, y1, w1 = readtrace(os1)
-box_aperture = soss.box_aperture(data1, x1, y1, os=os1, box_width=75.0)
-hdu = fits.PrimaryHDU()
-hdu.data = box_aperture
-hdu.writeto('/genesis/jwst/userland-soss/loic_review/box_aperture.fits', overwrite=True)
-flux1 = soss.aperture_extract(data1, x1, box_aperture, mask=None)
-Flambda1 = soss.elecflux_to_flambda(flux1, w1)
 
-
-exposure_name = '/genesis/jwst/userland-soss/loic_review/tmp/clear_trace_grayseed.fits'
+exposure_name = '/genesis/jwst/userland-soss/loic_review/tmp/clear_000000_constantflambda.fits'
 data2, dimy2, dimx2, os2 = readsim(exposure_name)
 nint2 = 1
 method_label2 = 'Noiseless Seed Trace, grey pixels, os={:}'.format(os2)
 x2, y2, w2 = readtrace(os2)
-box_aperture = soss.box_aperture(data2, x2, y2, os=os2, box_width=75.0)
+box_aperture = soss.box_aperture(data2, x2, y2, os=os2, box_width=4*35.0)
 hdu = fits.PrimaryHDU()
-hdu.data = box_aperture
+hdu.data = soss.rebin(box_aperture, 4, flux_method='mean')
 hdu.writeto('/genesis/jwst/userland-soss/loic_review/box_aperture.fits', overwrite=True)
 flux2 = soss.aperture_extract(data2, x2, box_aperture, mask=None)
 Flambda2 = soss.elecflux_to_flambda(flux2, w2)
+
+sys.exit()
 
 exposure_name = '/genesis/jwst/userland-soss/loic_review/tmp/clear_binaryseed.fits'
 data3, dimy3, dimx3, os3 = readsim(exposure_name)

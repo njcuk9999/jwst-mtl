@@ -130,7 +130,7 @@ def starlimbdarkening(wave_angstrom, ld_type='flat'):
     return ld_coeff
 
 
-def starmodel(simuPars, pathPars, verbose=True):
+def starmodel(simuPars, pathPars, tracePars, throughput, verbose=True):
     """
     From the simulation parameter file - determine what star atmosphere model
     to read or generate.
@@ -159,6 +159,39 @@ def starmodel(simuPars, pathPars, verbose=True):
         model_angstrom = np.array(tab['angstrom'])
         model_flambda = np.array(tab['W/m2/um/pixel'])
         model_ldcoeff = starlimbdarkening(model_angstrom)
+    elif (simuPars.modelfile == 'CONSTANT_ADU'):
+        if verbose: print('Star atmosphere model type: CONSTANT_ADU')
+        os = 1
+        spectral_order = 1
+        model_angstrom = np.linspace(8000, 30000, 2000001)
+        # Photon energy
+        h = sc_cst.Planck
+        c = sc_cst.speed_of_light
+        joule_per_photon = h * c / (model_angstrom * 1e-10)
+        # devise the dispersion
+        micron_per_pixel = spectral_dispersion(tracePars, os=os,
+                                               spectral_order=spectral_order,
+                                               wavelength_angstrom=model_angstrom)
+        # Throughput and Quantum yield resampling on same wavelength grid
+        order_index = np.where(np.array(throughput.response_order) == spectral_order)[0][0]
+        thruput = np.interp(model_angstrom, throughput.wv, throughput.response[order_index])
+        qyield = np.interp(model_angstrom, throughput.wv, throughput.quantum_yield)
+        # Constant adu per pixel definition
+        model_aduperpixel = np.ones_like(model_angstrom)
+        # Flambda is therefore
+        #model_flambda = model_aduperpixel * joule_per_photon / micron_per_pixel / thruput / qyield
+        model_flambda = model_aduperpixel * joule_per_photon / thruput / qyield
+        # limb darkening coefficient
+        model_ldcoeff = starlimbdarkening(model_angstrom)
+        plt.figure()
+        plt.plot(model_angstrom, thruput/np.max(thruput), label='Throughput')
+        plt.plot(model_angstrom, qyield/np.max(qyield), label='QYIELD')
+        plt.plot(model_angstrom, joule_per_photon/np.max(joule_per_photon), label='Photon/Joule')
+        plt.plot(model_angstrom, micron_per_pixel/np.max(micron_per_pixel), label='micron/pixel')
+        plt.plot(model_angstrom, model_flambda/np.max(model_flambda), label='Flambda')
+        plt.plot(model_angstrom, model_aduperpixel/np.max(model_aduperpixel), label='ADU/pixel')
+        plt.legend()
+        plt.show()
     else:
         if verbose: print('Star atmosphere model assumed to be on disk.')
         # Read Stellar Atmosphere Model (wavelength in angstrom and flux in energy/sec/wavelength)
@@ -168,6 +201,61 @@ def starmodel(simuPars, pathPars, verbose=True):
 
     return model_angstrom, model_flambda, model_ldcoeff
 
+def spectral_dispersion(tracePars, wavelength_angstrom=None, spectral_order=1, os=1):
+    '''
+    Devise the dispersion for a regular grid of x spectral pixels
+    :param tracePars:
+    :param spectral_order:
+    :param os:
+    :return:
+    '''
+    if not (wavelength_angstrom is None):
+        # Wanted dispersion on a wavelength grid
+        wave_micron = wavelength_angstrom*1e-4
+        x, y, mask = tp.wavelength_to_pix(wave_micron, tracePars,
+                                          m=spectral_order, frame='dms',
+                                          subarray='SUBSTRIP256', oversample=os)
+        pixel_per_micron = np.abs(np.gradient(x, wave_micron[1]-wave_micron[0]))
+        micron_per_pixel = 1 / pixel_per_micron
+        if False:
+            plt.figure()
+            plt.plot(wave_micron, micron_per_pixel)
+            plt.show()
+            sys.exit()
+    else:
+        # Wanted dispersion on the equally-spaced pixel grid
+        #
+        # The tp.pixel_to_wavelength() function is broken, so...
+        # First get the trace x, y, wave at high sampling
+        wave_micron_highR = np.linspace(0.5,5.5,100000)
+        x_highR, y_highR, mask = tp.wavelength_to_pix(wave_micron_highR, tracePars,
+                                          m=spectral_order, frame='dms',
+                                          subarray='SUBSTRIP256', oversample=os)
+        # Sort because interpolation requires it
+        ind = np.argsort(x_highR)
+        x_highR, y_highR, wave_micron_highR = x_highR[ind], y_highR[ind], wave_micron_highR[ind]
+        # Interpolate for wavelength on an equally-spaced grid of oversampled pixels
+        x = np.arange(2048*os)
+        wave_micron = np.interp(x, x_highR, wave_micron_highR)
+        # Take the derivative: dydx = np.gradient(y, dx)
+        micron_per_pixel = np.abs(np.gradient(wave_micron, x[1]-x[0]))
+
+    if False:
+        # Write this on disk
+        print('Writing dispersion on disk...')
+        meta = {'description': 'Optics model dispersion (micron/pixel)'}
+        formats = {'Wavelength': '{:.10f}', 'X': '{:.4f}', 'dispersion': '{:.10f}'}
+        tab = Table([wave_micron, x, micron_per_pixel], names=formats, meta=meta)
+        tab.write('/genesis/jwst/userland-soss/loic_review/dispersion_order1.ecsv', formats=formats)
+
+        plt.figure()
+        plt.plot(x, micron_per_pixel)
+        plt.plot(x, pixel_per_micron)
+        plt.plot(x_highR, wave_micron_highR)
+        plt.plot(x, wave_micron)
+        plt.show()
+
+    return micron_per_pixel
 
 def second2day(time_seconds):
     return(time_seconds / (3600.0*24.0))
@@ -559,7 +647,8 @@ def do_not_use_bin_star_model(mod_w, mod_f, mod_ldcoeff, w_grid, dw_grid):
     return
 
 
-def seed_trace_geometry(simuPars, tracePars, spectral_order, models_grid_wv):
+def seed_trace_geometry(simuPars, tracePars, spectral_order, models_grid_wv,
+                        specpix_offset=0, spatpix_offset=0):
     '''
     Sets up the seed trace image dimensions, position of the trace, left and
     right bounds of each spectral pixel, wavelength and width of each spectral
@@ -569,6 +658,8 @@ def seed_trace_geometry(simuPars, tracePars, spectral_order, models_grid_wv):
     :param tracePars:
     :param spectral_order:
     :param models_grid_wv:
+    :param specpix_offset: trace position offset to apply along the spectral direction
+    :param spatpix_offset: trace position offset to apply along the spatial direction
     :return:
     x1, x2 : the left and right position bounds of a pixel in pixel coordinates
              if pixel is 0, then x1 = -0.5 and x2 = 0.5
@@ -582,7 +673,7 @@ def seed_trace_geometry(simuPars, tracePars, spectral_order, models_grid_wv):
 
     # Will need to pass these down at the input line
     # TODO: implement a non-zero dx,dy functionality and stick it here
-    specmov, spatmov = 0.0, 0.0
+    specmov, spatmov = np.copy(specpix_offset), np.copy(spatpix_offset)
 
     # Dimensions of the real (unpadded but oversampled) image
     dimx = simuPars.xout * simuPars.noversample
@@ -627,13 +718,30 @@ def seed_trace_geometry(simuPars, tracePars, spectral_order, models_grid_wv):
     return x1, x2, y1, y2, w, dw, paddimy, paddimx, padposx, padposy
 
 
-def loictrace(simuPars, response, bin_models_wv, bin_starmodel_flux, bin_ld_coeff,
-    bin_planetmodel_rprs, time, itime, solin, spectral_order, tracePars):
 
+def loictrace(simuPars, response, bin_models_wv, bin_starmodel_flux, bin_ld_coeff,
+              bin_planetmodel_rprs, time, itime, solin, spectral_order, tracePars,
+              specpix_trace_offset=0, spatpix_trace_offset=0):
+    '''
+    :param simuPars:
+    :param response:
+    :param bin_models_wv:
+    :param bin_starmodel_flux:
+    :param bin_ld_coeff:
+    :param bin_planetmodel_rprs:
+    :param time:
+    :param itime:
+    :param solin:
+    :param spectral_order:
+    :param tracePars:
+    :param specpix_trace_offset:
+    :param spatpix_trace_offset:
+    :return:
+    '''
     # Get the pixel bounds, central wavelength and seed image dimensions
     x1, x2, y1, y2, w, dw, paddimy, paddimx, padposx, padposy = seed_trace_geometry(
-                simuPars, tracePars, spectral_order, bin_models_wv)
-
+                simuPars, tracePars, spectral_order, bin_models_wv,
+                specpix_offset=specpix_trace_offset, spatpix_offset=spatpix_trace_offset)
 
     # Create functions to interpolate over response and quantum yield
     quantum_yield_spline_function = interpolate.splrep(response.wv, response.quantum_yield, s=0)
@@ -836,9 +944,9 @@ def add_wings(convolved_slice, noversample):
 def generate_traces(savingprefix, pathPars, simuPars, tracePars, throughput,
                     star_angstrom, star_flux, ld_coeff,
                     planet_angstrom, planet_rprs,
-                    timesteps, granularitytime):
+                    timesteps, granularitytime,
+                    specpix_trace_offset=0.0, spatpix_trace_offset=0.0):
     '''
-
     :param pathPars:
     :param simuPars:
     :param tracePars:
@@ -850,6 +958,7 @@ def generate_traces(savingprefix, pathPars, simuPars, tracePars, throughput,
     :param planet_rprs:
     :param timesteps: clock time of the whole frame or integration series (in seconds)
     :param granularitytime: time duration of each frame or integration (in seconds)
+    :param trace_position_dxdy:
     :return:
     '''
 
@@ -926,11 +1035,26 @@ def generate_traces(savingprefix, pathPars, simuPars, tracePars, throughput,
     #nframes = np.size(simuPars.orderlist)
 
     # Defines the dimensions of the arrays, depends on the oversampling
-    print('Bug traceing. xpadding={:d} ypadding={:d}'.format(simuPars.xpadding, simuPars.ypadding))
+    #print('Bug traceing. xpadding={:d} ypadding={:d}'.format(simuPars.xpadding, simuPars.ypadding))
     xmax = (simuPars.xout + 2*simuPars.xpadding) * simuPars.noversample
     ymax = (simuPars.yout + 2*simuPars.ypadding) * simuPars.noversample
     #xmax =simuPars.xout*simuPars.noversample
     #ymax =simuPars.yout*simuPars.noversample
+
+    # If a time-dependent trace position offset array was passed as input,
+    # then use it.
+    # First initialize the offset arrays
+    specpix_offset_array = np.copy(specpix_trace_offset)
+    spatpix_offset_array = np.copy(spatpix_trace_offset)
+    # If a scalar value (a constant) was passed then make it an array matching the number of time steps
+    if (np.size(specpix_trace_offset) == 1):
+        specpix_offset_array = np.zeros_like(timesteps) + specpix_trace_offset
+    if (np.size(spatpix_trace_offset) == 1):
+        spatpix_offset_array = np.zeros_like(timesteps) + spatpix_trace_offset
+    # Make sure that the offset arrays have the same size as timesteps array
+    if np.size(specpix_offset_array) != np.size(spatpix_offset_array):
+        print('Error in generate_traces(), trace position offsets must be a constant or have the same size as timesteps.')
+        sys.exit()
 
     # Initialize the array that will contain all orders at a given time step
     nimage = len(simuPars.orderlist)
@@ -956,8 +1080,10 @@ def generate_traces(savingprefix, pathPars, simuPars, tracePars, throughput,
             else:
                 print('     Seeding flux onto a narrow trace on a 2D image')
                 pixels_t = loictrace(simuPars, throughput, star_angstrom_bin, star_flux_bin,
-                                      ld_coeff_bin, planet_rprs_bin,
-                                      currenttime, exposetime, solin, spectral_order, tracePars)
+                                     ld_coeff_bin, planet_rprs_bin,
+                                     currenttime, exposetime, solin, spectral_order, tracePars,
+                                     specpix_trace_offset=specpix_offset_array[t],
+                                     spatpix_trace_offset=spatpix_offset_array[t])
 
 
 
@@ -1156,7 +1282,7 @@ def write_dmsready_fits_init(imagelist, normalization_scale,
         if t == 0:
             # First image, use dimensiosn and create a large cube
             norders, dimy, dimx = np.shape(image)
-            print('Bug tracing - norder={:d} dimy={:d} dimx={:d}'.format(norders, dimy, dimx))
+            #print('Bug tracing - norder={:d} dimy={:d} dimx={:d}'.format(norders, dimy, dimx))
             fluxratecube = np.zeros((ntimesteps, dimy, dimx))
         # Scale the flux for each order by the normalization factor passed as input
         for m in range(norders):
@@ -1261,7 +1387,7 @@ def write_dmsready_fits(image, filename, os=1, xpadding=0, ypadding=0,
             print('Needs to have 2 to 4 dimensions.')
             sys.exit()
         # Now that data is in native pixels, remove the padding
-        if True:
+        if False:
             print('Bug tracing: size of data before removing padding')
             nint, ngroup, dimy, dimx = np.shape(data)
             print('nint={:}, ngroup={:}, dimy={:}, dimx={:}'.format(nint, ngroup, dimy, dimx))
