@@ -2,7 +2,7 @@ import sys
 
 import numpy as np
 import scipy.constants as sc_cst
-import SOSS.trace.tracepol as tp
+import trace.tracepol as tp   #SOSS.
 from scipy.interpolate import interp1d
 from scipy.optimize import least_squares
 

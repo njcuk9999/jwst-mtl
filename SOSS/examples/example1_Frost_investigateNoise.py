@@ -16,22 +16,22 @@
     # 'jwst_config_fpath', during the import phase
 github_path = '/home/kmorel/ongenesis/github/jwst-mtl/SOSS/'
     # Location of the simulation config file, as well as the output directory
-WORKING_DIR = '/home/kmorel/ongenesis/jwst-user-soss/' + 'PHY3030/'
+WORKING_DIR = '/home/kmorel/ongenesis/jwst-user-soss/PHY3030/'   # Loic_simu/
     # Configuration file for the NIRISS Instrument Team SOSS simulation pipeline
 jwst_config_fpath = 'jwst-mtl_configpath_kim.txt'
 
     # Choose whether to generate the simulation from scratch 
-generate_clear_tmp_simu = True     #False
+generate_clear_tmp_simu = True     # True
     # Optional override of the amount of integrations in the exposure.
     # By default, the amount is determined by the maximum amount of integrations
     # that can be fit into the observation time (given the detector readout array size).
     # If less integrations are advantageous, then specifying this parameter is the way to go
-nIntegrations_override = 3
+nIntegrations_override = 300
 #nIntegrations_override = None
 
     # Choose whether to format the generated (clear) simulation in a format
     # processable by the calwebb_detector1 pipeline (DMS)
-generate_clear_dmsReady_simu = True    #False
+generate_clear_dmsReady_simu = True    # True
 
     # Choose whether to add detector noise to the noiseless data
 add_noise_to_dmsReady_simu = True
@@ -49,7 +49,7 @@ noise_shopping_lists = [#[]
                        #,['darkframe']
                        #,['nonlinearity']
                        #,['superbias']
-                       #,['detector']
+                       ,['detector']
                        #,['photon','nonlinearity','superbias']
                        ]
 override_noise_files = True
@@ -73,7 +73,7 @@ extra_output_dir = ''
 
     # Some other self-explanatory boolean variables
     # They determine if stuff is printed or plotted at runtime
-doPlot = True
+doPlot = False
 doPrint = True
 verbose = doPrint
 
