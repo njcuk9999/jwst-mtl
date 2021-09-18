@@ -16,7 +16,7 @@
     # 'jwst_config_fpath', during the import phase
 github_path = '/home/kmorel/ongenesis/github/jwst-mtl/SOSS/'
     # Location of the simulation config file, as well as the output directory
-WORKING_DIR = '/home/kmorel/ongenesis/jwst-user-soss/PHY3030/'   # Loic_simu/
+WORKING_DIR = '/home/kmorel/ongenesis/jwst-user-soss/PHY3030/'
     # Configuration file for the NIRISS Instrument Team SOSS simulation pipeline
 jwst_config_fpath = 'jwst-mtl_configpath_kim.txt'
 
@@ -48,8 +48,8 @@ noise_shopping_lists = [#[]
                        #,['flatfield']
                        #,['darkframe']
                        #,['nonlinearity']
-                       #,['superbias']
-                       ,['detector']
+                       ,['superbias']
+                       #,['detector']
                        #,['photon','nonlinearity','superbias']
                        ]
 override_noise_files = True
@@ -197,7 +197,7 @@ simuPars = spgen.read_pars(pathPars.simulationparamfile, simuPars) #  Read in pa
 
 
 
-if generate_clear_tmp_simu is True:
+if generate_clear_tmp_simu or generate_clear_dmsReady_simu is True:
 
     
         # Instrument Throughput (Response)
@@ -276,7 +276,7 @@ if generate_clear_tmp_simu is True:
         print('spatpix_offset = ', spatpix_offset)
 
 
-
+if generate_clear_tmp_simu is True:
 
     ##################################
     ######### RUN SIMULATION #########
