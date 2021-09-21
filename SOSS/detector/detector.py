@@ -11,13 +11,16 @@ import argparse
 import timeseries
 
 
-def add_noise(filelist, normalize=False, zodibackg=True, flatfield=True, darkframe=True, nonlinearity=True,
-              superbias=True, detector=True, outputfilename=None, gain=1.61, dark_value=0.0414, full_well=72000):
+def add_noise(filelist, photonnoise=True, zodibackg=True, flatfield=True, darkframe=True, nonlinearity=True,
+              superbias=True, detector=True, normalize=False, outputfilename=None,
+              gain=1.61, dark_value=0.0414, full_well=72000):
     """
-    A function to add detector noise to the simulations.
+    A function to add detector noise to the simulations. It is assumed that the input exposure
+    is in electrons, not adu.
 
     :param filelist: list of string, the list of files to process
     :param normalize: bool, renormalize the simulation, default False.
+    :param photonnoise: bool, turn on or off photon noise for the science target flux
     :param zodibackg: bool, include the effect of the zodiacal background, default True.
     :param flatfield: bool, include the effect of the flatfield, default True.
     :param darkframe: bool, include the effect of darkcurrent, default True.
@@ -27,6 +30,7 @@ def add_noise(filelist, normalize=False, zodibackg=True, flatfield=True, darkfra
     :param gain: float, the electron per adu detector gain.
 
     :type filelist: list[str]
+    :type photonnoise: bool
     :type normalize: bool
     :type zodibackg: bool
     :type flatfield: bool
@@ -58,7 +62,8 @@ def add_noise(filelist, normalize=False, zodibackg=True, flatfield=True, darkfra
 
             tso.apply_normfactor(normfactor)
 
-        tso.add_poisson_noise()
+        if photonnoise:
+            tso.add_poisson_noise()
 
         if zodibackg:
             tso.add_zodiacal_background()

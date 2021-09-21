@@ -34,7 +34,7 @@ import matplotlib.pyplot as plt
 
 class TimeSeries(object):
 
-    def __init__(self, ima_path, gain=1.61, dark_value=0.0414, full_well=72000):
+    def __init__(self, ima_path, noisefiles_path, ref_path, gain=1.61, dark_value=0.0414, full_well=72000, ):
         """Make a TimeSeries object from a series of synthetic images."""
 
         self.ima_path = ima_path
@@ -67,6 +67,18 @@ class TimeSeries(object):
         self.gain = gain
         self.dark_value = dark_value
         self.full_well = full_well
+
+        # Reference files defaults
+        self.ref_nonlinearize = 'jwst_niriss_linearity_0011_bounds_0_60000_npoints_100_deg_5.fits'
+        self.ref_pca0 = 'niriss_pca0.fits'
+        self.ref_flatfield = 'jwst_niriss_flat_0181.fits'
+        self.ref_superbias = 'jwst_niriss_superbias_0137.fits'
+        self.ref_zodi = 'background_detectorfield_normalized.fits'
+
+
+
+
+
 
     def get_normfactor(self):
         """Determine a re-normalization factor so that the highest pixel value in the simulation
