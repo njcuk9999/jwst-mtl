@@ -50,7 +50,7 @@ noise_shopping_lists = [#[]
                        #,['nonlinearity']
                        ,['superbias']
                        #,['detector']
-                       #,['photon','nonlinearity','superbias']
+                       ,['photon', 'superbias']
                        ]
 override_noise_files = True
 ov_noiz_dir = '/genesis/jwst/jwst-ref-soss/noise_files/'

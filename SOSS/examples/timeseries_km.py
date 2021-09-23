@@ -8,9 +8,9 @@ import specgen.spgen as spgen
 from sys import path
 
 # Imports from the extraction
-from extract.overlap import TrpzOverlap
-from extract.throughput import ThroughputSOSS
-from extract.convolution import WebbKer
+#from extract.overlap import TrpzOverlap
+#from extract.throughput import ThroughputSOSS
+#from extract.convolution import WebbKer
 
 # Imports for plots
 import matplotlib.pyplot as plt
@@ -25,7 +25,7 @@ plt.rc('image', cmap='inferno')
 plt.rc('lines', lw=1)
 
 ####################################################################################
-WORKING_DIR = '/home/kmorel/ongenesis/jwst-user-soss/'
+WORKING_DIR = '/home/kmorel/ongenesis/jwst-user-soss/PHY3030/'
 
 sys.path.insert(0,"/genesis/jwst/jwst-ref-soss/fortran_lib/")
 
@@ -44,18 +44,19 @@ gain = 1.6   # é per adu
 ####################################################################################
 # LOAD SIMULATIONS
 # NOISY
-noisy_rateints = fits.open('/genesis/jwst/userland-soss/loic_review/timeseries_20210806_forKim/'
-                           'IDTSOSS_clear_noisy_rateints.fits')
+#noisy_rateints = fits.open('/genesis/jwst/userland-soss/loic_review/timeseries_20210806_forKim/'
+ #                          'IDTSOSS_clear_noisy_rateints.fits')
+noisy_rateints = fits.open(WORKING_DIR + 'IDTSOSS_clear_noisy--rateints.fits')
 
 # Noisy images for extraction
 data_noisy = noisy_rateints[1].data  # Images of flux [adu/s]
 data_noisy = data_noisy.astype('float64', copy=False)
-delta_noisy = noisy_rateints[2].data  # Errors [adu/s]
-delta_noisy = delta_noisy.astype('float64', copy=False)
+#delta_noisy = noisy_rateints[2].data  # Errors [adu/s]
+#delta_noisy = delta_noisy.astype('float64', copy=False)
 dq = noisy_rateints[3].data  # Data quality
 i = np.where(dq % 2 != 0)  # Odd values of dq = DO NOT USE these pixels
 data_noisy[i[0], i[1], i[2]] = 0.
-delta_noisy[i[0], i[1], i[2]] = 0.
+#delta_noisy[i[0], i[1], i[2]] = 0.
 
 # NOISELESS
 clear = fits.open('/genesis/jwst/userland-soss/loic_review/timeseries_20210806_forKim/IDTSOSS_clear.fits')
@@ -259,12 +260,12 @@ x, y, w = box_kim.readtrace(os=1)
 fbox_noiseless = np.zeros(shape=(np.shape(data_noiseless)[0], np.shape(data_noiseless)[2]), dtype='float')
 fbox_noisy = np.zeros(shape=(np.shape(data_noisy)[0], np.shape(data_noisy)[2]), dtype='float')
 
-radius_pixel = 35  # Radius for box extraction
+radius_pixel = 30  # Radius for box extraction
 oversample = 4.  # Oversampling of the simulation
 
 for t in range(np.shape(data_noiseless)[0]):  # For each image of the timeseries
-    fbox_noiseless[t] = box_kim.flambda_adu(x, data_noiseless[t], y, radius_pixel=radius_pixel) / oversample * gain   # [e⁻/s]
-    fbox_noisy[t] = box_kim.flambda_adu(x, data_noisy[t], y, radius_pixel=radius_pixel) / oversample * gain   # [e⁻/s]
+    fbox_noiseless[t] = box_kim.flambda_adu(x, data_noiseless[t], y, radius_pixel=radius_pixel) / oversample   # [adu/s]
+    fbox_noisy[t] = box_kim.flambda_adu(x, data_noisy[t], y, radius_pixel=radius_pixel) / oversample  # [adu/s]
 
 ####################################################################################
 def normalization(f_lambda, t1, t4):
@@ -292,22 +293,26 @@ def fit_resFunc(coeff, x, y):
 # NOISELESS
 data = data_noiseless
 
-if True:  # Tikhonov extraction
+if False:  # Tikhonov extraction
     with fits.open(WORKING_DIR + "timeseries/lam_bin_array_clear.fits") as hdulist:
         lam_array = hdulist[0].data   # [um]
         lam_array = lam_array[0]   # [um]
 
     with fits.open(WORKING_DIR + "timeseries/f_bin_array_clear.fits") as hdulist:
         f_array = hdulist[0].data * gain   # [é/s]
-if False:   # Box extraction
+if True:   # Box extraction
     lam_array = w
     f_array = fbox_noiseless
 
-start = 6   # To avoid the first deviating points
-t1 = 97   # * 5. * 5.491 / 60  # [min]
-t2 = 163   # * 5. * 5.491 / 60  # [min]
-t3 = 274   # * 5. * 5.491 / 60  # [min]
-t4 = 341   # * 5. * 5.491 / 60  # [min]
+start = 0   # To avoid the first deviating points
+# t1 = 97   # * 5. * 5.491 / 60  # [min]
+# t2 = 163   # * 5. * 5.491 / 60  # [min]
+# t3 = 274   # * 5. * 5.491 / 60  # [min]
+# t4 = 341   # * 5. * 5.491 / 60  # [min]
+t1 = 95   # * 5. * 5.491 / 60  # [min]
+t2 = 155   # * 5. * 5.491 / 60  # [min]
+t3 = 283   # * 5. * 5.491 / 60  # [min]
+t4 = 343   # * 5. * 5.491 / 60  # [min]
 
 time = np.arange(f_array.shape[0])
 time_min = time * 5. * 5.491 / 60.  # [min]
@@ -366,14 +371,14 @@ depth_clear = np.copy(depth)
 # NOISY
 data = data_noisy
 
-if True:   # Tikhonov extraction
+if False:   # Tikhonov extraction
     with fits.open(WORKING_DIR + "timeseries/lam_bin_array.fits") as hdulist:
         lam_array = hdulist[0].data   # [um]
         lam_array = lam_array[0]   # [um]
 
     with fits.open(WORKING_DIR + "timeseries/f_bin_array.fits") as hdulist:
         f_array = hdulist[0].data * gain   # [é/s]
-if False:   # Tikhonov extraction
+if True:   # Box extraction
     lam_array = w
     f_array = fbox_noisy
 
@@ -386,22 +391,24 @@ f_white_sum = normalization(f_white_sum, t1, t4)
 f_white = np.sum(f_array, axis=1)   # Real white light curve
 f_white_norm = normalization(f_white, t1, t4)   # Normalize it for polynomial fit
 
-# Fit a polynomial curve
-f_fit = np.concatenate((f_white_norm[start:t1], f_white_norm[t4:]))   # Flux to consider in fit
-# A third degree polynomial is the best fit
-p3, p2, p1, p0 = box_kim.robust_polyfit(fit_resFunc, time_fit, f_fit, [-2e-10, 2e-7, -5e-5, 1.005])   # [-0.05, 10., -1000., 1.1e7]
-poly_fit = np.poly1d([p3, p2, p1, p0])
-poly_white = poly_fit(time)
-# print(p3, p2, p1, p0)
-# Apply correction
-new_f_white = f_white / poly_white
+if False:
+    # Fit a polynomial curve
+    f_fit = np.concatenate((f_white_norm[start:t1], f_white_norm[t4:]))   # Flux to consider in fit
+    # A third degree polynomial is the best fit
+    p3, p2, p1, p0 = box_kim.robust_polyfit(fit_resFunc, time_fit, f_fit, [-2e-10, 2e-7, -5e-5, 1.005])   # [-0.05, 10., -1000., 1.1e7]
+    poly_fit = np.poly1d([p3, p2, p1, p0])
+    poly_white = poly_fit(time)
+    # print(p3, p2, p1, p0)
+    # Apply correction
+    new_f_white = f_white / poly_white
 
-# Deviations
-hors_t_white = np.concatenate((new_f_white[start:t1], new_f_white[t4:]))
-hors_t_white = np.nan_to_num(hors_t_white)
-std_dev = np.std(hors_t_white)   # Standard deviation
-photon_noise = np.sqrt(hors_t_white)
-rapport_white = std_dev / photon_noise
+if False:
+    # Deviations
+    hors_t_white = np.concatenate((new_f_white[start:t1], new_f_white[t4:]))
+    hors_t_white = np.nan_to_num(hors_t_white)
+    std_dev = np.std(hors_t_white)   # Standard deviation
+    photon_noise = np.sqrt(hors_t_white)
+    rapport_white = std_dev / photon_noise
 
 # Normalize the corrected white light curve
 new_f_white = normalization(new_f_white, t1, t4)
@@ -414,23 +421,24 @@ rapport_array = np.zeros(shape=(len(time_fit), f_array.shape[1]), dtype='float')
 rapport_array2 = np.zeros(shape=(f_array.shape[1]), dtype='float')
 
 for n in range(f_array.shape[1]):   # For each wavelength
-    f_fit = normalization(f_array[:, n], t1, t4)   # Flux to consider in fit
-    f_fit = np.concatenate((f_fit[start:t1], f_fit[t4:]))
-    f_fit = np.nan_to_num(f_fit)
-    p3_n, p2_n, p1_n, p0_n = box_kim.robust_polyfit(fit_resFunc, time_fit, f_fit, [p3, p2, p1, p0])
-    poly_fit = np.poly1d([p3_n, p2_n, p1_n, p0_n])
-    poly_f_n = poly_fit(time)
-    # Apply correction
-    new_f_array[:, n] /= poly_f_n
-
-    # Deviations
-    hors_t = np.concatenate((new_f_array[start:t1, n], new_f_array[t4:, n]))
-    hors_t = np.nan_to_num(hors_t)
-    std_dev = np.std(hors_t)
-    photon_noise = np.sqrt(hors_t)
-    #photon_noise = np.sqrt(np.mean(hors_t))
-    rapport_array[:, n] = std_dev / photon_noise
-    rapport_array2[n] = np.mean(rapport_array[:, n])
+    if False:
+        f_fit = normalization(f_array[:, n], t1, t4)   # Flux to consider in fit
+        f_fit = np.concatenate((f_fit[start:t1], f_fit[t4:]))
+        f_fit = np.nan_to_num(f_fit)
+        p3_n, p2_n, p1_n, p0_n = box_kim.robust_polyfit(fit_resFunc, time_fit, f_fit, [p3, p2, p1, p0])
+        poly_fit = np.poly1d([p3_n, p2_n, p1_n, p0_n])
+        poly_f_n = poly_fit(time)
+        # Apply correction
+        new_f_array[:, n] /= poly_f_n
+    if False:
+        # Deviations
+        hors_t = np.concatenate((new_f_array[start:t1, n], new_f_array[t4:, n]))
+        hors_t = np.nan_to_num(hors_t)
+        std_dev = np.std(hors_t)
+        photon_noise = np.sqrt(hors_t)
+        #photon_noise = np.sqrt(np.mean(hors_t))
+        rapport_array[:, n] = std_dev / photon_noise
+        rapport_array2[n] = np.mean(rapport_array[:, n])
 
     # Normalize corrected light curve
     f_array_norm[:, n] = normalization(f_array[:, n], t1, t4)
@@ -448,6 +456,7 @@ f_array_noisy = np.copy(f_array)
 new_f_array_noisy = np.copy(new_f_array)
 f_white_noisy = np.copy(f_white)
 new_f_white_noisy = np.copy(new_f_white)
+f_white_norm_noisy = np.copy(f_white_norm)
 rapport_array_noisy = np.copy(rapport_array)
 rapport_white_noisy = np.copy(rapport_white)
 lam_array_noisy = np.copy(lam_array)
@@ -466,30 +475,30 @@ hdu.writeto(WORKING_DIR + "timeseries/new_f_array_clear.fits", overwrite=True)
 relatDiff_depth = box_kim.relative_difference(depth_noisy, depth_clear)
 
 ####################################################################################
-# Model  (from William's notebook convolve_PMOD.ipynb)
-with fits.open(WORKING_DIR + "timeseries/wavs_mod_interp.fits") as hdulist:
-    wavs_mod_interp = hdulist[0].data   # [um]
-
-with fits.open(WORKING_DIR + "timeseries/convdata.fits") as hdulist:
-    convdata = hdulist[0].data   # [ppm]
+# # Model  (from William's notebook convolve_PMOD.ipynb)
+# with fits.open(WORKING_DIR + "timeseries/wavs_mod_interp.fits") as hdulist:
+#     wavs_mod_interp = hdulist[0].data   # [um]
+#
+# with fits.open(WORKING_DIR + "timeseries/convdata.fits") as hdulist:
+#     convdata = hdulist[0].data   # [ppm]
 
 ####################################################################################
 # PLOT
-if False:
+if True:
     plt.figure()
-    plt.plot(time_min[start:], f_white_norm[start:], '.', color='b')
-    plt.plot(time_min[start:], poly_white[start:], '--', lw=2,  color='r', label='Polynomial fit')
+    plt.plot(time_min, f_white_noisy, '.', color='b')
+    #plt.plot(time_min[start:], poly_white[start:], '--', lw=2,  color='r', label='Polynomial fit')
     plt.xlabel('Time [min]')
     plt.ylabel(r'Normalized flux')
     plt.legend()
-
-if False:
-    i = 0
+    print(np.shape(f_white_noisy))
+if True:
+    i = 1000
     plt.figure()
     plt.plot(time_min[:], new_f_array_noisy[:, i], '.', color='b', label=r'$\lambda$ = {} $\mu$m'.format(np.around(lam_array_noisy[i], decimals=3)))    # label='Avant'
     #plt.plot(time_min[start:], new_f_array_noisy[start:, i], '.', color='b', label='Après')
     plt.xlabel('Time [min]')
-    plt.ylabel(r'Flux [$e⁻/s$]')
+    plt.ylabel(r'Normalized flux [$adu/s$]')
     plt.legend()
 
 if False:
@@ -498,7 +507,7 @@ if False:
     plt.xlabel('Time [min]')
     plt.ylabel(r'Normalized flux')
 
-if True:
+if False:
     plt.figure()
     plt.plot(lam_array_noisy, rapport_array2, '.', color='b')
     plt.xlabel(r"Wavelength [$\mu m$]")
@@ -523,8 +532,6 @@ if False:
     plt.xlabel(r"Wavelength [$\mu m$]")
     plt.ylabel(r'Relative difference [ppm]')   # ($(R_p/R_s)²$)
 
-
-print(rapport_white_noisy)
 
 plt.show()
 
