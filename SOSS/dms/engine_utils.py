@@ -7,7 +7,8 @@ from warnings import warn
 from scipy.integrate import AccuracyWarning
 from scipy.sparse import find, diags, identity, csr_matrix
 from scipy.sparse.linalg import spsolve
-from scipy.interpolate import interp1d, RectBivariateSpline, UnivariateSpline
+from scipy.interpolate import interp1d, RectBivariateSpline, UnivariateSpline, Akima1DInterpolator
+from scipy.optimize import minimize_scalar, root_scalar
 
 # Plotting.
 import matplotlib.pyplot as plt
@@ -162,10 +163,10 @@ def get_wave_p_or_m(wave_map):
     delta_wave = np.diff(wave_map, axis=0)
 
     # Compute the wavelength values on the left and right edges of each pixel.
-    wave_left[1:] = wave_map[:-1] + delta_wave/2  # TODO check this logic.
-    wave_left[0] = wave_map[0] - delta_wave[0]/2
-    wave_right[:-1] = wave_map[:-1] + delta_wave/2
-    wave_right[-1] = wave_map[-1] + delta_wave[-1]/2
+    wave_left[1:] = wave_map[:-1] + delta_wave / 2  # TODO check this logic.
+    wave_left[0] = wave_map[0] - delta_wave[0] / 2
+    wave_right[:-1] = wave_map[:-1] + delta_wave / 2
+    wave_right[-1] = wave_map[-1] + delta_wave[-1] / 2
 
     # The outputs depend on the direction of the spectral axis.
     if (wave_right >= wave_left).all():
@@ -215,12 +216,11 @@ def oversample_grid(wave_grid, n_os=1):
 
     # Iterate over oversampling factors to generate new grid points.
     for i_os in range(1, n_os.max()):
-
         # Consider only intervals that are not complete yet.
         mask = n_os > i_os
 
         # Compute the new grid points.
-        sub_grid = (wave_grid[:-1][mask] + i_os*delta_wave[mask]/n_os[mask])
+        sub_grid = (wave_grid[:-1][mask] + i_os * delta_wave[mask] / n_os[mask])
 
         # Add the grid points to the oversampled wavelength grid.
         wave_grid_os = np.concatenate([wave_grid_os, sub_grid])
@@ -321,7 +321,7 @@ def _grid_from_map(wave_map, aperture, out_col=False):
     # Get central wavelength using PSF as weights.
     num = (aperture * wave_map).sum(axis=0)
     denom = aperture.sum(axis=0)
-    center_wv = num[mask]/denom[mask]
+    center_wv = num[mask] / denom[mask]
 
     # Make sure the wavelength values are in ascending order.
     sort = np.argsort(center_wv)
@@ -496,7 +496,7 @@ def _romberg_diff(b, c, k):
     :rtype: float or array[float]
     """
 
-    tmp = 4.0**k
+    tmp = 4.0 ** k
     diff = (tmp * c - b) / (tmp - 1.0)
 
     return diff
@@ -542,16 +542,16 @@ def _difftrap(fct, intervals, numtraps):
     if numtraps == 1:
         # Return the function evaluations for a single trapezoid.
         # Only points add the edge of the interval need to be halfed.
-        ordsum = 0.5*(fct(intervals[0]) + fct(intervals[1]))
+        ordsum = 0.5 * (fct(intervals[0]) + fct(intervals[1]))
 
     else:
         # Number of new points compared to lower 2**N multiple of trapezoids.
-        numtosum = numtraps/2
+        numtosum = numtraps / 2
 
         # Find coordinates of new points.
-        h = (intervals[1] - intervals[0])/numtosum
-        lox = intervals[0] + 0.5*h
-        points = lox[np.newaxis, :] + h*np.arange(numtosum)[:, np.newaxis]
+        h = (intervals[1] - intervals[0]) / numtosum
+        lox = intervals[0] + 0.5 * h
+        points = lox[np.newaxis, :] + h * np.arange(numtosum)[:, np.newaxis]
 
         # Evalaute and sum the new points.
         ordsum = np.sum(fct(points), axis=0)
@@ -728,7 +728,7 @@ class WebbKernel:  # TODO could probably be cleaned-up somewhat, may need furthe
         ncols = wave_map.shape[-1]
 
         # Create oversampled pixel position array  # TODO easier to read form?
-        pixels = np.arange(-(n_pix//2), n_pix//2 + 1/n_os, 1/n_os)
+        pixels = np.arange(-(n_pix // 2), n_pix // 2 + 1 / n_os, 1 / n_os)
 
         # `wave_kernel` has only the value of the central wavelength
         # of the kernel at each points because it's a function
@@ -748,12 +748,12 @@ class WebbKernel:  # TODO could probably be cleaned-up somewhat, may need furthe
         # RectBivariateSpline (at the end)
         # bbox = [min pixel, max pixel, min wv_center, max wv_center]
         bbox = [None, None,
-                wave_center[np.maximum(i_min-1, 0)],
-                wave_center[np.minimum(i_max+1, len(wave_center)-1)]]
+                wave_center[np.maximum(i_min - 1, 0)],
+                wave_center[np.minimum(i_max + 1, len(wave_center) - 1)]]
         #######################
 
         # Keep only kernels that fall on the detector.
-        kernels, wave_kernels = kernels[:, i_min:i_max+1], wave_kernels[:, i_min:i_max+1]
+        kernels, wave_kernels = kernels[:, i_min:i_max + 1], wave_kernels[:, i_min:i_max + 1]
         wave_center = np.array(wave_kernels[0, :])
 
         # Then find the pixel closest to each kernel center
@@ -763,7 +763,7 @@ class WebbKernel:  # TODO could probably be cleaned-up somewhat, may need furthe
         # the detector, so fit a 1-order polynomial to
         # extrapolate. The polynomial is also used to interpolate
         # for oversampling.
-        i_surround = np.arange(-(n_pix//2), n_pix//2 + 1)
+        i_surround = np.arange(-(n_pix // 2), n_pix // 2 + 1)
         poly = []
         for i_cen, wv_c in enumerate(wave_center):
             wv = np.ma.masked_all(i_surround.shape)
@@ -855,9 +855,9 @@ class WebbKernel:  # TODO could probably be cleaned-up somewhat, may need furthe
 
         # Compute a_pix and b_pix from the equation:
         # pix = a_pix * lambda + b_pix
-        a_pix = 1 / (a_c * poly[i_wv_c, 0] + b_c * poly[i_wv_c+1, 0])
-        b_pix = -(a_c * poly[i_wv_c, 1] + b_c * poly[i_wv_c+1, 1])
-        b_pix /= (a_c * poly[i_wv_c, 0] + b_c * poly[i_wv_c+1, 0])
+        a_pix = 1 / (a_c * poly[i_wv_c, 0] + b_c * poly[i_wv_c + 1, 0])
+        b_pix = -(a_c * poly[i_wv_c, 1] + b_c * poly[i_wv_c + 1, 1])
+        b_pix /= (a_c * poly[i_wv_c, 0] + b_c * poly[i_wv_c + 1, 0])
 
         # Compute pixel values
         pix = a_pix * wave + b_pix
@@ -871,8 +871,8 @@ class WebbKernel:  # TODO could probably be cleaned-up somewhat, may need furthe
 
         # Make sure it's not negative, and put out of range values to zero.
         webbker[webbker < 0] = 0
-        webbker[pix > n_pix//2] = 0
-        webbker[pix < -(n_pix//2)] = 0
+        webbker[pix > n_pix // 2] = 0
+        webbker[pix < -(n_pix // 2)] = 0
 
         return webbker
 
@@ -891,7 +891,7 @@ class WebbKernel:  # TODO could probably be cleaned-up somewhat, may need furthe
         image = np.clip(self.kernels, np.min(self.kernels[self.kernels > 0]), np.inf)
 
         # plot
-        plt.pcolormesh(self.wave_center, self.pixels,  image, norm=LogNorm())
+        plt.pcolormesh(self.wave_center, self.pixels, image, norm=LogNorm())
 
         # Labels and others
         plt.colorbar(label="Kernel")
@@ -923,7 +923,7 @@ def gaussians(x, x0, sig, amp=None):
 
     # Amplitude term
     if amp is None:
-        amp = 1/np.sqrt(2 * np.pi * sig**2)
+        amp = 1 / np.sqrt(2 * np.pi * sig ** 2)
 
     values = amp * np.exp(-0.5 * ((x - x0) / sig) ** 2)
 
@@ -986,17 +986,17 @@ def _get_wings(fct, grid, h_len, i_a, i_b):
     # Add the left value on the grid
     # Possibility that it falls out of the grid;
     # take first value of the grid if so.
-    i_grid = np.max([0, i_a-h_len])
+    i_grid = np.max([0, i_a - h_len])
 
     # Save the new grid
-    grid_new = grid[i_grid:i_b-h_len]
+    grid_new = grid[i_grid:i_b - h_len]
 
     # Re-use dummy variable `i_grid`
     i_grid = len(grid_new)
 
     # Compute kernel at the left end.
     # `i_grid` accounts for smaller length.
-    ker = fct(grid_new, grid[i_b-i_grid:i_b])
+    ker = fct(grid_new, grid[i_b - i_grid:i_b])
     left[-i_grid:] = ker
 
     # Add the right value on the grid
@@ -1004,9 +1004,9 @@ def _get_wings(fct, grid, h_len, i_a, i_b):
     # take last value of the grid if so.
     # Same steps as the left end (see above)
     i_grid = np.min([n_k, i_b + h_len])
-    grid_new = grid[i_a+h_len:i_grid]
+    grid_new = grid[i_a + h_len:i_grid]
     i_grid = len(grid_new)
-    ker = fct(grid_new, grid[i_a:i_a+i_grid])
+    ker = fct(grid_new, grid[i_a:i_a + i_grid])
     right[:i_grid] = ker
 
     return left, right
@@ -1037,14 +1037,14 @@ def trpz_weight(grid, length, shape, i_a, i_b):
     i_grid = np.arange(i_a, i_b)[None, :] + i_grid[:-1, :]
 
     # Set values out of grid to -1
-    i_bad = (i_grid < 0) | (i_grid >= len(grid)-1)
+    i_bad = (i_grid < 0) | (i_grid >= len(grid) - 1)
     i_grid[i_bad] = -1
 
     # Delta lambda
     d_grid = np.diff(grid)
 
     # Compute weights from trapezoidal integration
-    weight = 1/2 * d_grid[i_grid]
+    weight = 1 / 2 * d_grid[i_grid]
     weight[i_bad] = 0
 
     # Fill output
@@ -1128,7 +1128,7 @@ def fct_to_array(fct, grid, grid_range, thresh=1e-5, length=None):
         n_h_len = (length - 1) // 2
 
         # Simply iterate to compute needed wings
-        for h_len in range(1, n_h_len+1):
+        for h_len in range(1, n_h_len + 1):
             # Compute next left and right ends of the kernel
             left, right = _get_wings(fct, grid, h_len, i_a, i_b)
 
@@ -1141,7 +1141,7 @@ def fct_to_array(fct, grid, grid_range, thresh=1e-5, length=None):
     else:
         raise ValueError("`length` must be odd.")
 
-    return out*weights
+    return out * weights
 
 
 def cut_ker(ker, n_out=None, thresh=None):
@@ -1208,13 +1208,13 @@ def cut_ker(ker, n_out=None, thresh=None):
         # Add condition in case the kernel is larger
         # than the grid where it's projected.
         if i_k < n_k_c:
-            ker[:i_left-i_k, i_k] = 0
+            ker[:i_left - i_k, i_k] = 0
 
     for i_k in range(i_right + 1 - n_ker, 0):
         # Add condition in case the kernel is larger
         # than the grid where it's projected.
         if -i_k <= n_k_c:
-            ker[i_right-n_ker-i_k:, i_k] = 0
+            ker[i_right - n_ker - i_k:, i_k] = 0
 
     return ker
 
@@ -1247,7 +1247,7 @@ def sparse_c(ker, n_k, i_zero=0):
 
     # Define each diagonal of the sparse convolution matrix
     diag_val, offset = [], []
-    for i_ker, i_k_c in enumerate(range(-h_len, h_len+1)):
+    for i_ker, i_k_c in enumerate(range(-h_len, h_len + 1)):
 
         i_k = i_zero + i_k_c
 
@@ -1370,6 +1370,7 @@ class NyquistKer:
     a function of thegrid and interpolate/extrapolate to get
     the kernel as a function of its position relative to the grid.
     """
+
     def __init__(self, grid, n_sampling=2, bounds_error=False,
                  fill_value="extrapolate", **kwargs):
         """
@@ -1438,8 +1439,8 @@ def finite_diff(x):
     n_x = len(x)
 
     # Build matrix
-    diff_matrix = diags([-1.], shape=(n_x-1, n_x))
-    diff_matrix += diags([1.], 1, shape=(n_x-1, n_x))
+    diff_matrix = diags([-1.], shape=(n_x - 1, n_x))
+    diff_matrix += diags([1.], 1, shape=(n_x - 1, n_x))
 
     return diff_matrix
 
@@ -1466,13 +1467,13 @@ def finite_second_d(grid):
     d_grid = d_matrix.dot(grid)
 
     # First derivative operator
-    first_d = diags(1./d_grid).dot(d_matrix)
+    first_d = diags(1. / d_grid).dot(d_matrix)
 
     # Second derivative operator
     second_d = finite_diff(grid[:-1]).dot(first_d)
 
     # don't forget the delta labda
-    second_d = diags(1./d_grid[:-1]).dot(second_d)
+    second_d = diags(1. / d_grid[:-1]).dot(second_d)
 
     return second_d
 
@@ -1499,7 +1500,7 @@ def finite_first_d(grid):
     d_grid = d_matrix.dot(grid)
 
     # First derivative operator
-    first_d = diags(1./d_grid).dot(d_matrix)
+    first_d = diags(1. / d_grid).dot(d_matrix)
 
     return first_d
 
@@ -1512,25 +1513,25 @@ def finite_zeroth_d(grid):
     return identity(len(grid))
 
 
-def get_tikho_matrix(grid, n_derivative, d_grid=True, estimate=None, pwr_law=0):
+def get_tikho_matrix(grid, n_derivative=1, d_grid=True, estimate=None, pwr_law=0):
     """
     Wrapper to return the tikhonov matrix given a grid and the derivative degree.
     Parameters
     ----------
     grid: 1d array-like
         grid where the tikhonov matrix is projected
-    n_derivative: int
+    n_derivative: int, optional
         degree of derivative. Possible values are 1 or 2
-    d_grid: bool
+    d_grid: bool, optional
         Whether to divide the differential operator by the grid differences,
         which corresponds to an actual approximation of the derivative,
         or not.
-    estimate: callable (preferably scipy.interpolate.UnivariateSpline)
+    estimate: callable (preferably scipy.interpolate.UnivariateSpline), optional
         Estimate of the solution on which the tikhonov matrix is applied.
         Must be a function of `grid`. If UnivariateSpline, then the derivatives
         are given directly (so best option), otherwise the tikhonov matrix will be
         applied to `estimate(grid)`. Note that it is better to use `d_grid=True`
-    pwr_law: float
+    pwr_law: float, optional
         Power law applied to the scale differentiated estimate,
         so the estimate of tikhonov_matrix.dot(solution).
         It will be applied as follow:
@@ -1609,39 +1610,39 @@ def curvature_finite(factors, log_reg2, log_chi2):
     # Make sure it is sorted according to the factors
     idx = np.argsort(factors)
     factors, log_chi2, log_reg2 = factors[idx], log_chi2[idx], log_reg2[idx]
-    
+
     # Get first and second derivatives
     chi2_deriv = get_finite_derivatives(factors, log_chi2)
     reg2_deriv = get_finite_derivatives(factors, log_reg2)
-    
+
     # Compute the curvature according to Hansen 2001
     # 
     # Numerator of the curvature
     numerator = chi2_deriv[0] * reg2_deriv[1]
     numerator -= reg2_deriv[0] * chi2_deriv[1]
     # Denominator of the curvature
-    denom = reg2_deriv[0]**2 + chi2_deriv[0]**2
+    denom = reg2_deriv[0] ** 2 + chi2_deriv[0] ** 2
     # Combined
-    curv = 2 * numerator / np.power(denom, 3/2)
-    
+    curv = 2 * numerator / np.power(denom, 3 / 2)
+
     # Since the curvature is not define at the ends of the array,
     # cut the factors array
     factors = factors[1:-1]
-    
+
     return factors, curv
 
 
 def get_finite_derivatives(x_array, y_array):
     """ Compute first and second finite derivatives """
-    
+
     # Compute first finite derivative
     first_d = np.diff(y_array) / np.diff(x_array)
     # Take the mean of the left and right derivative
     mean_first_d = 0.5 * (first_d[1:] + first_d[:-1])
-    
+
     # Compute second finite derivative
     second_d = 0.5 * np.diff(first_d) / (x_array[2:] - x_array[:-2])
-    
+
     return mean_first_d, second_d
 
 
@@ -1718,6 +1719,148 @@ def tikho_solve(a_mat, b_vec, t_mat, verbose=True, factor=1.0):
     return tikho.solve(factor=factor)
 
 
+def _get_interp_idx_array(idx, relative_range, max_length):
+    """ Generate array given the relative range around an index."""
+
+    # Convert to absolute index range
+    abs_range = [idx + d_idx for d_idx in relative_range]
+
+    # Make sure it's still a valid index
+    abs_range[0] = np.max([abs_range[0], 0])
+    abs_range[-1] = np.min([abs_range[-1], max_length])
+
+    # Convert to slice
+    out = np.arange(*abs_range, 1)
+
+    return out
+
+
+def _minimize_on_grid(factors, val_to_minimize, interpolate, interp_index=None, ax=None):
+    """ Find minimum of a grid using akima spline interpolation to get a finer estimate """
+
+    if interp_index is None:
+        interp_index = [-2, 4]
+
+    # The fit will be plot if required, so if ax is not None
+    if ax is None:
+        i_plot = False
+    else:
+        i_plot = True
+
+    # Only keep finite values
+    idx_finite = np.isfinite(val_to_minimize)
+    factors = factors[idx_finite]
+    val_to_minimize = val_to_minimize[idx_finite]
+
+    # Get position the minimum
+    idx_min = np.argmin(val_to_minimize)
+
+    # If the min is on the one of the boundary, then do not interpolate
+    if idx_min == 0 or idx_min == (len(val_to_minimize) - 1):
+        interpolate = False
+
+    if interpolate:
+        # Interpolate to get a finer estimate
+        #
+        # Une index only around the best value
+        max_length = len(val_to_minimize)
+        index = _get_interp_idx_array(idx_min, interp_index, max_length)
+
+        # Akima spline in log space
+        x_val, y_val = np.log10(factors[index]), val_to_minimize[index]
+        i_sort = np.argsort(x_val)
+        x_val, y_val = x_val[i_sort], y_val[i_sort]
+        fct = Akima1DInterpolator(x_val, y_val)
+
+        # Find min
+        bounds = (x_val.min(), x_val.max())
+        opt_args = {"bounds": bounds,
+                    "method": "bounded"}
+        min_fac = minimize_scalar(fct, **opt_args).x
+
+        # Plot the fit if required
+        if i_plot:
+            # Fitted sub-grid
+            ax.plot(10. ** x_val, y_val, ".")
+
+            # Show akima spline
+            x_new = np.linspace(*bounds, 100)
+            ax.plot(10. ** x_new, fct(x_new))
+
+            # Show minimum found
+            ax.plot(10. ** min_fac, fct(min_fac), "x")
+
+        # Back to linear scale
+        min_fac = 10. ** min_fac
+
+    else:
+        # Simply return the min value
+        # if no interpolation required
+        min_fac = factors[idx_min]
+
+        if i_plot:
+            # Show minimum found
+            ax.plot(min_fac, val_to_minimize[idx_min], "x")
+
+    return min_fac
+
+
+def _find_intersect(factors, y_val, thresh, interpolate, search_range=None):
+    """ Find the root of y_val - thresh (so the intersection between thresh and y_val) """
+
+    if search_range is None:
+        search_range = [0, 3]
+
+    # Only keep finite values
+    idx_finite = np.isfinite(y_val)
+    factors = factors[idx_finite]
+    y_val = y_val[idx_finite]
+
+    # Make sure sorted
+    idx_sort = np.argsort(factors)
+    factors, y_val = factors[idx_sort], y_val[idx_sort]
+
+    # Check if the threshold is reached
+    cond_below = (y_val < thresh)
+    if cond_below.any():
+        # Find where the threshold is crossed
+        idx_below = np.where(cond_below)[0]
+        # Take the largest index (so the highest factor)
+        idx_below = np.max(idx_below)
+        # If it happens to be the last element of the array...
+        if idx_below == (len(factors) - 1):
+            # ... no need to interpolate
+            interpolate = False
+    else:
+        # Take the lowest factor value
+        idx_below = 0
+        # No interpolation needed
+        interpolate = False
+
+    if interpolate:
+
+        # Interpolate with log10(factors) to get a finer estimate
+        x_val = np.log10(factors)
+        d_chi2_spl = interp1d(x_val, y_val - thresh, kind='linear')
+
+        # Use index only around the best value
+        max_length = len(y_val)
+        index = _get_interp_idx_array(idx_below, search_range, max_length)
+
+        # Find the root
+        bracket = [x_val[index[0]], x_val[index[-1]]]
+        best_val = root_scalar(d_chi2_spl, bracket=bracket).root
+
+        # Back to linear scale
+        best_val = 10. ** best_val
+
+    else:
+        # Simply return the value
+        best_val = factors[idx_below]
+
+    return best_val
+
+
 class TikhoTests(dict):
     """
     Class to save tikhonov tests for different factors.
@@ -1726,6 +1869,7 @@ class TikhoTests(dict):
     (here called `factors`).
     All the tests are stored in the attribute `tests` as a dictionnary
     """
+
     def __init__(self, test_dict=None, name=None):
         """
         test_dict: dictionnary of tests.
@@ -1738,7 +1882,7 @@ class TikhoTests(dict):
             n_points = 1
         else:
             n_points = len(test_dict['error'][0].squeeze())
-        
+
         # Save attributes
         self.n_points = n_points
         self.name = None
@@ -1748,26 +1892,43 @@ class TikhoTests(dict):
 
         # Save the chi2
         self['chi2'] = self.compute_chi2()
-        
+
     def compute_chi2(self, tests=None, n_points=None):
-        
+
         # Get number of data points
         if n_points is None:
             n_points = self.n_points
-        
+
         # If not given, take the tests from the object
         if tests is None:
             tests = self
 
         # Compute the (reduced?) chi^2 for all tests
-        chi2 = np.nansum(tests['error']**2, axis=-1)
+        chi2 = np.nansum(tests['error'] ** 2, axis=-1)
         # Remove residual dimensions
         chi2 = chi2.squeeze()
 
         # Normalize by the number of data points
         chi2 /= n_points
-        
+
         return chi2
+
+    def get_chi2_derivative(self):
+        """ Compute derivative of the chi2 with respect to log10(factors) """
+
+        # Get factors and chi2
+        chi2 = self['chi2']
+        factors = self['factors']
+
+        # Compute finite derivative
+        fac_log = np.log10(factors)
+        d_chi2 = np.diff(chi2) / np.diff(fac_log)
+
+        # Update size of factors to fit derivatives
+        # Equivalent to derivative on the left side of the nodes
+        factors = factors[1:]
+
+        return factors, d_chi2
 
     def compute_curvature(self, tests=None):
 
@@ -1789,6 +1950,94 @@ class TikhoTests(dict):
         factors, curv = curvature_finite(*args)
 
         return factors, curv
+
+    def best_tikho_factor(self, tests=None, interpolate=True, interp_index=None,
+                          i_plot=False, mode='curvature', thresh=0.01):
+        """Compute the best scale factor for Tikhonov regularisation.
+        It is determine by taking the factor giving the highest logL on
+        the detector or the highest curvature of the l-curve,
+        depending on the chosen mode.
+
+        Parameters
+        ----------
+        tests: dictionnary, optional
+            Results of tikhonov extraction tests
+            for different factors.
+            Must have the keys "factors" and "-logl".
+            If not specified, the tests from self.tikho.tests
+            are used.
+        interpolate: bool, optional
+            If True, use akima spline interpolation
+            to find a finer minimum. Default is true.
+        interp_index: 2 element list, optional
+            Index around the minimum value on the tested factors.
+            Will be used for the interpolation.
+            For example, if i_min is the position of
+            the minimum logL value and [i1, i2] = interp_index,
+            then the interpolation will be perform between
+            i_min + i1 and i_min + i2 - 1
+        i_plot: bool, optional
+            Plot the result of the minimization
+        mode: string
+            How to find the best factor: 'chi2', 'curvature' or 'd_chi2'.
+        thresh: float
+            Threshold use in 'd_chi2' mode. Find the highest factor where the
+            derivative of the chi2 derivative is below thresh.
+
+        Returns
+        -------
+        Best scale factor (float)
+        """
+
+        # Use pre-run tests if not specified
+        if tests is None:
+            tests = self
+
+        # Initiate ax to None
+        ax = None
+
+        # Depending of the mode (what do we minimize?)
+        if mode == 'curvature':
+            # Compute the curvature
+            factors, curv = tests.compute_curvature()
+
+            # Plot if needed
+            if i_plot:
+                fig, ax = self.curvature_plot(factors, curv)
+
+            # Find min factor
+            best_fac = _minimize_on_grid(factors, curv, interpolate, interp_index, ax)
+
+        elif mode == 'chi2':
+            # Simply take the chi2 and factors
+            factors = tests['factors']
+            y_val = tests['chi2']
+
+            # Plot if needed
+            if i_plot:
+                fig, ax = self.error_plot()
+
+            # Find min factor
+            best_fac = _minimize_on_grid(factors, y_val, interpolate, interp_index, ax)
+
+        elif mode == 'd_chi2':
+            # Compute the derivative of the chi2
+            factors, y_val = tests.get_chi2_derivative()
+
+            # Find intersection with threshold
+            best_fac = _find_intersect(factors, y_val, thresh, interpolate, interp_index)
+
+            # Plot if needed
+            if i_plot:
+                fig, ax = self.d_error_plot()
+                ax.axhline(thresh, linestyle='--')
+                ax.axvline(best_fac, linestyle='--')
+
+        else:
+            raise ValueError(f'`mode`={mode} is not valid.')
+
+        # Return estimated best scale factor
+        return best_fac
 
     def _check_plot_inputs(self, fig, ax, label, tests):
         """
@@ -1841,7 +2090,7 @@ class TikhoTests(dict):
 
         # Manage method's inputs
         args = (fig, ax, label, tests)
-        fig, ax, label, tests = self._check_plot_inputs(*args) 
+        fig, ax, label, tests = self._check_plot_inputs(*args)
 
         # What y value do we plot?
         if y_val is None:
@@ -1852,7 +2101,7 @@ class TikhoTests(dict):
                 y_val = self['chi2']
             else:
                 y_val = tests[test_key]
-                
+
         # Take factors from test_dict
         factors = tests['factors']
 
@@ -1878,7 +2127,7 @@ class TikhoTests(dict):
         return fig, ax
 
     def d_error_plot(self, fig=None, ax=None, label=None, tests=None,
-                   test_key=None, y_val=None):
+                     test_key=None, y_val=None):
         """
         Plot error derivative as a function of factors.
         The keyword 'factors' is needed either in `tests` input
@@ -1933,7 +2182,7 @@ class TikhoTests(dict):
         factors = factors[1:]
 
         # Plot
-        ax.semilogx(factors, y_val, label=label)
+        ax.loglog(factors, y_val, label=label)
 
         # Labels
         ax.set_xlabel("Scale factor")
@@ -1971,7 +2220,7 @@ class TikhoTests(dict):
         # Manage method's inputs
         args = (fig, ax, label, tests)
         fig, ax, label, tests = self._check_plot_inputs(*args)
-        
+
         # Get factors from test_dict
         factors = tests['factors']
 
@@ -1980,11 +2229,11 @@ class TikhoTests(dict):
         err_norm = self['chi2']
 
         # Compute norm of regularisation term
-        reg_norm = np.nansum(tests['reg']**2, axis=-1)
+        reg_norm = np.nansum(tests['reg'] ** 2, axis=-1)
 
         # Factors
         if factor_norm:
-            reg_norm *= factors**2
+            reg_norm *= factors ** 2
 
         # Plot
         ax.loglog(err_norm, reg_norm, '.:', label=label)
@@ -2004,6 +2253,48 @@ class TikhoTests(dict):
         ax.set_ylabel(ylabel)
 
         return fig, ax
+
+    def curvature_plot(self, factors, curv, fig=None, ax=None, label=None):
+        """
+        Plot curvature of the l_plot as a function of factors.
+        The keyword 'factors' is needed either in `tests` input
+        or in `self.tests`.
+
+        Parameters
+        ----------
+        factors: 1d array-like
+            tikhonov factors (x value for the plot)
+        curv: 1d array-like
+            curvature to plot (y value for the plot)
+        fig: matplotlib figure, optional
+            Figure to use for plot
+            If not given and ax is None, new figure is initiated
+        ax: matplotlib axis, optional
+            axis to use for plot. If not given, a new axis is initiated.
+        label: str, optional
+            label too put in legend
+        tests: dictionnary or TikhoTests, optional
+            tests. If not specified, `self.tests` is used
+
+        Returns
+        ------
+        fig, ax
+        """
+
+        # Manage method's inputs and defaults
+        args = (fig, ax, label, None)
+        fig, ax, label, _ = self._check_plot_inputs(*args)
+
+        # Plot
+        ax.semilogx(factors, curv, label=label)
+
+        # Labels
+        ax.set_xlabel("Scale factor")
+        ylabel = 'Curvature'
+        ax.set_ylabel(ylabel)
+
+        return fig, ax
+
 
 class Tikhonov:
     """
@@ -2032,7 +2323,7 @@ class Tikhonov:
             If True, solve the system only for valid indices. The 
             invalid values will be set to np.nan. Default is True.
         """
-        
+
         # Save input matrix
         self.a_mat = a_mat
         self.b_vec = b_vec
@@ -2043,13 +2334,13 @@ class Tikhonov:
         a_mat_2 = a_mat.T.dot(a_mat)  # squared model matrix
         result = (a_mat.T).dot(b_vec.T)
         idx_valid = (result.toarray() != 0).squeeze()  # valid indices to use if `valid` is True
-        
+
         # Save pre-computed matrix
         self.t_mat_2 = t_mat_2
         self.a_mat_2 = a_mat_2
         self.result = result
         self.idx_valid = idx_valid
-        
+
         # Save other attributes
         self.valid = valid
         self.verbose = verbose
@@ -2088,25 +2379,25 @@ class Tikhonov:
         idx_valid = self.idx_valid
 
         # Matrix gamma squared (with scale factor)
-        gamma_2 = factor**2 * t_mat_2
+        gamma_2 = factor ** 2 * t_mat_2
 
         # Finalize building matrix
         matrix = a_mat_2 + gamma_2
 
         # Initialize solution
         solution = np.full(matrix.shape[0], np.nan)
-        
+
         # Consider only valid indices if in valid mode
         if valid:
             idx = idx_valid
         else:
             idx = np.full(len(solution), True)
-            
+
         # Solve
         matrix = matrix[idx, :][:, idx]
         result = result[idx]
         solution[idx] = spsolve(matrix, result)
-        
+
         return solution
 
     def test_factors(self, factors):
@@ -2135,7 +2426,6 @@ class Tikhonov:
 
         # Test all factors
         for i_fac, factor in enumerate(factors):
-
             # Save solution
             sln.append(self.solve(factor))
 
@@ -2160,7 +2450,7 @@ class Tikhonov:
         reg = np.array(reg)
 
         # Save in a dictionnary
-        
+
         tests = TikhoTests({'factors': factors,
                             'solution': sln,
                             'error': err,
@@ -2235,7 +2525,7 @@ class Tikhonov:
 
                 # Default is euclidian norm of error.
                 # Similar to the chi^2.
-                y_val = np.nansum(test['error']**2, axis=-1)
+                y_val = np.nansum(test['error'] ** 2, axis=-1)
             else:
                 y_val = test[test_key]
 
@@ -2292,14 +2582,14 @@ class Tikhonov:
 
         # Compute euclidian norm of error (||A.x - b||).
         # Similar to the chi^2.
-        err_norm = np.nansum(test['error']**2, axis=-1)
+        err_norm = np.nansum(test['error'] ** 2, axis=-1)
 
         # Compute norm of regularisation term
-        reg_norm = np.nansum(test['reg']**2, axis=-1)
+        reg_norm = np.nansum(test['reg'] ** 2, axis=-1)
 
         # Factors
         if factor_norm:
-            reg_norm *= test['factors']**2
+            reg_norm *= test['factors'] ** 2
 
         # Plot
         ax.loglog(err_norm, reg_norm, '.:', label=label)
@@ -2322,7 +2612,6 @@ class Tikhonov:
 
 
 def main():
-
     return
 
 
