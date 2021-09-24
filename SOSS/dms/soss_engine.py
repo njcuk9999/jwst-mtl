@@ -912,12 +912,14 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
             TIkhonov regularisation matrix. scipy.sparse matrix
             are recommended.
         t_mat_func: callable, optional
-            Function use to generate `t_mat`is not specified.
+            Function use to generate `t_mat` is not specified.
             Will take `fargs` and `fkwargs`as imput.
+            Use the `engine_utils.get_tikho_matrix` as default.
         fargs: tuple, optional
-            Arguments passed to `t_mat_func`
+            Arguments passed to `t_mat_func`. Default is `(self.wave_grid, )`.
         fkwargs: dict, optional
-            Keywords arguments passed to `t_mat_func`
+            Keywords arguments passed to `t_mat_func`. Default is
+            `{'n_derivative': 1, 'd_grid': True, 'estimate': None, 'pwr_law': 0}`
         """
 
         # Generate the matrix with the function
@@ -932,13 +934,12 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
 
             # Default args
             if fargs is None:
-                # The arguments for `engine_utils.get_tikho_matrix` are
-                # `grid` and `n_derivative`
-                fargs = (self.wave_grid, 1)
+                # The argument for `engine_utils.get_tikho_matrix` is the wavelength grid
+                fargs = (self.wave_grid, )
             if fkwargs is None:
                 # The kwargs for `engine_utils.get_tikho_matrix` are
-                # d_grid = True, estimate = None, pwr_law = 0
-                fkwargs = {'d_grid': True, 'estimate': None, 'pwr_law': 0}
+                # n_derivative = 1, d_grid = True, estimate = None, pwr_law = 0
+                fkwargs = {'n_derivative': 1, 'd_grid': True, 'estimate': None, 'pwr_law': 0}
 
             # Call function
             t_mat = t_mat_func(*fargs, **fkwargs)
@@ -960,6 +961,54 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
             self.set_tikho_matrix(**kwargs)
 
         return self.tikho_mat
+
+    def estimate_tikho_factors(self, flux_estimate, log_range=(-4, 2), n_points=10):
+        """
+        Estimate an initial guess of the tikhonov factors. The output factor grid will
+        be used to find the best tikhonov factor. The flux_estimate is used to generate
+        a factor_guess. Then, a grid is constructed using
+        np.logspace(factor_guess + log_range[0], factor_guess + log_range[1], n_points)
+
+        Parameters
+        ----------
+        flux_estimate: callable
+            Estimate of the underlying flux (the solution f_k). Must be function
+            of wavelengths and it will be projected on self.wave_grid
+        log_range: tuple of 2 values, optional
+            range use to generate a grid around the estimation of the tikho factor.
+            It is in log space and relative. For example, log_range=(-1, 1) will
+            generate a grid spanning 2 orders of magnitude. Default is (-4, 2).
+        n_points: int, optional
+            Number of points on the grid. Default is 10
+
+        Returns
+        -------
+        factor grid
+        """
+        # Get some values from the object
+        mask, wave_grid = self.get_attributes('mask', 'wave_grid')
+
+        # Find the number of valid pixels
+        n_pixels = (~mask).sum()
+
+        # Project the estimate on the wavelength grid
+        estimate_on_grid = flux_estimate(wave_grid)
+
+        # Get the tikhonov matrix
+        tikho_matrix = self.get_tikho_matrix()
+
+        # Estimate the norm-2 of the regularisation term
+        reg_estimate = tikho_matrix.dot(estimate_on_grid)
+        reg_estimate = np.nansum(np.array(reg_estimate) ** 2)
+
+        # Estimate of the factor
+        factor_guess = (n_pixels / reg_estimate) ** 0.5
+
+        # Make the grid
+        factor_guess = np.log10(factor_guess)
+        factors = np.logspace(factor_guess + log_range[0], factor_guess + log_range[1] , n_points)
+
+        return factors
 
     def get_tikho_tests(self, factors, tikho=None,
                         tikho_kwargs=None, **kwargs):
@@ -1020,12 +1069,12 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
 
         return tests
     
-    def best_tikho_factor(self, tests=None, interpolate=True,
-                          interp_index=None, i_plot=False, mode='curvature'):
-        """Compute the best scale factor for Tikhonov regularisation.
-        It is determine by taking the factor giving the highest logL on
-        the detector or the highest curvature of the l-curve,
-        depending on the chosen mode.
+    def best_tikho_factor(self, tests=None, i_plot=False, fit_mode='all', mode_kwargs=None):
+        """
+        Compute the best scale factor for Tikhonov regularisation.
+        It is determine by taking the factor giving the lowest reduced chi2 on
+        the detector, the highest curvature of the l-curve or when the improvement
+        on the chi2 (so the derivative of the chi2, 'd_chi2') reaches a certain threshold.
 
         Parameters
         ----------
@@ -1035,117 +1084,76 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
             Must have the keys "factors" and "-logl".
             If not specified, the tests from self.tikho.tests
             are used.
-        interpolate: bool, optional
-            If True, use akima spline interpolation
-            to find a finer minimum. Default is true.
-        interp_index: 2 element list, optional
-            Index around the minimum value on the tested factors.
-            Will be used for the interpolation.
-            For example, if i_min is the position of
-            the minimum logL value and [i1, i2] = interp_index,
-            then the interpolation will be perform between
-            i_min + i1 and i_min + i2 - 1
         i_plot: bool, optional
             Plot the result of the minimization
-        mode: string
-            What to optimize: 'logl' or 'curvature'.
+        fit_mode: string, optional
+            Which mode is used to find the best tikhonov factor. Options are
+            'all', 'curvature', 'chi2', 'd_chi2'. If 'all' is chosen, the best of the
+            three other options.
+        mode_kwargs: dictionnary-like
+            dictionnary of keyword arguments to be passed to
+            TikhoTests.best_tikho_factor() method.
+            Example: mode_kwargs = {'curvature': curvature_kwargs}.
+            Here, curvature_kwargs is also a dictionnary.
 
         Returns
         -------
-        Best scale factor (float)
+        Best scale factor (dict)
         """
-
-        if interp_index is None:
-            interp_index = [-2, 4]
 
         # Use pre-run tests if not specified
         if tests is None:
             tests = self.tikho_tests
 
-        # Depending of the mode (what do we minimize?)
-        if mode=='curvature':
-            # Compute the curvature
-            factors, curv = tests.compute_curvature()
-            val_to_minimize = curv
-            
-        elif mode=='chi2':
-            # Simply take the chi2 and factors
-            factors = tests['factors']
-            val_to_minimize = tests['chi2']
-            
+        # Modes to be tested
+        if fit_mode == 'all':
+            # Test all modes
+            list_mode = ['curvature', 'chi2', 'd_chi2']
         else:
-            raise ValueError(f'`mode`={mode} is not valid.')
-            
-        # Only keep finite values
-        idx_finite = np.isfinite(val_to_minimize)
-        factors = factors[idx_finite]
-        val_to_minimize = val_to_minimize[idx_finite]
+            # Single mode
+            list_mode = [fit_mode]
 
-        # Get position the minimum
-        idx_min = np.argmin(val_to_minimize)
+        # Init the mode_kwargs if None were given
+        if mode_kwargs is None:
+            mode_kwargs = dict()
 
-        # Interpolate to get a finer estimate
-        if interpolate:
+        # Fill the missing value in mode_kwargs
+        for mode in list_mode:
+            try:
+                # Try the mode
+                mode_kwargs[mode]
+            except KeyError:
+                # Init with empty dictionnary if it was not given
+                mode_kwargs[mode] = dict()
 
-            # Only around the best value
-            idx_range = [idx_min + d_idx for d_idx in interp_index]
+        # Evaluate best factor with different methods
+        results = dict()
+        for mode in list_mode:
+            best_fac = tests.best_tikho_factor(mode=mode, i_plot=i_plot, **mode_kwargs[mode])
+            results[mode] = best_fac
 
-            # Make sure it's still a valid index
-            idx_range[0] = np.max([idx_range[0], 0])
-            length = len(val_to_minimize)
-            idx_range[-1] = np.min([idx_range[-1], length - 1])
-
-            # Which index to use
-            index = np.arange(*idx_range, 1)
-
-            # Akima spline in log space
-            x_val, y_val = np.log10(factors[index]), val_to_minimize[index]
-            i_sort = np.argsort(x_val)
-            x_val, y_val = x_val[i_sort], y_val[i_sort]
-            fct = Akima1DInterpolator(x_val, y_val)
-
-            # Find min
-            bounds = (x_val.min(), x_val.max())
-            opt_args = {"bounds": bounds,
-                        "method": "bounded"}
-            min_fac = minimize_scalar(fct, **opt_args).x
-
-            # Plot the fit if required
-            if i_plot:
-                # Init plot
-                plt.figure()
-
-                # Original grid
-                plt.semilogx(factors, val_to_minimize, ":")
-
-                # Fitted sub-grid
-                plt.semilogx(10.**x_val, y_val, ".")
-
-                # Show akima spline
-                x_new = np.linspace(*bounds, 100)
-                plt.plot(10.**x_new, fct(x_new))
-
-                # Show minimum found
-                plt.semilogx(10.**min_fac, fct(min_fac), "x")
-
-                # Labels
-                plt.xlabel(r"factor")
-                if mode=='chi2':
-                    plt.ylabel(r"$\log_{10}($\chi ^2$)$")
-                elif mode=='curvature':
-                    plt.ylabel("Curvature")
-                plt.tight_layout()
-
-            # Return to linear scale
-            min_fac = 10.**min_fac
-
-        # Simply return the min value
-        # if no interpolation required
+        if fit_mode == 'all':
+            # Choose the best factor.
+            # In a well behave case, the results should be ordered as 'chi2', 'd_chi2', 'curvature'
+            # and 'd_chi2' will be the best criterion determine the best factor.
+            # 'chi2' usually overfitting the solution and 'curvature' may oversmooth the solution
+            if results['curvature'] < results['chi2'] or results['d_chi2'] < results['chi2']:
+                # In this case, 'chi2' is likely to not overfit the solution, so must be favored
+                best_mode = 'chi2'
+            elif results['curvature'] < results['d_chi2']:
+                # Take the smaller factor between 'd_chi2' and 'curvature'
+                best_mode = 'curvature'
+            elif results['d_chi2'] <= results['curvature']:
+                best_mode = 'd_chi2'
+            else:
+                raise ValueError('Case not covered...???')
         else:
-            min_fac = factors[idx_min]
+            best_mode = fit_mode
 
-        # Return estimated best scale factor
-        return min_fac
+        # Get the factor of the chosen mode
+        best_fac = results[best_mode]
+
+        return best_fac, best_mode, results
 
     def rebuild(self, spectrum=None, i_orders=None, same=False):
         """Build current model image of the detector.
@@ -1666,7 +1674,7 @@ class ExtractionEngine(_BaseOverlap):  # TODO Merge with _BaseOverlap?
         wave_bounds : list or array-like (N_ord, 2), optional
             Boundary wavelengths covered by each orders.
             Default is the wavelength covered by `wave_map`.
-        tresh : float, optional:
+        threshold : float, optional:
             The pixels where the estimated spatial profile is less than
             this value will be masked. Default is 1e-5.
         c_kwargs : list of N_ord dictionnaries or dictionnary, optional
