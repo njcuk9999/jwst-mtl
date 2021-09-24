@@ -63,6 +63,7 @@ def flambda_adu(pixels, trace_im, y_trace, radius_pixel=30):
     return: Extracted flux [adu/s/colonne]
     """
     flux = np.zeros_like(pixels, dtype=float)  # Array for extracted spectrum
+
     for x_i in pixels:
         x_i = int(x_i)
         y_i = y_trace[x_i]
