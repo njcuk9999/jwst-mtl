@@ -1155,7 +1155,7 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
 
         return best_fac, best_mode, results
 
-    def rebuild(self, spectrum=None, i_orders=None, same=False):
+    def rebuild(self, spectrum=None, i_orders=None, same=False, fill_value=np.nan):
         """Build current model image of the detector.
 
         :param spectrum: flux as a function of wavelength if callable
@@ -1165,7 +1165,7 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
         :param same: If True, do not recompute the pixel_mapping matrix (b_n)
             and instead use the most recent pixel_mapping to speed up the computation.
             Default is False.
-
+            
         :type spectrum: callable or array-like
         :type i_orders: List[int]
         :type same: bool
@@ -1200,7 +1200,7 @@ class _BaseOverlap:  # TODO Merge with TrpzOverlap?
             model[~mask] += pixel_mapping.dot(spectrum)
 
         # Set masked values to NaN.
-        model[mask] = np.nan
+        model[mask] = fill_value
 
         return model
 
