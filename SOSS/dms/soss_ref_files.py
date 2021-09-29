@@ -10,9 +10,6 @@ from datetime import datetime
 
 import numpy as np
 from astropy.io import fits
-from astropy.table import Table
-
-from SOSS.trace import tracepol  # TODO in the future this should not depend on tracepol.
 
 
 # ==============================================================================
