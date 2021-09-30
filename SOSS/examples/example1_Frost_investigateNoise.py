@@ -21,7 +21,7 @@ WORKING_DIR = '/home/kmorel/ongenesis/jwst-user-soss/PHY3030/'
 jwst_config_fpath = 'jwst-mtl_configpath_kim.txt'
 
     # Choose whether to generate the simulation from scratch 
-generate_clear_tmp_simu = True     # True
+generate_clear_tmp_simu = False     # True
     # Optional override of the amount of integrations in the exposure.
     # By default, the amount is determined by the maximum amount of integrations
     # that can be fit into the observation time (given the detector readout array size).
@@ -31,7 +31,7 @@ nIntegrations_override = 300
 
     # Choose whether to format the generated (clear) simulation in a format
     # processable by the calwebb_detector1 pipeline (DMS)
-generate_clear_dmsReady_simu = True    # True
+generate_clear_dmsReady_simu = False    # True
 
     # Choose whether to add detector noise to the noiseless data
 add_noise_to_dmsReady_simu = True
@@ -41,16 +41,16 @@ investigate_noise = True
     # If 'investigate_noise' is True, this 2D-list determines how many different 
     # noisy simulations are generated from clear exposures (length of 1st dimension),
     # as well as what noise types are injected into them (list contained in 2nd dimension).
-noise_shopping_lists = [#[]
-                       ['photon']
+noise_shopping_lists = [[]
+                       ,['photon']
                        #,['normalize']
                        #,['zodibackg']
                        #,['flatfield']
                        #,['darkframe']
-                       #,['nonlinearity']
+                       ,['nonlinearity']
                        ,['superbias']
                        #,['detector']
-                       ,['photon', 'superbias']
+                       ,['photon', 'nonlinearity', 'superbias']
                        ]
 override_noise_files = True
 ov_noiz_dir = '/genesis/jwst/jwst-ref-soss/noise_files/'
