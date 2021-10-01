@@ -3,6 +3,8 @@ Created on Tue Jan 21 14:21:35 2020
 
 @author: caroline
 
+Updates by Loic Albert
+
 Introduce the detector response in the simulated images
 """
 
@@ -12,21 +14,36 @@ import argparse
 from . import timeseries
 
 
-def add_noise(filelist, normalize=False, zodibackg=True, flatfield=True, darkframe=True, nonlinearity=True,
-              superbias=True, detector=True, outputfilename=None):
+def add_noise(filelist, photon=True, zodibackg=True, flatfield=True, darkframe=True, nonlinearity=True,
+              superbias=True, readout=True, oneoverf=True, detector=False, normalize=False,
+              zodi_ref=None, flat_ref=None, dark_ref=None, nlcoeff_ref=None, superbias_ref=None,
+              outputfilename=None, full_well=72000):
+
+    #TODO: update comments in the header here below to reflect the latest input args
+
     """
     A function to add detector noise to the simulations.
+    It is assumed that the input exposure is in ***** electrons, not adu *****.
 
     :param filelist: list of string, the list of files to process
-    :param normalize: bool, renormalize the simulation, default False.
+    :param normalize: DEPRECATED bool, renormalize the simulation, default False. USE DEPRECATED
+    :param photon: bool, turn on or off photon noise for the science target flux
     :param zodibackg: bool, include the effect of the zodiacal background, default True.
     :param flatfield: bool, include the effect of the flatfield, default True.
     :param darkframe: bool, include the effect of darkcurrent, default True.
     :param nonlinearity: bool, include the effect of non-linearity, default True.
     :param superbias: bool, include the effect of bias, default True.
-    :param detector: bool, include the effects of detector noise, default True.
+    :param readout: bool, white readout noise, default is True.
+    :param oneoverf: bool, 1 over f pink noise, default is True.
+    :param detector: DEPRECATED bool, include the effects of detector noise, default True. USE DEPRECATED
+    :param zodi_ref: string, CRDS reference file containing the zodibackground map
+    :param flat_ref: string, CRDS reference file containing the flat field
+    :param dark_ref: string, CRDS reference file containing the dark current map
+    :param nlcoeff_ref: string, UdeM in-house reference file containing the coeff to delinearize the ramp
+    :param superbias_ref: string, CRDS reference file containing the superbias
 
     :type filelist: list[str]
+    :type photon: bool
     :type normalize: bool
     :type zodibackg: bool
     :type flatfield: bool
@@ -48,35 +65,54 @@ def add_noise(filelist, normalize=False, zodibackg=True, flatfield=True, darkfra
 
     for filename in filelist_checked:
 
-        tso = timeseries.TimeSeries(filename)
+        tso = timeseries.TimeSeries(filename, gain=gain, dark_value=dark_value, full_well=full_well)
 
-        if normalize:
+        #if normalize:
+        #
+        #    # If no normalization was provided use the first file to scale all files.
+        #    if normfactor is None:
+        #        normfactor = tso.get_normfactor()
+        #
+        #    tso.apply_normfactor
 
-            # If no normalization was provided use the first file to scale all files.
-            if normfactor is None:
-                normfactor = tso.get_normfactor()
-
-            tso.apply_normfactor(normfactor)
-
-        tso.add_poisson_noise()
+        # TODO: change frame time in write_dmsready_fits
 
         if zodibackg:
-            tso.add_zodiacal_background()
+            print('Add zodiacal background')
+            tso.add_zodiacal_background(zodifile=zodi_ref)
+
+        if photon:
+            print('Add Poisson noise')
+            tso.add_poisson_noise()
 
         if flatfield:
-            tso.apply_flatfield()
+            print('Add flat field response')
+            tso.apply_flatfield(flatfile=flat_ref)
 
         if darkframe:
-            tso.add_simple_dark()
+            #TODO: have better dark ref files. ref files for darks are very noisy with 1/f noise and rms of order 50% of the dark at read 50.
+            print('Add dark current')
+            tso.add_dark(darkfile=dark_ref)
 
         if nonlinearity:
-            tso.add_non_linearity()
+            print('Add non linearity (delinearize)')
+            tso.add_non_linearity(coef_file=nlcoeff_ref)
 
         if superbias:
-            tso.add_superbias()
+            print('Add superbias')
+            tso.add_superbias(biasfile=superbias_ref)
 
-        if detector:
-            tso.add_detector_noise()
+        if readout:
+            print('Add readout noise')
+            tso.add_readout_noise()
+
+        if oneoverf:
+            print('Add 1/f noise')
+            tso.add_1overf_noise()
+
+        #if detector:
+        #    # We discourage the use of this until tested.
+        #    tso.add_detector_noise()
 
         tso.write_to_fits(outputfilename)
 
@@ -85,6 +121,8 @@ def add_noise(filelist, normalize=False, zodibackg=True, flatfield=True, darkfra
 
 def main():
     """A command line interface."""
+
+    #TODO: update this interface with latest input args of function above
 
     parser = argparse.ArgumentParser(description='Add sources of noise to the simulation.')
     parser.add_argument('filenames', type=str, nargs='+',

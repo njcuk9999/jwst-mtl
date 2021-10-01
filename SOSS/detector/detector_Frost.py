@@ -10,7 +10,10 @@ import argparse
 
 #import timeseries
 from . import timeseries
+<<<<<<< HEAD
 #from . import timeseries_Frost as timeseries
+=======
+>>>>>>> toward_example1
 
 
 def add_noise(filelist, photon=True, normalize=False, zodibackg=True, zodifile=None,
