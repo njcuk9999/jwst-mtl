@@ -14,11 +14,14 @@
 
     # Location of the jwst-mtl github repo. Overrides the github path in
     # 'jwst_config_fpath', during the import phase
-github_path = '/home/william/ongenesis/github/jwst-mtl/SOSS/'
+#github_path = '/home/william/ongenesis/github/jwst-mtl/SOSS/'
+github_path = '/genesis/jwst/github/jwst-mtl/SOSS/'
     # Location of the simulation config file, as well as the output directory
-WORKING_DIR = '/home/william/ongenesis/jwst-user-soss/' + 'test_run/'
+#WORKING_DIR = '/home/william/ongenesis/jwst-user-soss/' + 'test_run/'
+WORKING_DIR = '/genesis/jwst/jwst-user-soss/loic_review/'
     # Configuration file for the NIRISS Instrument Team SOSS simulation pipeline
-jwst_config_fpath = 'jwst-mtl_configpath_wfrost.txt'
+#jwst_config_fpath = 'jwst-mtl_configpath_wfrost.txt'
+jwst_config_fpath = 'jwst-mtl_configpath.txt'
 
 
 ######### The 1st step of the simulation process. #########################
@@ -66,20 +69,38 @@ noise_shopping_lists = [#[]            # empty list means adding no noise (but s
                        #,['darkframe']
                        #,['nonlinearity']
                        #,['superbias']
-                       #,['detector']
+                       #,['readout']
+                       #,['oneoverf']
                        ['photon','nonlinearity','superbias']
                        ]
 override_noise_files = True
 ov_noiz_dir = '/genesis/jwst/jwst-ref-soss/noise_files/'
-ov_noiz = { 'flat'  : ov_noiz_dir+'jwst_niriss_flat_0181.fits'               if override_noise_files else None,
-            'zodi'  : ov_noiz_dir+'background_detectorfield_normalized.fits' if override_noise_files else None,
-            'bias'  : ov_noiz_dir+'jwst_niriss_superbias_0137.fits'          if override_noise_files else None,
-            'liner' : ov_noiz_dir+'jwst_niriss_linearity_0011_bounds_0_60000_npoints_100_deg_5.fits'
+if simuPars.subarray == 'SUBSTRIP256':
+    ov_noiz = { 'flat'  : ov_noiz_dir+'jwst_niriss_flat_0190.fits'               if override_noise_files else None,
+                'zodi'  : ov_noiz_dir+'background_detectorfield_normalized.fits' if override_noise_files else None,
+                'bias'  : ov_noiz_dir+'jwst_niriss_superbias_0120.fits'          if override_noise_files else None,
+                'liner' : ov_noiz_dir+'jwst_niriss_linearity_0011_bounds_0_60000_npoints_100_deg_5.fits'
                                                                              if override_noise_files else None,
-          }
+                'dark'  : ov_noiz_dir+'jwst_niriss_dark_0147.fits'               if override_noise_files else None,
+            }
+elif simuPars.subarray == 'SUBSTRIP96':
+    ov_noiz = { 'flat'  : ov_noiz_dir+'jwst_niriss_flat_0190.fits'               if override_noise_files else None,
+                'zodi'  : ov_noiz_dir+'background_detectorfield_normalized.fits' if override_noise_files else None,
+                'bias'  : ov_noiz_dir+'jwst_niriss_superbias_0111.fits'          if override_noise_files else None,
+                'liner' : ov_noiz_dir+'jwst_niriss_linearity_0011_bounds_0_60000_npoints_100_deg_5.fits'
+                                                                             if override_noise_files else None,
+                'dark'  : ov_noiz_dir+'jwst_niriss_dark_0150.fits'               if override_noise_files else None,
+            }
+elif simuPars.subarray == 'FULL':
+    ov_noiz = { 'flat'  : ov_noiz_dir+'jwst_niriss_flat_0190.fits'               if override_noise_files else None,
+                'zodi'  : ov_noiz_dir+'background_detectorfield_normalized.fits' if override_noise_files else None,
+                'bias'  : ov_noiz_dir+'jwst_niriss_superbias_0150.fits'          if override_noise_files else None,
+                'liner' : ov_noiz_dir+'jwst_niriss_linearity_0011_bounds_0_60000_npoints_100_deg_5.fits'
+                                                                             if override_noise_files else None,
+                'dark'  : ov_noiz_dir+'jwst_niriss_dark_0145.fits'               if override_noise_files else None,
+            }
 
-
-dms_cfg_files_path = WORKING_DIR+'config_files/'
+dms_cfg_files_path = WORKING_DIR+'dms_config_files/'
     # CALWEBB_DETECTOR1 config files. If =None, these config files are auto-generated
     # according to the noise input specified in the noise_shopping_lists
 dms_config_files = [None] * len(noise_shopping_lists)
@@ -89,21 +110,38 @@ calwebb_NIR_TSO_mandatory_steps = ['dq_init','saturation','ramp_fit','jump']
     # otherwise the default/best one is chosen (might not be same as one used in simulation)
 override_calwebb_reffiles = True
 user_calwebb_reffiles_dir = '/genesis/jwst/jwst-ref-soss/noise_files/'
-user_calwebb_reffiles = { 'superbias' :    'jwst_niriss_superbias_0137.fits',
-                          'linearity' :    'jwst_niriss_linearity_0011.fits',
-                          'dark_current' : 'jwst_niriss_dark_0114.fits'
-                        }
+if simuPars.subarray == 'SUBSTRIP256':
+    user_calwebb_reffiles = { 'superbias' :    'jwst_niriss_superbias_0120.fits',
+                              'linearity' :    'jwst_niriss_linearity_0011.fits',
+                              'dark_current' : 'jwst_niriss_dark_0147.fits'
+                            }
+elif simuPars.subarray == 'SUBSTRIP96':
+    user_calwebb_reffiles = { 'superbias' :    'jwst_niriss_superbias_0111.fits',
+                              'linearity' :    'jwst_niriss_linearity_0011.fits',
+                              'dark_current' : 'jwst_niriss_dark_0150.fits'
+                            }
+elif simuPars.subarray == 'FULL':
+    user_calwebb_reffiles = {'superbias': 'jwst_niriss_superbias_0150.fits',
+                             'linearity': 'jwst_niriss_linearity_0011.fits',
+                             'dark_current': 'jwst_niriss_dark_0145.fits'
+                             }
+
+
     # These variables are specified by default in the function 'create_calwebb_config_files()',
     # but can be changed here if need be
-calwebb_NIR_steps = ['group_scale','dq_init','saturation','ipc'
-                    ,'superbias','refpix','linearity','dark_current'
-                    ,'jump','ramp_fit','gain_scale','persistence']
+calwebb_NIR_steps = ['group_scale', 'dq_init', 'saturation', 'ipc',
+                     'superbias', 'refpix', 'linearity', 'dark_current',
+                     'jump', 'ramp_fit', 'gain_scale', 'persistence']
     # see function definitions in 'example_helper_funcs.py' for
     # clarifications on the use of this dict
-jwstMTLnoise_to_calwebbSteps_MAP = { 'photon':[],'normalize':[] , 'zodibackg':[]
-                                   , 'flatfield':[] , 'darkframe':['dark_current']
-                                   , 'nonlinearity':['linearity'] , 'superbias':['superbias']
-                                   , 'detector':['refpix']
+jwstMTLnoise_to_calwebbSteps_MAP = { 'photon': [],
+                                     'zodibackg': [],
+                                     'flatfield': [],
+                                     'darkcurrent': ['dark_current'],
+                                     'nonlinearity': ['linearity'],
+                                     'superbias': ['superbias'],
+                                     'readout': [],
+                                     'oneoverf': ['refpix']
                                    }
 
 
@@ -458,10 +496,14 @@ else: # here is the option to investigate select noise sources
         if add_noise_to_dmsReady_simu is True:
             if doPrint: print('\n\n')
             detector.add_noise(os.path.join(pathPars.path_userland,'IDTSOSS_clear.fits'),
-                               normalize=noise['normalize'], zodibackg=noise['zodibackg'], zodifile=ov_noiz['zodi'],
-                               flatfield=noise['flatfield'], flatfile=ov_noiz['flat'], darkframe=noise['darkframe'],
-                               nonlinearity=noise['nonlinearity'], coef_file = ov_noiz['liner'], photon=noise['photon'],
-                               superbias=noise['superbias'], biasfile=ov_noiz['bias'], detector=noise['detector'], 
+                               photon=noise['photon'],
+                               zodibackg=noise['zodibackg'], zodi_ref=ov_noiz['zodi'],
+                               flatfield=noise['flatfield'], flat_ref=ov_noiz['flat'],
+                               darkcurrent=noise['darkcurrent'], dark_ref=ov_noiz['dark'],
+                               nonlinearity=noise['nonlinearity'], nlcoeff_ref=ov_noiz['liner'],
+                               superbias=noise['superbias'], superbias_ref=ov_noiz['bias'],
+                               readout=noise['readout'],
+                               oneoverf=noise['oneoverf'],
                                outputfilename = os.path.join(pathPars.path_userland, noisy_file_str)
                               )
             

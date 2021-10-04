@@ -14,7 +14,7 @@ import argparse
 from . import timeseries
 
 
-def add_noise(filelist, photon=True, zodibackg=True, flatfield=True, darkframe=True, nonlinearity=True,
+def add_noise(filelist, photon=True, zodibackg=True, flatfield=True, darkcurrent=True, nonlinearity=True,
               superbias=True, readout=True, oneoverf=True, detector=False, normalize=False,
               zodi_ref=None, flat_ref=None, dark_ref=None, nlcoeff_ref=None, superbias_ref=None,
               outputfilename=None, full_well=72000):
@@ -30,7 +30,7 @@ def add_noise(filelist, photon=True, zodibackg=True, flatfield=True, darkframe=T
     :param photon: bool, turn on or off photon noise for the science target flux
     :param zodibackg: bool, include the effect of the zodiacal background, default True.
     :param flatfield: bool, include the effect of the flatfield, default True.
-    :param darkframe: bool, include the effect of darkcurrent, default True.
+    :param darkcurrent: bool, include the effect of darkcurrent, default True.
     :param nonlinearity: bool, include the effect of non-linearity, default True.
     :param superbias: bool, include the effect of bias, default True.
     :param readout: bool, white readout noise, default is True.
@@ -47,7 +47,7 @@ def add_noise(filelist, photon=True, zodibackg=True, flatfield=True, darkframe=T
     :type normalize: bool
     :type zodibackg: bool
     :type flatfield: bool
-    :type darkframe: bool
+    :type darkcurrent: bool
     :type nonlinearity: bool
     :type superbias: bool
     :type detector: bool
@@ -89,7 +89,7 @@ def add_noise(filelist, photon=True, zodibackg=True, flatfield=True, darkframe=T
             print('Add flat field response')
             tso.apply_flatfield(flatfile=flat_ref)
 
-        if darkframe:
+        if darkcurrent:
             #TODO: have better dark ref files. ref files for darks are very noisy with 1/f noise and rms of order 50% of the dark at read 50.
             print('Add dark current')
             tso.add_dark(darkfile=dark_ref)
