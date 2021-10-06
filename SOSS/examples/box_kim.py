@@ -264,3 +264,43 @@ def normalize_map(map):
     sum_col = np.sum(map, axis=0)
     norm_map = map / sum_col
     return norm_map
+
+def normalization(f_lambda, t1, t4):
+    """
+    Normalize transit light curve by mean during out of transit.
+    """
+    hors_t = np.concatenate((f_lambda[: t1 + 1], f_lambda[t4:]))
+    mean = np.mean(hors_t)
+    return f_lambda / mean
+
+
+def transit_depth(f_lambda, t2, t3):
+    """
+    Calculates mean flux value during transit.
+    """
+    return np.mean(f_lambda[t2: t3 + 1])
+
+
+def no_dms_simulation(file_name, gain=1.61):
+    with fits.open(WORKING_DIR + file_name) as hdulist:
+        ng = hdulist[0].header['NGROUPS']  # n_groups
+        t_read = hdulist[0].header['TGROUP']  # Reading time [s]
+        tint = (ng - 1) * t_read  # Integration time [s]
+
+        simu = hdulist
+        data = (hdulist[1].data[:, -1] - hdulist[1].data[:, 0]) / tint / gain  # Images of flux [adu/s]
+    return simu, data
+
+
+def rateints_dms_simulation(file_name):
+    with fits.open(WORKING_DIR + file_name) as hdulist:
+        data_noisy_rateints = hdulist[1].data  # Images of flux [adu/s]
+        # delta_noisy = hdulist[2].data            # Errors [adu/s]
+        dq = hdulist[3].data  # Data quality
+        i = np.where(dq % 2 != 0)  # Odd values of dq = DO NOT USE these pixels
+        data_noisy_rateints[i[0], i[1], i[2]] = 0.
+        # delta_noisy[i[0], i[1], i[2]] = 0.
+
+        simu = hdulist
+        data = data_noisy_rateints
+    return simu, data
