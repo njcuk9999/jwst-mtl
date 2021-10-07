@@ -526,7 +526,7 @@ else: # here is the option to investigate select noise sources
 
 
 
-
+sys.exit()
 
 """
 SIMULATE THE F277W CALIBRATION EXPOSURE OBTAINED AFTER THE GR700XD EXPOSURE
