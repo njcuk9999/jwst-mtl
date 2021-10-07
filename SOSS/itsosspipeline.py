@@ -89,6 +89,14 @@ def readpaths(config_paths_filename, pars):
     pars.tracefile = str(value[param =='TRACE_FILE'][0])
     pars.throughputfile = str(value[param =='THROUGHPUT_FILE'][0])
 
+def read_simu_cfg():
+    with open('table_simulations.csv', newline='') as csvfile:
+        reader = csv.DictReader(csvfile, dialect='excel')
+        for row in reader:
+            print(row['MAGNITUDE'], row['STARMODEL'])
+            # print(row)
+
+
 def planck(wave_micron, teff):
     """
     Black body spectrum

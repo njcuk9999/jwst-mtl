@@ -25,13 +25,16 @@ from . import hxrg
 # Plotting.
 import matplotlib.pyplot as plt
 
+# To download reference files from CRDS
+from astropy.utils.data import download_file
+
 
 # TODO header section which files and values were used.
 
 
 class TimeSeries(object):
 
-    def __init__(self, ima_path, noisefiles_path, ref_path, gain=1.6221, dark_value=0.0414, full_well=72000, ):
+    def __init__(self, ima_path, noisefiles_path, gain=1.6221, dark_value=0.0414, full_well=72000, ):
         """Make a TimeSeries object from a series of synthetic images."""
 
         self.ima_path = ima_path
@@ -55,7 +58,8 @@ class TimeSeries(object):
         # Here, I hardcoded the path but really we should read it from the config file
         # /genesis/jwst/jwst-mtl-user/jwst-mtl_configpath.txt 
         # NOISE_FILES is the parameter in that file
-        self.noisefiles_dir = '/genesis/jwst/jwst-ref-soss/noise_files/' # PATH where reference detector noise files can be found.
+        #self.noisefiles_dir = '/genesis/jwst/jwst-ref-soss/noise_files/' # PATH where reference detector noise files can be found.
+        self.noisefiles_dir = noisefiles_path
         # Same here, we need to pass this or read it from teh config path
         # USER_PATH is the parameter in that file
         self.output_path = '/genesis/jwst/userland-soss/'
@@ -75,6 +79,18 @@ class TimeSeries(object):
         self.darkdir_ss96 = '/genesis/jwst/jwst-ref-soss/darks_SS96/'
         self.darkdir_full = '/genesis/jwst/jwst-ref-soss/darks_FULL/'
 
+        download_ref_files(self)
+
+    def download_ref_files(noisefiles_path, fitsname,
+                           crds_http='https://jwst-crds.stsci.edu/unchecked_get/references/jwst/'):
+        """One by one, check that the ref files are already in the noisefile_path and download if necessary"""
+
+        local_name = os.path.join(noisefiles_path, fitsname)
+        http_name = os.path.join(crds_http, fitsname)
+        file_path = download_file()
+        os.rename(file_path, 'jwst_niriss_superbias_0017.fits')
+
+
     def get_normfactor(self):
         """Determine a re-normalization factor so that the highest pixel value in the simulation
          will match the full well capacity"""
@@ -89,7 +105,7 @@ class TimeSeries(object):
     def apply_normfactor(self, normfactor):
         """Apply an arbitrary re-normalization to the simulations."""
 
-        raise Warning('aaply_normfactor, DEPRECATED FUNCTION - DO NOT USE. Simulations are now flux calibrated.')
+        raise Warning('apply_normfactor, DEPRECATED FUNCTION - DO NOT USE. Simulations are now flux calibrated.')
 
         self.data = self.data*normfactor
 
