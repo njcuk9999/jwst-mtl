@@ -69,7 +69,7 @@ noise_shopping_lists = [[]            # empty list means adding no noise (but st
                        #,['darkcurrent']
                        #,['nonlinearity']
                        #,['superbias']
-                       #,['readout']
+                       ,['readout']
                        ,['oneoverf']
                        #,['photon','nonlinearity','superbias']
                        ]
