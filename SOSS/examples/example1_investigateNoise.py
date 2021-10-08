@@ -27,7 +27,7 @@ jwst_config_fpath = 'jwst-mtl_configpath_kim.txt'
 ######### The 1st step of the simulation process. #########################
     # Choose whether to generate the simulation from scratch.
     # Outputs images in units of electrons.
-generate_clear_tmp_simu = True
+generate_clear_tmp_simu = False
     # Optional override of the amount of integrations in the exposure.
     # By default, the amount is determined by the maximum amount of integrations
     # that can be fit into the observation time (given the detector readout array size)
@@ -39,7 +39,7 @@ nIntegrations_override = 300
     # fits format processable by the CALWEBB_DETECTOR1 pipeline (DMS).
     # This step also performs flux calibration via scaling of the images
     # based on expected electron counts.
-generate_clear_dmsReady_simu = True
+generate_clear_dmsReady_simu = False
     
 ########## The 3rd step of the simulation process ##########################
     # Choose whether to add detector noise to the noiseless data
