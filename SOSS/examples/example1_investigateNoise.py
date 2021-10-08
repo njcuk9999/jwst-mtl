@@ -63,13 +63,13 @@ investigate_noise = True
     # Current selection of noise types are dependant of this code in the jwst-mtl github:
     # /SOSS/detector/detector.py
 noise_shopping_lists = [[]            # empty list means adding no noise (but still converting to ADU)
-                       ,['photon']
+                       #,['photon']
                        #,['zodibackg']
                        #,['flatfield']
-                       ,['darkcurrent']
-                       ,['nonlinearity']
-                       ,['superbias']
-                       ,['readout']
+                       #,['darkcurrent']
+                       #,['nonlinearity']
+                       #,['superbias']
+                       #,['readout']
                        ,['oneoverf']
                        #,['photon','nonlinearity','superbias']
                        ]
