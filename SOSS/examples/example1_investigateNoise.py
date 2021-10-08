@@ -14,24 +14,24 @@
 
     # Location of the jwst-mtl github repo. Overrides the github path in
     # 'jwst_config_fpath', during the import phase
-#github_path = '/home/william/ongenesis/github/jwst-mtl/SOSS/'
-github_path = '/genesis/jwst/github/jwst-mtl/SOSS/'
+# github_path = '/genesis/jwst/github/jwst-mtl/SOSS/'
+github_path = '/home/kmorel/ongenesis/github/jwst-mtl/SOSS/'
     # Location of the simulation config file, as well as the output directory
-#WORKING_DIR = '/home/william/ongenesis/jwst-user-soss/' + 'test_run/'
-WORKING_DIR = '/genesis/jwst/jwst-user-soss/loic_review/'
+# WORKING_DIR = '/genesis/jwst/jwst-user-soss/loic_review/'
+WORKING_DIR = '/home/kmorel/ongenesis/jwst-user-soss/PHY3030/'
     # Configuration file for the NIRISS Instrument Team SOSS simulation pipeline
-#jwst_config_fpath = 'jwst-mtl_configpath_wfrost.txt'
-jwst_config_fpath = 'jwst-mtl_configpath.txt'
+# jwst_config_fpath = 'jwst-mtl_configpath.txt'
+jwst_config_fpath = 'jwst-mtl_configpath_kim.txt'
 
 
 ######### The 1st step of the simulation process. #########################
     # Choose whether to generate the simulation from scratch.
     # Outputs images in units of electrons.
-generate_clear_tmp_simu = False
+generate_clear_tmp_simu = True
     # Optional override of the amount of integrations in the exposure.
     # By default, the amount is determined by the maximum amount of integrations
     # that can be fit into the observation time (given the detector readout array size)
-nIntegrations_override = 3
+nIntegrations_override = 300
 #nIntegrations_override = None
     
 ######### The 2nd step of the simulation process. ##########################
@@ -39,7 +39,7 @@ nIntegrations_override = 3
     # fits format processable by the CALWEBB_DETECTOR1 pipeline (DMS).
     # This step also performs flux calibration via scaling of the images
     # based on expected electron counts.
-generate_clear_dmsReady_simu = False
+generate_clear_dmsReady_simu = True
     
 ########## The 3rd step of the simulation process ##########################
     # Choose whether to add detector noise to the noiseless data
@@ -62,16 +62,16 @@ investigate_noise = True
     # as well as what noise types are injected into them (list contained in 2nd dimension).
     # Current selection of noise types are dependant of this code in the jwst-mtl github:
     # /SOSS/detector/detector.py
-noise_shopping_lists = [#[]            # empty list means adding no noise (but still converting to ADU)
-                       #,['photon']
+noise_shopping_lists = [[]            # empty list means adding no noise (but still converting to ADU)
+                       ,['photon']
                        #,['zodibackg']
                        #,['flatfield']
-                       #,['darkcurrent']
-                       #,['nonlinearity']
-                       #,['superbias']
-                       #,['readout']
-                       #,['oneoverf']
-                       ['photon','nonlinearity','superbias']
+                       ,['darkcurrent']
+                       ,['nonlinearity']
+                       ,['superbias']
+                       ,['readout']
+                       ,['oneoverf']
+                       #,['photon','nonlinearity','superbias']
                        ]
 override_noise_files = True
 ov_noiz_dir = '/genesis/jwst/jwst-ref-soss/noise_files/'
@@ -106,7 +106,7 @@ dms_cfg_files_path = WORKING_DIR+'dms_config_files/'
     # according to the noise input specified in the noise_shopping_lists
 dms_config_files = [None] * len(noise_shopping_lists)
     # CALWEBB steps that are always executed, regardless of step choice in a shopping_list
-calwebb_NIR_TSO_mandatory_steps = ['dq_init','saturation','ramp_fit','jump']
+calwebb_NIR_TSO_mandatory_steps = ['dq_init','saturation','ramp_fit']   # 'jump'
     # For each CALWEBB_DETECTOR1 step, specify the reference file to be used (if a file is needed),
     # otherwise the default/best one is chosen (might not be same as one used in simulation)
 override_calwebb_reffiles = True
@@ -146,9 +146,9 @@ jwstMTLnoise_to_calwebbSteps_MAP = { 'photon': [],
                                    }
 
 
-    # Some other self-explanatory boolean variables
-    # They determine if stuff is printed or plotted at runtime
-doPlot = True
+# Some other self-explanatory boolean variables
+# They determine if stuff is printed or plotted at runtime
+doPlot = False
 doPrint = True
 verbose = doPrint
 
