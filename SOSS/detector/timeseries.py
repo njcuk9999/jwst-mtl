@@ -236,39 +236,49 @@ class TimeSeries(object):
         else:
             raise ValueError('SUBARRAY must be one of SUBSTRIP96, SUBSTRIP256 or FULL')
 
+        # Generate 1/f noise on a per integration basis (so not to run out of memory)
+        tt = []
+        for nint in range(self.nintegs):
 
-        # naxis1 is in the detector orientation
-        nstep = (cols // amps + cols_over) * (rows + rows_over) * self.ngroups * self.nintegs
-        # Pad nsteps to a power of 2, which is much faster (JML)
-        nstep2 = int(2 ** np.ceil(np.log2(nstep)))
+            # naxis1 is in the detector orientation
+            #nstep = (cols // amps + cols_over) * (rows + rows_over) * self.ngroups * self.nintegs
+            nstep = (cols // amps + cols_over) * (rows + rows_over) * self.ngroups
+            # Pad nsteps to a power of 2, which is much faster (JML)
+            nstep2 = int(2 ** np.ceil(np.log2(nstep)))
 
-        # Define frequency arrays
-        f2 = np.fft.rfftfreq(nstep2)  # ... for 2*nstep elements
+            # Define frequency arrays
+            f2 = np.fft.rfftfreq(nstep2)  # ... for 2*nstep elements
 
-        # Define pinkening filters. F2 and p_filter2 are used to generate 1/f noise.
-        p_filter2 = np.sqrt(f2 ** alpha)
-        p_filter2[0] = 0.
-        # Generate seed noise
-        mynoise = np.random.standard_normal(nstep2)
+            # Define pinkening filters. F2 and p_filter2 are used to generate 1/f noise.
+            p_filter2 = np.sqrt(f2 ** alpha)
+            p_filter2[0] = 0.
+            # Generate seed noise
+            mynoise = np.random.standard_normal(nstep2)
 
-        # Save the mean and standard deviation of the first
-        # half. These are restored later. We do not subtract the mean
-        # here. This happens when we multiply the FFT by the pinkening
-        # filter which has no power at f=0.
-        the_mean = np.mean(mynoise[:(2*nstep2) // 2])
-        the_std = np.std(mynoise[:(2*nstep2) // 2])
+            # Save the mean and standard deviation of the first
+            # half. These are restored later. We do not subtract the mean
+            # here. This happens when we multiply the FFT by the pinkening
+            # filter which has no power at f=0.
+            the_mean = np.mean(mynoise[:(2*nstep2) // 2])
+            the_std = np.std(mynoise[:(2*nstep2) // 2])
 
-        # Apply the pinkening filter.
-        thefft = np.fft.rfft(mynoise)
-        thefft = np.multiply(thefft, p_filter2)
-        result = np.fft.irfft(thefft)
-        result = result[:(2*nstep) // 2]  # Keep 1st half of nstep
+            # Apply the pinkening filter.
+            thefft = np.fft.rfft(mynoise)
+            thefft = np.multiply(thefft, p_filter2)
+            result = np.fft.irfft(thefft)
+            result = result[:(2*nstep) // 2]  # Keep 1st half of nstep
 
-        # Restore the mean and standard deviation
-        result *= the_std / np.std(result)
-        result = result - np.mean(result) + the_mean
+            # Restore the mean and standard deviation
+            result *= the_std / np.std(result)
+            result = result - np.mean(result) + the_mean
 
-        tt = c_pink * result  # tt is a temp. variable
+            tt_1_integ = c_pink * result  # tt_1_integ is a temp. variable
+
+            # tt is the full exposure temp. variable
+            tt.append(np.copy(tt_1_integ))
+
+        # CONvert list to np.array
+        tt = np.array(tt)
 
         # Reshape the time series into the subarray (detector coordinate system, not DMS yet)
         if (self.subarray == 'SUBSTRIP96') | (self.subarray == 'SUBSTRIP256'):
