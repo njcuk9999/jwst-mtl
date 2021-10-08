@@ -68,7 +68,7 @@ class TimeSeries(object):
         header = hdu_ideal[1].header
 
         self.hdu_ideal = hdu_ideal
-        self.data = hdu_ideal[1].data  # image to be altered
+        self.data = np.array(hdu_ideal[1].data, dtype=np.float64)  # image to be altered
 
         self.nrows = header['NAXIS1']
         self.ncols = header['NAXIS2']
@@ -201,9 +201,13 @@ class TimeSeries(object):
         #TODO: do same for gain: 1.6221
 
         mynoise = np.random.standard_normal(np.size(self.data)) * rms
+        #print(np.std(mynoise))
         mynoise = np.reshape(mynoise, (self.nintegs, self.ngroups, self.ncols, self.nrows))
+        #print(np.shape(mynoise))
 
-        self.data += deepcopy(mynoise)
+        self.data += np.copy(mynoise)
+
+        fits.writeto('/genesis/jwst/userland-soss/loic_review/readout.fits', np.copy(mynoise), overwrite=True)
 
         self.modif_str = self.modif_str + '_readnoise'
 
@@ -472,7 +476,8 @@ class TimeSeries(object):
         units are converted from electrons back to ADU for this step.
         """
         hdu_new = self.hdu_ideal
-        hdu_new[1].data = (self.data/self.gain).astype('uint16')  # Convert to ADU in 16 bit integers.
+        #hdu_new[1].data = (self.data/self.gain).astype('uint16')  # Convert to ADU in 16 bit integers.
+        hdu_new[1].data = (self.data/self.gain).astype('int16')  # Convert to ADU in 16 bit integers.
 
         if filename is None:
             print('Forging output noisy file...')
