@@ -207,8 +207,6 @@ class TimeSeries(object):
 
         self.data += np.copy(mynoise)
 
-        fits.writeto('/genesis/jwst/userland-soss/loic_review/readout.fits', np.copy(mynoise), overwrite=True)
-
         self.modif_str = self.modif_str + '_readnoise'
 
     def add_1overf_noise(self, c_pink = 9.6, alpha = -1):
