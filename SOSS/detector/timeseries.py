@@ -25,13 +25,41 @@ from . import hxrg
 # Plotting.
 import matplotlib.pyplot as plt
 
+# To download reference files from CRDS
+from astropy.utils.data import download_file
+import shutil
+from time import sleep
+
 
 # TODO header section which files and values were used.
 
 
+def download_ref_files(noisefiles_path, fitsname,
+                       crds_http='https://jwst-crds.stsci.edu/unchecked_get/references/jwst/'):
+                       #crds_http='https://jwst-crds.stsci.edu/browse/'):
+    """One by one, check that the ref files are already in the noisefile_path and download if necessary"""
+
+    local_name = os.path.join(noisefiles_path, fitsname)
+    http_name = os.path.join(crds_http, fitsname)
+    if os.path.isfile(local_name) is False:
+        print('Attempting to download from CRDS ',http_name)
+        while True:
+            try:
+                file_path = download_file(http_name)
+                break
+            except OSError:
+                message = 'HTTPError: HTTP Error 503: Service Temporarily Unavailable'
+                print('Can not connect to CRDS to download', http_name, ' trying every second.')
+                sleep(1)
+        shutil.copy(file_path, local_name)
+        os.remove(file_path)
+        # change file access rights so anybody can edit
+        os.chmod(local_name, 0o666)
+
+
 class TimeSeries(object):
 
-    def __init__(self, ima_path, noisefiles_path, ref_path, gain=1.6221, dark_value=0.0414, full_well=72000, ):
+    def __init__(self, ima_path, noisefiles_path, gain=1.6221, dark_value=0.0414, full_well=72000, ):
         """Make a TimeSeries object from a series of synthetic images."""
 
         self.ima_path = ima_path
@@ -55,7 +83,8 @@ class TimeSeries(object):
         # Here, I hardcoded the path but really we should read it from the config file
         # /genesis/jwst/jwst-mtl-user/jwst-mtl_configpath.txt 
         # NOISE_FILES is the parameter in that file
-        self.noisefiles_dir = '/genesis/jwst/jwst-ref-soss/noise_files/' # PATH where reference detector noise files can be found.
+        #self.noisefiles_dir = '/genesis/jwst/jwst-ref-soss/noise_files/' # PATH where reference detector noise files can be found.
+        self.noisefiles_dir = noisefiles_path
         # Same here, we need to pass this or read it from teh config path
         # USER_PATH is the parameter in that file
         self.output_path = '/genesis/jwst/userland-soss/'
@@ -66,34 +95,9 @@ class TimeSeries(object):
         self.full_well = full_well
 
         # Reference files defaults
-        self.ref_nonlinearize = 'jwst_niriss_linearity_0011_bounds_0_60000_npoints_100_deg_5.fits'
-        self.ref_pca0 = 'niriss_pca0.fits'
-        self.ref_flatfield = 'jwst_niriss_flat_0181.fits'
-        self.ref_superbias = 'jwst_niriss_superbias_0137.fits'
-        self.ref_zodi = 'background_detectorfield_normalized.fits'
         self.darkdir_ss256 = '/genesis/jwst/jwst-ref-soss/darks_SS256/'
         self.darkdir_ss96 = '/genesis/jwst/jwst-ref-soss/darks_SS96/'
         self.darkdir_full = '/genesis/jwst/jwst-ref-soss/darks_FULL/'
-
-    def get_normfactor(self):
-        """Determine a re-normalization factor so that the highest pixel value in the simulation
-         will match the full well capacity"""
-
-        raise Warning('get_normfactor, DEPRECATED FUNCTION - DO NOT USE. Simulations are now flux calibrated.')
-
-        max_value = np.amax(self.data)
-        normfactor = self.full_well/max_value
-
-        return normfactor
-
-    def apply_normfactor(self, normfactor):
-        """Apply an arbitrary re-normalization to the simulations."""
-
-        raise Warning('aaply_normfactor, DEPRECATED FUNCTION - DO NOT USE. Simulations are now flux calibrated.')
-
-        self.data = self.data*normfactor
-
-        self.modif_str = self.modif_str + '_norm'
 
     def add_poisson_noise(self):
         """Add Poisson noise to the simulation."""
@@ -121,8 +125,7 @@ class TimeSeries(object):
         """Add non-linearity on top of the linear integration-long ramp."""
 
         if coef_file is None:
-            coef_file = self.noisefiles_dir+'/jwst_niriss_linearity_0011_bounds_0_60000_npoints_100_deg_5.fits'
-            #coef_file = resource_filename('detector', 'files/jwst_niriss_linearity_0011_bounds_0_60000_npoints_100_deg_5.fits')
+            coef_file = self.noisefiles_dir+'jwst_niriss_linearity_0011_bounds_0_60000_npoints_100_deg_5.fits'
 
         # Read the coefficients of the non-linearity function.
         with fits.open(coef_file) as hdu:
@@ -185,7 +188,7 @@ class TimeSeries(object):
 
         # Randomly pick files and extract the necessary number of groups
 
-        # TODO: Complete the add_cv3_dark function
+        # TODO: Complete the add_cv3_dark function to implement capability of inserting real CV3 darks
 
 
     def add_readout_noise(self, rms=13.8903):
@@ -300,140 +303,59 @@ class TimeSeries(object):
 
         self.modif_str = self.modif_str + '_1overf'
 
-    def add_detector_noise(self, offset=500., pca0_file=None, noise_seed=None, dark_seed=None):
-        """Add read-noise, 1/f noise, kTC noise, and alternating column noise
-        using the HxRG noise generator.
-        """
-
-        """ DEPRECATED. DO NOT USE ANYMORE. Instead call add_1overf_noise and add_readout_noise"""
-
-        raise Warning('Do not use add_detector_noise anymore. Instead use add_1overf_noise and add_readout_noise.')
-
-        # In the current implementation the pca0 file goes unused, but it is a mandatory input of HxRG.
-        if pca0_file is None:
-            pca0_file = self.noisefiles_dir+'/niriss_pca0.fits'
-
-        if noise_seed is None:
-            noise_seed = 7 + int(np.random.uniform() * 4000000000.)
-
-        if dark_seed is None:
-            dark_seed = 5 + int(np.random.uniform() * 4000000000.)
-
-        np.random.seed(dark_seed)
-
-        # Define noise parameters.
-        # White read-noise.
-        rd_noise = 12.95  # [electrons]
-
-        # Correlated pink noise.
-        c_pink = 9.6  # [electrons]
-
-        # Uncorrelated pink noise.
-        u_pink = 3.2  # [electrons]
-
-        # Alternating column noise.
-        acn = 2.0  # [electrons]
-
-        # PCA0 (picture frame) noise.
-        pca0_amp = 0.  # Do not use PCA0 component.
-
-        # Bias pattern.
-        bias_amp = 0.  # Do not use PCA0 component.
-        bias_offset = offset*self.gain  # [electrons]
-
-        # Dark current.
-        dark_current = 0.0  # [electrons/frame] Unused because pca0_amp = 0.
-
-        # Pedestal drifts.
-        pedestal = 18.30  # [electrons] Unused because pca0_amp = 0.
-
-        # Define the HXRGN instance (in detector coordinates).
-        noisegenerator = hxrg.HXRGNoise(naxis1=self.ncols, naxis2=self.nrows, naxis3=self.ngroups, pca0_file=pca0_file,
-                                        x0=0, y0=0, det_size=2048, verbose=False)
-
-        # Iterate over integrations
-        for i in range(self.nintegs):
-
-            # Choose a new random seed for this iteration.
-            seed1 = noise_seed + 24*int(i)
-
-            # Generate a noise-cube for this integration.
-            noisecube = noisegenerator.mknoise(c_pink=c_pink, u_pink=u_pink, bias_amp=bias_amp, bias_offset=bias_offset,
-                                               acn=acn, pca0_amp=pca0_amp, rd_noise=rd_noise, pedestal=pedestal,
-                                               dark_current=self.dark_current, dc_seed=dark_seed, noise_seed=seed1,
-                                               gain=self.gain)
-
-            # Ensure the noise-cube has the correct dimensions (when Ngroups = 1).
-            if noisecube.ndim == 2:
-                noisecube = noisecube[np.newaxis, :, :]
-
-            # Change from detector coordinates to science coordinates.
-            noisecube = np.transpose(noisecube, (0, 2, 1))
-            noisecube = noisecube[::, ::-1, ::-1]
-
-            # Add the detector noise to the simulation.
-            self.data[i] = self.data[i] + noisecube
-
-        self.modif_str = self.modif_str + '_detector'
-
     def apply_flatfield(self, flatfile=None):
         """Apply the flat field correction to the simulation."""
 
         if flatfile is None:
-            flatfile = self.noisefiles_dir+'/jwst_niriss_flat_0181.fits'
+            if self.subarray == 'SUBSTRIP256': flatfile = 'jwst_niriss_flat_0190.fits'
+            elif self.subarray == 'SUBSTRIP96': flatfile = 'jwst_niriss_flat_0190.fits'
+            elif self.subarray == 'FULL': flatfile = 'jwst_niriss_flat_0190.fits'
+            else:
+                raise ValueError('SUBARRAY must be one of SUBSTRIP96, SUBSTRIP256 or FULL')
+        # Check that the ref file is on local disk and download if required
+        download_ref_files(self.noisefiles_dir, os.path.basename(flatfile))
+        # Complete full path
+        flatfile = self.noisefiles_dir+os.path.basename(flatfile)
 
         # Read the flat-field from file (in science coordinates).
         with fits.open(flatfile) as hdu:
             flatfield = hdu[1].data
 
-        # Select the appropriate subarray.
-        if self.subarray == 'SUBSTRIP96':
-            slc = slice(1802, 1898)
-        elif self.subarray == 'SUBSTRIP256':
-            slc = slice(1792, 2048)
-        elif self.subarray == 'FULL':
-            slc = slice(0, 2048)
-        else:
-            raise ValueError('SUBARRAY must be one of SUBSTRIP96, SUBSTRIP256 or FULL')
-
-        subflat = flatfield[slc, :]
-
         # Apply the flatfield to the simulation.
-        self.data = self.data*subflat
+        self.data = self.data * flatfield
 
+        # Append that step to the filename.
         self.modif_str = self.modif_str + '_flat'
 
     def add_superbias(self, biasfile=None):
         """Add the bias level to the simulation."""
 
         if biasfile is None:
-            biasfile = self.noisefiles_dir+'/jwst_niriss_superbias_0137.fits'
+            if self.subarray == 'SUBSTRIP256': biasfile = 'jwst_niriss_superbias_0120.fits'
+            elif self.subarray == 'SUBSTRIP96': biasfile = 'jwst_niriss_superbias_0111.fits'
+            elif self.subarray == 'FULL': biasfile = 'jwst_niriss_superbias_0150.fits'
+            else:
+                raise ValueError('SUBARRAY must be one of SUBSTRIP96, SUBSTRIP256 or FULL')
 
-        # Read the super bias from file (in science coordinates).
+        # Check that the ref file is on local disk and download if required
+        download_ref_files(self.noisefiles_dir, os.path.basename(biasfile))
+        # Complete full path
+        biasfile = self.noisefiles_dir+os.path.basename(biasfile)
+
+        # Read the flat-field from file (in science coordinates).
         with fits.open(biasfile) as hdu:
-            superbias = hdu[1].data  # [ADU]
+            superbias = hdu[1].data #ADU
 
         superbias = superbias*self.gain  # [electrons]
 
-        # Select the appropriate subarray.
-        if self.subarray == 'SUBSTRIP96':
-            slc = slice(1802, 1898)
-        elif self.subarray == 'SUBSTRIP256':
-            slc = slice(1792, 2048)
-        elif self.subarray == 'FULL':
-            slc = slice(0, 2048)
-        else:
-            raise ValueError('SUBARRAY must be one of SUBSTRIP96, SUBSTRIP256 or FULL')
-
-        subbias = superbias[slc, :]
-
         # Add the bias level to the simulation.
-        self.data = self.data + subbias
+        self.data = self.data + superbias
 
+        # Append that step to the filename.
         self.modif_str = self.modif_str + '_bias'
 
     def add_dark(self, darkfile=None):
-        """Add a simple dark current to the simulation.
+        """Add dark current to the simulation.
 
         .. note::
         Uses 0.0414 electrons/s by default. Taken from Jdox on 04-May-2020, note that the actual dark current
@@ -448,18 +370,19 @@ class TimeSeries(object):
             darkramp = np.cumsum(dark, axis=1)
 
         if darkfile is None:
-            if self.subarray == 'SUBSTRIP96':
-                darkfile = self.noisefiles_dir+'/jwst_niriss_dark_0150.fits'
-            elif self.subarray == 'SUBSTRIP256':
-                darkfile = self.noisefiles_dir+'/jwst_niriss_dark_0147.fits'
-            elif self.subarray == 'FULL':
-                darkfile = self.noisefiles_dir+'/jwst_niriss_dark_0145.fits'
+            if self.subarray == 'SUBSTRIP256': darkfile = 'jwst_niriss_dark_0147.fits'
+            elif self.subarray == 'SUBSTRIP96': darkfile = 'jwst_niriss_dark_0150.fits'
+            elif self.subarray == 'FULL': darkfile = 'jwst_niriss_dark_0145.fits'
             else:
                 raise ValueError('SUBARRAY must be one of SUBSTRIP96, SUBSTRIP256 or FULL')
+        # Check that the ref file is on local disk and download if required
+        download_ref_files(self.noisefiles_dir, os.path.basename(darkfile))
+        # Complete full path
+        darkfile = self.noisefiles_dir+os.path.basename(darkfile)
 
-        # Read the dark from file (in science coordinates).
+        # Read the flat-field from file (in science coordinates).
         with fits.open(darkfile) as hdu:
-            darkramp = hdu[1].data  # [ADU]
+            darkramp = hdu[1].data #ADU
 
         # Convert dark current to electrons
         darkramp = darkramp * self.gain  # [electrons]
@@ -493,16 +416,17 @@ class TimeSeries(object):
         # Free memory
         del dark_exposure
 
+        # Append that step to the filename.
         self.modif_str = self.modif_str + '_dark'
 
     def add_zodiacal_background(self, zodifile=None):
         """Add the zodiacal background signal to the simulation."""
 
         if zodifile is None:
-            zodifile = self.noisefiles_dir+'/background_detectorfield_normalized.fits'
+            zodifile = self.noisefiles_dir+'background_detectorfield_normalized.fits'
 
         # Read the background file.
-        with fits.open(zodifile) as hdu:
+        with fits.open(self.noisefiles_dir+os.path.basename(zodifile)) as hdu:
             zodiimage = hdu[0].data  # [electrons/s]
 
         # Select the appropriate subarray.
@@ -521,6 +445,7 @@ class TimeSeries(object):
         subzodi = subzodi*self.tgroup  # [electrons]
         subzodi = np.tile(subzodi[np.newaxis, :, :], (self.ngroups, 1, 1))
 
+        #TODO: Check that the poisson noise for zodi background is done right, see dark for reference
         for i in range(self.nintegs):
 
             # Add poisson noise, and convert to up the ramp samples.
@@ -610,6 +535,103 @@ class TimeSeries(object):
             if filename is None:
                 filename = 'pixel_{}_{}.png'.format(i_row, i_col)
             fig.savefig(filename)
+
+    def get_normfactor(self):
+        """Determine a re-normalization factor so that the highest pixel value in the simulation
+         will match the full well capacity"""
+
+        raise Warning('get_normfactor, DEPRECATED FUNCTION - DO NOT USE. Simulations are now flux calibrated.')
+
+        max_value = np.amax(self.data)
+        normfactor = self.full_well/max_value
+
+        return normfactor
+
+    def apply_normfactor(self, normfactor):
+        """Apply an arbitrary re-normalization to the simulations."""
+
+        raise Warning('apply_normfactor, DEPRECATED FUNCTION - DO NOT USE. Simulations are now flux calibrated.')
+
+        self.data = self.data*normfactor
+
+        self.modif_str = self.modif_str + '_norm'
+
+
+    def add_detector_noise(self, offset=500., pca0_file=None, noise_seed=None, dark_seed=None):
+        """Add read-noise, 1/f noise, kTC noise, and alternating column noise
+        using the HxRG noise generator.
+        """
+
+        """ DEPRECATED. DO NOT USE ANYMORE. Instead call add_1overf_noise and add_readout_noise"""
+
+        raise Warning('Do not use add_detector_noise anymore. Instead use add_1overf_noise and add_readout_noise.')
+
+        # In the current implementation the pca0 file goes unused, but it is a mandatory input of HxRG.
+        if pca0_file is None:
+            pca0_file = self.noisefiles_dir+'/niriss_pca0.fits'
+
+        if noise_seed is None:
+            noise_seed = 7 + int(np.random.uniform() * 4000000000.)
+
+        if dark_seed is None:
+            dark_seed = 5 + int(np.random.uniform() * 4000000000.)
+
+        np.random.seed(dark_seed)
+
+        # Define noise parameters.
+        # White read-noise.
+        rd_noise = 12.95  # [electrons]
+
+        # Correlated pink noise.
+        c_pink = 9.6  # [electrons]
+
+        # Uncorrelated pink noise.
+        u_pink = 3.2  # [electrons]
+
+        # Alternating column noise.
+        acn = 2.0  # [electrons]
+
+        # PCA0 (picture frame) noise.
+        pca0_amp = 0.  # Do not use PCA0 component.
+
+        # Bias pattern.
+        bias_amp = 0.  # Do not use PCA0 component.
+        bias_offset = offset*self.gain  # [electrons]
+
+        # Dark current.
+        dark_current = 0.0  # [electrons/frame] Unused because pca0_amp = 0.
+
+        # Pedestal drifts.
+        pedestal = 18.30  # [electrons] Unused because pca0_amp = 0.
+
+        # Define the HXRGN instance (in detector coordinates).
+        noisegenerator = hxrg.HXRGNoise(naxis1=self.ncols, naxis2=self.nrows, naxis3=self.ngroups, pca0_file=pca0_file,
+                                        x0=0, y0=0, det_size=2048, verbose=False)
+
+        # Iterate over integrations
+        for i in range(self.nintegs):
+
+            # Choose a new random seed for this iteration.
+            seed1 = noise_seed + 24*int(i)
+
+            # Generate a noise-cube for this integration.
+            noisecube = noisegenerator.mknoise(c_pink=c_pink, u_pink=u_pink, bias_amp=bias_amp, bias_offset=bias_offset,
+                                               acn=acn, pca0_amp=pca0_amp, rd_noise=rd_noise, pedestal=pedestal,
+                                               dark_current=self.dark_current, dc_seed=dark_seed, noise_seed=seed1,
+                                               gain=self.gain)
+
+            # Ensure the noise-cube has the correct dimensions (when Ngroups = 1).
+            if noisecube.ndim == 2:
+                noisecube = noisecube[np.newaxis, :, :]
+
+            # Change from detector coordinates to science coordinates.
+            noisecube = np.transpose(noisecube, (0, 2, 1))
+            noisecube = noisecube[::, ::-1, ::-1]
+
+            # Add the detector noise to the simulation.
+            self.data[i] = self.data[i] + noisecube
+
+        self.modif_str = self.modif_str + '_detector'
 
 
 def main():

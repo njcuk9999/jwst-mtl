@@ -87,18 +87,20 @@ print(simuPars.pmodeltype[0])
 
 # Here one can manually edit the parameters but we encourage rather to change
 # the simulation parameter file directly.
-#simuPars.noversample = 4  #example of changing a model parameter
-#simuPars.xout = 2048      #spectral axis
-#simuPars.yout = 256       #spatial (cross-dispersed axis)
-#simuPars.xpadding = 100
-#simuPars.ypadding = 100
-#simuPars.modelfile = 'BLACKBODY'
-#simuPars.modelfile = 't6000g450p000_ldnl.dat'
-#simuPars.modelfile = 'lte06000-4.50-0.0.PHOENIX-ACES-AGSS-COND-2011.JWST-RF.simu-SOSS.dat'
-#simuPars.modelfile = 'lte02300-4.50-0.0.PHOENIX-ACES-AGSS-COND-2011.JWST-RF.simu-SOSS.dat'
+simuPars.noversample = 4  #example of changing a model parameter
+simuPars.xout = 2048      #spectral axis
+simuPars.yout = 256       #spatial (cross-dispersed axis)
+simuPars.xpadding = 10
+simuPars.ypadding = 10
 #simuPars.modelfile = 'CONSTANT_FLAMBDA'
 #simuPars.modelfile = 'CONSTANT_ADU'
-#simuPars.f277wcal = True
+simuPars.modelfile = 'BLACKBODY'
+simuPars.bbteff = 3000
+#simuPars.modelfile = 'lte06000-4.50-0.0.PHOENIX-ACES-AGSS-COND-2011.JWST-RF.simu-SOSS.dat'
+#simuPars.modelfile = 'lte02300-4.50-0.0.PHOENIX-ACES-AGSS-COND-2011.JWST-RF.simu-SOSS.dat'
+simuPars.ngroup = 5
+simuPars.f277wcal = True
+simuPars.nintf277 = 3
 #simuPars.f277wcal = False
 #simuPars.tend = -1.80
 #simuPars.tend = -1.97
@@ -248,7 +250,7 @@ if True:
                              xpadding=simuPars.xpadding, ypadding=simuPars.ypadding)
 
     # Add detector noise to the noiseless data
-    if False: # Should be True by default
+    if True: # Should be True by default
         detector.add_noise(os.path.join(pathPars.path_userland,'IDTSOSS_clear.fits'),
                        outputfilename=os.path.join(pathPars.path_userland, 'IDTSOSS_clear_noisy.fits'))
     else: # here is the option to investigate individual noise sources
@@ -258,12 +260,21 @@ if True:
                            outputfilename=os.path.join(pathPars.path_userland, 'IDTSOSS_clear_noisy.fits'))
 
     # Process the data through the DMS level 1 pipeline
-    if False: # Should be True by default
+    if True: # Should be True by default
         result = Detector1Pipeline.call(os.path.join(pathPars.path_userland, 'IDTSOSS_clear_noisy.fits'),
                                     output_file='IDTSOSS_clear_noisy', output_dir=pathPars.path_userland)
     else: # here is the option to investigate individual noise sources
-        result = Detector1Pipeline.call(os.path.join(pathPars.path_userland, 'IDTSOSS_clear_noisy.fits'),
-                                    output_file='IDTSOSS_clear_noisy', output_dir=pathPars.path_userland)
+        steps = [calwebb_detector1.dq_init_step.DQInitStep.call,
+                 calwebb_detector1.saturation_step.SaturationStep.call,
+                 calwebb_detector1.superbias_step.SuperBiasStep.call,
+                 calwebb_detector1.refpix_step.RefPixStep.call]
+        # Define input on the first iteration of the loop below
+        calwebb_input = os.path.join(pathPars.path_userland, 'IDTSOSS_clear_noisy.fits')
+        for i in range(len(steps)):
+            calwebb_input = steps[i](calwebb_input,
+                                     output_dir=pathPars.path_userland,
+                                     output_file='IDTSOSS_clear_noisy',
+                                     override_superbias='jwst_niriss_superbias_0017.fits')
 
 
 
