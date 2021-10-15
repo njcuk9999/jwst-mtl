@@ -85,27 +85,28 @@ simuPars = spgen.read_pars(pathPars.simulationparamfile, simuPars) #read in para
 print(pathPars.path_planetmodelatm+simuPars.pmodelfile[0])
 print(simuPars.pmodeltype[0])
 
-# Here one can manually edit the parameters but we encourage rather to change
-# the simulation parameter file directly.
-simuPars.noversample = 4  #example of changing a model parameter
-simuPars.xout = 2048      #spectral axis
-simuPars.yout = 256       #spatial (cross-dispersed axis)
-simuPars.xpadding = 10
-simuPars.ypadding = 10
-#simuPars.modelfile = 'CONSTANT_FLAMBDA'
-#simuPars.modelfile = 'CONSTANT_ADU'
-simuPars.modelfile = 'BLACKBODY'
-simuPars.bbteff = 3000
-#simuPars.modelfile = 'lte06000-4.50-0.0.PHOENIX-ACES-AGSS-COND-2011.JWST-RF.simu-SOSS.dat'
-#simuPars.modelfile = 'lte02300-4.50-0.0.PHOENIX-ACES-AGSS-COND-2011.JWST-RF.simu-SOSS.dat'
-simuPars.ngroup = 5
-simuPars.f277wcal = True
-simuPars.nintf277 = 3
-#simuPars.f277wcal = False
-#simuPars.tend = -1.80
-#simuPars.tend = -1.97
-#simuPars.flatthroughput = False
-simuPars.flatquantumyield = True
+# Here one can manually edit the parameters (by changing False for True below)
+# but we encourage to rather change the simulation parameter file directly.
+if False:
+    simuPars.noversample = 4  #example of changing a model parameter
+    simuPars.xout = 2048      #spectral axis
+    simuPars.yout = 256       #spatial (cross-dispersed axis)
+    simuPars.xpadding = 10
+    simuPars.ypadding = 10
+    #simuPars.modelfile = 'CONSTANT_FLAMBDA'
+    #simuPars.modelfile = 'CONSTANT_ADU'
+    simuPars.modelfile = 'BLACKBODY'
+    simuPars.bbteff = 3000
+    #simuPars.modelfile = 'lte06000-4.50-0.0.PHOENIX-ACES-AGSS-COND-2011.JWST-RF.simu-SOSS.dat'
+    #simuPars.modelfile = 'lte02300-4.50-0.0.PHOENIX-ACES-AGSS-COND-2011.JWST-RF.simu-SOSS.dat'
+    simuPars.ngroup = 5
+    simuPars.f277wcal = True
+    simuPars.nintf277 = 3
+    #simuPars.f277wcal = False
+    #simuPars.tend = -1.80
+    #simuPars.tend = -1.97
+    #simuPars.flatthroughput = False
+    simuPars.flatquantumyield = True
 
 # Save the input parameters to disk
 # TODO: Implement a working version for saving simulation input parameters
@@ -249,32 +250,6 @@ if True:
                              os=simuPars.noversample, input_frame='dms',
                              xpadding=simuPars.xpadding, ypadding=simuPars.ypadding)
 
-    # Add detector noise to the noiseless data
-    if True: # Should be True by default
-        detector.add_noise(os.path.join(pathPars.path_userland,'IDTSOSS_clear.fits'),
-                       outputfilename=os.path.join(pathPars.path_userland, 'IDTSOSS_clear_noisy.fits'))
-    else: # here is the option to investigate individual noise sources
-        detector.add_noise(os.path.join(pathPars.path_userland,'IDTSOSS_clear.fits'),
-                           normalize=False, flatfield=False, darkframe=False,
-                           nonlinearity=False, superbias=False, detector=False,
-                           outputfilename=os.path.join(pathPars.path_userland, 'IDTSOSS_clear_noisy.fits'))
-
-    # Process the data through the DMS level 1 pipeline
-    if True: # Should be True by default
-        result = Detector1Pipeline.call(os.path.join(pathPars.path_userland, 'IDTSOSS_clear_noisy.fits'),
-                                    output_file='IDTSOSS_clear_noisy', output_dir=pathPars.path_userland)
-    else: # here is the option to investigate individual noise sources
-        steps = [calwebb_detector1.dq_init_step.DQInitStep.call,
-                 calwebb_detector1.saturation_step.SaturationStep.call,
-                 calwebb_detector1.superbias_step.SuperBiasStep.call,
-                 calwebb_detector1.refpix_step.RefPixStep.call]
-        # Define input on the first iteration of the loop below
-        calwebb_input = os.path.join(pathPars.path_userland, 'IDTSOSS_clear_noisy.fits')
-        for i in range(len(steps)):
-            calwebb_input = steps[i](calwebb_input,
-                                     output_dir=pathPars.path_userland,
-                                     output_file='IDTSOSS_clear_noisy',
-                                     override_superbias='jwst_niriss_superbias_0017.fits')
 
 
 
@@ -328,13 +303,69 @@ if simuPars.f277wcal is True:
                              os=simuPars.noversample, input_frame='dms',
                              xpadding=simuPars.xpadding, ypadding=simuPars.ypadding, f277=True)
 
+
+print('The end of the noiseless simulation')
+print()
+'''
+ADD NOISE + PROCESS THRU DMS 
+'''
+
+# GR700XD+CLEAR - ADD NOISE
+# Add detector noise to the noiseless data
+detector.add_noise(os.path.join(pathPars.path_userland, 'IDTSOSS_clear.fits'),
+                   pathPars.path_noisefiles,
+                   outputfilename=os.path.join(pathPars.path_userland, 'IDTSOSS_clear_noisy.fits'),
+                   readout=True,
+                   zodibackg=False,
+                   photon=True,
+                   superbias=True,
+                   flatfield=True,
+                   nonlinearity=True,
+                   oneoverf=True,
+                   darkcurrent=True)
+# F277W - ADD NOISE
+if simuPars.f277wcal is True:
     # Add detector noise to the noiseless data
-    detector.add_noise(os.path.join(pathPars.path_userland,'IDTSOSS_f277.fits'),
-                       outputfilename=os.path.join(pathPars.path_userland, 'IDTSOSS_f277_noisy.fits'))
+    detector.add_noise(os.path.join(pathPars.path_userland, 'IDTSOSS_f277.fits'),
+                       pathPars.path_noisefiles,
+                       outputfilename=os.path.join(pathPars.path_userland, 'IDTSOSS_f277_noisy.fits'),
+                       readout=True,
+                       zodibackg=False,
+                       photon=True,
+                       superbias=True,
+                       flatfield=True,
+                       nonlinearity=True,
+                       oneoverf=True,
+                       darkcurrent=True)
 
-    # Process the data through the DMS level 1 pipeline
-    result = Detector1Pipeline.call(os.path.join(pathPars.path_userland, 'IDTSOSS_f277_noisy.fits'),
-                                    output_file='IDTSOSS_f277_noisy', output_dir=pathPars.path_userland)
-
-print('The end of the simulation')
-
+# Process the data through the DMS level 1 pipeline
+if True:  # here is the option to investigate individual noise sources
+    steps = [calwebb_detector1.dq_init_step.DQInitStep.call,
+             calwebb_detector1.saturation_step.SaturationStep.call,
+             calwebb_detector1.superbias_step.SuperBiasStep.call,
+             calwebb_detector1.refpix_step.RefPixStep.call,
+             calwebb_detector1.linearity_step.LinearityStep.call,
+             calwebb_detector1.dark_current_step.DarkCurrentStep.call,
+             calwebb_detector1.ramp_fit_step.RampFitStep.call,
+             calwebb_detector1.gain_scale_step.GainScaleStep.call,
+             calwebb_detector1.refpix_step.RefPixStep.call]
+    # GR700XD+CLEAR - PROCESS THROUGH DMS LEVEL 1
+    # Define input on the first iteration of the loop below
+    calwebb_input = os.path.join(pathPars.path_userland, 'IDTSOSS_clear_noisy.fits')
+    for i in range(len(steps)):
+        calwebb_input = steps[i](calwebb_input,
+                                 output_dir=pathPars.path_userland,
+                                 output_file='IDTSOSS_clear_noisy')#,
+                                 #override_superbias='jwst_niriss_superbias_0017.fits')
+    # GR700XD+F277W - PROCESS THROUGH DMS LEVEL 1
+    if simuPars.f277wcal is True:
+        # Define input on the first iteration of the loop below
+        calwebb_input = os.path.join(pathPars.path_userland, 'IDTSOSS_f277_noisy.fits')
+        for i in range(len(steps)):
+            calwebb_input = steps[i](calwebb_input,
+                                     output_dir=pathPars.path_userland,
+                                     output_file='IDTSOSS_f277_noisy')  # ,
+            # override_superbias='jwst_niriss_superbias_0017.fits')
+else:
+    result = Detector1Pipeline.call(os.path.join(pathPars.path_userland, 'IDTSOSS_clear_noisy.fits'),
+                                    output_file='IDTSOSS_clear_noisy', output_dir=pathPars.path_userland)
