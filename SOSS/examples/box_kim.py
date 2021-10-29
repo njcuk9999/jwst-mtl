@@ -283,13 +283,17 @@ def transit_depth(f_lambda, t2, t3):
 
 
 def no_dms_simulation(file_name, gain=1.61):
-    with fits.open(WORKING_DIR + file_name) as hdulist:
+    with fits.open(file_name) as hdulist:
         ng = hdulist[0].header['NGROUPS']  # n_groups
         t_read = hdulist[0].header['TGROUP']  # Reading time [s]
         tint = (ng - 1) * t_read  # Integration time [s]
 
         simu = hdulist
         data = (hdulist[1].data[:, -1] - hdulist[1].data[:, 0]) / tint / gain  # Images of flux [adu/s]
+
+        # Convert data from fits files to float (fits precision is 1e-8)
+        data = data.astype('float64', copy=False)
+
     return simu, data
 
 

@@ -1,4 +1,7 @@
 ######################################################################
+############################ SET UP ##################################
+######################################################################
+
 # Location of the jwst-mtl github repo. Overrides the github path in
 # 'jwst_config_fpath', during the import phase
 github_path = '/home/kmorel/ongenesis/github/jwst-mtl/SOSS/'
@@ -7,8 +10,37 @@ WORKING_DIR = '/home/kmorel/ongenesis/jwst-user-soss/PHY3030/'
 # Configuration file for the NIRISS Instrument Team SOSS simulation pipeline
 jwst_config_fpath = 'jwst-mtl_configpath_kim.txt'
 
+# CHOOSE whether to generate the noisy dms simulations or
+# work with some already generated.
+generate_dms_simu = False
+
+gain = 1.61  # [é]
+
+# Radius for box extraction
+radius_pixel = 30
+
+# Noise sources to investigate
+# This 2D-list determines what noise types are injected into them (list contained in 2nd dimension).
+noise_shopping_lists = [['photon']
+                       #,['zodibackg']
+                       #,['flatfield']
+                       ,['darkcurrent']
+                       ,['nonlinearity']
+                       ,['superbias']
+                       ,['readout']
+                       ,['oneoverf']
+                       #,['photon','nonlinearity','superbias']
+                       ]
+
+# Determines if extraction results are plotted
+doPlot_extract = True
+
 ######################################################################
-# IMPORTS
+####################### END OF SET UP ################################
+######################################################################
+
+
+### IMPORTS ###
 import sys
 sys.path.insert(1, '/genesis/jwst/jwst-ref-soss/fortran_lib/')
 # TODO: Update all paths
@@ -62,41 +94,35 @@ sys.path.insert(0, "/genesis/jwst/jwst-ref-soss/fortran_lib/")
 
 ######################################################################
 # Matplotlib defaults
-plt.rc('figure', figsize=(8,4.5))
+plt.rc('figure', figsize=(10,6))
 plt.rc('font', size=12)
 plt.rc('image', cmap='inferno')
 plt.rc('lines', lw=1)
 
-######################################################################
-# CHOOSE whether to generate the noisy dms simulations or
-# work with some already generated.
-generate_noisy_simu = False
 
 ######################################################################
-gain = 1.61  # [é]
-radius_pixel = 30  # Radius for box extraction
-
+################ GENERATING THE NOISELESS SIMULATION #################
 ######################################################################
-if generate_noisy_simu is True:
-    # NOISELESS
+
+if generate_dms_simu is True:
     # Generate noiseless simu
     # This one needs to be done before the others in order to compare
     # the noisy ones with the noiseless one for each case.
-    noise_shopping_lists = [[]      # empty list means adding no noise (but still converting to ADU)
+    noiseless_shopping_lists = [[]   # empty list means adding no noise (but still converting to ADU)
                             ]
 
     ######### The 1st step of the simulation process. #########################
-        # Outputs images in units of electrons.
-        ########################!!!!!!!!######################################
-        # tmp clear simulations must already be generated.
-        # This means that
-        # generate_clear_tmp_simu = False.
-        # This code is meant to add noise sources one by one
-        # and analyse the results one by one.
-        ########################!!!!!!!!######################################
-        # Optional override of the amount of integrations in the exposure.
-        # By default, the amount is determined by the maximum amount of integrations
-        # that can be fit into the observation time (given the detector readout array size)
+    # Outputs images in units of electrons.
+    ########################!!!!!!!!######################################
+    # tmp clear simulations must already be generated.
+    # This means that
+    # generate_clear_tmp_simu = False.
+    # This code is meant to add noise sources one by one
+    # and analyse the results one by one.
+    ########################!!!!!!!!######################################
+    # Optional override of the amount of integrations in the exposure.
+    # By default, the amount is determined by the maximum amount of integrations
+    # that can be fit into the observation time (given the detector readout array size)
     nIntegrations_override = 300
 
     ######### The 2nd step of the simulation process. ##########################
@@ -136,7 +162,7 @@ if generate_noisy_simu is True:
     dms_cfg_files_path = WORKING_DIR + 'dms_config_files/'
         # CALWEBB_DETECTOR1 config files. If =None, these config files are auto-generated
         # according to the noise input specified in the noise_shopping_lists
-    dms_config_files = [None] * len(noise_shopping_lists)
+    dms_config_files = [None] * len(noiseless_shopping_lists)
         # CALWEBB steps that are always executed, regardless of step choice in a shopping_list
     calwebb_NIR_TSO_mandatory_steps = ['dq_init', 'saturation', 'ramp_fit']  # 'jump'
         # For each CALWEBB_DETECTOR1 step, specify the reference file to be used (if a file is needed),
@@ -171,7 +197,7 @@ if generate_noisy_simu is True:
     verbose = doPrint
 
     ########################################################################################
-    #######################        END OF SETUP PHASE        ###############################
+    ########################  END OF SIMULATION SETUP PHASE  ###############################
     ########################################################################################
 
 
@@ -313,7 +339,7 @@ if generate_noisy_simu is True:
     jwstMTL_noise = {'photon': False, 'zodibackg': False, 'flatfield': False,
                      'darkcurrent': False, 'nonlinearity': False, 'superbias': False, 'readout': False,
                      'oneoverf': False}
-    auto_dms_config_files = create_calwebb_config_files(dms_cfg_files_path, noise_shopping_lists
+    auto_dms_config_files = create_calwebb_config_files(dms_cfg_files_path, noiseless_shopping_lists
                                         , calwebb_NIR_TSO_mandatory_steps
                                         , calwebb_NIR_steps=calwebb_NIR_steps
                                         , jwstMTLnoise_to_calwebbSteps_MAP=jwstMTLnoise_to_calwebbSteps_MAP
@@ -326,7 +352,7 @@ if generate_noisy_simu is True:
                         in tuple(np.transpose([auto_dms_config_files, dms_config_files]))
                         ]
 
-    for i, noise_list in enumerate(noise_shopping_lists):
+    for i, noise_list in enumerate(noiseless_shopping_lists):
             # This little section writes out the file names of:
             # a) the noisy file to be created
             # b) the config file to be used by the DMS pipeline, based on the noisy components of a)
@@ -358,23 +384,28 @@ if generate_noisy_simu is True:
 
     print('The end of the NOISELEE simulation')
 
-    ###########################################
-    ####### END OF SIMULATIONS CREATION #######
-    ###########################################
+    ############################################
+    ### END OF NOISELESS SIMULATION CREATION ###
+    ############################################
+
 
 ##########################################################
-# EXTRACTION, Noiseless
-simu_noiseless, data_noiseless = box_kim.rateints_dms_simulation(WORKING_DIR + 'IDTSOSS_clear_noNoise_rateints.fits')
-simulation_noiseless = 'Noiseless, after DMS'
+################# EXTRACTION, NOISELESS ##################
+##########################################################
+
+simu_noiseless, data_noiseless = box_kim.rateints_dms_simulation(WORKING_DIR +
+                                                                 'IDTSOSS_clear_noNoise_rateints.fits')
+simulation_noiseless = 'noiseless'
 
 ng = simu_noiseless[0].header['NGROUPS']  # n_groups
 t_read = simu_noiseless[0].header['TGROUP']  # Reading time [s]
 tint = (ng - 1) * t_read  # Integration time [s]
 
-t1 = 95   # [image]
+# Characteristic times of transit
+t1 = 94   # [image]
 t2 = 155  # [image]
 t3 = 283  # [image]
-t4 = 343  # [image]
+t4 = 344  # [image]
 
 # Position of trace for box extraction
 x, y, w = box_kim.readtrace(os=1)
@@ -404,22 +435,13 @@ f_array_noiseless_norm = np.copy(f_array_noiseless)
 for n in range(f_array_noiseless.shape[1]):  # For each wavelength
     f_array_noiseless_norm[:, n] = box_kim.normalization(f_array_noiseless[:, n], t1, t4)
 
+
 #######################################################################
-### Creation of noisy simulations
-### one by one (one noise source at a time)
+################## CREATION OF NOISY SIMULATIONS ######################
+############## one by one (one noise source at a time) ################
 #######################################################################
-# This 2D-list determines what noise types are injected into them (list contained in 2nd dimension).
-noise_shopping_lists = [['photon']
-                       #,['zodibackg']
-                       #,['flatfield']
-                       ,['darkcurrent']
-                       ,['nonlinearity']
-                       ,['superbias']
-                       ,['readout']
-                       ,['oneoverf']
-                       #,['photon','nonlinearity','superbias']
-                       ]
-if generate_noisy_simu is True:
+
+if generate_dms_simu is True:
         # CALWEBB_DETECTOR1 config files. If =None, these config files are auto-generated
         # according to the noise input specified in the noise_shopping_lists
     dms_config_files = [None] * len(noise_shopping_lists)
@@ -437,19 +459,14 @@ if generate_noisy_simu is True:
                         in tuple(np.transpose([auto_dms_config_files, dms_config_files]))
                         ]
 
+
 # LOOP on each noise type
 for i,noise_list in enumerate(noise_shopping_lists):
 
-    if generate_noisy_simu is True:
-        # if True: Generates noisy simulations before analysing it
-        # generate_clear_dmsReady_simu = False
-        # Was created upper
-
-        ########################################
-        ########## START OF THE FLOW ###########
-        ########################################
-        ############# SETUP PHASE ##############
-        ########################################
+    if generate_dms_simu is True:
+        # Generates noisy simulations before analysing it
+        print('Generating simulation with', noise_list[0])
+        # generate_clear_dmsReady_simu = False: was created upper
 
         ###########################################
         ####### ADD (AND CORRECT FOR) NOISE #######
@@ -486,17 +503,23 @@ for i,noise_list in enumerate(noise_shopping_lists):
 
         print('The end of the noisy {} simulation'.format(noisy_file_str))
 
-        ###########################################
-        ####### END OF SIMULATION CREATION #######
-        ###########################################
+        #############################################
+        ######## END OF SIMULATION CREATION #########
+        #############################################
 
 
     #######################################################################
-    ### EXTRACTION, Noisy ###
+    ####################### EXTRACTION, NOISY #############################
+    #######################################################################
+
+    print('Extracting:', noise_list[0])
+
     # Load simulation
-    simu_filename = 'IDTSOSS_clear_noisy--' + noise + '.fits'
-    simu_noisy, data_noisy = box_kim.rateints_dms_simulation(simu_filename)
-    simulation_noisy = noise  # TODO: OKAY?
+    # Superbias doesn't have its name in its file
+    noise_name = noise_list[0] + '_' if noise_list[0]!='superbias' else ''
+    simu_filename = 'IDTSOSS_clear_noisy--' + noise_name + 'rateints.fits'
+    simu_noisy, data_noisy = box_kim.rateints_dms_simulation(WORKING_DIR + simu_filename)
+    simulation_noisy = noise_list[0]   # Name of noise
 
     # BOX EXTRACTION
     # To save it:
@@ -514,27 +537,36 @@ for i,noise_list in enumerate(noise_shopping_lists):
     # To save it:
     f_array_noisy_norm = np.copy(f_array_noisy)
     for n in range(f_array_noisy.shape[1]):  # For each wavelength
-        f_array_noisy_norm[:, n] = normalization(f_array_noisy[:, n], t1, t4)
+        f_array_noisy_norm[:, n] = box_kim.normalization(f_array_noisy[:, n], t1, t4)
 
     plt.figure()
-    plt.plot(time_min, f_white_noisy, '.', markersize=3, color='r', label=simulation_noisy)
-    plt.plot(time_min, f_white_noiseless, '.', markersize=3, color='b', label=simulation_noiseless)
+    plt.plot(time_min, f_white_noisy, '.', markersize=4, color='r', label=simulation_noisy)
+    plt.plot(time_min, f_white_noiseless, '.', markersize=4, color='b', label=simulation_noiseless)
     plt.xlabel('Time [min]')
-    plt.ylabel('Relative flux')
+    plt.ylabel('Flux')
     plt.title('White light')
     plt.legend()
     plt.savefig(WORKING_DIR + 'white_light_' + simulation_noisy)
 
-    # Plot only one wavelength
-    l = 100  # Indice of wavelength to plot
-
     plt.figure()
-    plt.plot(time_min, f_array_noisy_norm[:, l], '.', color='r', label=r'$\lambda$={:.3f}'.format(w[l]))
+    plt.plot(time_min, f_white_noisy_norm, '.', markersize=4, color='r', label=simulation_noisy)
+    plt.plot(time_min, f_white_noiseless_norm, '.', markersize=4, color='b', label=simulation_noiseless)
     plt.xlabel('Time [min]')
     plt.ylabel('Relative flux')
-    plt.title(simulation_noisy)
+    plt.title('White light')
     plt.legend()
+    plt.savefig(WORKING_DIR + 'white_light_norm_' + simulation_noisy)
 
+    if False:
+        # Plot only one wavelength
+        l = 100  # Indice of wavelength to plot
+
+        plt.figure()
+        plt.plot(time_min, f_array_noisy_norm[:, l], '.', color='r', label=r'$\lambda$={:.3f}'.format(w[l]))
+        plt.xlabel('Time [min]')
+        plt.ylabel('Relative flux')
+        plt.title(simulation_noisy)
+        plt.legend()
 
     ### DISPERSION/PHOTON NOISE ###
     # Only the non-contaminated portion of the spectrum is used here
@@ -556,7 +588,7 @@ for i,noise_list in enumerate(noise_shopping_lists):
         photon_noise[n] = photon_noise_elec / gain / tint  # Reconversion in adu/s
         # Dispersion in data
         dispersion[n] = np.std(out_transit_noisy)
-
+    print(dispersion[100])
     ratio = dispersion / photon_noise
     ratio = ratio[:-5]
 
@@ -565,11 +597,13 @@ for i,noise_list in enumerate(noise_shopping_lists):
     plt.plot(new_w[:-5], ratio, '.', color='b', label=simulation_noisy)
     plt.xlabel(r'Wavelength [$\mu$m]')
     plt.ylabel('Dispersion/Photon noise')
+    plt.legend()
     plt.savefig(WORKING_DIR + 'disp_over_photnoise_' + simulation_noisy)
 
-    print(simulation_noisy,"Mean dispersion-photon noise ratio =", np.mean(ratio))
+    print("Mean dispersion over photon noise ratio =", np.mean(ratio))
 
     ### Relative difference ###
+    # Between white light curves
     relatDiff_white = box_kim.relative_difference(f_white_noisy, f_white_noiseless)
 
     plt.figure()
@@ -578,4 +612,6 @@ for i,noise_list in enumerate(noise_shopping_lists):
     plt.ylabel(r'Relative difference [ppm]')
     plt.title('Relative difference between {} and \n{}'.format(simulation_noisy, simulation_noiseless))
     plt.savefig(WORKING_DIR + 'relatDiff_white_' + simulation_noisy)
-    plt.show()
+
+    if doPlot_extract is True:
+        plt.show()
