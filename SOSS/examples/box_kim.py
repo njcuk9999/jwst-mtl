@@ -5,6 +5,7 @@ import scipy.constants as sc_cst
 import trace.tracepol as tp   #SOSS.
 from scipy.interpolate import interp1d
 from scipy.optimize import least_squares
+from astropy.io import fits
 
 def photon_energy(wl):
     """
@@ -293,13 +294,16 @@ def no_dms_simulation(file_name, gain=1.61):
 
 
 def rateints_dms_simulation(file_name):
-    with fits.open(WORKING_DIR + file_name) as hdulist:
+    with fits.open(file_name) as hdulist:
         data_noisy_rateints = hdulist[1].data  # Images of flux [adu/s]
         # delta_noisy = hdulist[2].data            # Errors [adu/s]
         dq = hdulist[3].data  # Data quality
         i = np.where(dq % 2 != 0)  # Odd values of dq = DO NOT USE these pixels
         data_noisy_rateints[i[0], i[1], i[2]] = 0.
         # delta_noisy[i[0], i[1], i[2]] = 0.
+
+        # Convert data from fits files to float (fits precision is 1e-8)
+        data_noisy_rateints = data_noisy_rateints.astype('float64', copy=False)
 
         simu = hdulist
         data = data_noisy_rateints
