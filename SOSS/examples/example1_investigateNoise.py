@@ -18,7 +18,7 @@
 github_path = '/home/kmorel/ongenesis/github/jwst-mtl/SOSS/'
     # Location of the simulation config file, as well as the output directory
 # WORKING_DIR = '/genesis/jwst/jwst-user-soss/loic_review/'
-WORKING_DIR = '/home/kmorel/ongenesis/jwst-user-soss/PHY3030/'
+WORKING_DIR = '/home/kmorel/ongenesis/jwst-user-soss/PHY3030/WASP_52/'
     # Configuration file for the NIRISS Instrument Team SOSS simulation pipeline
 # jwst_config_fpath = 'jwst-mtl_configpath.txt'
 jwst_config_fpath = 'jwst-mtl_configpath_kim.txt'
@@ -27,7 +27,7 @@ jwst_config_fpath = 'jwst-mtl_configpath_kim.txt'
 ######### The 1st step of the simulation process. #########################
     # Choose whether to generate the simulation from scratch.
     # Outputs images in units of electrons.
-generate_clear_tmp_simu = False
+generate_clear_tmp_simu = True
     # Optional override of the amount of integrations in the exposure.
     # By default, the amount is determined by the maximum amount of integrations
     # that can be fit into the observation time (given the detector readout array size)
@@ -39,7 +39,7 @@ nIntegrations_override = 300
     # fits format processable by the CALWEBB_DETECTOR1 pipeline (DMS).
     # This step also performs flux calibration via scaling of the images
     # based on expected electron counts.
-generate_clear_dmsReady_simu = False
+generate_clear_dmsReady_simu = True
     
 ########## The 3rd step of the simulation process ##########################
     # Choose whether to add detector noise to the noiseless data
@@ -69,9 +69,9 @@ noise_shopping_lists = [[]            # empty list means adding no noise (but st
                        #,['darkcurrent']
                        #,['nonlinearity']
                        #,['superbias']
-                       ,['readout']
-                       ,['oneoverf']
-                       #,['photon','nonlinearity','superbias']
+                       #,['readout']
+                       #,['oneoverf']
+                       ,['photon','darkcurrent','superbias','readout','oneoverf']
                        ]
 override_noise_files = True
 ov_noiz_dir = '/genesis/jwst/jwst-ref-soss/noise_files/'
@@ -319,7 +319,7 @@ if generate_clear_tmp_simu or generate_clear_dmsReady_simu is True:
         # Path for the model grid
     path_files = pathPars.path_planetmodelatm+"FwdRuns20210521_0.3_100.0_64_nLay60/"
     # planet_name = 'FwdRuns20210521_0.3_100.0_64_nLay60/HAT_P_1_b'
-    planet_name = 'HAT_P_1_b'
+    planet_name = 'WASP_52_b'    # HAT_P_1_b
         # Get a list of all parameters available
     planet_caselist = soss.get_atmosphere_cases(planet_name, path_files=path_files,
                                                 return_caselist=True, print_info=doPrint)
