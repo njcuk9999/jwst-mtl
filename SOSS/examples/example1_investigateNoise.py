@@ -315,29 +315,36 @@ if generate_clear_tmp_simu or generate_clear_dmsReady_simu is True:
 
 
         # Read Planet Atmosphere Model
-        # Caroline Piaulet and Benneke group planet model functionalities
-        # Path for the model grid
-    path_files = pathPars.path_planetmodelatm+"FwdRuns20210521_0.3_100.0_64_nLay60/"
-    # planet_name = 'FwdRuns20210521_0.3_100.0_64_nLay60/HAT_P_1_b'
-    planet_name = 'WASP_52_b'    # HAT_P_1_b
-        # Get a list of all parameters available
-    planet_caselist = soss.get_atmosphere_cases(planet_name, path_files=path_files,
-                                                return_caselist=True, print_info=doPrint)
-        # select params that you want
-    params_dict = soss.make_default_params_dict()
-    params_dict["CtoO"] = 0.3
-    # print(params_dict)
-        # Get path to csv file that contains the model spectrum
-    path_csv = soss.get_spec_csv_path(caselist=planet_caselist, params_dict=params_dict,
-                                    planet_name=planet_name, path_files=path_files)
+    #     # Caroline Piaulet and Benneke group planet model functionalities
+    #     # Path for the model grid
+    # path_files = pathPars.path_planetmodelatm+"FwdRuns20210521_0.3_100.0_64_nLay60/"
+    # # planet_name = 'FwdRuns20210521_0.3_100.0_64_nLay60/HAT_P_1_b'
+    # planet_name = 'WASP_52_b'    # HAT_P_1_b
+    #     # Get a list of all parameters available
+    # planet_caselist = soss.get_atmosphere_cases(planet_name, path_files=path_files,
+    #                                             return_caselist=True, print_info=doPrint)
+    #     # select params that you want
+    # params_dict = soss.make_default_params_dict()
+    # params_dict["CtoO"] = 0.3
+    # # print(params_dict)
+    #     # Get path to csv file that contains the model spectrum
+    # path_csv = soss.get_spec_csv_path(caselist=planet_caselist, params_dict=params_dict,
+    #                                 planet_name=planet_name, path_files=path_files)
+
+    planet_model_csvfile = os.path.join(pathPars.path_planetmodelatm,
+                                        'WASP_52_b_HR_Metallicity100_CtoO0.54_pQuench1e-99_TpNonGrayTint75'
+                                        '.0f0.25A0.1_pCloud100000.0mbar_Spectrum_FullRes.csv')
+
     if doPrint:
-        t = ascii.read(path_csv)
+        t = ascii.read(planet_model_csvfile)
+        # t = ascii.read(path_csv)
         print("\nSpectrum file:")
         print(t)
     # Wavelength in angstroms
     planetmodel_angstrom = np.array(t['wave']) * 1e+4
         # Rp/Rstar from depth in ppm
     planetmodel_rprs = np.sqrt(np.array(t['dppm'])/1e+6)
+
 
 
     if doPlot:
