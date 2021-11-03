@@ -31,7 +31,7 @@ generate_clear_tmp_simu = True
     # Optional override of the amount of integrations in the exposure.
     # By default, the amount is determined by the maximum amount of integrations
     # that can be fit into the observation time (given the detector readout array size)
-nIntegrations_override = 300
+nIntegrations_override = 182
 #nIntegrations_override = None
     
 ######### The 2nd step of the simulation process. ##########################
@@ -235,9 +235,6 @@ pyfftw.config.NUM_THREADS = ncpu
 from jwst.pipeline import Detector1Pipeline
 
 from example1_helper_funcs import *
-
-
-
 
 
 
@@ -527,13 +524,6 @@ else: # here is the option to investigate select noise sources
             
 
 
-
-
-
-
-
-
-sys.exit()
 
 """
 SIMULATE THE F277W CALIBRATION EXPOSURE OBTAINED AFTER THE GR700XD EXPOSURE

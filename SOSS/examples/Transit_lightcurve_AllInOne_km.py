@@ -6,7 +6,7 @@
 # 'jwst_config_fpath', during the import phase
 github_path = '/home/kmorel/ongenesis/github/jwst-mtl/SOSS/'
 # Location of the simulation config file, as well as the output directory
-WORKING_DIR = '/home/kmorel/ongenesis/jwst-user-soss/PHY3030/'
+WORKING_DIR = '/home/kmorel/ongenesis/jwst-user-soss/PHY3030/WASP_52/'
 # Configuration file for the NIRISS Instrument Team SOSS simulation pipeline
 jwst_config_fpath = 'jwst-mtl_configpath_kim.txt'
 
@@ -21,15 +21,15 @@ radius_pixel = 30
 
 # Noise sources to investigate
 # This 2D-list determines what noise types are injected into them (list contained in 2nd dimension).
-noise_shopping_lists = [['photon']
+noise_shopping_lists = [ # ['photon']
                        #,['zodibackg']
                        #,['flatfield']
-                       ,['darkcurrent']
-                       ,['nonlinearity']
-                       ,['superbias']
-                       ,['readout']
-                       ,['oneoverf']
-                       #,['photon','nonlinearity','superbias']
+                       #,['darkcurrent']
+                       #,['nonlinearity']
+                       #,['superbias']
+                       #,['readout']
+                       #,['oneoverf']
+                       ,['photon','darkcurrent','superbias','readout','oneoverf']
                        ]
 
 # Determines if extraction results are plotted
@@ -108,8 +108,7 @@ if generate_dms_simu is True:
     # Generate noiseless simu
     # This one needs to be done before the others in order to compare
     # the noisy ones with the noiseless one for each case.
-    noiseless_shopping_lists = [[]   # empty list means adding no noise (but still converting to ADU)
-                            ]
+    noiseless_shopping_lists = [[]]   # empty list means adding no noise (but still converting to ADU)
 
     ######### The 1st step of the simulation process. #########################
     # Outputs images in units of electrons.
@@ -123,7 +122,7 @@ if generate_dms_simu is True:
     # Optional override of the amount of integrations in the exposure.
     # By default, the amount is determined by the maximum amount of integrations
     # that can be fit into the observation time (given the detector readout array size)
-    nIntegrations_override = 300
+    nIntegrations_override = 182
 
     ######### The 2nd step of the simulation process. ##########################
         # Choose whether to format the generated (clear) simulation in a
@@ -233,22 +232,28 @@ if generate_dms_simu is True:
                                                  simuPars.magnitude, pathPars.path_filtertransmission, verbose=True)
 
             # Read Planet Atmosphere Model
-            # Caroline Piaulet and Benneke group planet model functionalities
-            # Path for the model grid
-        path_files = pathPars.path_planetmodelatm + "FwdRuns20210521_0.3_100.0_64_nLay60/"
-        # planet_name = 'FwdRuns20210521_0.3_100.0_64_nLay60/HAT_P_1_b'
-        planet_name = 'HAT_P_1_b'
-            # Get a list of all parameters available
-        planet_caselist = soss.get_atmosphere_cases(planet_name, path_files=path_files,
-                                                    return_caselist=True, print_info=doPrint)
-            # Select params that you want
-        params_dict = soss.make_default_params_dict()
-        params_dict["CtoO"] = 0.3
-            # Get path to csv file that contains the model spectrum
-        path_csv = soss.get_spec_csv_path(caselist=planet_caselist, params_dict=params_dict,
-                                          planet_name=planet_name, path_files=path_files)
+        #     # Caroline Piaulet and Benneke group planet model functionalities
+        #     # Path for the model grid
+        # path_files = pathPars.path_planetmodelatm + "FwdRuns20210521_0.3_100.0_64_nLay60/"
+        # # planet_name = 'FwdRuns20210521_0.3_100.0_64_nLay60/HAT_P_1_b'
+        # planet_name = 'HAT_P_1_b'
+        #     # Get a list of all parameters available
+        # planet_caselist = soss.get_atmosphere_cases(planet_name, path_files=path_files,
+        #                                             return_caselist=True, print_info=doPrint)
+        #     # Select params that you want
+        # params_dict = soss.make_default_params_dict()
+        # params_dict["CtoO"] = 0.3
+        #     # Get path to csv file that contains the model spectrum
+        # path_csv = soss.get_spec_csv_path(caselist=planet_caselist, params_dict=params_dict,
+        #                                   planet_name=planet_name, path_files=path_files)
+
+        planet_model_csvfile = os.path.join(pathPars.path_planetmodelatm,
+                                            'WASP_52_b_HR_Metallicity100_CtoO0.54_pQuench1e-99_TpNonGrayTint75'
+                                            '.0f0.25A0.1_pCloud100000.0mbar_Spectrum_FullRes.csv')
+
         if doPrint:
-            t = ascii.read(path_csv)
+            t = ascii.read(planet_model_csvfile)
+            # t = ascii.read(path_csv)
             print("\nSpectrum file:")
             print(t)
         # Wavelength in angstroms
@@ -382,6 +387,64 @@ if generate_dms_simu is True:
                                             config_file=dms_config_files[i]
                                             )
 
+    """
+    SIMULATE THE F277W CALIBRATION EXPOSURE OBTAINED AFTER THE GR700XD EXPOSURE
+    - throughput needs to be rest differently
+    - star model: no change
+    - planet model: no change
+    - determine time steps for F277W short time series
+    - Apply normalization_scale * it
+    - Convert to up-the-ramp images, store on disk
+    - Add detector noise
+    - Process the data through DMS
+    """
+    if simuPars.f277wcal is True:
+
+        # Get the throughput with the F277W filter in place of the CLEAR
+        # throughput_f277 = smag.throughput_withF277W(throughput, pathPars.path_filtertransmission)
+        # Instrument Throughput (Response)
+        throughput_f277 = spgen.read_response(pathPars.throughputfile, f277w=True,
+                                              path_filter_transmission=pathPars.path_filtertransmission,
+                                              verbose=verbose)
+
+        # Generate the time steps array
+        tintopen, frametime, nint_f277, timesteps_f277 = soss.generate_timesteps(simuPars, f277=True)
+        print('F277W calibration generated time steps:')
+        print('nint_f277={:} nsteps={:} frametime={:}'.format( \
+            nint_f277, len(timesteps_f277), frametime))
+        print('F277W calibration generated time steps (in seconds): ', timesteps_f277)
+
+        if True:
+            imagelist_f277 = soss.generate_traces(pathPars.path_userland + 'tmp/f277',
+                                                  pathPars, simuPars, tracePars, throughput_f277,
+                                                  starmodel_angstrom, starmodel_flambda, ld_coeff,
+                                                  planetmodel_angstrom, planetmodel_rprs,
+                                                  timesteps_f277, tintopen)
+        else:
+            imagelist_f277 = glob.glob(pathPars.path_userland + 'tmp/f277*.fits')
+            for i in range(np.size(imagelist_f277)):
+                imagelist_f277[i] = os.path.join(pathPars.path_userland + 'tmp/', imagelist_f277[i])
+            print(imagelist_f277)
+
+        # All simulations are normalized, all orders summed and gathered in a single array
+        # with the 3rd dimension being the number of time steps.
+        data_f277 = soss.write_dmsready_fits_init(imagelist_f277, normalization_scale,
+                                                  simuPars.ngroup, simuPars.nintf277,
+                                                  simuPars.frametime, simuPars.granularity, verbose=True)
+
+        # All simulations (e-/sec) are converted to up-the-ramp images.
+        soss.write_dmsready_fits(data_f277, os.path.join(pathPars.path_userland, 'IDTSOSS_f277.fits'),
+                                 os=simuPars.noversample, input_frame='dms',
+                                 xpadding=simuPars.xpadding, ypadding=simuPars.ypadding, f277=True)
+
+        # Add detector noise to the noiseless data
+        detector.add_noise(os.path.join(pathPars.path_userland, 'IDTSOSS_f277.fits'), pathPars.path_noisefiles,
+                           outputfilename=os.path.join(pathPars.path_userland, 'IDTSOSS_f277_noisy.fits'))
+
+        # Process the data through the DMS level 1 pipeline
+        result = Detector1Pipeline.call(os.path.join(pathPars.path_userland, 'IDTSOSS_f277_noisy.fits'),
+                                        output_file='IDTSOSS_f277_noisy', output_dir=pathPars.path_userland)
+
     print('The end of the NOISELEE simulation')
 
     ############################################
@@ -500,6 +563,64 @@ for i,noise_list in enumerate(noise_shopping_lists):
                                             output_dir=pathPars.path_userland,
                                             config_file=dms_config_files[i]
                                             )
+
+        """
+        SIMULATE THE F277W CALIBRATION EXPOSURE OBTAINED AFTER THE GR700XD EXPOSURE
+        - throughput needs to be rest differently
+        - star model: no change
+        - planet model: no change
+        - determine time steps for F277W short time series
+        - Apply normalization_scale * it
+        - Convert to up-the-ramp images, store on disk
+        - Add detector noise
+        - Process the data through DMS
+        """
+        if simuPars.f277wcal is True:
+
+            # Get the throughput with the F277W filter in place of the CLEAR
+            # throughput_f277 = smag.throughput_withF277W(throughput, pathPars.path_filtertransmission)
+            # Instrument Throughput (Response)
+            throughput_f277 = spgen.read_response(pathPars.throughputfile, f277w=True,
+                                                  path_filter_transmission=pathPars.path_filtertransmission,
+                                                  verbose=verbose)
+
+            # Generate the time steps array
+            tintopen, frametime, nint_f277, timesteps_f277 = soss.generate_timesteps(simuPars, f277=True)
+            print('F277W calibration generated time steps:')
+            print('nint_f277={:} nsteps={:} frametime={:}'.format( \
+                nint_f277, len(timesteps_f277), frametime))
+            print('F277W calibration generated time steps (in seconds): ', timesteps_f277)
+
+            if True:
+                imagelist_f277 = soss.generate_traces(pathPars.path_userland + 'tmp/f277',
+                                                      pathPars, simuPars, tracePars, throughput_f277,
+                                                      starmodel_angstrom, starmodel_flambda, ld_coeff,
+                                                      planetmodel_angstrom, planetmodel_rprs,
+                                                      timesteps_f277, tintopen)
+            else:
+                imagelist_f277 = glob.glob(pathPars.path_userland + 'tmp/f277*.fits')
+                for i in range(np.size(imagelist_f277)):
+                    imagelist_f277[i] = os.path.join(pathPars.path_userland + 'tmp/', imagelist_f277[i])
+                print(imagelist_f277)
+
+            # All simulations are normalized, all orders summed and gathered in a single array
+            # with the 3rd dimension being the number of time steps.
+            data_f277 = soss.write_dmsready_fits_init(imagelist_f277, normalization_scale,
+                                                      simuPars.ngroup, simuPars.nintf277,
+                                                      simuPars.frametime, simuPars.granularity, verbose=True)
+
+            # All simulations (e-/sec) are converted to up-the-ramp images.
+            soss.write_dmsready_fits(data_f277, os.path.join(pathPars.path_userland, 'IDTSOSS_f277.fits'),
+                                     os=simuPars.noversample, input_frame='dms',
+                                     xpadding=simuPars.xpadding, ypadding=simuPars.ypadding, f277=True)
+
+            # Add detector noise to the noiseless data
+            detector.add_noise(os.path.join(pathPars.path_userland, 'IDTSOSS_f277.fits'), pathPars.path_noisefiles,
+                               outputfilename=os.path.join(pathPars.path_userland, 'IDTSOSS_f277_noisy.fits'))
+
+            # Process the data through the DMS level 1 pipeline
+            result = Detector1Pipeline.call(os.path.join(pathPars.path_userland, 'IDTSOSS_f277_noisy.fits'),
+                                            output_file='IDTSOSS_f277_noisy', output_dir=pathPars.path_userland)
 
         print('The end of the noisy {} simulation'.format(noisy_file_str))
 
