@@ -29,7 +29,7 @@ noise_shopping_lists = [ # ['photon']
                        #,['superbias']
                        #,['readout']
                        #,['oneoverf']
-                       ,['photon','darkcurrent','superbias','readout','oneoverf']
+                       ['photon','darkcurrent','superbias','readout','oneoverf']
                        ]
 
 # Determines if extraction results are plotted
@@ -633,14 +633,18 @@ for i,noise_list in enumerate(noise_shopping_lists):
     ####################### EXTRACTION, NOISY #############################
     #######################################################################
 
-    print('Extracting:', noise_list[0])
+    print('Extracting:', noise_list)
 
     # Load simulation
-    # Superbias doesn't have its name in its file
-    noise_name = noise_list[0] + '_' if noise_list[0]!='superbias' else ''
-    simu_filename = 'IDTSOSS_clear_noisy--' + noise_name + 'rateints.fits'
+    noise_name = ''
+    simulation_noisy = ''
+    for i in range(len(noise_list)):
+        noise_name = noise_name + '--' + noise_list[i]
+        simulation_noisy += noise_list[i] + '-'  # Name of noise
+    noise_name = noise_name + '_' if noise_list[0]!='superbias' else ''  # Superbias doesn't have its name in its file # TODO
+    simu_filename = 'IDTSOSS_clear_noisy' + noise_name + 'rateints.fits'
     simu_noisy, data_noisy = box_kim.rateints_dms_simulation(WORKING_DIR + simu_filename)
-    simulation_noisy = noise_list[0]   # Name of noise
+
 
     # BOX EXTRACTION
     # To save it:
@@ -678,7 +682,7 @@ for i,noise_list in enumerate(noise_shopping_lists):
     plt.legend()
     plt.savefig(WORKING_DIR + 'white_light_norm_' + simulation_noisy)
 
-    if False:
+    if True:
         # Plot only one wavelength
         l = 100  # Indice of wavelength to plot
 
