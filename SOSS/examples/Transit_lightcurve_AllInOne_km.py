@@ -35,6 +35,9 @@ noise_shopping_lists = [ # ['photon']
 # Determines if extraction results are plotted
 doPlot_extract = True
 
+# If figures are saved or not
+doSave_plots = False
+
 ######################################################################
 ####################### END OF SET UP ################################
 ######################################################################
@@ -465,10 +468,11 @@ t_read = simu_noiseless[0].header['TGROUP']  # Reading time [s]
 tint = (ng - 1) * t_read  # Integration time [s]
 
 # Characteristic times of transit
-t1 = 94   # [image]
-t2 = 155  # [image]
-t3 = 283  # [image]
-t4 = 344  # [image]
+# HAS TO BE MODIFIED FOR EACH MODEL TESTED
+t1 = 53   # [image]
+t2 = 74   # [image]
+t3 = 110  # [image]
+t4 = 128  # [image]
 
 # Position of trace for box extraction
 x, y, w = box_kim.readtrace(os=1)
@@ -640,7 +644,7 @@ for i,noise_list in enumerate(noise_shopping_lists):
     simulation_noisy = ''
     for i in range(len(noise_list)):
         noise_name = noise_name + '--' + noise_list[i]
-        simulation_noisy += noise_list[i] + '-'  # Name of noise
+        simulation_noisy += noise_list[i] + '-' if i!=(len(noise_list)-1) else noise_list[i]  # Name of noise
     noise_name = noise_name + '_' if noise_list[0]!='superbias' else ''  # Superbias doesn't have its name in its file # TODO
     simu_filename = 'IDTSOSS_clear_noisy' + noise_name + 'rateints.fits'
     simu_noisy, data_noisy = box_kim.rateints_dms_simulation(WORKING_DIR + simu_filename)
@@ -671,7 +675,8 @@ for i,noise_list in enumerate(noise_shopping_lists):
     plt.ylabel('Flux')
     plt.title('White light')
     plt.legend()
-    plt.savefig(WORKING_DIR + 'white_light_' + simulation_noisy)
+    if doSave_plots:
+        plt.savefig(WORKING_DIR + 'white_light_' + simulation_noisy)
 
     plt.figure()
     plt.plot(time_min, f_white_noisy_norm, '.', markersize=4, color='r', label=simulation_noisy)
@@ -680,9 +685,10 @@ for i,noise_list in enumerate(noise_shopping_lists):
     plt.ylabel('Relative flux')
     plt.title('White light')
     plt.legend()
-    plt.savefig(WORKING_DIR + 'white_light_norm_' + simulation_noisy)
+    if doSave_plots:
+        plt.savefig(WORKING_DIR + 'white_light_norm_' + simulation_noisy)
 
-    if True:
+    if False:
         # Plot only one wavelength
         l = 100  # Indice of wavelength to plot
 
@@ -713,7 +719,6 @@ for i,noise_list in enumerate(noise_shopping_lists):
         photon_noise[n] = photon_noise_elec / gain / tint  # Reconversion in adu/s
         # Dispersion in data
         dispersion[n] = np.std(out_transit_noisy)
-    print(dispersion[100])
     ratio = dispersion / photon_noise
     ratio = ratio[:-5]
 
@@ -723,7 +728,8 @@ for i,noise_list in enumerate(noise_shopping_lists):
     plt.xlabel(r'Wavelength [$\mu$m]')
     plt.ylabel('Dispersion/Photon noise')
     plt.legend()
-    plt.savefig(WORKING_DIR + 'disp_over_photnoise_' + simulation_noisy)
+    if doSave_plots:
+        plt.savefig(WORKING_DIR + 'disp_over_photnoise_' + simulation_noisy)
 
     print("Mean dispersion over photon noise ratio =", np.mean(ratio))
 
@@ -736,7 +742,8 @@ for i,noise_list in enumerate(noise_shopping_lists):
     plt.xlabel('Time [min]')
     plt.ylabel(r'Relative difference [ppm]')
     plt.title('Relative difference between {} and \n{}'.format(simulation_noisy, simulation_noiseless))
-    plt.savefig(WORKING_DIR + 'relatDiff_white_' + simulation_noisy)
+    if doSave_plots:
+        plt.savefig(WORKING_DIR + 'relatDiff_white_' + simulation_noisy)
 
     if doPlot_extract is True:
         plt.show()
