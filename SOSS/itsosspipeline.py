@@ -34,6 +34,8 @@ import sys
 #sys.path.insert(0, '/genesis/jwst/github/jwst-mtl/')
 import specgen.spgen as spgen
 import trace.tracepol as tp
+import csv
+
 
 class paths():
     # PATHS
@@ -97,6 +99,22 @@ def read_simu_cfg():
             # print(row)
 
 
+def save_params(pathPars, simuPars, saved_inputs_file):
+
+    # open file for writing, "w" is writing
+    w = csv.writer(open(os.path.join(pathPars.path_userland, saved_inputs_file), 'w'))
+    # loop over dictionary keys and values
+    dict = pathPars.__dict__
+    for key, val in dict.items():
+        # write every key and value to file
+        w.writerow([key, val])
+    dict = simuPars.__dict__
+    for key, val in dict.items():
+        # write every key and value to file
+        w.writerow([key, val])
+
+    return
+
 def planck(wave_micron, teff):
     """
     Black body spectrum
@@ -118,8 +136,35 @@ def planck(wave_micron, teff):
     return intensity
 
 
-def planetmodel():
-    return
+def readplanetmodel(planet_model_csvfile):
+    # read the Benneke group planet models
+    if False:
+        # Caroline Piaulet and Benneke group planet model functionalities
+        # Path for the model grid
+        path_files = pathPars.path_planetmodelatm + "FwdRuns20210521_0.3_100.0_64_nLay60/"
+        # planet_name = 'FwdRuns20210521_0.3_100.0_64_nLay60/HAT_P_1_b'
+        planet_name = 'HAT_P_1_b'
+        # Get a list of all parameters available
+        planet_caselist = soss.get_atmosphere_cases(planet_name, path_files=path_files,
+                                                    return_caselist=True, print_info=True)
+        # select params that you want
+        params_dict = soss.make_default_params_dict()
+        params_dict["CtoO"] = 0.3
+        # print(params_dict)
+        # Get path to csv file that contains the model spectrum
+        path_csv = soss.get_spec_csv_path(caselist=planet_caselist, params_dict=params_dict,
+                                          planet_name=planet_name, path_files=path_files)
+        planet_model_csvfile = path_csv
+
+    t = ascii.read(planet_model_csvfile)
+    print("\nSpectrum file:")
+    print(t)
+    # Wavelength in angstroms
+    planetmodel_angstrom = np.array(t['wave']) * 1e+4
+    # Rp/Rstar from depth in ppm
+    planetmodel_rprs = np.sqrt(np.array(t['dppm']) / 1e+6)
+
+    return planetmodel_angstrom, planetmodel_rprs
 
 
 def starlimbdarkening(wave_angstrom, ld_type='flat'):
@@ -306,11 +351,17 @@ def generate_timesteps(simuPars, f277=False):
 
     # Determine what the frame time is from the subarray requested
     if simuPars.subarray == 'SUBSTRIP96':
-        frametime = 2.214   # seconds per read
+        tpix, namps, colsover, rowsover = 1e-5, 1, 12, 2
+        frametime = tpix * (96 / namps + colsover) * (2048 + rowsover)
+        #frametime = 2.214   # seconds per read
     elif simuPars.subarray == 'SUBSTRIP256':
-        frametime = 5.494   # seconds per read
+        tpix, namps, colsover, rowsover = 1e-5, 1, 12, 2
+        frametime = tpix * (256 / namps + colsover) * (2048 + rowsover)
+        #frametime = 5.494   # seconds per read
     elif simuPars.subarray == 'FF':
-        frametime = 10.737  # seconds per read
+        tpix, namps, colsover, rowsover = 1e-5, 4, 12, 1
+        frametime = tpix * (2048 / namps + colsover) * (2048 + rowsover)
+        #frametime = 10.73676  # seconds per read
     else:
         print('Need to specify the subarray requested for this simulation. Either SUBSTRIP96, SUBSTRIP256 or FF')
         sys.exit(1)
@@ -1515,8 +1566,8 @@ def write_dmsready_fits(image, filename, os=1, xpadding=0, ypadding=0,
     phdr.set('NGROUPS', ngroup, 'Number of groups in integration')
     phdr.set('NFRAMES', 1, 'Number of frames per group')
     phdr.set('GROUPGAP', 0, 'Number of frames dropped between groups')
-    phdr.set('TFRAME', 5.491, '[s] Time between frames')
-    phdr.set('TGROUP', 5.491, '[s] Time between groups')
+    phdr.set('TFRAME', 5.494, '[s] Time between frames')
+    phdr.set('TGROUP', 5.494, '[s] Time between groups')
     phdr.set('DURATION', 1.0, '[s] Total duration of exposure')
 
     if (dimy == 96) & (dimx == 2048):
@@ -1526,6 +1577,11 @@ def write_dmsready_fits(image, filename, os=1, xpadding=0, ypadding=0,
         # Put reference pixels at zero
         data[:, :, :, 0:4] = 0.0
         data[:, :, :, -4:] = 0.0
+        tpix, namps, colsover, rowsover = 1e-5, 1, 12, 2
+        tframe = tpix * (dimy / namps + colsover) * (dimx + rowsover)
+        phdr.set('TFRAME', tframe, '[s] Time between frames')
+        phdr.set('TGROUP', tframe, '[s] Time between groups')
+
     elif (dimy == 256) & (dimx == 2048):
         subarray = 'SUBSTRIP256'
         substrt1, subsize1 = 1, 2048
@@ -1534,6 +1590,10 @@ def write_dmsready_fits(image, filename, os=1, xpadding=0, ypadding=0,
         data[:, :, :, 0:4] = 0.0
         data[:, :, :, -4:] = 0.0
         data[:, :, -4:, :] = 0.0
+        tpix, namps, colsover, rowsover = 1e-5, 1, 12, 2
+        tframe = tpix * (dimy / namps + colsover) * (dimx + rowsover)
+        phdr.set('TFRAME', tframe, '[s] Time between frames')
+        phdr.set('TGROUP', tframe, '[s] Time between groups')
     elif (dimy == 2048) & (dimx == 2048):
         subarray = 'FULL'
         substrt1, subsize1 = 1, 2048
@@ -1542,6 +1602,10 @@ def write_dmsready_fits(image, filename, os=1, xpadding=0, ypadding=0,
         data[:, :, :, -4:] = 0.0
         data[:, :, -4:, :] = 0.0
         data[:, :, 0:4, :] = 0.0
+        tpix, namps, colsover, rowsover = 1e-5, 4, 12, 1
+        tframe = tpix * (dimy / namps + colsover) * (dimx + rowsover)
+        phdr.set('TFRAME', tframe, '[s] Time between frames')
+        phdr.set('TGROUP', tframe, '[s] Time between groups')
     else:
         print('WARNING. image size not correct.')
         subarray = 'CUSTOM'

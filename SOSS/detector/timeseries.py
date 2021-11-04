@@ -318,6 +318,7 @@ class TimeSeries(object):
     def apply_flatfield(self, flatfile=None):
         """Apply the flat field correction to the simulation."""
 
+        #TODO: Find the correct flatsss in CRDS
         if flatfile is None:
             if self.subarray == 'SUBSTRIP256': flatfile = 'jwst_niriss_flat_0190.fits'
             elif self.subarray == 'SUBSTRIP96': flatfile = 'jwst_niriss_flat_0190.fits'
@@ -332,6 +333,12 @@ class TimeSeries(object):
         # Read the flat-field from file (in science coordinates).
         with fits.open(flatfile) as hdu:
             flatfield = hdu[1].data
+
+        # As of Nov 1 2021, the flat ref files 0190 is a 2048x2048 file, so need to
+        # pick the subarray here
+        # TODO: Update this once the CRDS have a separate reference file for the different subarrays
+        if self.subarray == 'SUBSTRIP256': flatfield = flatfield[-256:,:]
+        elif self.subarray == 'SUBSTRIP96': flatfield = flatfield[-106:-10,:]
 
         # Apply the flatfield to the simulation.
         self.data = self.data * flatfield
@@ -474,8 +481,8 @@ class TimeSeries(object):
         units are converted from electrons back to ADU for this step.
         """
         hdu_new = self.hdu_ideal
-        #hdu_new[1].data = (self.data/self.gain).astype('uint16')  # Convert to ADU in 16 bit integers.
-        hdu_new[1].data = (self.data/self.gain).astype('int16')  # Convert to ADU in 16 bit integers.
+        hdu_new[1].data = (self.data/self.gain).astype('uint16')  # Convert to ADU in 16 bit integers.
+        #hdu_new[1].data = (self.data/self.gain).astype('int16')  # Convert to ADU in 16 bit integers.
 
         if filename is None:
             print('Forging output noisy file...')
