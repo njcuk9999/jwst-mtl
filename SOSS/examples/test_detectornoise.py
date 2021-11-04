@@ -13,8 +13,8 @@ a = detector.add_noise(files, '/genesis/jwst/jwst-ref-soss/noise_files/',
                        superbias=False,
                        flatfield=False,
                        nonlinearity=False,
-                       oneoverf=True,
-                       darkcurrent=False)
+                       oneoverf=False,
+                       darkcurrent=True)
 
 #fits.writeto(a, '/genesis/jwst/userland-soss/loic_review/toto.fits', overwrite=True)
 
