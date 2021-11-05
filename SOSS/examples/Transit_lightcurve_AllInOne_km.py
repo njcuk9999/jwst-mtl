@@ -6,7 +6,7 @@
 # 'jwst_config_fpath', during the import phase
 github_path = '/home/kmorel/ongenesis/github/jwst-mtl/SOSS/'
 # Location of the simulation config file, as well as the output directory
-WORKING_DIR = '/home/kmorel/ongenesis/jwst-user-soss/PHY3030/WASP_52/'
+WORKING_DIR = '/home/kmorel/ongenesis/jwst-user-soss/PHY3030/'
 # Configuration file for the NIRISS Instrument Team SOSS simulation pipeline
 jwst_config_fpath = 'jwst-mtl_configpath_kim.txt'
 
@@ -21,7 +21,7 @@ radius_pixel = 30
 
 # Noise sources to investigate
 # This 2D-list determines what noise types are injected into them (list contained in 2nd dimension).
-noise_shopping_lists = [ # ['photon']
+noise_shopping_lists = [  ['photon']
                        #,['zodibackg']
                        #,['flatfield']
                        #,['darkcurrent']
@@ -29,7 +29,7 @@ noise_shopping_lists = [ # ['photon']
                        #,['superbias']
                        #,['readout']
                        #,['oneoverf']
-                       ['photon','darkcurrent','superbias','readout','oneoverf']
+                       #['photon','darkcurrent','superbias','readout','oneoverf']
                        ]
 
 # Determines if extraction results are plotted
@@ -261,7 +261,7 @@ if generate_dms_simu is True:
             print(t)
         # Wavelength in angstroms
         planetmodel_angstrom = np.array(t['wave']) * 1e+4
-            # Rp/Rstar from depth in ppm
+        # Rp/Rstar from depth in ppm
         planetmodel_rprs = np.sqrt(np.array(t['dppm']) / 1e+6)
 
         if doPlot:
@@ -469,10 +469,10 @@ tint = (ng - 1) * t_read  # Integration time [s]
 
 # Characteristic times of transit
 # HAS TO BE MODIFIED FOR EACH MODEL TESTED
-t1 = 53   # [image]
-t2 = 74   # [image]
-t3 = 110  # [image]
-t4 = 128  # [image]
+if WORKING_DIR == '/home/kmorel/ongenesis/jwst-user-soss/PHY3030/WASP_52/':
+    t1, t2, t3, t4 = 53, 74, 110, 128   # [image]
+elif WORKING_DIR =='/home/kmorel/ongenesis/jwst-user-soss/PHY3030/':
+    t1, t2, t3, t4 = 94, 151, 285, 344  # [image]
 
 # Position of trace for box extraction
 x, y, w = box_kim.readtrace(os=1)
@@ -486,6 +486,8 @@ fbox_noiseless = np.zeros(shape=(np.shape(data_noiseless)[0], np.shape(data_nois
 for t in range(np.shape(data_noiseless)[0]):  # For each image of the timeseries
     fbox_noiseless[t] = box_kim.flambda_adu(x, data_noiseless[t], y, radius_pixel=radius_pixel)  # [adu/s]
 f_array_noiseless = np.nan_to_num(fbox_noiseless)
+# Normalization of flux
+f_array_noiseless_norm = box_kim.normalization(f_array_noiseless, t1, t4)
 
 # Time array
 time = np.arange(f_array_noiseless.shape[0])
@@ -495,13 +497,6 @@ time_min = time * tint / 60.  # [min]
 f_white_noiseless = np.sum(f_array_noiseless, axis=1)
 # Normalize white light curve
 f_white_noiseless_norm = box_kim.normalization(f_white_noiseless, t1, t4)
-
-# NORMALIATION OF FLUX FOR EACH WAVELENGTH
-# To save it:
-f_array_noiseless_norm = np.copy(f_array_noiseless)
-for n in range(f_array_noiseless.shape[1]):  # For each wavelength
-    f_array_noiseless_norm[:, n] = box_kim.normalization(f_array_noiseless[:, n], t1, t4)
-
 
 #######################################################################
 ################## CREATION OF NOISY SIMULATIONS ######################
@@ -656,17 +651,13 @@ for i,noise_list in enumerate(noise_shopping_lists):
     for t in range(np.shape(data_noisy)[0]):  # For each image of the timeseries
         fbox_noisy[t] = box_kim.flambda_adu(x, data_noisy[t], y, radius_pixel=radius_pixel)    # [adu/s]
     f_array_noisy = np.nan_to_num(fbox_noisy)
+    # Normalization of flux
+    f_array_noisy_norm = box_kim.normalization(f_array_noisy, t1, t4)
 
     # WHITE LIGHT CURVE
     f_white_noisy = np.sum(f_array_noisy, axis=1)
     # Normalize white light curve
     f_white_noisy_norm = box_kim.normalization(f_white_noisy, t1, t4)
-
-    # NORMALIZATION OF FLUX FOR EACH WAVELENGTH
-    # To save it:
-    f_array_noisy_norm = np.copy(f_array_noisy)
-    for n in range(f_array_noisy.shape[1]):  # For each wavelength
-        f_array_noisy_norm[:, n] = box_kim.normalization(f_array_noisy[:, n], t1, t4)
 
     plt.figure()
     plt.plot(time_min, f_white_noisy, '.', markersize=4, color='r', label=simulation_noisy)
@@ -700,10 +691,11 @@ for i,noise_list in enumerate(noise_shopping_lists):
         plt.legend()
 
     ### DISPERSION/PHOTON NOISE ###
-    # Only the non-contaminated portion of the spectrum is used here
-    new_w = w[1100:]
-    new_f_array_noiseless = f_array_noiseless[:, 1100:]
-    new_f_array_noisy = f_array_noisy[:, 1100:]
+    # Only the uncontaminated portion of the spectrum is used here
+    i_uncont = 1100
+    new_w = w[i_uncont:]
+    new_f_array_noiseless = f_array_noiseless[:, i_uncont:]
+    new_f_array_noisy = f_array_noisy[:, i_uncont:]
 
     # To save data:
     photon_noise = np.zeros(new_f_array_noiseless.shape[1], dtype='float')
@@ -733,7 +725,7 @@ for i,noise_list in enumerate(noise_shopping_lists):
 
     print("Mean dispersion over photon noise ratio =", np.mean(ratio))
 
-    ### Relative difference ###
+    ### RELATIVE DIFFERENCE ###
     # Between white light curves
     relatDiff_white = box_kim.relative_difference(f_white_noisy, f_white_noiseless)
 
@@ -744,6 +736,20 @@ for i,noise_list in enumerate(noise_shopping_lists):
     plt.title('Relative difference between {} and \n{}'.format(simulation_noisy, simulation_noiseless))
     if doSave_plots:
         plt.savefig(WORKING_DIR + 'relatDiff_white_' + simulation_noisy)
+
+    ### TRANSIT LIGHT CURVE ###
+    transit_curve_noiseless = box_kim.transit_depth(f_array_noiseless_norm, t1, t2, t3, t4)
+    transit_curve_noisy = box_kim.transit_depth(f_array_noisy_norm, t1, t2, t3, t4)
+
+    plt.figure()
+    plt.plot(lam_array, transit_curve_noisy * 1e6, color='r', label='Noisy')
+    plt.plot(lam_array, transit_curve_noiseless * 1e6, color='b', label='Noiseless')
+    plt.xlabel(r"Wavelength [$\mu m$]")
+    plt.ylabel(r'$(R_p/R_s)²$ [ppm]')
+    plt.title('Transit spectrum')
+    plt.legend()
+    if doSave_plots:
+        plt.savefig(WORKING_DIR + 'transit_spectrum_' + simulation_noisy)
 
     if doPlot_extract is True:
         plt.show()

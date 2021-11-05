@@ -268,18 +268,27 @@ def normalize_map(map):
 
 def normalization(f_lambda, t1, t4):
     """
-    Normalize transit light curve by mean during out of transit.
+    Normalize transit light curve by mean during out of transit
+    for all wavelengths.
+    First dimension is time, second dimension is wavelengths.
     """
-    hors_t = np.concatenate((f_lambda[: t1 + 1], f_lambda[t4:]))
-    mean = np.mean(hors_t)
-    return f_lambda / mean
+    out_transit = np.concatenate((f_lambda[: t1 + 1], f_lambda[t4:]))
+    out_transit_mean = np.mean(out_transit, axis=0)
+    return f_lambda / out_transit_mean
 
 
-def transit_depth(f_lambda, t2, t3):
+def transit_depth(f_lambda, t1, t2, t3, t4):
     """
-    Calculates mean flux value during transit.
+    :param f_lambda: Flux array.
+    :return: Transit light curve.
     """
-    return np.mean(f_lambda[t2: t3 + 1])
+    # Mean flux value during transit for all wavelengths
+    in_transit_mean = np.mean(f_lambda[t2: t3 + 1], axis=0)
+    # Mean flux value during out of transit for all wavelengths
+    out_transit = np.concatenate((f_lambda[: t1 + 1], f_lambda[t4:]))
+    out_transit_mean = np.mean(out_transit, axis=0)
+    return in_transit_mean / out_transit_mean
+
 
 
 def no_dms_simulation(file_name, gain=1.61):
