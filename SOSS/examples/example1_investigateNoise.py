@@ -63,15 +63,15 @@ investigate_noise = True
     # Current selection of noise types are dependant of this code in the jwst-mtl github:
     # /SOSS/detector/detector.py
 noise_shopping_lists = [[]            # empty list means adding no noise (but still converting to ADU)
-                       #,['photon']
+                       ,['photon']
                        #,['zodibackg']
                        #,['flatfield']
-                       #,['darkcurrent']
-                       #,['nonlinearity']
-                       #,['superbias']
-                       #,['readout']
-                       #,['oneoverf']
-                       ,['photon','darkcurrent','superbias','readout','oneoverf']
+                       ,['darkcurrent']
+                       ,['nonlinearity']
+                       ,['superbias']
+                       ,['readout']
+                       ,['oneoverf']
+                       #,['photon','darkcurrent','superbias','readout','oneoverf']
                        ]
 override_noise_files = True
 ov_noiz_dir = '/genesis/jwst/jwst-ref-soss/noise_files/'
@@ -316,7 +316,7 @@ if generate_clear_tmp_simu or generate_clear_dmsReady_simu is True:
     #     # Path for the model grid
     # path_files = pathPars.path_planetmodelatm+"FwdRuns20210521_0.3_100.0_64_nLay60/"
     # # planet_name = 'FwdRuns20210521_0.3_100.0_64_nLay60/HAT_P_1_b'
-    # planet_name = 'WASP_52_b'    # HAT_P_1_b
+    # planet_name = 'HAT_P_1_b'
     #     # Get a list of all parameters available
     # planet_caselist = soss.get_atmosphere_cases(planet_name, path_files=path_files,
     #                                             return_caselist=True, print_info=doPrint)
