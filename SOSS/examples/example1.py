@@ -111,10 +111,10 @@ if False:
     #simuPars.tend = -1.97
     #simuPars.flatthroughput = False
     simuPars.flatquantumyield = True
-simuPars.yout = 2048
+#simuPars.yout = 256
 #simuPars.tend = -2.21
-simuPars.noversample = 2
-simuPars.nintf277 = 1
+#simuPars.noversample = 2
+#simuPars.nintf277 = 1
 
 # Save the input parameters to disk
 soss.save_params(pathPars, simuPars, 'IDTSOSS_inputs.csv')

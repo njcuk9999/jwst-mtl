@@ -1399,7 +1399,7 @@ def write_dmsready_fits(image, filename, os=1, xpadding=0, ypadding=0,
              The input image is expected to be in the DMS orientation already
     :param filename: is the name of the fits file that will be written on disk
     :param os: is the oversampling integer 1 or more of the input image.
-    :param input_frame: is either dms, native or sim. represents the coorinate frame of
+    :param input_frame: is either dms, native or sim. represents the coordinate frame of
             input image.
     :param verbose:
     :return:
@@ -1510,8 +1510,8 @@ def write_dmsready_fits(image, filename, os=1, xpadding=0, ypadding=0,
     # NGROUPS =                   10 / / Number of groups in integration
     # NFRAMES =                    1 / / Number of frames per group
     # GROUPGAP=                    0 / / Number of frames dropped between groups
-    # TFRAME  =                5.491 / / [s] Time between frames
-    # TGROUP  =                5.491 / / [s] Time between groups
+    # TFRAME  =                5.494 / / [s] Time between frames
+    # TGROUP  =                5.494 / / [s] Time between groups
     # DURATION=                  1.0 / / [s] Total duration of exposure
     # SUBARRAY= 'SUBSTRIP256'        / / Subarray used
     # SUBSTRT1=                    1 / / Starting pixel in axis 1 direction
