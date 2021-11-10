@@ -119,7 +119,7 @@ if False:
 # Save the input parameters to disk
 soss.save_params(pathPars, simuPars, 'IDTSOSS_inputs.csv')
 
-bypass_sim = False
+bypass_sim = True
 if bypass_sim is False:
 
     # Instrument Throughput (Response)
@@ -303,7 +303,12 @@ detector.add_noise(os.path.join(pathPars.path_userland, 'IDTSOSS_clear.fits'),
                    flatfield=True,
                    nonlinearity=True,
                    oneoverf=True,
-                   darkcurrent=True)
+                   darkcurrent=True,
+                   zodi_ref=simuPars.zodi_ref,
+                   superbias_ref=simuPars.superbias_ref,
+                   flat_ref=simuPars.flat_ref,
+                   nlcoeff_ref=simuPars.nlcoeff_ref,
+                   dark_ref=simuPars.dark_ref)
 # F277W - ADD NOISE
 if simuPars.f277wcal is True:
     # Add detector noise to the noiseless data
@@ -317,7 +322,12 @@ if simuPars.f277wcal is True:
                        flatfield=True,
                        nonlinearity=True,
                        oneoverf=True,
-                       darkcurrent=True)
+                       darkcurrent=True,
+                       zodi_ref = simuPars.zodi_ref,
+                       superbias_ref = simuPars.superbias_ref,
+                       flat_ref = simuPars.flat_ref,
+                       nlcoeff_ref = simuPars.nlcoeff_ref,
+                       dark_ref = simuPars.dark_ref)
 
 # Process the data through the DMS level 1 pipeline
 if True:  # here is the option to investigate individual noise sources
@@ -328,13 +338,19 @@ if True:  # here is the option to investigate individual noise sources
              calwebb_detector1.linearity_step.LinearityStep.call,
              calwebb_detector1.dark_current_step.DarkCurrentStep.call,
              calwebb_detector1.ramp_fit_step.RampFitStep.call,
-             calwebb_detector1.gain_scale_step.GainScaleStep.call,
-             calwebb_detector1.refpix_step.RefPixStep.call]
+             calwebb_detector1.gain_scale_step.GainScaleStep.call]
     # GR700XD+CLEAR - PROCESS THROUGH DMS LEVEL 1
     # Define input on the first iteration of the loop below
     calwebb_input = os.path.join(pathPars.path_userland, 'IDTSOSS_clear_noisy.fits')
     for i in range(len(steps)):
-        calwebb_input = steps[i](calwebb_input,
+        if steps[i] == calwebb_detector1.ramp_fit_step.RampFitStep.call:
+            # RampFitStep - Retain only the cube...
+            _ , calwebb_input = steps[i](calwebb_input,
+                                     output_dir=pathPars.path_userland,
+                                     output_file='IDTSOSS_clear_noisy',
+                                     save_results=True)
+        else:
+            calwebb_input = steps[i](calwebb_input,
                                  output_dir=pathPars.path_userland,
                                  output_file='IDTSOSS_clear_noisy',
                                  save_results=True)#,
@@ -344,11 +360,17 @@ if True:  # here is the option to investigate individual noise sources
         # Define input on the first iteration of the loop below
         calwebb_input = os.path.join(pathPars.path_userland, 'IDTSOSS_f277_noisy.fits')
         for i in range(len(steps)):
-            calwebb_input = steps[i](calwebb_input,
-                                     output_dir=pathPars.path_userland,
-                                     output_file='IDTSOSS_f277_noisy',
-                                     save_results=True)  # ,
-            # override_superbias='jwst_niriss_superbias_0017.fits')
+            if steps[i] == calwebb_detector1.ramp_fit_step.RampFitStep.call:
+                # RampFitStep - Retain only the cube...
+                _, calwebb_input = steps[i](calwebb_input,
+                                            output_dir=pathPars.path_userland,
+                                            output_file='IDTSOSS_f277_noisy',
+                                            save_results=True)
+            else:
+                calwebb_input = steps[i](calwebb_input,
+                                         output_dir=pathPars.path_userland,
+                                         output_file='IDTSOSS_f277_noisy',
+                                         save_results=True)
 else:
     result = Detector1Pipeline.call(os.path.join(pathPars.path_userland, 'IDTSOSS_clear_noisy.fits'),
                                     output_file='IDTSOSS_clear_noisy', output_dir=pathPars.path_userland)
