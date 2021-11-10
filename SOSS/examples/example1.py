@@ -119,7 +119,7 @@ if False:
 # Save the input parameters to disk
 soss.save_params(pathPars, simuPars, 'IDTSOSS_inputs.csv')
 
-bypass_sim = True
+bypass_sim = False
 if bypass_sim is False:
 
     # Instrument Throughput (Response)
