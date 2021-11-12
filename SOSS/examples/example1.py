@@ -68,14 +68,22 @@ verbose = True
 
 # Read in all paths used to locate reference files and directories
 WORKING_DIR = '/genesis/jwst/jwst-user-soss/loic_review/'
+WORKING_DIR = '/genesis/jwst/jwst-user-soss/loic_review/CAP_rehearsal/'
 config_paths_filename = os.path.join(WORKING_DIR, 'jwst-mtl_configpath.txt')
 #config_paths_filename = os.path.join(WORKING_DIR, 'jwst-mtl_configpath_runkim.txt')
 
 pathPars = soss.paths()
 soss.readpaths(config_paths_filename, pathPars)
-if True:
-    pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_hatp14b.txt'
+
 if False:
+    pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_twa33_substrip96.txt'
+if False:
+    pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_twa33_substrip256.txt'
+if False:
+    pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_bd601753.txt'
+if False:
+    pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_hatp14b.txt'
+if True:
     pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_wasp52b.txt'
 
 # Make the libraries imports. This needs to come after read_config_path
@@ -111,10 +119,15 @@ if False:
     #simuPars.tend = -1.97
     #simuPars.flatthroughput = False
     simuPars.flatquantumyield = True
-#simuPars.yout = 256
+#simuPars.yout = 2048
+#simuPars.subarray = 'FULL'
 #simuPars.tend = -2.21
 #simuPars.noversample = 2
 #simuPars.nintf277 = 1
+
+# Read in the reference files to generate noise and process with DMS.
+# Depends on simuPars.subarray so set that above or in the simulation pars input file.
+spgen.read_noise_ref_file_pars(simuPars)
 
 # Save the input parameters to disk
 soss.save_params(pathPars, simuPars, 'IDTSOSS_inputs.csv')
@@ -141,11 +154,12 @@ if bypass_sim is False:
     starmodel_flambda = smag.anchor_spectrum(starmodel_angstrom/10000., starmodel_flambda, simuPars.filter,
                                         simuPars.magnitude, pathPars.path_filtertransmission, verbose=True)
 
-    #plt.figure()
-    #plt.plot(starmodel_angstrom, starmodel_flambda)
-    #plt.plot(throughput.wv, throughput.response[1])
-    #plt.show()
-    #sys.exit()
+    if False:
+        plt.figure()
+        plt.plot(starmodel_angstrom, starmodel_flambda)
+        plt.plot(throughput.wv, throughput.response[1])
+        plt.show()
+        sys.exit()
 
     # Read Planet Atmosphere Model (wavelength in angstroms and radius_planet/radius_star ratio)
     if False:
@@ -216,6 +230,9 @@ if bypass_sim is False:
             print(i, expected_counts, simulated_counts)
         # Apply flux scaling
         normalization_scale = expected_counts / simulated_counts
+        # Handle case where no flux is expected (e.g. order 3 in substrip96 subarray)
+        for i in range(len(expected_counts)):
+            if expected_counts[i] == 0: normalization_scale[i] = 0
         print('Normalization scales = ',normalization_scale)
 
         # All simulations are normalized, all orders summed and gathered in a single array

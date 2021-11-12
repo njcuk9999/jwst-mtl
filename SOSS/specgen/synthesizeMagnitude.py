@@ -13,6 +13,8 @@ import matplotlib.pyplot as plt
 from astropy.io import fits
 import sys
 
+# Import trace position library
+import tracepol as tp
 
 
 
@@ -71,8 +73,7 @@ def expected_flux_calibration(filtername, magnitude, model_angstrom, model_flux,
     # Output text to let the user know where we are
     print('Entering expected_flux_calibration')
 
-    # Import trace position library
-    import tracepol as tp
+
     
     #filtername = 'J'
     #magnitude = 8.5
@@ -135,72 +136,79 @@ def expected_flux_calibration(filtername, magnitude, model_angstrom, model_flux,
         m = list_orders[eachorder]
         
         # Get wavelength (in um) of first and last pixel of the Order m trace
+        #TODO: Fix bug for order 3 in tp.subarray_wavelength_bounds, tracepol.py line 222
         (lbabound1, lbabound2), (pixbound1, pixbound2) = tp.subarray_wavelength_bounds(tracepars, subarray=subarray, m=m)
         print('CHECK lba bounds. m={:}, lbabound1={:}, lbabound2={:}'.format(m,lbabound1,lbabound2))
         print('CHECK specpix bounds. pixbound1={:}, pixbound2={:}'.format(pixbound1, pixbound2))
-        
-        # The number of photons per second integrated over that range is
-        # (Flambda: J/sec/m2/um requires dividing by photon energy to get counts)
-        # Ephoton = h*c/lambda
-        #
-        # Model spectrum wavelength step size (in microns).
-        # The only assumption is arrays is sorted but not nec. equal steps.
-        wv_sampling_width = np.copy(model_um)
-        wv_sampling_width[1:] = model_um[1:]-model_um[0:-1]
-        wv_sampling_width[0] = wv_sampling_width[1]
-        if verbose is True:
-            plt.figure(figsize=(15,8))
-            plt.scatter(model_um,wv_sampling_width,marker='.')
-            plt.xlabel('Wavelength [angstroms]')
-            plt.ylabel('Sample width [angstroms]')
-            plt.title('Binned Stellar Spectrum going into Trace Seeding')
-        
-        # Wavelength indices of all pixels in Order m
-        order_m_range = (model_um >= lbabound1) & (model_um <= lbabound2)
-        
-        # Get the throughput (response) and quantum yield
-        T_um, Throughput = read_throughput(m, response_file)
-        QY_um, QuantumYield = read_quantumyield(response_file)
-        
-        # In case an F277W filter exposure is needed. Read the F277W transmis-
-        # sion curve and resample it on the same grid as the model flux.
-        if F277 is True:
-            f277_um,f277_t,f277_system = \
-                readFilter('NIRISS.F277W',
-                           path_filter_transmission=pathfilter,
-                           keepPeakAbsolute=True,returnWidth=False,
-                           verbose = False)
-            # Resample the transmission curve on the model grid
-            f277_transmission = np.interp(model_um,f277_um,f277_t)
-        
-        # NOW. CONVERT THE NORMALIZED SPECTRUM TO PHOTON COUNTS ON THE DETECTOR
-        # THAT REQUIRES ADDITIONAL ASSUMPTIONS: AREA, QUANTUM YIELD, THROUGHPUT
-        
-        # Photon energy depends on wavelength (lba is in um, so convert to m)
-        Ephot = hc / (lba * 1e-6)
-        
-        # e-/sec = area [m2] x SUM(  Flambda [J/s/m2/um] 
-        #                          x Throughput [no dim]
-        #                          x Quantum_yield [e-/photon]
-        #                          x dlambda [um]
-        #                          / E_photon [J]  )
-        A = np.copy(JWST_area) # surface area of JWST in m2
-        lba = np.copy(model_um) # wavelengths in um
-        if F277 is True:
-            Flba = model_flux_norm * f277_transmission
-        else:
-            Flba = np.copy(model_flux_norm) # Flambda in J/sec/m2/um
-        dlba = np.copy(wv_sampling_width) # wavelengths sampling steps in um
-        QY = np.interp(model_um, QY_um, QuantumYield)
-        T = np.interp(model_um, T_um, Throughput)
-        mi = np.copy(order_m_range)
-        elec_per_sec = A * np.sum(Flba[mi]*T[mi]*QY[mi]*dlba[mi]/Ephot[mi])
-        if verbose is True:
-            print('Best calculations for the estimated electron counts for the whole order {:} trace:'.format(m))
-            print('elec_per_sec', elec_per_sec)
 
-        # Assign value to output array
-        output_elec_per_sec[eachorder] = np.copy(elec_per_sec)
+        # Make sure that integration wavelengths are on the subarray
+        if np.isfinite(lbabound1) & np.isfinite(lbabound2) & np.isfinite(pixbound1) & np.isfinite(pixbound2):
+        
+            # The number of photons per second integrated over that range is
+            # (Flambda: J/sec/m2/um requires dividing by photon energy to get counts)
+            # Ephoton = h*c/lambda
+            #
+            # Model spectrum wavelength step size (in microns).
+            # The only assumption is arrays is sorted but not nec. equal steps.
+            wv_sampling_width = np.copy(model_um)
+            wv_sampling_width[1:] = model_um[1:]-model_um[0:-1]
+            wv_sampling_width[0] = wv_sampling_width[1]
+            if verbose is True:
+                plt.figure(figsize=(15,8))
+                plt.scatter(model_um,wv_sampling_width,marker='.')
+                plt.xlabel('Wavelength [angstroms]')
+                plt.ylabel('Sample width [angstroms]')
+                plt.title('Binned Stellar Spectrum going into Trace Seeding')
+
+            # Wavelength indices of all pixels in Order m
+            order_m_range = (model_um >= lbabound1) & (model_um <= lbabound2)
+
+            # Get the throughput (response) and quantum yield
+            T_um, Throughput = read_throughput(m, response_file)
+            QY_um, QuantumYield = read_quantumyield(response_file)
+
+            # In case an F277W filter exposure is needed. Read the F277W transmis-
+            # sion curve and resample it on the same grid as the model flux.
+            if F277 is True:
+                f277_um,f277_t,f277_system = \
+                    readFilter('NIRISS.F277W',
+                               path_filter_transmission=pathfilter,
+                               keepPeakAbsolute=True,returnWidth=False,
+                               verbose = False)
+                # Resample the transmission curve on the model grid
+                f277_transmission = np.interp(model_um,f277_um,f277_t)
+
+            # NOW. CONVERT THE NORMALIZED SPECTRUM TO PHOTON COUNTS ON THE DETECTOR
+            # THAT REQUIRES ADDITIONAL ASSUMPTIONS: AREA, QUANTUM YIELD, THROUGHPUT
+
+            # Photon energy depends on wavelength (lba is in um, so convert to m)
+            Ephot = hc / (lba * 1e-6)
+
+            # e-/sec = area [m2] x SUM(  Flambda [J/s/m2/um]
+            #                          x Throughput [no dim]
+            #                          x Quantum_yield [e-/photon]
+            #                          x dlambda [um]
+            #                          / E_photon [J]  )
+            A = np.copy(JWST_area) # surface area of JWST in m2
+            lba = np.copy(model_um) # wavelengths in um
+            if F277 is True:
+                Flba = model_flux_norm * f277_transmission
+            else:
+                Flba = np.copy(model_flux_norm) # Flambda in J/sec/m2/um
+            dlba = np.copy(wv_sampling_width) # wavelengths sampling steps in um
+            QY = np.interp(model_um, QY_um, QuantumYield)
+            T = np.interp(model_um, T_um, Throughput)
+            mi = np.copy(order_m_range)
+            elec_per_sec = A * np.sum(Flba[mi]*T[mi]*QY[mi]*dlba[mi]/Ephot[mi])
+            if verbose is True:
+                print('Best calculations for the estimated electron counts for the whole order {:} trace:'.format(m))
+                print('elec_per_sec', elec_per_sec)
+
+            # Assign value to output array
+            output_elec_per_sec[eachorder] = np.copy(elec_per_sec)
+        else:
+            # Case where no wavelength falls onto the detector area
+            output_elec_per_sec[eachorder] = 0
 
     if convert_to_adupersec == True:
         if verbose is True:

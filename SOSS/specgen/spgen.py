@@ -80,15 +80,17 @@ class ModelPars:
 def read_noise_ref_file_pars(pars):
     """Fill the Parameters class with noise reference file names"""
 
+    print('Going into read_noise_ref_file_pars. subarray is ',pars.subarray)
+
     # Zodi background reference file
     pars.zodi_ref = 'background_detectorfield_normalized.fits'
 
     # Super bias reference file
     if pars.subarray == 'SUBSTRIP256':
         pars.superbias_ref = 'jwst_niriss_superbias_0120.fits'
-    elif self.subarray == 'SUBSTRIP96':
+    elif pars.subarray == 'SUBSTRIP96':
         pars.superbias_ref = 'jwst_niriss_superbias_0111.fits'
-    elif self.subarray == 'FULL':
+    elif pars.subarray == 'FULL':
         pars.superbias_ref = 'jwst_niriss_superbias_0150.fits'
 
     # Flat field reference file
@@ -110,6 +112,7 @@ def read_noise_ref_file_pars(pars):
     elif pars.subarray == 'FULL':
         pars.dark_ref = 'jwst_niriss_dark_0145.fits'
 
+    return pars
 
 def read_pars(filename,pars):
     """Usage:  pars=read_pars(filename,pars)
@@ -360,7 +363,7 @@ def read_pars(filename,pars):
     # TODO: read the noise reference files in the main pars loop so user can input them
     read_noise_ref_file_pars(pars)
 
-    return pars;
+    return pars
 
 class instrument_response_class:
     def __init__(self):

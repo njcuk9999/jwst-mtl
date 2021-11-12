@@ -358,7 +358,7 @@ def generate_timesteps(simuPars, f277=False):
         tpix, namps, colsover, rowsover = 1e-5, 1, 12, 2
         frametime = tpix * (256 / namps + colsover) * (2048 + rowsover)
         #frametime = 5.494   # seconds per read
-    elif simuPars.subarray == 'FF':
+    elif simuPars.subarray == 'FULL':
         tpix, namps, colsover, rowsover = 1e-5, 4, 12, 1
         frametime = tpix * (2048 / namps + colsover) * (2048 + rowsover)
         #frametime = 10.73676  # seconds per read
