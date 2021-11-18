@@ -36,7 +36,10 @@ noise_shopping_lists = [  #['photon']
 doPlot_extract = True
 
 # If figures are saved or not
-doSave_plots = False
+doSave_plots = True
+
+# If data is saved or not
+doSave_data = True
 
 ######################################################################
 ####################### END OF SET UP ################################
@@ -101,7 +104,6 @@ plt.rc('figure', figsize=(10,6))
 plt.rc('font', size=12)
 plt.rc('image', cmap='inferno')
 plt.rc('lines', lw=1)
-
 
 ######################################################################
 ################ GENERATING THE NOISELESS SIMULATION #################
@@ -458,10 +460,10 @@ if generate_dms_simu is True:
 ##########################################################
 ################# EXTRACTION, NOISELESS ##################
 ##########################################################
-simu_noiseless, data_noiseless = box_kim.rateints_dms_simulation(WORKING_DIR +
-                                                                 'IDTSOSS_clear_noNoise_rateints.fits')
-
-simulation_noiseless = 'noiseless'
+# Loïc's WASP52b simulations
+simu_noiseless, data_noiseless = box_kim.rateints_dms_simulation('/genesis/jwst/userland-soss/'
+                                                                 'loic_review/CAP_rehearsal/wasp52b/')   # TODO add name
+simulation_noiseless = 'noiseless_wasp52'
 
 ng = simu_noiseless[0].header['NGROUPS']  # n_groups
 t_read = simu_noiseless[0].header['TGROUP']  # Reading time [s]
@@ -469,10 +471,8 @@ tint = (ng - 1) * t_read  # Integration time [s]
 
 # Characteristic times of transit
 # HAS TO BE MODIFIED FOR EACH MODEL TESTED
-if WORKING_DIR == '/home/kmorel/ongenesis/jwst-user-soss/PHY3030/WASP_52/':  # TODO: CHECK IF STILL TRUE WITH LOIC'S SIMUS
-    t1, t2, t3, t4 = 53, 74, 110, 128   # [image]
-elif WORKING_DIR =='/home/kmorel/ongenesis/jwst-user-soss/PHY3030/':
-    t1, t2, t3, t4 = 94, 151, 285, 344  # [image]
+# TODO: CHECK IF STILL TRUE WITH LOIC'S SIMUS
+t1, t2, t3, t4 = 53, 74, 110, 128   # [image]
 
 # Position of trace for box extraction
 x, y, w = box_kim.readtrace(os=1)
@@ -523,8 +523,8 @@ if generate_dms_simu is True:
 
 
 # LOOP on each noise type
-for i,noise_list in enumerate(noise_shopping_lists):
-
+#for i,noise_list in enumerate(noise_shopping_lists):
+for i in range(1):
     if generate_dms_simu is True:
         # Generates noisy simulations before analysing it
         print('Generating simulation with', noise_list[0])
@@ -632,17 +632,20 @@ for i,noise_list in enumerate(noise_shopping_lists):
     ####################### EXTRACTION, NOISY #############################
     #######################################################################
 
-    print('Extracting:', noise_list)
+    #print('Extracting:', noise_list)
+    print('Extraction: noisy')
 
     # Load simulation
-    noise_name = ''
-    simulation_noisy = ''
-    for i in range(len(noise_list)):
-        noise_name = noise_name + '--' + noise_list[i]
-        simulation_noisy += noise_list[i] + '-' if i!=(len(noise_list)-1) else noise_list[i]  # Name of noise
-    noise_name = noise_name + '_' if noise_list[0]!='superbias' else ''  # Superbias doesn't have its name in its file # TODO
-    simu_filename = 'IDTSOSS_clear_noisy' + noise_name + 'rateints.fits'
+    # noise_name = ''
+    # simulation_noisy = ''
+    # for i in range(len(noise_list)):
+    #     noise_name = noise_name + '--' + noise_list[i]
+    #     simulation_noisy += noise_list[i] + '-' if i!=(len(noise_list)-1) else noise_list[i]  # Name of noise
+    # noise_name = noise_name + '_' if noise_list[0]!='superbias' else ''  # Superbias doesn't have its name in its file
+    # simu_filename = 'IDTSOSS_clear_noisy' + noise_name + 'rateints.fits'
+    simu_filename = 'IDTSOSS_clear_noisy_gainscalestep_loic.fits'
     simu_noisy, data_noisy = box_kim.rateints_dms_simulation(WORKING_DIR + simu_filename)
+    simulation_noisy = 'noisy_wasp52'
 
 
     # BOX EXTRACTION
@@ -667,7 +670,7 @@ for i,noise_list in enumerate(noise_shopping_lists):
     plt.title('White light')
     plt.legend()
     if doSave_plots:
-        plt.savefig(WORKING_DIR + 'white_light_' + simulation_noisy)
+        plt.savefig(WORKING_DIR + 'white_light_' + simulation_noisy + 'wasp52')
 
     plt.figure()
     plt.plot(time_min, f_white_noisy_norm, '.', markersize=4, color='r', label=simulation_noisy)
@@ -677,7 +680,7 @@ for i,noise_list in enumerate(noise_shopping_lists):
     plt.title('White light')
     plt.legend()
     if doSave_plots:
-        plt.savefig(WORKING_DIR + 'white_light_norm_' + simulation_noisy)
+        plt.savefig(WORKING_DIR + 'white_light_norm_' + simulation_noisy + 'wasp52')
 
     if False:
         # Plot only one wavelength
@@ -696,8 +699,12 @@ for i,noise_list in enumerate(noise_shopping_lists):
     new_w = w[i_uncont:]
     new_f_array_noiseless = f_array_noiseless[:, i_uncont:]
     new_f_array_noisy = f_array_noisy[:, i_uncont:]
+    if doSave_data:
+        # Saves data for transitfit
+        np.save(WORKING_DIR + 'wavelengths', new_w)
+        np.save(WORKING_DIR + 'extracted_flux', new_f_array_noisy)
 
-    # To save data:
+    # To store data:
     photon_noise = np.zeros(new_f_array_noiseless.shape[1], dtype='float')
     dispersion = np.zeros(new_f_array_noisy.shape[1], dtype='float')
 
@@ -721,7 +728,7 @@ for i,noise_list in enumerate(noise_shopping_lists):
     plt.ylabel('Dispersion/Photon noise')
     plt.legend()
     if doSave_plots:
-        plt.savefig(WORKING_DIR + 'disp_over_photnoise_' + simulation_noisy)
+        plt.savefig(WORKING_DIR + 'disp_over_photnoise_' + simulation_noisy + 'wasp52')
 
     print("Mean dispersion over photon noise ratio =", np.mean(ratio))
 
@@ -735,7 +742,7 @@ for i,noise_list in enumerate(noise_shopping_lists):
     plt.ylabel(r'Relative difference [ppm]')
     plt.title('Relative difference between {} and \n{}'.format(simulation_noisy, simulation_noiseless))
     if doSave_plots:
-        plt.savefig(WORKING_DIR + 'relatDiff_white_' + simulation_noisy)
+        plt.savefig(WORKING_DIR + 'relatDiff_white_' + simulation_noisy + 'wasp52')
 
     ### TRANSIT LIGHT CURVE ###
     transit_curve_noiseless = box_kim.transit_depth(f_array_noiseless_norm, t1, t2, t3, t4)
