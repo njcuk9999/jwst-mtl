@@ -461,13 +461,13 @@ if generate_dms_simu is True:
 ################# EXTRACTION, NOISELESS ##################
 ##########################################################
 # Loïc's WASP52b simulations
-simu_noiseless, data_noiseless = box_kim.rateints_dms_simulation('/genesis/jwst/userland-soss/'
-                                                                 'loic_review/CAP_rehearsal/wasp52b/')   # TODO add name
-simulation_noiseless = 'noiseless_wasp52'
-
-ng = simu_noiseless[0].header['NGROUPS']  # n_groups
-t_read = simu_noiseless[0].header['TGROUP']  # Reading time [s]
-tint = (ng - 1) * t_read  # Integration time [s]
+# simu_noiseless, data_noiseless = box_kim.rateints_dms_simulation('/genesis/jwst/userland-soss/'
+#                                                                  'loic_review/CAP_rehearsal/wasp52b/')   # TODO add name
+# simulation_noiseless = 'noiseless_wasp52'
+#
+# ng = simu_noiseless[0].header['NGROUPS']  # n_groups
+# t_read = simu_noiseless[0].header['TGROUP']  # Reading time [s]
+# tint = (ng - 1) * t_read  # Integration time [s]
 
 # Characteristic times of transit
 # HAS TO BE MODIFIED FOR EACH MODEL TESTED
@@ -482,21 +482,21 @@ lam_array = w   # [um]
 
 # BOX EXTRACTION
 # To save it:
-fbox_noiseless = np.zeros(shape=(np.shape(data_noiseless)[0], np.shape(data_noiseless)[2]), dtype=float)
-for t in range(np.shape(data_noiseless)[0]):  # For each image of the timeseries
-    fbox_noiseless[t] = box_kim.flambda_adu(x, data_noiseless[t], y, radius_pixel=radius_pixel)  # [adu/s]
-f_array_noiseless = np.nan_to_num(fbox_noiseless)
-# Normalization of flux
-f_array_noiseless_norm = box_kim.normalization(f_array_noiseless, t1, t4)
+# fbox_noiseless = np.zeros(shape=(np.shape(data_noiseless)[0], np.shape(data_noiseless)[2]), dtype=float)
+# for t in range(np.shape(data_noiseless)[0]):  # For each image of the timeseries
+#     fbox_noiseless[t] = box_kim.flambda_adu(x, data_noiseless[t], y, radius_pixel=radius_pixel)  # [adu/s]
+# f_array_noiseless = np.nan_to_num(fbox_noiseless)
+# # Normalization of flux
+# f_array_noiseless_norm = box_kim.normalization(f_array_noiseless, t1, t4)
 
 # Time array
-time = np.arange(f_array_noiseless.shape[0])
-time_min = time * tint / 60.  # [min]
+# time = np.arange(f_array_noiseless.shape[0])
+# time_min = time * tint / 60.  # [min]
 
 # WHITE LIGHT CURVE
-f_white_noiseless = np.sum(f_array_noiseless, axis=1)
-# Normalize white light curve
-f_white_noiseless_norm = box_kim.normalization(f_white_noiseless, t1, t4)
+# f_white_noiseless = np.sum(f_array_noiseless, axis=1)
+# # Normalize white light curve
+# f_white_noiseless_norm = box_kim.normalization(f_white_noiseless, t1, t4)
 
 #######################################################################
 ################## CREATION OF NOISY SIMULATIONS ######################
@@ -645,8 +645,11 @@ for i in range(1):
     # simu_filename = 'IDTSOSS_clear_noisy' + noise_name + 'rateints.fits'
     simu_filename = 'IDTSOSS_clear_noisy_gainscalestep_loic.fits'
     simu_noisy, data_noisy = box_kim.rateints_dms_simulation(WORKING_DIR + simu_filename)
-    simulation_noisy = 'noisy_wasp52'
+    simulation_noisy = 'noisy'
 
+    ng = simu_noisy[0].header['NGROUPS']  # n_groups
+    t_read = simu_noisy[0].header['TGROUP']  # Reading time [s]
+    tint = (ng - 1) * t_read  # Integration time [s]
 
     # BOX EXTRACTION
     # To save it:
@@ -657,6 +660,10 @@ for i in range(1):
     # Normalization of flux
     f_array_noisy_norm = box_kim.normalization(f_array_noisy, t1, t4)
 
+    # Time array
+    time = np.arange(f_array_noisy.shape[0])
+    time_min = time * tint / 60.  # [min]
+
     # WHITE LIGHT CURVE
     f_white_noisy = np.sum(f_array_noisy, axis=1)
     # Normalize white light curve
@@ -664,7 +671,7 @@ for i in range(1):
 
     plt.figure()
     plt.plot(time_min, f_white_noisy, '.', markersize=4, color='r', label=simulation_noisy)
-    plt.plot(time_min, f_white_noiseless, '.', markersize=4, color='b', label=simulation_noiseless)
+    # plt.plot(time_min, f_white_noiseless, '.', markersize=4, color='b', label=simulation_noiseless)
     plt.xlabel('Time [min]')
     plt.ylabel('Flux')
     plt.title('White light')
@@ -674,7 +681,7 @@ for i in range(1):
 
     plt.figure()
     plt.plot(time_min, f_white_noisy_norm, '.', markersize=4, color='r', label=simulation_noisy)
-    plt.plot(time_min, f_white_noiseless_norm, '.', markersize=4, color='b', label=simulation_noiseless)
+    # plt.plot(time_min, f_white_noiseless_norm, '.', markersize=4, color='b', label=simulation_noiseless)
     plt.xlabel('Time [min]')
     plt.ylabel('Relative flux')
     plt.title('White light')
@@ -697,7 +704,7 @@ for i in range(1):
     # Only the uncontaminated portion of the spectrum is used here
     i_uncont = 1100
     new_w = w[i_uncont:]
-    new_f_array_noiseless = f_array_noiseless[:, i_uncont:]
+    # new_f_array_noiseless = f_array_noiseless[:, i_uncont:]
     new_f_array_noisy = f_array_noisy[:, i_uncont:]
     new_f_array_noisy_norm = f_array_noisy_norm[:, i_uncont]
     if doSave_data:
@@ -706,58 +713,58 @@ for i in range(1):
         np.save(WORKING_DIR + 'extracted_flux_norm', new_f_array_noisy_norm)
 
     # To store data:
-    photon_noise = np.zeros(new_f_array_noiseless.shape[1], dtype='float')
-    dispersion = np.zeros(new_f_array_noisy.shape[1], dtype='float')
-
-    for n in range(new_f_array_noiseless.shape[1]):  # for each wavelength
-        out_transit_noiseless = np.concatenate((new_f_array_noiseless[:t1, n],   # Noiseless
-                                                 new_f_array_noiseless[t4:, n]))
-        out_transit_noisy = np.concatenate((new_f_array_noisy[:t1, n], new_f_array_noisy[t4:, n]))  # Noisy
-        out_transit_noiseless_elec = out_transit_noiseless * tint * gain  # Conversion in electrons
-        photon_noise_elec = np.sqrt(np.mean(out_transit_noiseless_elec))
-        # Photon noise (Poisson)
-        photon_noise[n] = photon_noise_elec / gain / tint  # Reconversion in adu/s
-        # Dispersion in data
-        dispersion[n] = np.std(out_transit_noisy)
-    ratio = dispersion / photon_noise
-    ratio = ratio[:-5]
+    # photon_noise = np.zeros(new_f_array_noiseless.shape[1], dtype='float')
+    # dispersion = np.zeros(new_f_array_noisy.shape[1], dtype='float')
+    #
+    # for n in range(new_f_array_noiseless.shape[1]):  # for each wavelength
+    #     out_transit_noiseless = np.concatenate((new_f_array_noiseless[:t1, n],   # Noiseless
+    #                                              new_f_array_noiseless[t4:, n]))
+    #     out_transit_noisy = np.concatenate((new_f_array_noisy[:t1, n], new_f_array_noisy[t4:, n]))  # Noisy
+    #     out_transit_noiseless_elec = out_transit_noiseless * tint * gain  # Conversion in electrons
+    #     photon_noise_elec = np.sqrt(np.mean(out_transit_noiseless_elec))
+    #     # Photon noise (Poisson)
+    #     photon_noise[n] = photon_noise_elec / gain / tint  # Reconversion in adu/s
+    #     # Dispersion in data
+    #     dispersion[n] = np.std(out_transit_noisy)
+    # ratio = dispersion / photon_noise
+    # ratio = ratio[:-5]
 
     # Plot ratio between dispersion and photon noise vs wavelength
-    plt.figure()
-    plt.plot(new_w[:-5], ratio, '.', color='b', label=simulation_noisy)
-    plt.xlabel(r'Wavelength [$\mu$m]')
-    plt.ylabel('Dispersion/Photon noise')
-    plt.legend()
-    if doSave_plots:
-        plt.savefig(WORKING_DIR + 'disp_over_photnoise_' + simulation_noisy + 'wasp52')
+    # plt.figure()
+    # plt.plot(new_w[:-5], ratio, '.', color='b', label=simulation_noisy)
+    # plt.xlabel(r'Wavelength [$\mu$m]')
+    # plt.ylabel('Dispersion/Photon noise')
+    # plt.legend()
+    # if doSave_plots:
+    #     plt.savefig(WORKING_DIR + 'disp_over_photnoise_' + simulation_noisy + 'wasp52')
 
-    print("Mean dispersion over photon noise ratio =", np.mean(ratio))
+    # print("Mean dispersion over photon noise ratio =", np.mean(ratio))
 
     ### RELATIVE DIFFERENCE ###
     # Between white light curves
-    relatDiff_white = box_kim.relative_difference(f_white_noisy, f_white_noiseless)
-
-    plt.figure()
-    plt.plot(time_min, relatDiff_white * 1e6, color='b')
-    plt.xlabel('Time [min]')
-    plt.ylabel(r'Relative difference [ppm]')
-    plt.title('Relative difference between {} and \n{}'.format(simulation_noisy, simulation_noiseless))
-    if doSave_plots:
-        plt.savefig(WORKING_DIR + 'relatDiff_white_' + simulation_noisy + 'wasp52')
-
-    ### TRANSIT LIGHT CURVE ###
-    transit_curve_noiseless = box_kim.transit_depth(f_array_noiseless_norm, t1, t2, t3, t4)
-    transit_curve_noisy = box_kim.transit_depth(f_array_noisy_norm, t1, t2, t3, t4)
-
-    plt.figure()
-    plt.plot(lam_array, transit_curve_noisy * 1e6, color='r', label='Noisy')
-    plt.plot(lam_array, transit_curve_noiseless * 1e6, color='b', label='Noiseless')
-    plt.xlabel(r"Wavelength [$\mu m$]")
-    plt.ylabel(r'$(R_p/R_s)²$ [ppm]')
-    plt.title('Transit spectrum')
-    plt.legend()
-    if doSave_plots:
-        plt.savefig(WORKING_DIR + 'transit_spectrum_' + simulation_noisy)
-
-    if doPlot_extract is True:
-        plt.show()
+    # relatDiff_white = box_kim.relative_difference(f_white_noisy, f_white_noiseless)
+    #
+    # plt.figure()
+    # plt.plot(time_min, relatDiff_white * 1e6, color='b')
+    # plt.xlabel('Time [min]')
+    # plt.ylabel(r'Relative difference [ppm]')
+    # plt.title('Relative difference between {} and \n{}'.format(simulation_noisy, simulation_noiseless))
+    # if doSave_plots:
+    #     plt.savefig(WORKING_DIR + 'relatDiff_white_' + simulation_noisy + 'wasp52')
+    #
+    # ### TRANSIT LIGHT CURVE ###
+    # transit_curve_noiseless = box_kim.transit_depth(f_array_noiseless_norm, t1, t2, t3, t4)
+    # transit_curve_noisy = box_kim.transit_depth(f_array_noisy_norm, t1, t2, t3, t4)
+    #
+    # plt.figure()
+    # plt.plot(lam_array, transit_curve_noisy * 1e6, color='r', label='Noisy')
+    # plt.plot(lam_array, transit_curve_noiseless * 1e6, color='b', label='Noiseless')
+    # plt.xlabel(r"Wavelength [$\mu m$]")
+    # plt.ylabel(r'$(R_p/R_s)²$ [ppm]')
+    # plt.title('Transit spectrum')
+    # plt.legend()
+    # if doSave_plots:
+    #     plt.savefig(WORKING_DIR + 'transit_spectrum_' + simulation_noisy)
+    #
+    # if doPlot_extract is True:
+    #     plt.show()
