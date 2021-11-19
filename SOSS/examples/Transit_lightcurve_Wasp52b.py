@@ -699,10 +699,11 @@ for i in range(1):
     new_w = w[i_uncont:]
     new_f_array_noiseless = f_array_noiseless[:, i_uncont:]
     new_f_array_noisy = f_array_noisy[:, i_uncont:]
+    new_f_array_noisy_norm = f_array_noisy_norm[:, i_uncont]
     if doSave_data:
         # Saves data for transitfit
         np.save(WORKING_DIR + 'wavelengths', new_w)
-        np.save(WORKING_DIR + 'extracted_flux', new_f_array_noisy)
+        np.save(WORKING_DIR + 'extracted_flux_norm', new_f_array_noisy_norm)
 
     # To store data:
     photon_noise = np.zeros(new_f_array_noiseless.shape[1], dtype='float')
