@@ -10,8 +10,8 @@ WORKING_DIR = '/home/kmorel/ongenesis/jwst-user-soss/PHY3030/WASP_52/'
 # Configuration file for the NIRISS Instrument Team SOSS simulation pipeline
 jwst_config_fpath = 'jwst-mtl_configpath_kim.txt'
 
-# CHOOSE whether to generate the noisy dms simulations or
-# work with some already generated.
+# CHOOSE whether to generate the noisy dms simulations or work with some already
+# generated. If True, input images are the 'tmp' ones.
 generate_dms_simu = False
 
 gain = 1.61  # [é]
