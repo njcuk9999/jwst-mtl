@@ -718,18 +718,30 @@ for i in range(1):
     # photon_noise = np.zeros(new_f_array_noiseless.shape[1], dtype='float')
     # dispersion = np.zeros(new_f_array_noisy.shape[1], dtype='float')
     #
-    # for n in range(new_f_array_noiseless.shape[1]):  # for each wavelength
-    #     out_transit_noiseless = np.concatenate((new_f_array_noiseless[:t1, n],   # Noiseless
-    #                                              new_f_array_noiseless[t4:, n]))
-    #     out_transit_noisy = np.concatenate((new_f_array_noisy[:t1, n], new_f_array_noisy[t4:, n]))  # Noisy
+    # for n in range(new_f_array_noisy.shape[1]):  # for each wavelength
+    #     out_transit_noiseless = np.concatenate((new_f_array_noisely[:t1, n],   # Noiseless
+    #                                              new_f_array_noisely[t4:, n]))
+    #     out_transit_noisy = np.concatenate((new_f_array_noisy_norm[:t1, n], new_f_array_noisy_norm[t4:, n]))  # Noisy
     #     out_transit_noiseless_elec = out_transit_noiseless * tint * gain  # Conversion in electrons
     #     photon_noise_elec = np.sqrt(np.mean(out_transit_noiseless_elec))
     #     # Photon noise (Poisson)
     #     photon_noise[n] = photon_noise_elec / gain / tint  # Reconversion in adu/s
-    #     # Dispersion in data
-    #     dispersion[n] = np.std(out_transit_noisy)
+        # Dispersion in data
+        # dispersion[n] = np.std(out_transit_noisy)
     # ratio = dispersion / photon_noise
     # ratio = ratio[:-5]
+
+    new_f_array_noisy_elec = new_f_array_noisy * tint * gain  # Conversion in electrons
+    phot_noise_elec = np.sqrt(new_f_array_noisy_elec)
+    phot_noise = phot_noise_elec / gain / tint / 10.  # Reconversion in adu/s
+
+    out_transit_noisy = np.concatenate((f_array_noisy[: t1 + 1], f_array_noisy[t4:]))
+    out_transit_noisy_mean = np.mean(out_transit_noisy, axis=0)
+    phot_noise_norm = phot_noise / out_transit_noisy_mean[i_uncont:]
+    if doSave_data:
+        # Saves data for transitfit
+        np.save(WORKING_DIR + 'phot_noise', phot_noise_norm)
+    print(phot_noise_norm[:,:-5])
 
     # Plot ratio between dispersion and photon noise vs wavelength
     # plt.figure()
