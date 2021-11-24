@@ -36,10 +36,10 @@ noise_shopping_lists = [  #['photon']
 doPlot_extract = True
 
 # If figures are saved or not
-doSave_plots = True
+doSave_plots = False
 
 # If data is saved or not
-doSave_data = True
+doSave_data = False
 
 ######################################################################
 ####################### END OF SET UP ################################
@@ -650,6 +650,7 @@ for i in range(1):
     ng = simu_noisy[0].header['NGROUPS']  # n_groups
     t_read = simu_noisy[0].header['TGROUP']  # Reading time [s]
     tint = (ng - 1) * t_read  # Integration time [s]
+    print(tint)
 
     # BOX EXTRACTION
     # To save it:
@@ -767,5 +768,5 @@ for i in range(1):
     # if doSave_plots:
     #     plt.savefig(WORKING_DIR + 'transit_spectrum_' + simulation_noisy)
     #
-    # if doPlot_extract is True:
-    #     plt.show()
+    if doPlot_extract is True:
+         plt.show()
