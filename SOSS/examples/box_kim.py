@@ -287,7 +287,7 @@ def transit_depth(f_lambda, t1, t2, t3, t4):
     # Mean flux value during out of transit for all wavelengths
     out_transit = np.concatenate((f_lambda[: t1 + 1], f_lambda[t4:]))
     out_transit_mean = np.mean(out_transit, axis=0)
-    return out_transit_mean - in_transit_mean # in_transit_mean / out_transit_mean
+    return out_transit_mean - in_transit_mean  # in_transit_mean / out_transit_mean
 
 
 
