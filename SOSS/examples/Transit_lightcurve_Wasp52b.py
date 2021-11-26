@@ -771,10 +771,10 @@ for i in range(1):
     transit_curve_noisy = box_kim.transit_depth(new_f_array_noisy_norm[:,:-5], t1, t2, t3, t4)
 
     plt.figure()
-    plt.plot(new_w[:-5], transit_curve_noisy * 1e6, color='r', label='Noisy')
+    plt.plot(new_w[:-5], np.sqrt(transit_curve_noisy) * 1e6, color='r', label='Noisy')
     # plt.plot(lam_array, transit_curve_noiseless * 1e6, color='b', label='Noiseless')
     plt.xlabel(r"Wavelength [$\mu m$]")
-    plt.ylabel(r'$(R_p/R_s)²$ [ppm]')
+    plt.ylabel(r'$R_p/R_s$ [ppm]')
     plt.title('Transit spectrum')
     plt.legend()
     if doSave_plots:
