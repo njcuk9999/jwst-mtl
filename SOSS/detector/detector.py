@@ -18,7 +18,7 @@ from . import timeseries
 
 
 def add_noise(filelist, noisefiles_path, photon=True, zodibackg=True, flatfield=True, darkcurrent=True, nonlinearity=True,
-              superbias=True, readout=True, oneoverf=True, zodi_ref=None, flat_ref=None, dark_ref=None,
+              superbias=True, readout=True, oneoverf=True, cosmicray = False, zodi_ref=None, flat_ref=None, dark_ref=None,
               nlcoeff_ref=None, superbias_ref=None, outputfilename=None, full_well=72000):
 
     """
@@ -94,6 +94,10 @@ def add_noise(filelist, noisefiles_path, photon=True, zodibackg=True, flatfield=
             #TODO: have better dark ref files. ref files for darks are very noisy with 1/f noise and rms of order 50% of the dark at read 50.
             print('Add dark current')
             tso.add_dark(darkfile=dark_ref)
+
+        if cosmicray:
+            #TODO: add cosmic ray capability
+            print('Cosmic rays noise source was requested but is not implemented yet')
 
         if nonlinearity:
             print('Add non linearity (delinearize)')

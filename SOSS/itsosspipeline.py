@@ -1385,7 +1385,8 @@ def write_dmsready_fits_init(imagelist, normalization_scale,
 
 
 def write_dmsready_fits(image, filename, os=1, xpadding=0, ypadding=0,
-                        input_frame='sim', verbose=True, f277=False):
+                        input_frame='sim', verbose=True, f277=False,
+                        **kwargs):
     '''
     This script writes DMS ready fits files. It uses as input a simulated
     noiseless image to which it adds the required minimum set of FITS keywords
@@ -1619,6 +1620,26 @@ def write_dmsready_fits(image, filename, os=1, xpadding=0, ypadding=0,
     phdr.set('FASTAXIS', -2, 'Fast readout axis direction')
     phdr.set('SLOWAXIS', -1, 'Slow readout axis direction')
     phdr.set('SIMOVRSP', int(os), 'Oversampling used in the simulation')
+
+    # keywords related to the noise sources and reference files
+    for key, value in kwargs.items():
+        # reference files
+        if key == 'dark_ref': phdr.set('DARKREF', value, 'Dark reference file')
+        if key == 'flat_ref': phdr.set('FLATREF', value, 'Flat reference file')
+        if key == 'superbias_ref': phdr.set('SBIASREF', value, 'Superbias reference file')
+        if key == 'nlcoeff_ref': phdr.set('NLCOEREF', value, 'Non-linearity coefficients reference file')
+        if key == 'zodi_ref': phdr.set('ZODIREF', value, 'Zodiacal background reference file')
+        if key == 'nonlin_ref': phdr.set('NLREF', value, 'Non-linearity reference file')
+        # noise sources
+        if key == 'readout': phdr.set('READNS', value, 'Readout Noise Source included?')
+        if key == 'zodibackg': phdr.set('ZODINS', value, 'Zodiacal light background Noise Source included?')
+        if key == 'photon': phdr.set('PHOTNS', value, 'Photon Noise Source included?')
+        if key == 'superbias': phdr.set('SBIASNS', value, 'Superbias Noise Source included?')
+        if key == 'flatfield': phdr.set('FLATNS', value, 'Flatfield Noise Source included?')
+        if key == 'nonlinearity': phdr.set('NONLINNS', value, 'Non-linearity Noise Source included?')
+        if key == 'oneoverf': phdr.set('ONEOFNS', value, 'One over f Noise Source included?')
+        if key == 'darkcurrent': phdr.set('DARKNS', value, 'Readout Noise Source included?')
+        if key == 'cosmicray': phdr.set('CRAYNS', value, 'Cosmic ray Noise Source included?')
 
     # Create extension HDU
     ext_hdu = fits.ImageHDU(data)

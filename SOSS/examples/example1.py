@@ -19,6 +19,8 @@ import numpy as np
 # Will be used to create FITS writer
 from astropy.io import fits
 from astropy.io import ascii
+from astropy.table import Table
+
 # Plotting
 import matplotlib
 import matplotlib.pyplot as plt
@@ -68,7 +70,7 @@ verbose = True
 
 # Read in all paths used to locate reference files and directories
 WORKING_DIR = '/genesis/jwst/jwst-user-soss/loic_review/'
-WORKING_DIR = '/genesis/jwst/jwst-user-soss/loic_review/CAP_rehearsal/'
+#WORKING_DIR = '/genesis/jwst/jwst-user-soss/loic_review/CAP_rehearsal/'
 config_paths_filename = os.path.join(WORKING_DIR, 'jwst-mtl_configpath.txt')
 #config_paths_filename = os.path.join(WORKING_DIR, 'jwst-mtl_configpath_runkim.txt')
 
@@ -77,22 +79,23 @@ soss.readpaths(config_paths_filename, pathPars)
 
 if False:
     pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_twa33_substrip96.txt'
-if False:
+if True:
     pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_twa33_substrip256.txt'
 if False:
     pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_bd601753.txt'
 if False:
     pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_hatp14b.txt'
-if True:
+if False:
     pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_wasp52b.txt'
 
 # Make the libraries imports. This needs to come after read_config_path
 # because the system needs to have the path to our own libraries first.
 #soss.init_imports()
 
+
 # Create and read the simulation parameters
-simuPars = spgen.ModelPars()              #Set up default parameters
-simuPars = spgen.read_pars(pathPars.simulationparamfile, simuPars) #read in parameter file
+simuPars = spgen.ModelPars() #Set up default parameters
+simuPars.read_pars(pathPars.simulationparamfile) #read in parameter file
 
 print(pathPars.path_planetmodelatm+simuPars.pmodelfile[0])
 print(simuPars.pmodeltype[0])
@@ -114,7 +117,7 @@ if False:
     simuPars.ngroup = 5
     simuPars.f277wcal = True
     simuPars.nintf277 = 3
-    #simuPars.f277wcal = False
+    simuPars.f277wcal = False
     #simuPars.tend = -1.80
     #simuPars.tend = -1.97
     #simuPars.flatthroughput = False
@@ -124,16 +127,18 @@ if False:
 #simuPars.tend = -2.21
 #simuPars.noversample = 2
 #simuPars.nintf277 = 1
-
-# Read in the reference files to generate noise and process with DMS.
-# Depends on simuPars.subarray so set that above or in the simulation pars input file.
-spgen.read_noise_ref_file_pars(simuPars)
+simuPars.f277wcal = False
 
 # Save the input parameters to disk
-soss.save_params(pathPars, simuPars, 'IDTSOSS_inputs.csv')
+simuPars.save_params(os.path.join(pathPars.path_userland,'IDTSOSS_inputs.txt'))
 
-bypass_sim = False
-if bypass_sim is False:
+# For testing, allow skipping steps.
+skip_sim = True
+skip_addnoise = True
+skip_dms = False
+
+
+if skip_sim is False:
 
     # Instrument Throughput (Response)
     throughput = spgen.read_response(pathPars.throughputfile, set_response_to_unity=simuPars.flatthroughput,
@@ -151,14 +156,17 @@ if bypass_sim is False:
     #sys.exit()
 
     # Anchor star spectrum on a photometric band magnitude
-    starmodel_flambda = smag.anchor_spectrum(starmodel_angstrom/10000., starmodel_flambda, simuPars.filter,
+    starmodel_flambda = smag.anchor_spectrum(starmodel_angstrom/10000., starmodel_flambda, simuPars.filtername,
                                         simuPars.magnitude, pathPars.path_filtertransmission, verbose=True)
 
     if False:
         plt.figure()
         plt.plot(starmodel_angstrom, starmodel_flambda)
-        plt.plot(throughput.wv, throughput.response[1])
+        #plt.plot(throughput.wv, throughput.response[1])
         plt.show()
+
+        t = Table([starmodel_angstrom/10000, starmodel_flambda], names=('micron', 'W/m2/um'))
+        ascii.write(t, os.path.join(pathPars.path_userland, 'IDTSOSS_star_model_calibrated.txt'))
         sys.exit()
 
     # Read Planet Atmosphere Model (wavelength in angstroms and radius_planet/radius_star ratio)
@@ -211,10 +219,10 @@ if bypass_sim is False:
         # Here, a single out-of-transit simulation is used to establish the
         # normalization scale needed to flux calibrate our simulations.
         # To override the simpar parameters:
-        # simuPars.filter = 'J'
+        # simuPars.filtername = 'J'
         # simuPars.magnitude = 8.5
         expected_counts = smag.expected_flux_calibration(
-                            simuPars.filter, simuPars.magnitude,
+                            simuPars.filtername, simuPars.magnitude,
                             starmodel_angstrom, starmodel_flambda,
                             simuPars.orderlist, subarray=simuPars.subarray,
                             verbose=False,
@@ -246,9 +254,15 @@ if bypass_sim is False:
         if True:
             soss.write_dmsready_fits(data, os.path.join(pathPars.path_userland,'IDTSOSS_clear.fits'),
                                  os=simuPars.noversample, input_frame='dms',
-                                 xpadding=simuPars.xpadding, ypadding=simuPars.ypadding)
-
-
+                                 xpadding=simuPars.xpadding, ypadding=simuPars.ypadding,
+                                 dark_ref=simuPars.dark_ref, flat_ref=simuPars.flat_ref,
+                                 superbias_ref=simuPars.superbias_ref, nlcoeff_ref=simuPars.nlcoeff_ref,
+                                 zodi_ref=simuPars.zodi_ref, nonlin_ref=simuPars.nonlin_ref,
+                                 readout=simuPars.readout, zodibackg=simuPars.zodibackg,
+                                 photon=simuPars.photon, superbias=simuPars.superbias,
+                                 flatfield=simuPars.flatfield, nonlinearity=simuPars.nonlinearity,
+                                 oneoverf=simuPars.oneoverf, darkcurrent=simuPars.darkcurrent,
+                                 cosmicray=simuPars.cosmicray)
 
 
     """
@@ -299,95 +313,112 @@ if bypass_sim is False:
         # All simulations (e-/sec) are converted to up-the-ramp images.
         soss.write_dmsready_fits(data_f277, os.path.join(pathPars.path_userland,'IDTSOSS_f277.fits'),
                                  os=simuPars.noversample, input_frame='dms',
-                                 xpadding=simuPars.xpadding, ypadding=simuPars.ypadding, f277=True)
-
+                                 xpadding=simuPars.xpadding, ypadding=simuPars.ypadding, f277=True,
+                                 dark_ref=simuPars.dark_ref, flat_ref=simuPars.flat_ref,
+                                 superbias_ref=simuPars.superbias_ref, nlcoeff_ref=simuPars.nlcoeff_ref,
+                                 zodi_ref=simuPars.zodi_ref, nonlin_ref=simuPars.nonlin_ref,
+                                 readout=simuPars.readout, zodibackg=simuPars.zodibackg,
+                                 photon=simuPars.photon, superbias=simuPars.superbias,
+                                 flatfield=simuPars.flatfield, nonlinearity=simuPars.nonlinearity,
+                                 oneoverf=simuPars.oneoverf, darkcurrent=simuPars.darkcurrent,
+                                 cosmicray=simuPars.cosmicray)
 
     print('The end of the noiseless simulation')
     print()
 '''
-ADD NOISE + PROCESS THRU DMS 
+ADD NOISE
 '''
 
-# GR700XD+CLEAR - ADD NOISE
-# Add detector noise to the noiseless data
-detector.add_noise(os.path.join(pathPars.path_userland, 'IDTSOSS_clear.fits'),
-                   pathPars.path_noisefiles,
-                   outputfilename=os.path.join(pathPars.path_userland, 'IDTSOSS_clear_noisy.fits'),
-                   readout=True,
-                   zodibackg=False,
-                   photon=True,
-                   superbias=True,
-                   flatfield=True,
-                   nonlinearity=True,
-                   oneoverf=True,
-                   darkcurrent=True,
-                   zodi_ref=simuPars.zodi_ref,
-                   superbias_ref=simuPars.superbias_ref,
-                   flat_ref=simuPars.flat_ref,
-                   nlcoeff_ref=simuPars.nlcoeff_ref,
-                   dark_ref=simuPars.dark_ref)
-# F277W - ADD NOISE
-if simuPars.f277wcal is True:
+if skip_addnoise is False:
+    # GR700XD+CLEAR - ADD NOISE
     # Add detector noise to the noiseless data
-    detector.add_noise(os.path.join(pathPars.path_userland, 'IDTSOSS_f277.fits'),
+    detector.add_noise(os.path.join(pathPars.path_userland, 'IDTSOSS_clear.fits'),
                        pathPars.path_noisefiles,
-                       outputfilename=os.path.join(pathPars.path_userland, 'IDTSOSS_f277_noisy.fits'),
-                       readout=True,
-                       zodibackg=False,
-                       photon=True,
-                       superbias=True,
-                       flatfield=True,
-                       nonlinearity=True,
-                       oneoverf=True,
-                       darkcurrent=True,
-                       zodi_ref = simuPars.zodi_ref,
-                       superbias_ref = simuPars.superbias_ref,
-                       flat_ref = simuPars.flat_ref,
-                       nlcoeff_ref = simuPars.nlcoeff_ref,
-                       dark_ref = simuPars.dark_ref)
+                       outputfilename=os.path.join(pathPars.path_userland, 'IDTSOSS_clear_noisy.fits'),
+                       dark_ref=simuPars.dark_ref, flat_ref=simuPars.flat_ref,
+                       superbias_ref=simuPars.superbias_ref, nlcoeff_ref=simuPars.nlcoeff_ref,
+                       zodi_ref=simuPars.zodi_ref,
+                       readout=simuPars.readout, zodibackg=simuPars.zodibackg,
+                       photon=simuPars.photon, superbias=simuPars.superbias,
+                       flatfield=simuPars.flatfield, nonlinearity=simuPars.nonlinearity,
+                       oneoverf=simuPars.oneoverf, darkcurrent=simuPars.darkcurrent,
+                       cosmicray=simuPars.cosmicray)
 
+    # F277W - ADD NOISE
+    if simuPars.f277wcal is True:
+        # Add detector noise to the noiseless data
+        detector.add_noise(os.path.join(pathPars.path_userland, 'IDTSOSS_f277.fits'),
+                           pathPars.path_noisefiles,
+                           outputfilename=os.path.join(pathPars.path_userland, 'IDTSOSS_f277_noisy.fits'),
+                           dark_ref=simuPars.dark_ref, flat_ref=simuPars.flat_ref,
+                           superbias_ref=simuPars.superbias_ref, nlcoeff_ref=simuPars.nlcoeff_ref,
+                           zodi_ref=simuPars.zodi_ref,
+                           readout=simuPars.readout, zodibackg=simuPars.zodibackg,
+                           photon=simuPars.photon, superbias=simuPars.superbias,
+                           flatfield=simuPars.flatfield, nonlinearity=simuPars.nonlinearity,
+                           oneoverf=simuPars.oneoverf, darkcurrent=simuPars.darkcurrent,
+                           cosmicray=simuPars.cosmicray)
+
+
+
+'''
+PROCESS THRU DMS 
+'''
 # Process the data through the DMS level 1 pipeline
-if True:  # here is the option to investigate individual noise sources
-    steps = [calwebb_detector1.dq_init_step.DQInitStep.call,
-             calwebb_detector1.saturation_step.SaturationStep.call,
-             calwebb_detector1.superbias_step.SuperBiasStep.call,
-             calwebb_detector1.refpix_step.RefPixStep.call,
-             calwebb_detector1.linearity_step.LinearityStep.call,
-             calwebb_detector1.dark_current_step.DarkCurrentStep.call,
-             calwebb_detector1.ramp_fit_step.RampFitStep.call,
-             calwebb_detector1.gain_scale_step.GainScaleStep.call]
+if skip_dms is False:  # here is the option to investigate individual noise sources
     # GR700XD+CLEAR - PROCESS THROUGH DMS LEVEL 1
-    # Define input on the first iteration of the loop below
+    # Define input/output
     calwebb_input = os.path.join(pathPars.path_userland, 'IDTSOSS_clear_noisy.fits')
-    for i in range(len(steps)):
-        if steps[i] == calwebb_detector1.ramp_fit_step.RampFitStep.call:
-            # RampFitStep - Retain only the cube...
-            _ , calwebb_input = steps[i](calwebb_input,
-                                     output_dir=pathPars.path_userland,
-                                     output_file='IDTSOSS_clear_noisy',
-                                     save_results=True)
-        else:
-            calwebb_input = steps[i](calwebb_input,
-                                 output_dir=pathPars.path_userland,
-                                 output_file='IDTSOSS_clear_noisy',
-                                 save_results=True)#,
-                                 #override_superbias='jwst_niriss_superbias_0017.fits')
+    calwebb_output = os.path.join(pathPars.path_userland, 'IDTSOSS_clear_noisy_rateints.fits')
+
+    # Step by step DMS processing
+    result = calwebb_detector1.dq_init_step.DQInitStep.call(calwebb_input,
+                output_dir=pathPars.path_userland, output_file='IDTSOSS_clear_noisy', save_results=False)
+    result = calwebb_detector1.saturation_step.SaturationStep.call(result,
+                output_dir=pathPars.path_userland, output_file='IDTSOSS_clear_noisy', save_results=False)
+    if simuPars.superbias is True: result = calwebb_detector1.superbias_step.SuperBiasStep.call(result,
+                output_dir=pathPars.path_userland, output_file='IDTSOSS_clear_noisy', save_results=False,
+                override_superbias=os.path.join(pathPars.path_noisefiles, simuPars.superbias_ref))
+    if simuPars.oneoverf is True: result = calwebb_detector1.refpix_step.RefPixStep.call(result,
+                output_dir=pathPars.path_userland, output_file='IDTSOSS_clear_noisy', save_results=False)
+    if simuPars.nonlinearity is True: result = calwebb_detector1.linearity_step.LinearityStep.call(result,
+                output_dir=pathPars.path_userland, output_file='IDTSOSS_clear_noisy', save_results=False,
+                override_linearity=os.path.join(pathPars.path_noisefiles, simuPars.nonlin_ref))
+    if simuPars.darkcurrent is True: result = calwebb_detector1.dark_current_step.DarkCurrentStep.call(result,
+                output_dir=pathPars.path_userland, output_file='IDTSOSS_clear_noisy', save_results=False,
+                override_dark=os.path.join(pathPars.path_noisefiles, simuPars.dark_ref))
+    _, result = calwebb_detector1.ramp_fit_step.RampFitStep.call(result,
+                output_dir=pathPars.path_userland, output_file='IDTSOSS_clear_noisy', save_results=False)
+    result = calwebb_detector1.gain_scale_step.GainScaleStep.call(result,
+                output_dir=pathPars.path_userland, output_file='IDTSOSS_clear_noisy', save_results=False)
+    result.meta.filetype = 'countrate'
+    result.write(calwebb_output)
+
     # GR700XD+F277W - PROCESS THROUGH DMS LEVEL 1
     if simuPars.f277wcal is True:
         # Define input on the first iteration of the loop below
         calwebb_input = os.path.join(pathPars.path_userland, 'IDTSOSS_f277_noisy.fits')
-        for i in range(len(steps)):
-            if steps[i] == calwebb_detector1.ramp_fit_step.RampFitStep.call:
-                # RampFitStep - Retain only the cube...
-                _, calwebb_input = steps[i](calwebb_input,
-                                            output_dir=pathPars.path_userland,
-                                            output_file='IDTSOSS_f277_noisy',
-                                            save_results=True)
-            else:
-                calwebb_input = steps[i](calwebb_input,
-                                         output_dir=pathPars.path_userland,
-                                         output_file='IDTSOSS_f277_noisy',
-                                         save_results=True)
-else:
-    result = Detector1Pipeline.call(os.path.join(pathPars.path_userland, 'IDTSOSS_clear_noisy.fits'),
-                                    output_file='IDTSOSS_clear_noisy', output_dir=pathPars.path_userland)
+        calwebb_output = os.path.join(pathPars.path_userland, 'IDTSOSS_f277_noisy_rateints.fits')
+
+        # Step by step DMS processing
+        result = calwebb_detector1.dq_init_step.DQInitStep.call(calwebb_input,
+                 output_dir=pathPars.path_userland, output_file='IDTSOSS_f277_noisy', save_results=False)
+        result = calwebb_detector1.saturation_step.SaturationStep.call(result,
+                 output_dir=pathPars.path_userland, output_file='IDTSOSS_f277_noisy', save_results=False)
+        if simuPars.superbias is True: result = calwebb_detector1.superbias_step.SuperBiasStep.call(result,
+                 output_dir=pathPars.path_userland, output_file='IDTSOSS_f277_noisy', save_results=False, 
+                 override_superbias=os.path.join(pathPars.path_noisefiles, simuPars.superbias_ref))
+        if simuPars.oneoverf is True: result = calwebb_detector1.refpix_step.RefPixStep.call(result,
+                 output_dir=pathPars.path_userland, output_file='IDTSOSS_f277_noisy', save_results=False)
+        if simuPars.nonlinearity is True: result = calwebb_detector1.linearity_step.LinearityStep.call(result,
+                 output_dir=pathPars.path_userland, output_file='IDTSOSS_f277_noisy', save_results=False,
+                 override_linearity=os.path.join(pathPars.path_noisefiles, simuPars.nonlin_ref))
+        if simuPars.darkcurrent is True: result = calwebb_detector1.dark_current_step.DarkCurrentStep.call(result,
+                 output_dir=pathPars.path_userland, output_file='IDTSOSS_f277_noisy', save_results=False,
+                 override_dark=os.path.join(pathPars.path_noisefiles, simuPars.dark_ref))
+        _, result = calwebb_detector1.ramp_fit_step.RampFitStep.call(result,
+                 output_dir=pathPars.path_userland, output_file='IDTSOSS_f277_noisy', save_results=False)
+        result = calwebb_detector1.gain_scale_step.GainScaleStep.call(result,
+                 output_dir=pathPars.path_userland, output_file='IDTSOSS_f277_noisy', ave_results=False)
+        result.meta.filetype = 'countrate'
+        result.write(calwebb_output)
