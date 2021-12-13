@@ -15,355 +15,436 @@ import trace.tracepol as tp
 
 import specgen.synthesizeMagnitude as smag
 
+import yaml
+
+
 class ModelPars:
     """Default Model Parameters
     """
-    
-    nplanetmax=9 #code is hardwired to have upto 9 transiting planets. 
-    #default parameters -- these will cause the program to end quickly
-    tstart=0.0 #start time (hours)
-    tend=0.0 #end time (hours)
-    exptime=0.0 #exposure time (s)
-    deadtime=0.0 #dead time (s)
-    modelfile='null' #stellar spectrum file name
-    bbteff='null' # black body temperature if modelfile is 'blackbody'
-    nmodeltype=2 #stellar spectrum type. 1=BT-Settl, 2=Atlas-9+NL limbdarkening
-    rvstar=0.0 #radial velocity of star (km/s)
-    vsini=0.0 #projected rotation of star (km/s)
-    pmodelfile=[None]*nplanetmax #file with Rp/Rs values
-    pmodeltype=[None]*nplanetmax #Type of planet file
-    emisfile=[None]*nplanetmax #file with emission spectrum
-    ttvfile=[None]*nplanetmax #file with O-C measurements
-    #nplanet is tracked by pmodelfile. 
-    nplanet=0 #number of planets -- default is no planets - you will get staronly sim.
-    sol=np.zeros(nplanetmax*8+1)
-    sol[0]=1.0 #mean stellar density [g/cc]
-    subarray='SUBSTRIP256' #SOSS subarray name SUBSTRIP96, SUBSTRIP256 or FF
-    granularity='FRAME' # FRAME or INTEGRATION, an image is created at each XXX
-    xout=2048  #dispersion axis
-    yout=256   #spatial axis
-    xpadding=0 # padding in native pixels on left and right of actual image
-    ypadding=0 # padding above and below
-    noversample=1 #oversampling
-    gain=1.6 # electronic gain [e-/adu]
-    saturation=65536.0 #saturation
-    ngroup=1 #samples up ramp
-    pid = 1 #programID
-    onum = 1 #observation number
-    vnum = 1 #visit number
-    gnum = 1 #group visit
-    spseq = 1 #parallel sequence. (1=prime, 2-5=parallel)
-    anumb = 1 #activity number
-    enum = 1 #exposure number
-    enumos = 1 #exposure number for oversampling
-    detectorname = 'NISRAPID' #confirm this 
-    prodtype='cal'
-    orderlist = np.array([-1,0,1,2,3],dtype=np.int) # the spectral orders to simulate
-    orderlist = np.array([1,2,3], dtype=np.int)
-    #orderlist = np.array([1], dtype=np.int)
-    frametime = np.nan # not selectable in the config file. Will be filled in the code.
-    nint = np.nan # not selectable in the config file. Will be filled in the code.
-    nintf277 = np.nan
-    magnitude = 10.0
-    filter = 'J'
-    f277wcal = True
-    flatthroughput = False
-    flatquantumyield = False
-    addwings = False # Add extended wings post facto on convolved traces
-    zodi_ref = ''
-    superbias_ref = ''
-    flat_ref = ''
-    nlcoeff_ref = ''
-    dark_ref = ''
 
+    def __init__(self):
+        self.nplanetmax = 9  # code is hardwired to have upto 9 transiting planets. 
+        # default parameters -- these will cause the program to end quickly
+        self.tstart = 0.0  # start time (hours)
+        self.tend = 0.0  # end time (hours)
+        self.exptime = 0.0  # exposure time (s)
+        self.deadtime = 0.0  # dead time (s)
+        self.modelfile = 'null'  # stellar spectrum file name
+        self.bbteff = 'null'  # black body temperature if modelfile is 'blackbody'
+        self.nmodeltype = 2  # stellar spectrum type. 1=BT-Settl, 2=Atlas-9+NL limbdarkening
+        self.rvstar = 0.0  # radial velocity of star (km/s)
+        self.vsini = 0.0  # projected rotation of star (km/s)
+        self.pmodelfile = [None] * self.nplanetmax  # file with Rp/Rs values
+        self.pmodeltype = [None] * self.nplanetmax  # Type of planet file
+        self.emisfile = [None] * self.nplanetmax  # file with emission spectrum
+        self.ttvfile = [None] * self.nplanetmax  # file with O-C measurements
+        # nplanet is tracked by pmodelfile. 
+        self.nplanet = 0  # number of planets -- default is no planets - you will get staronly sim.
+        self.sol = np.zeros(self.nplanetmax * 8 + 1)
+        self.sol[0] = 1.0  # mean stellar density [g/cc]
+        self.subarray = 'SUBSTRIP256'  # SOSS subarray name SUBSTRIP96, SUBSTRIP256 or FF
+        self.granularity = 'FRAME'  # FRAME or INTEGRATION, an image is created at each XXX
+        self.xout = 2048  # dispersion axis
+        self.yout = 256  # spatial axis
+        self.xpadding = 0  # padding in native pixels on left and right of actual image
+        self.ypadding = 0  # padding above and below
+        self.noversample = 1  # oversampling
+        self.gain = 1.6  # electronic gain [e-/adu]
+        self.saturation = 65536.0  # saturation
+        self.ngroup = 1  # samples up ramp
+        self.pid = 1  # programID
+        self.onum = 1  # observation number
+        self.vnum = 1  # visit number
+        self.gnum = 1  # group visit
+        self.spseq = 1  # parallel sequence. (1=prime, 2-5=parallel)
+        self.anumb = 1  # activity number
+        self.enum = 1  # exposure number
+        self.enumos = 1  # exposure number for oversampling
+        self.detectorname = 'NISRAPID'  # confirm this 
+        self.prodtype = 'cal'
+        #self.orderlist = np.array([-1, 0, 1, 2, 3], dtype=np.int)  # the spectral orders to simulate
+        self.orderlist = np.array([1, 2, 3], dtype=np.int)
+        # self.orderlist = np.array([1], dtype=np.int)
+        self.frametime = np.nan  # not selectable in the config file. Will be filled in the code.
+        self.nint = np.nan  # not selectable in the config file. Will be filled in the code.
+        self.nintf277 = np.nan
+        self.magnitude = 10.0
+        self.filtername = 'J'
+        self.f277wcal = True
+        self.flatthroughput = False
+        self.flatquantumyield = False
+        self.addwings = False  # Add extended wings post facto on convolved traces
+        self.zodi_ref = None
+        self.superbias_ref = None
+        self.flat_ref = None
+        self.nlcoeff_ref = None
+        self.dark_ref = None
+        self.nonlin_ref = None
+        self.readout = True
+        self.zodibackg = False
+        self.photon = True
+        self.superbias = True
+        self.flatfield = True
+        self.nonlinearity = True
+        self.oneoverf = True
+        self.darkcurrent = True
+        self.cosmicray = False
 
-def read_noise_ref_file_pars(pars):
-    """Fill the Parameters class with noise reference file names"""
-
-    print('Going into read_noise_ref_file_pars. subarray is ',pars.subarray)
-
-    # Zodi background reference file
-    pars.zodi_ref = 'background_detectorfield_normalized.fits'
-
-    # Super bias reference file
-    if pars.subarray == 'SUBSTRIP256':
-        pars.superbias_ref = 'jwst_niriss_superbias_0120.fits'
-    elif pars.subarray == 'SUBSTRIP96':
-        pars.superbias_ref = 'jwst_niriss_superbias_0111.fits'
-    elif pars.subarray == 'FULL':
-        pars.superbias_ref = 'jwst_niriss_superbias_0150.fits'
-
-    # Flat field reference file
-    if pars.subarray == 'SUBSTRIP256':
-        pars.flat_ref = 'jwst_niriss_flat_0190.fits'
-    elif pars.subarray == 'SUBSTRIP96':
-        pars.flat_ref = 'jwst_niriss_flat_0190.fits'
-    elif pars.subarray == 'FULL':
-        pars.flat_ref = 'jwst_niriss_flat_0190.fits'
-
-    # Non-linearity coefficient file
-    pars.nlcoeff_ref = 'jwst_niriss_linearity_0011_bounds_0_60000_npoints_100_deg_5.fits'
-
-    # Dark reference file
-    if pars.subarray == 'SUBSTRIP256':
-        pars.dark_ref = 'jwst_niriss_dark_0147.fits'
-    elif pars.subarray == 'SUBSTRIP96':
-        pars.dark_ref = 'jwst_niriss_dark_0150.fits'
-    elif pars.subarray == 'FULL':
-        pars.dark_ref = 'jwst_niriss_dark_0145.fits'
-
-    return pars
-
-def read_pars(filename,pars):
-    """Usage:  pars=read_pars(filename,pars)
-    
-      filename -- text file containing model parameters
-      pars     -- class with model parameters
-    """
-    
-    linenumber=0 #track lie number
-    nplanet=0
-    if os.path.isfile(filename):  #Check that file exists, else print an error
-        
-        f = open(filename, 'r') #open file read-only
-        
-        for line in f:
-            linenumber+=1
-            line = line.strip()
-            columns = line.split() #break into columns
-            if len(columns) > 0: #ignore blank lines
-                if columns[0][0] != '#':
-                    command=str(columns[0]).lower()
-                    nlcom=len(command) #number of characters in the command
-                    
-                    if command == 'tstart':
-                        pars.tstart = np.float(columns[1])
-                    elif command == 'tend':
-                        pars.tend = np.float(columns[1])
-                    elif command == 'exptime':
-                        pars.exptime = np.float(columns[1])
-                    elif command == 'deadtime':
-                        pars.deadtime = np.float(columns[1])
-                    elif command == 'rhostar':
-                        pars.sol[0] = np.float(columns[1])
-                    elif command == 'starmodel':
-                        pars.modelfile = str(columns[1])
-                    elif command == 'bbteff':
-                        pars.bbteff = np.float(columns[1])
-                    elif command == 'startype':
-                        pars.nmodeltype = int(columns[1])
-                        if pars.nmodeltype != 2:
-                            print("Error: Only ATLAS-9 models are currently support (STARTYPE=2)")
-                            print('Linenumber: ',linenumber)
-                    elif command == 'vsini':
-                        pars.vsini = np.float(columns[1])
-                    elif command == 'magnitude':
-                        pars.magnitude = np.float(columns[1])
-                    elif command == 'filter':
-                        pars.filter = str(columns[1])
-                    elif command == 'f277wcal':
-                        if isinstance(columns[1],str):
-                            pars.f277wcal = (columns[1] == 'True')
-                        else:
-                            pars.f277wcal = bool(columns[1])
-                    elif command == 'subarray':
-                        pars.subarray = columns[1]
-                    elif command == 'flatthroughput':
-                        if isinstance(columns[1],str):
-                            pars.flatthroughput = (columns[1] == 'True')
-                        else:
-                            pars.flatthroughput = bool(columns[1])
-                    elif command == 'flatquantumyield':
-                        if isinstance(columns[1],str):
-                            pars.flatquantumyield = (columns[1] == 'True')
-                        else:
-                            pars.flatquantumyield = bool(columns[1])
-                    elif command == 'addwings':
-                        if isinstance(columns[1],str):
-                            pars.addwings = (columns[1] == 'True')
-                        else:
-                            pars.addwings = bool(columns[1])
-                    elif command == 'granularity':
-                        pars.granularity = columns[1]
-                    elif command == 'xout':
-                        pars.xout = int(np.float(columns[1]))
-                    elif command == 'yout':
-                        pars.yout = int(np.float(columns[1]))
-                    elif command == 'xpadding':
-                        pars.xpadding = int(np.float(columns[1]))
-                    elif command == 'ypadding':
-                        pars.ypadding = int(np.float(columns[1]))
-                    elif command == 'xcoo':
-                        pars.xcoo = np.float(columns[1])
-                    elif command == 'ycoo':
-                        pars.ycoo = np.float(columns[1])
-                    elif command == 'roll':
-                        pars.roll = np.float(columns[1])
-                    elif command == 'xcen':
-                        pars.xcen = np.float(columns[1])
-                    elif command == 'ycen':
-                        pars.ycen = np.float(columns[1])
-                    elif command == 'xjit':
-                        pars.xcen = np.float(columns[1])
-                    elif command == 'yjit':
-                        pars.ycen = np.float(columns[1])
-                    elif command == 'rolljit':
-                        pars.xcen = np.float(columns[1])
-                    elif command == 'oversample':
-                        pars.noversample = int(np.float(columns[1]))
-                    elif command == 'orderlist':
-                        print('spgen.py - warning - fix the bug with orderlist')
-                        # Bug. I cannot process a string of format '[1,2]'
-                        # to be converted to a numpy array of 2 integers.
-                        # until then, hard code the input in spgen.py
-                        # in the initiation of the parameters.
-                        #pars.orderlist = int(columns[1])
-                        #print('qqq{:}qqq'.format(pars.orderlist))
-                        #print(np.shape(pars.orderlist))
-                    elif command == 'gain':
-                        pars.gain = np.float(columns[1])
-                    elif command == 'saturation':
-                        pars.saturation = np.float(columns[1])
-                    elif command == 'ngroup':
-                        pars.ngroup = int(np.float(columns[1]))
-                    elif command == 'nintf277':
-                        pars.nintf277 = int(np.float(columns[1]))
-                    elif command == 'pid':
-                        pars.pid = int(np.float(columns[1]))
-                    elif command == 'onum':
-                        pars.onum = int(np.float(columns[1]))
-                    elif command == 'vnum':
-                        pars.vnum = int(np.float(columns[1]))
-                    elif command == 'gnum':
-                        pars.gnum = int(np.float(columns[1]))
-                    elif command == 'spseq':
-                        pars.spseq = int(np.float(columns[1]))
-                    elif command == 'anumb':
-                        pars.anumb = int(np.float(columns[1]))
-                    elif command == 'enum':
-                        pars.enum = int(np.float(columns[1]))
-                    elif command == 'enumos':
-                        pars.enumos = int(np.float(columns[1]))
-                    elif command == 'detector':
-                        pars.detector = str(columns[1])
-                    elif command == 'prodtype':
-                        pars.prodtype = str(columns[1])
-                    elif command[0:nlcom-1] == 'rprsfile':
-                        if str(columns[1]) != 'null':
-                            npl=int(np.float(command[nlcom-1]))
-                            if (npl <= pars.nplanetmax) &(npl>0):
-                                nplanet=np.max((nplanet,npl))
-                                pars.pmodelfile[npl-1]=str(columns[1])
-                            else:
-                                print('Error: Planet number is Invalid ',npl )
-                                print('Linenumber: ',linenumber)
-                    elif command[0:nlcom-1] == 'rprstype':
-                        if str(columns[1]) != 'null':
-                            npl=int(np.float(command[nlcom-1]))
-                            if (npl <= pars.nplanetmax) & (npl>0):
-                                pars.pmodeltype[npl-1]=int(columns[1])
-                            else:
-                                print('Error: Planet number is Invalid for planetmodel type ',npl)
-                                print('Linenumber: ',linenumber)
-                    elif command[0:nlcom-1] == 'emisfile':
-                        if str(columns[1]) != 'null':
-                            npl=int(np.float(command[nlcom-1]))
-                            if (npl <= pars.nplanetmax) &(npl>0):
-                                nplanet=np.max((nplanet,npl))
-                                pars.emisfile[npl-1]=str(columns[1])
-                                print('Warning: Emission Spectrum has not yet been implemented')
-                            else:
-                                print('Error: Planet number is Invalid ',npl)
-                                print('Linenumber: ',linenumber)
-                    elif command[0:nlcom-1] == 'ttvfile':
-                        if str(columns[1]) != 'null':
-                            npl=int(np.float(command[nlcom-1]))
-                            if (npl <= pars.nplanetmax) &(npl>0):
-                                nplanet=np.max((nplanet,npl))
-                                pars.ttvfile[npl-1]=str(columns[1])
-                            else:
-                                print('Error: Planet number is Invalid ',npl )
-                                print('Linenumber: ',linenumber)
-                    elif command[0:nlcom-1] == 'ep':
-                        npl=int(np.float(command[nlcom-1]))
-                        if (npl <= pars.nplanetmax) &(npl>0):
-                            nplanet=np.max((nplanet,npl))
-                            pars.sol[8*(npl-1)+1]=np.float(columns[1])
-                        else:
-                            print('Error: Planet number is Invalid ',npl)
-                            print('Linenumber: ',linenumber)
-                    elif command[0:nlcom-1] == 'pe':
-                        npl=int(np.float(command[nlcom-1]))
-                        if (npl <= pars.nplanetmax) &(npl>0):
-                            nplanet=np.max((nplanet,npl))
-                            pars.sol[8*(npl-1)+2]=np.float(columns[1])
-                        else:
-                            print('Error: Planet number is Invalid ',npl)
-                            print('Linenumber: ',linenumber)
-                    elif command[0:nlcom-1] == 'bb':
-                        npl=int(np.float(command[nlcom-1]))
-                        if (npl <= pars.nplanetmax) &(npl>0):
-                            nplanet=np.max((nplanet,npl))
-                            pars.sol[8*(npl-1)+3]=np.float(columns[1])
-                        else:
-                            print('Error: Planet number is Invalid ',npl)
-                            print('Linenumber: ',linenumber)
-                    elif command[0:nlcom-1] == 'ec':
-                        npl=int(np.float(command[nlcom-1]))
-                        if (npl <= pars.nplanetmax) &(npl>0):
-                            nplanet=np.max((nplanet,npl))
-                            pars.sol[8*(npl-1)+4]=np.float(columns[1])
-                        else:
-                            print('Error: Planet number is Invalid ',npl)
-                            print('Linenumber: ',linenumber)
-                    elif command[0:nlcom-1] == 'es':
-                        npl=int(np.float(command[nlcom-1]))
-                        if (npl <= pars.nplanetmax) &(npl>0):
-                            nplanet=np.max((nplanet,npl))
-                            pars.sol[8*(npl-1)+5]=np.float(columns[1])
-                        else:
-                            print('Error: Planet number is Invalid ',npl)
-                            print('Linenumber: ',linenumber)
-                    elif command[0:nlcom-1] == 'rv':
-                        npl=int(np.float(command[nlcom-1]))
-                        if (npl <= pars.nplanetmax) &(npl>0):
-                            nplanet=np.max((nplanet,npl))
-                            pars.sol[8*(npl-1)+6]=np.float(columns[1])
-                        else:
-                            print('Error: Planet number is Invalid ',npl)
-                            print('Linenumber: ',linenumber)
-                    elif command[0:nlcom-1] == 'el':
-                        npl=int(np.float(command[nlcom-1]))
-                        if (npl <= pars.nplanetmax) &(npl>0):
-                            nplanet=np.max((nplanet,npl))
-                            pars.sol[8*(npl-1)+7]=np.float(columns[1])
-                        else:
-                            print('Error: Planet number is Invalid ',npl)
-                            print('Linenumber: ',linenumber)
-                    elif command[0:nlcom-1] == 'al':
-                        npl=int(np.float(command[nlcom-1]))
-                        if (npl <= pars.nplanetmax) &(npl>0):
-                            nplanet=np.max((nplanet,npl))
-                            pars.sol[8*(npl-1)+8]=np.float(columns[1])
-                        else:
-                            print('Error: Planet number is Invalid ',npl)
-                            print('Linenumber: ',linenumber)
-                    else:
-                        print("Not found: ",command,nlcom,command[0:nlcom-1],command[nlcom-1])
-                        print('Linenumber: ',linenumber)
-                        npl=int(np.float(command[nlcom-1]))
-                        nplanet=np.max((nplanet,npl))
+    def save_params(self, saved_inputs_file):
+        # open file for writing, "w" is writing
+        filename = os.path.join('./', saved_inputs_file)
+        # Make a copy of the dictionary, converting numpy arrays to lists
+        f = open(filename, 'w')
+        for key, value in self.__dict__.items():
+            print(key, value)
+            f.write('{:20}     {}\n'.format(key, value))
         f.close()
-        pars.nplanet=nplanet*1 #store number of planets found.
-        
-    else:
-        print('Cannot find ',filename)
 
-    # Read in the noise reference files
-    # TODO: read the noise reference files in the main pars loop so user can input them
-    read_noise_ref_file_pars(pars)
+    def save_params_version_yaml(self, saved_inputs_file):
+        # open file for writing, "w" is writing
+        filename = os.path.join('./', saved_inputs_file)
+        # loop over dictionary keys and values
+        with open(filename, 'w') as yfile:
+            yaml.dump(self.__dict__, yfile, sort_keys=False)
 
-    return pars
+    def _read_noise_ref_file_pars(self):
+        """Fill the Parameters class with noise reference file names"""
+
+        #print('Going into read_noise_ref_file_pars. subarray is ', self.subarray)
+
+        # Zodi background reference file
+        if self.zodi_ref is None:
+            self.zodi_ref = 'background_detectorfield_normalized.fits'
+
+        # Super bias reference file
+        if self.superbias_ref is None:
+            if self.subarray == 'SUBSTRIP256':
+                self.superbias_ref = 'jwst_niriss_superbias_0120.fits'
+            elif self.subarray == 'SUBSTRIP96':
+                self.superbias_ref = 'jwst_niriss_superbias_0111.fits'
+            elif self.subarray == 'FULL':
+                self.superbias_ref = 'jwst_niriss_superbias_0150.fits'
+
+        # Flat field reference file
+        if self.flat_ref is None:
+            if self.subarray == 'SUBSTRIP256':
+                self.flat_ref = 'jwst_niriss_flat_0190.fits'
+            elif self.subarray == 'SUBSTRIP96':
+                self.flat_ref = 'jwst_niriss_flat_0190.fits'
+            elif self.subarray == 'FULL':
+                self.flat_ref = 'jwst_niriss_flat_0190.fits'
+
+        # Non-linearity coefficient file
+        if self.nlcoeff_ref is None:
+            self.nlcoeff_ref = 'jwst_niriss_linearity_0011_bounds_0_60000_npoints_100_deg_5.fits'
+
+        # Non-linearity coefficient file
+        if self.nonlin_ref is None:
+            self.nonlin_ref = 'jwst_niriss_linearity_0011.fits'
+
+        # Dark reference file
+        if self.dark_ref is None:
+            if self.subarray == 'SUBSTRIP256':
+                self.dark_ref = 'jwst_niriss_dark_0147.fits'
+            elif self.subarray == 'SUBSTRIP96':
+                self.dark_ref = 'jwst_niriss_dark_0150.fits'
+            elif self.subarray == 'FULL':
+                self.dark_ref = 'jwst_niriss_dark_0145.fits'
+
+    #def load_params(saved_inputs_file):
+    #    # open file for writing, "w" is writing
+    #    filename = os.path.join('./', saved_inputs_file)
+    #    with open(filename, 'r') as yfile:
+    #        self.__dict__ = yaml.load(yfile, Loader=yaml.FullLoader)
+
+
+    def read_pars(self, filename):
+        """Usage:  pars=read_pars(filename,pars)
+    
+          filename -- text file containing model parameters
+          pars     -- class with model parameters
+        """
+    
+        linenumber = 0  # track lie number
+        nplanet = 0
+        if os.path.isfile(filename):  # Check that file exists, else print an error
+    
+            f = open(filename, 'r')  # open file read-only
+    
+            for line in f:
+                linenumber += 1
+                line = line.strip()
+                #print(len(line), line)
+                if len(line) > 0:
+                    columns = line.split()  # break into columns
+                    #print(len(line), len(columns), line)
+                    if (columns[0][0] != '#') & (columns[0][0] != ' '):
+                        #print(columns)
+                        #print('------', columns[0], '------', columns[1])
+
+                        command = str(columns[0]).lower()
+                        nlcom = len(command)  # number of characters in the command
+    
+                        if command == 'tstart':
+                            self.tstart = np.float(columns[1])
+                        elif command == 'tend':
+                            self.tend = np.float(columns[1])
+                        elif command == 'exptime':
+                            self.exptime = np.float(columns[1])
+                        elif command == 'deadtime':
+                            self.deadtime = np.float(columns[1])
+                        elif command == 'rhostar':
+                            self.sol[0] = np.float(columns[1])
+                        elif command == 'starmodel':
+                            self.modelfile = str(columns[1])
+                        elif command == 'bbteff':
+                            self.bbteff = np.float(columns[1])
+                        elif command == 'startype':
+                            self.nmodeltype = int(columns[1])
+                            if self.nmodeltype != 2:
+                                print("Error: Only ATLAS-9 models are currently support (STARTYPE=2)")
+                                print('Linenumber: ', linenumber)
+                        elif command == 'vsini':
+                            self.vsini = np.float(columns[1])
+                        elif command == 'magnitude':
+                            self.magnitude = np.float(columns[1])
+                        elif command == 'filter':
+                            self.filtername = str(columns[1])
+                        elif command == 'f277wcal':
+                            if isinstance(columns[1], str):
+                                self.f277wcal = (columns[1] == 'True')
+                            else:
+                                self.f277wcal = bool(columns[1])
+                        elif command == 'subarray':
+                            self.subarray = columns[1]
+                        elif command == 'flatthroughput':
+                            if isinstance(columns[1], str):
+                                self.flatthroughput = (columns[1] == 'True')
+                            else:
+                                self.flatthroughput = bool(columns[1])
+                        elif command == 'flatquantumyield':
+                            if isinstance(columns[1], str):
+                                self.flatquantumyield = (columns[1] == 'True')
+                            else:
+                                self.flatquantumyield = bool(columns[1])
+                        elif command == 'addwings':
+                            if isinstance(columns[1], str):
+                                self.addwings = (columns[1] == 'True')
+                            else:
+                                self.addwings = bool(columns[1])
+                        elif command == 'granularity':
+                            self.granularity = columns[1]
+                        elif command == 'xout':
+                            self.xout = int(np.float(columns[1]))
+                        elif command == 'yout':
+                            self.yout = int(np.float(columns[1]))
+                        elif command == 'xpadding':
+                            self.xpadding = int(np.float(columns[1]))
+                        elif command == 'ypadding':
+                            self.ypadding = int(np.float(columns[1]))
+                        elif command == 'xcoo':
+                            self.xcoo = np.float(columns[1])
+                        elif command == 'ycoo':
+                            self.ycoo = np.float(columns[1])
+                        elif command == 'roll':
+                            self.roll = np.float(columns[1])
+                        elif command == 'xcen':
+                            self.xcen = np.float(columns[1])
+                        elif command == 'ycen':
+                            self.ycen = np.float(columns[1])
+                        elif command == 'xjit':
+                            self.xcen = np.float(columns[1])
+                        elif command == 'yjit':
+                            self.ycen = np.float(columns[1])
+                        elif command == 'rolljit':
+                            self.xcen = np.float(columns[1])
+                        elif command == 'oversample':
+                            self.noversample = int(np.float(columns[1]))
+                        elif command == 'orderlist':
+                            # Complicated because user may enter, for examples:
+                            # 0,1,2   or    [1,2]     or   [-1,3]  or    1
+                            tmp = []
+                            if columns[1].find('1') != -1: tmp.append(1)
+                            if columns[1].find('2') != -1: tmp.append(2)
+                            if columns[1].find('3') != -1: tmp.append(3)
+                            if columns[1].find('0') != -1: tmp.append(0)
+                            if columns[1].find('-1') != -1: tmp.append(-1)
+                            self.orderlist = np.array(tmp)
+                        elif command == 'darkref':
+                            self.dark_ref = str(columns[1])
+                        elif command == 'flatref':
+                            self.flat_ref = str(columns[1])
+                        elif command == 'sbiasref':
+                            self.superbias_ref = str(columns[1])
+                        elif command == 'nlcoeref':
+                            self.nlcoeff_ref = str(columns[1])
+                        elif command == 'zodiref':
+                            self.zodi_ref = str(columns[1])
+                        elif command == 'nlref':
+                            self.nonlin_ref = str(columns[1])
+                        elif command == 'readns':
+                            self.readout = str(columns[1])
+                        elif command == 'zodins':
+                            self.zodibackg = str(columns[1])
+                        elif command == 'photns':
+                            self.photon = str(columns[1])
+                        elif command == 'sbiasns':
+                            self.superbias = str(columns[1])
+                        elif command == 'flatns':
+                            self.flatfield = str(columns[1])
+                        elif command == 'nonlinns':
+                            self.nonlinearity = str(columns[1])
+                        elif command == 'oneofns':
+                            self.oneoverf = str(columns[1])
+                        elif command == 'darkns':
+                            self.darkcurrent = str(columns[1])
+                        elif command == 'crayns':
+                            self.cosmicray = str(columns[1])
+                        elif command == 'gain':
+                            self.gain = np.float(columns[1])
+                        elif command == 'saturation':
+                            self.saturation = np.float(columns[1])
+                        elif command == 'ngroup':
+                            self.ngroup = int(np.float(columns[1]))
+                        elif command == 'nintf277':
+                            self.nintf277 = int(np.float(columns[1]))
+                        elif command == 'pid':
+                            self.pid = int(np.float(columns[1]))
+                        elif command == 'onum':
+                            self.onum = int(np.float(columns[1]))
+                        elif command == 'vnum':
+                            self.vnum = int(np.float(columns[1]))
+                        elif command == 'gnum':
+                            self.gnum = int(np.float(columns[1]))
+                        elif command == 'spseq':
+                            self.spseq = int(np.float(columns[1]))
+                        elif command == 'anumb':
+                            self.anumb = int(np.float(columns[1]))
+                        elif command == 'enum':
+                            self.enum = int(np.float(columns[1]))
+                        elif command == 'enumos':
+                            self.enumos = int(np.float(columns[1]))
+                        elif command == 'detector':
+                            self.detector = str(columns[1])
+                        elif command == 'prodtype':
+                            self.prodtype = str(columns[1])
+                        elif command[0:nlcom - 1] == 'rprsfile':
+                            if str(columns[1]) != 'null':
+                                npl = int(np.float(command[nlcom - 1]))
+                                if (npl <= self.nplanetmax) & (npl > 0):
+                                    nplanet = np.max((nplanet, npl))
+                                    self.pmodelfile[npl - 1] = str(columns[1])
+                                else:
+                                    print('Error: Planet number is Invalid ', npl)
+                                    print('Linenumber: ', linenumber)
+                        elif command[0:nlcom - 1] == 'rprstype':
+                            if str(columns[1]) != 'null':
+                                npl = int(np.float(command[nlcom - 1]))
+                                if (npl <= self.nplanetmax) & (npl > 0):
+                                    self.pmodeltype[npl - 1] = int(columns[1])
+                                else:
+                                    print('Error: Planet number is Invalid for planetmodel type ', npl)
+                                    print('Linenumber: ', linenumber)
+                        elif command[0:nlcom - 1] == 'emisfile':
+                            if str(columns[1]) != 'null':
+                                npl = int(np.float(command[nlcom - 1]))
+                                if (npl <= self.nplanetmax) & (npl > 0):
+                                    nplanet = np.max((nplanet, npl))
+                                    self.emisfile[npl - 1] = str(columns[1])
+                                    print('Warning: Emission Spectrum has not yet been implemented')
+                                else:
+                                    print('Error: Planet number is Invalid ', npl)
+                                    print('Linenumber: ', linenumber)
+                        elif command[0:nlcom - 1] == 'ttvfile':
+                            if str(columns[1]) != 'null':
+                                npl = int(np.float(command[nlcom - 1]))
+                                if (npl <= self.nplanetmax) & (npl > 0):
+                                    nplanet = np.max((nplanet, npl))
+                                    self.ttvfile[npl - 1] = str(columns[1])
+                                else:
+                                    print('Error: Planet number is Invalid ', npl)
+                                    print('Linenumber: ', linenumber)
+                        elif command[0:nlcom - 1] == 'ep':
+                            npl = int(np.float(command[nlcom - 1]))
+                            if (npl <= self.nplanetmax) & (npl > 0):
+                                nplanet = np.max((nplanet, npl))
+                                self.sol[8 * (npl - 1) + 1] = np.float(columns[1])
+                            else:
+                                print('Error: Planet number is Invalid ', npl)
+                                print('Linenumber: ', linenumber)
+                        elif command[0:nlcom - 1] == 'pe':
+                            npl = int(np.float(command[nlcom - 1]))
+                            if (npl <= self.nplanetmax) & (npl > 0):
+                                nplanet = np.max((nplanet, npl))
+                                self.sol[8 * (npl - 1) + 2] = np.float(columns[1])
+                            else:
+                                print('Error: Planet number is Invalid ', npl)
+                                print('Linenumber: ', linenumber)
+                        elif command[0:nlcom - 1] == 'bb':
+                            npl = int(np.float(command[nlcom - 1]))
+                            if (npl <= self.nplanetmax) & (npl > 0):
+                                nplanet = np.max((nplanet, npl))
+                                self.sol[8 * (npl - 1) + 3] = np.float(columns[1])
+                            else:
+                                print('Error: Planet number is Invalid ', npl)
+                                print('Linenumber: ', linenumber)
+                        elif command[0:nlcom - 1] == 'ec':
+                            npl = int(np.float(command[nlcom - 1]))
+                            if (npl <= self.nplanetmax) & (npl > 0):
+                                nplanet = np.max((nplanet, npl))
+                                self.sol[8 * (npl - 1) + 4] = np.float(columns[1])
+                            else:
+                                print('Error: Planet number is Invalid ', npl)
+                                print('Linenumber: ', linenumber)
+                        elif command[0:nlcom - 1] == 'es':
+                            npl = int(np.float(command[nlcom - 1]))
+                            if (npl <= self.nplanetmax) & (npl > 0):
+                                nplanet = np.max((nplanet, npl))
+                                self.sol[8 * (npl - 1) + 5] = np.float(columns[1])
+                            else:
+                                print('Error: Planet number is Invalid ', npl)
+                                print('Linenumber: ', linenumber)
+                        elif command[0:nlcom - 1] == 'rv':
+                            npl = int(np.float(command[nlcom - 1]))
+                            if (npl <= self.nplanetmax) & (npl > 0):
+                                nplanet = np.max((nplanet, npl))
+                                self.sol[8 * (npl - 1) + 6] = np.float(columns[1])
+                            else:
+                                print('Error: Planet number is Invalid ', npl)
+                                print('Linenumber: ', linenumber)
+                        elif command[0:nlcom - 1] == 'el':
+                            npl = int(np.float(command[nlcom - 1]))
+                            if (npl <= self.nplanetmax) & (npl > 0):
+                                nplanet = np.max((nplanet, npl))
+                                self.sol[8 * (npl - 1) + 7] = np.float(columns[1])
+                            else:
+                                print('Error: Planet number is Invalid ', npl)
+                                print('Linenumber: ', linenumber)
+                        elif command[0:nlcom - 1] == 'al':
+                            npl = int(np.float(command[nlcom - 1]))
+                            if (npl <= self.nplanetmax) & (npl > 0):
+                                nplanet = np.max((nplanet, npl))
+                                self.sol[8 * (npl - 1) + 8] = np.float(columns[1])
+                            else:
+                                print('Error: Planet number is Invalid ', npl)
+                                print('Linenumber: ', linenumber)
+                        else:
+                            print("Not found: ", command, nlcom, command[0:nlcom - 1], command[nlcom - 1])
+                            print('Linenumber: ', linenumber)
+                            npl = int(np.float(command[nlcom - 1]))
+                            nplanet = np.max((nplanet, npl))
+            f.close()
+            self.nplanet = nplanet * 1  # store number of planets found.
+    
+        else:
+            print('Cannot find ', filename)
+    
+        # Read in the noise reference files (again). Why? Becasue subarray may have been set
+        # and impact which ref file should be chosen for defaults.
+        self._read_noise_ref_file_pars()
+
+
+
 
 class instrument_response_class:
     def __init__(self):
