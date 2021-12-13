@@ -125,10 +125,12 @@ class TimeSeries(object):
         """Add non-linearity on top of the linear integration-long ramp."""
 
         if coef_file is None:
-            coef_file = self.noisefiles_dir+'jwst_niriss_linearity_0011_bounds_0_60000_npoints_100_deg_5.fits'
+            coef_file = 'jwst_niriss_linearity_0011_bounds_0_60000_npoints_100_deg_5.fits'
+
+        print('\tUsing {:} as the non-linearity coefficients reference file'.format(coef_file))
 
         # Read the coefficients of the non-linearity function.
-        with fits.open(coef_file) as hdu:
+        with fits.open(self.noisefiles_dir+coef_file) as hdu:
             non_linearity = hdu[0].data
 
         ncoeffs = non_linearity.shape[0]
@@ -326,6 +328,7 @@ class TimeSeries(object):
             else:
                 raise ValueError('SUBARRAY must be one of SUBSTRIP96, SUBSTRIP256 or FULL')
         # Check that the ref file is on local disk and download if required
+        print('\tUsing {:} as the flat field reference file'.format(flatfile))
         download_ref_files(self.noisefiles_dir, os.path.basename(flatfile))
         # Complete full path
         flatfile = self.noisefiles_dir+os.path.basename(flatfile)
@@ -337,8 +340,8 @@ class TimeSeries(object):
         # As of Nov 1 2021, the flat ref files 0190 is a 2048x2048 file, so need to
         # pick the subarray here
         # TODO: Update this once the CRDS have a separate reference file for the different subarrays
-        if self.subarray == 'SUBSTRIP256': flatfield = flatfield[-256:,:]
-        elif self.subarray == 'SUBSTRIP96': flatfield = flatfield[-106:-10,:]
+        if self.subarray == 'SUBSTRIP256': flatfield = flatfield[2048-256:2048,:]
+        elif self.subarray == 'SUBSTRIP96': flatfield = flatfield[2048-106:2048-10,:]
 
         # Apply the flatfield to the simulation.
         self.data = self.data * flatfield
@@ -357,6 +360,7 @@ class TimeSeries(object):
                 raise ValueError('SUBARRAY must be one of SUBSTRIP96, SUBSTRIP256 or FULL')
 
         # Check that the ref file is on local disk and download if required
+        print('\tUsing {:} as the super bias reference file'.format(biasfile))
         download_ref_files(self.noisefiles_dir, os.path.basename(biasfile))
         # Complete full path
         biasfile = self.noisefiles_dir+os.path.basename(biasfile)
@@ -364,6 +368,22 @@ class TimeSeries(object):
         # Read the flat-field from file (in science coordinates).
         with fits.open(biasfile) as hdu:
             superbias = hdu[1].data #ADU
+
+        # TODO: superbias reference file should have its reference pixels not set to zero
+        # Fix that by adding an arbitrary level to prevent wrapping bug at 65535.
+        if self.subarray == 'SUBSTRIP96':
+            superbias[:, 0:4] =+ 10000
+            superbias[:, 2044:2048] =+ 10000
+        elif self.subarray == 'SUBSTRIP256':
+            superbias[:, 0:4] =+ 10000
+            superbias[:, 2044:2048] =+ 10000
+            superbias[252:256, :] =+ 10000
+        elif self.subarray == 'FULL':
+            superbias[:, 0:3] =+ 10000
+            superbias[:, 2044:2048] =+ 10000
+            superbias[2044:2048, :] =+ 10000
+            superbias[0:4, :] =+ 10000
+
 
         superbias = superbias*self.gain  # [electrons]
 
@@ -395,6 +415,7 @@ class TimeSeries(object):
             else:
                 raise ValueError('SUBARRAY must be one of SUBSTRIP96, SUBSTRIP256 or FULL')
         # Check that the ref file is on local disk and download if required
+        print('\tUsing {:} as the dark reference file'.format(darkfile))
         download_ref_files(self.noisefiles_dir, os.path.basename(darkfile))
         # Complete full path
         darkfile = self.noisefiles_dir+os.path.basename(darkfile)

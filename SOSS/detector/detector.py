@@ -14,6 +14,9 @@ import argparse
 from . import timeseries
 
 
+
+
+
 def add_noise(filelist, noisefiles_path, photon=True, zodibackg=True, flatfield=True, darkcurrent=True, nonlinearity=True,
               superbias=True, readout=True, oneoverf=True, zodi_ref=None, flat_ref=None, dark_ref=None,
               nlcoeff_ref=None, superbias_ref=None, outputfilename=None, full_well=72000):

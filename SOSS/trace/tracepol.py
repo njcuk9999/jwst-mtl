@@ -218,13 +218,19 @@ def subarray_wavelength_bounds(tracepars, m=1, subarray='SUBSTRIP256',
     # Combine the masks.
     mask = mask_spec & mask_spat
 
-    # Obtain the bounds in wavelength units.
-    wave_min = np.min(wavelength[mask])
-    wave_max = np.max(wavelength[mask])
+    if not any(mask):
+        wave_min = np.nan
+        wave_max = np.nan
+        pixel_min = np.nan
+        pixel_max = np.nan
+    else:
+        # Obtain the bounds in wavelength units.
+        wave_min = np.min(wavelength[mask])
+        wave_max = np.max(wavelength[mask])
 
-    # Obtain the bounds in pixel units.
-    pixel_min = np.min(specpix[mask])
-    pixel_max = np.max(specpix[mask])
+        # Obtain the bounds in pixel units.
+        pixel_min = np.min(specpix[mask])
+        pixel_max = np.max(specpix[mask])
 
     return (wave_min, wave_max), (pixel_min, pixel_max)
 

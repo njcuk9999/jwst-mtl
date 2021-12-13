@@ -71,7 +71,49 @@ class ModelPars:
     flatthroughput = False
     flatquantumyield = False
     addwings = False # Add extended wings post facto on convolved traces
+    zodi_ref = ''
+    superbias_ref = ''
+    flat_ref = ''
+    nlcoeff_ref = ''
+    dark_ref = ''
 
+
+def read_noise_ref_file_pars(pars):
+    """Fill the Parameters class with noise reference file names"""
+
+    print('Going into read_noise_ref_file_pars. subarray is ',pars.subarray)
+
+    # Zodi background reference file
+    pars.zodi_ref = 'background_detectorfield_normalized.fits'
+
+    # Super bias reference file
+    if pars.subarray == 'SUBSTRIP256':
+        pars.superbias_ref = 'jwst_niriss_superbias_0120.fits'
+    elif pars.subarray == 'SUBSTRIP96':
+        pars.superbias_ref = 'jwst_niriss_superbias_0111.fits'
+    elif pars.subarray == 'FULL':
+        pars.superbias_ref = 'jwst_niriss_superbias_0150.fits'
+
+    # Flat field reference file
+    if pars.subarray == 'SUBSTRIP256':
+        pars.flat_ref = 'jwst_niriss_flat_0190.fits'
+    elif pars.subarray == 'SUBSTRIP96':
+        pars.flat_ref = 'jwst_niriss_flat_0190.fits'
+    elif pars.subarray == 'FULL':
+        pars.flat_ref = 'jwst_niriss_flat_0190.fits'
+
+    # Non-linearity coefficient file
+    pars.nlcoeff_ref = 'jwst_niriss_linearity_0011_bounds_0_60000_npoints_100_deg_5.fits'
+
+    # Dark reference file
+    if pars.subarray == 'SUBSTRIP256':
+        pars.dark_ref = 'jwst_niriss_dark_0147.fits'
+    elif pars.subarray == 'SUBSTRIP96':
+        pars.dark_ref = 'jwst_niriss_dark_0150.fits'
+    elif pars.subarray == 'FULL':
+        pars.dark_ref = 'jwst_niriss_dark_0145.fits'
+
+    return pars
 
 def read_pars(filename,pars):
     """Usage:  pars=read_pars(filename,pars)
@@ -317,8 +359,12 @@ def read_pars(filename,pars):
         
     else:
         print('Cannot find ',filename)
-    
-    return pars;
+
+    # Read in the noise reference files
+    # TODO: read the noise reference files in the main pars loop so user can input them
+    read_noise_ref_file_pars(pars)
+
+    return pars
 
 class instrument_response_class:
     def __init__(self):
