@@ -469,7 +469,7 @@ tint = (ng - 1) * t_read  # Integration time [s]
 
 # Characteristic times of transit
 # HAS TO BE MODIFIED FOR EACH MODEL TESTED
-if WORKING_DIR == '/home/kmorel/ongenesis/jwst-user-soss/PHY3030/WASP_52/':  # TODO: CHECK IF STILL TRUE WITH LOIC'S SIMUS
+if WORKING_DIR == '/home/kmorel/ongenesis/jwst-user-soss/PHY3030/WASP_52/':
     t1, t2, t3, t4 = 53, 74, 110, 128   # [image]
 elif WORKING_DIR =='/home/kmorel/ongenesis/jwst-user-soss/PHY3030/':
     t1, t2, t3, t4 = 94, 151, 285, 344  # [image]

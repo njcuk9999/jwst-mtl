@@ -471,7 +471,6 @@ if generate_dms_simu is True:
 
 # Characteristic times of transit
 # HAS TO BE MODIFIED FOR EACH MODEL TESTED
-# TODO: CHECK IF STILL TRUE WITH LOIC'S SIMUS
 t1, t2, t3, t4 = 53, 74, 110, 128   # [image]
 
 # Position of trace for box extraction
@@ -643,9 +642,20 @@ for i in range(1):
     #     simulation_noisy += noise_list[i] + '-' if i!=(len(noise_list)-1) else noise_list[i]  # Name of noise
     # noise_name = noise_name + '_' if noise_list[0]!='superbias' else ''  # Superbias doesn't have its name in its file
     # simu_filename = 'IDTSOSS_clear_noisy' + noise_name + 'rateints.fits'
-    simu_filename = 'IDTSOSS_clear_noisy_gainscalestep_loic.fits'
+    simu_filename = 'wasp_52_20211118/IDTSOSS_clear_noisy_gainscalestep_loic.fits'
     simu_noisy, data_noisy = box_kim.rateints_dms_simulation(WORKING_DIR + simu_filename)
     simulation_noisy = 'noisy'
+
+    plt.figure()
+    plt.imshow(data_noisy[10], vmin=0, origin="lower", cmap='gray')
+    plt.plot(x, y, color="r")
+    plt.plot(x, y-radius_pixel, color='b')
+    plt.plot(x, y+radius_pixel, color='b')
+    #plt.xticks(x, w)
+    #plt.xlabel(r"Wavelength [$\mu m$]")
+    #plt.colorbar()
+    plt.show()
+    sys.exit()
 
     ng = simu_noisy[0].header['NGROUPS']  # n_groups
     t_read = simu_noisy[0].header['TGROUP']  # Reading time [s]
