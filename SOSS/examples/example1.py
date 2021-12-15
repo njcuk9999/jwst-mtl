@@ -79,7 +79,7 @@ soss.readpaths(config_paths_filename, pathPars)
 
 if False:
     pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_twa33_substrip96.txt'
-if True:
+if False:
     pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_twa33_substrip256.txt'
 if False:
     pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_bd601753.txt'
@@ -87,6 +87,8 @@ if False:
     pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_hatp14b.txt'
 if False:
     pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_wasp52b.txt'
+if True:
+    pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_target.txt'
 
 # Make the libraries imports. This needs to come after read_config_path
 # because the system needs to have the path to our own libraries first.
