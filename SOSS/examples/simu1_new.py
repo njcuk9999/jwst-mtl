@@ -2,8 +2,7 @@
 # - create a simple simulation
 # - calibrate its flux
 # - add detector noise
-# - run it throught the DMS pipeline
-# - extract the spectra
+# By L. Albert
 
 import sys
 sys.path.insert(0, '/genesis/jwst/jwst-ref-soss/fortran_lib/')
@@ -90,31 +89,6 @@ print(simuPars.pmodeltype[0])
 
 # Here one can manually edit the parameters (by changing False for True below)
 # but we encourage to rather change the simulation parameter file directly.
-if False:
-    simuPars.noversample = 4  #example of changing a model parameter
-    simuPars.xout = 2048      #spectral axis
-    simuPars.yout = 256       #spatial (cross-dispersed axis)
-    simuPars.xpadding = 10
-    simuPars.ypadding = 10
-    #simuPars.modelfile = 'CONSTANT_FLAMBDA'
-    #simuPars.modelfile = 'CONSTANT_ADU'
-    simuPars.modelfile = 'BLACKBODY'
-    simuPars.bbteff = 3000
-    #simuPars.modelfile = 'lte06000-4.50-0.0.PHOENIX-ACES-AGSS-COND-2011.JWST-RF.simu-SOSS.dat'
-    #simuPars.modelfile = 'lte02300-4.50-0.0.PHOENIX-ACES-AGSS-COND-2011.JWST-RF.simu-SOSS.dat'
-    simuPars.ngroup = 5
-    simuPars.f277wcal = True
-    simuPars.nintf277 = 3
-    simuPars.f277wcal = False
-    #simuPars.tend = -1.80
-    #simuPars.tend = -1.97
-    #simuPars.flatthroughput = False
-    simuPars.flatquantumyield = True
-#simuPars.yout = 2048
-#simuPars.subarray = 'FULL'
-#simuPars.tend = -2.21
-#simuPars.noversample = 2
-#simuPars.nintf277 = 1
 simuPars.f277wcal = False
 
 # Save the input parameters to disk
@@ -123,7 +97,6 @@ simuPars.save_params(os.path.join(pathPars.path_userland,'IDTSOSS_inputs.txt'))
 # For testing, allow skipping steps.
 skip_sim = False
 skip_addnoise = False
-skip_dms = False
 
 
 if skip_sim is False:
@@ -166,7 +139,6 @@ if skip_sim is False:
             os.path.join(pathPars.path_planetmodelatm, simuPars.pmodelfile[0]))
 
     if True:
-
         # Generate the time steps array
         tintopen, frametime, nint, timesteps = soss.generate_timesteps(simuPars)
         print('Generated time steps:')
@@ -206,9 +178,6 @@ if skip_sim is False:
 
         # Here, a single out-of-transit simulation is used to establish the
         # normalization scale needed to flux calibrate our simulations.
-        # To override the simpar parameters:
-        # simuPars.filtername = 'J'
-        # simuPars.magnitude = 8.5
         expected_counts = smag.expected_flux_calibration(
                             simuPars.filtername, simuPars.magnitude,
                             starmodel_angstrom, starmodel_flambda,
@@ -262,7 +231,6 @@ if skip_sim is False:
     - Apply normalization_scale * it
     - Convert to up-the-ramp images, store on disk
     - Add detector noise
-    - Process the data through DMS
     """
     if simuPars.f277wcal is True:
 
@@ -314,10 +282,10 @@ if skip_sim is False:
     print('The end of the noiseless simulation')
     print()
 
+
 '''
 ADD NOISE
 '''
-
 if skip_addnoise is False:
     # GR700XD+CLEAR - ADD NOISE
     # Add detector noise to the noiseless data
@@ -347,66 +315,3 @@ if skip_addnoise is False:
                            flatfield=simuPars.flatfield, nonlinearity=simuPars.nonlinearity,
                            oneoverf=simuPars.oneoverf, darkcurrent=simuPars.darkcurrent,
                            cosmicray=simuPars.cosmicray)
-
-
-'''
-PROCESS THRU DMS 
-'''
-# Process the data through the DMS level 1 pipeline
-if skip_dms is False:  # here is the option to investigate individual noise sources
-    # GR700XD+CLEAR - PROCESS THROUGH DMS LEVEL 1
-    # Define input/output
-    calwebb_input = os.path.join(pathPars.path_userland, 'IDTSOSS_clear_noisy.fits')
-    calwebb_output = os.path.join(pathPars.path_userland, 'IDTSOSS_clear_noisy_rateints.fits')
-
-    # Step by step DMS processing
-    result = calwebb_detector1.dq_init_step.DQInitStep.call(calwebb_input,
-                output_dir=pathPars.path_userland, output_file='IDTSOSS_clear_noisy', save_results=False)
-    result = calwebb_detector1.saturation_step.SaturationStep.call(result,
-                output_dir=pathPars.path_userland, output_file='IDTSOSS_clear_noisy', save_results=False)
-    if simuPars.superbias is True: result = calwebb_detector1.superbias_step.SuperBiasStep.call(result,
-                output_dir=pathPars.path_userland, output_file='IDTSOSS_clear_noisy', save_results=False,
-                override_superbias=os.path.join(pathPars.path_noisefiles, simuPars.superbias_ref))
-    if simuPars.oneoverf is True: result = calwebb_detector1.refpix_step.RefPixStep.call(result,
-                output_dir=pathPars.path_userland, output_file='IDTSOSS_clear_noisy', save_results=False)
-    if simuPars.nonlinearity is True: result = calwebb_detector1.linearity_step.LinearityStep.call(result,
-                output_dir=pathPars.path_userland, output_file='IDTSOSS_clear_noisy', save_results=False,
-                override_linearity=os.path.join(pathPars.path_noisefiles, simuPars.nonlin_ref))
-    if simuPars.darkcurrent is True: result = calwebb_detector1.dark_current_step.DarkCurrentStep.call(result,
-                output_dir=pathPars.path_userland, output_file='IDTSOSS_clear_noisy', save_results=False,
-                override_dark=os.path.join(pathPars.path_noisefiles, simuPars.dark_ref))
-    _, result = calwebb_detector1.ramp_fit_step.RampFitStep.call(result,
-                output_dir=pathPars.path_userland, output_file='IDTSOSS_clear_noisy', save_results=False)
-    result = calwebb_detector1.gain_scale_step.GainScaleStep.call(result,
-                output_dir=pathPars.path_userland, output_file='IDTSOSS_clear_noisy', save_results=False)
-    result.meta.filetype = 'countrate'
-    result.write(calwebb_output)
-
-    # GR700XD+F277W - PROCESS THROUGH DMS LEVEL 1
-    if simuPars.f277wcal is True:
-        # Define input on the first iteration of the loop below
-        calwebb_input = os.path.join(pathPars.path_userland, 'IDTSOSS_f277_noisy.fits')
-        calwebb_output = os.path.join(pathPars.path_userland, 'IDTSOSS_f277_noisy_rateints.fits')
-
-        # Step by step DMS processing
-        result = calwebb_detector1.dq_init_step.DQInitStep.call(calwebb_input,
-                 output_dir=pathPars.path_userland, output_file='IDTSOSS_f277_noisy', save_results=False)
-        result = calwebb_detector1.saturation_step.SaturationStep.call(result,
-                 output_dir=pathPars.path_userland, output_file='IDTSOSS_f277_noisy', save_results=False)
-        if simuPars.superbias is True: result = calwebb_detector1.superbias_step.SuperBiasStep.call(result,
-                 output_dir=pathPars.path_userland, output_file='IDTSOSS_f277_noisy', save_results=False,
-                 override_superbias=os.path.join(pathPars.path_noisefiles, simuPars.superbias_ref))
-        if simuPars.oneoverf is True: result = calwebb_detector1.refpix_step.RefPixStep.call(result,
-                 output_dir=pathPars.path_userland, output_file='IDTSOSS_f277_noisy', save_results=False)
-        if simuPars.nonlinearity is True: result = calwebb_detector1.linearity_step.LinearityStep.call(result,
-                 output_dir=pathPars.path_userland, output_file='IDTSOSS_f277_noisy', save_results=False,
-                 override_linearity=os.path.join(pathPars.path_noisefiles, simuPars.nonlin_ref))
-        if simuPars.darkcurrent is True: result = calwebb_detector1.dark_current_step.DarkCurrentStep.call(result,
-                 output_dir=pathPars.path_userland, output_file='IDTSOSS_f277_noisy', save_results=False,
-                 override_dark=os.path.join(pathPars.path_noisefiles, simuPars.dark_ref))
-        _, result = calwebb_detector1.ramp_fit_step.RampFitStep.call(result,
-                 output_dir=pathPars.path_userland, output_file='IDTSOSS_f277_noisy', save_results=False)
-        result = calwebb_detector1.gain_scale_step.GainScaleStep.call(result,
-                 output_dir=pathPars.path_userland, output_file='IDTSOSS_f277_noisy', ave_results=False)
-        result.meta.filetype = 'countrate'
-        result.write(calwebb_output)
