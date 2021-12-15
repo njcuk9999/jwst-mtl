@@ -17,6 +17,14 @@ import specgen.synthesizeMagnitude as smag
 
 import yaml
 
+def boolString_to_Bool(true_false_string):
+    if true_false_string == 'True':
+        return True
+    elif true_false_string == 'False':
+        return False
+    else:
+        print('Problem in parsing the simpars input file, fields should have True or False string but have something else.')
+        stop
 
 class ModelPars:
     """Default Model Parameters
@@ -110,8 +118,6 @@ class ModelPars:
     def _read_noise_ref_file_pars(self):
         """Fill the Parameters class with noise reference file names"""
 
-        #print('Going into read_noise_ref_file_pars. subarray is ', self.subarray)
-
         # Zodi background reference file
         if self.zodi_ref is None:
             self.zodi_ref = 'background_detectorfield_normalized.fits'
@@ -150,12 +156,6 @@ class ModelPars:
                 self.dark_ref = 'jwst_niriss_dark_0150.fits'
             elif self.subarray == 'FULL':
                 self.dark_ref = 'jwst_niriss_dark_0145.fits'
-
-    #def load_params(saved_inputs_file):
-    #    # open file for writing, "w" is writing
-    #    filename = os.path.join('./', saved_inputs_file)
-    #    with open(filename, 'r') as yfile:
-    #        self.__dict__ = yaml.load(yfile, Loader=yaml.FullLoader)
 
 
     def read_pars(self, filename):
@@ -211,27 +211,16 @@ class ModelPars:
                         elif command == 'filter':
                             self.filtername = str(columns[1])
                         elif command == 'f277wcal':
-                            if isinstance(columns[1], str):
-                                self.f277wcal = (columns[1] == 'True')
-                            else:
-                                self.f277wcal = bool(columns[1])
+                            self.f277wcal = boolString_to_Bool(columns[1])
                         elif command == 'subarray':
                             self.subarray = columns[1]
                         elif command == 'flatthroughput':
-                            if isinstance(columns[1], str):
-                                self.flatthroughput = (columns[1] == 'True')
-                            else:
-                                self.flatthroughput = bool(columns[1])
+                            self.flatthroughput = boolString_to_Bool(columns[1])
                         elif command == 'flatquantumyield':
-                            if isinstance(columns[1], str):
-                                self.flatquantumyield = (columns[1] == 'True')
-                            else:
-                                self.flatquantumyield = bool(columns[1])
+                            self.flatquantumyield = boolString_to_Bool(columns[1])
                         elif command == 'addwings':
-                            if isinstance(columns[1], str):
-                                self.addwings = (columns[1] == 'True')
-                            else:
-                                self.addwings = bool(columns[1])
+                            #if isinstance(columns[1], str):
+                            self.addwings = boolString_to_Bool(columns[1])
                         elif command == 'granularity':
                             self.granularity = columns[1]
                         elif command == 'xout':
@@ -270,36 +259,54 @@ class ModelPars:
                             if columns[1].find('0') != -1: tmp.append(0)
                             if columns[1].find('-1') != -1: tmp.append(-1)
                             self.orderlist = np.array(tmp)
-                        elif command == 'darkref':
-                            self.dark_ref = str(columns[1])
-                        elif command == 'flatref':
-                            self.flat_ref = str(columns[1])
-                        elif command == 'sbiasref':
-                            self.superbias_ref = str(columns[1])
-                        elif command == 'nlcoeref':
-                            self.nlcoeff_ref = str(columns[1])
-                        elif command == 'zodiref':
-                            self.zodi_ref = str(columns[1])
-                        elif command == 'nlref':
-                            self.nonlin_ref = str(columns[1])
-                        elif command == 'readns':
-                            self.readout = str(columns[1])
-                        elif command == 'zodins':
-                            self.zodibackg = str(columns[1])
-                        elif command == 'photns':
-                            self.photon = str(columns[1])
-                        elif command == 'sbiasns':
-                            self.superbias = str(columns[1])
-                        elif command == 'flatns':
-                            self.flatfield = str(columns[1])
-                        elif command == 'nonlinns':
-                            self.nonlinearity = str(columns[1])
-                        elif command == 'oneofns':
-                            self.oneoverf = str(columns[1])
-                        elif command == 'darkns':
-                            self.darkcurrent = str(columns[1])
-                        elif command == 'crayns':
-                            self.cosmicray = str(columns[1])
+                        elif command == 'dark_ref':
+                            if str(columns[1]) == 'None':
+                                self.dark_ref = None
+                            else:
+                                self.dark_ref = str(columns[1])
+                        elif command == 'flat_ref':
+                            if str(columns[1]) == 'None':
+                                self.flat_ref = None
+                            else:
+                                self.flat_ref = str(columns[1])
+                        elif command == 'superbias_ref':
+                            if str(columns[1]) == 'None':
+                                self.superbias_ref = None
+                            else:
+                                self.superbias_ref = str(columns[1])
+                        elif command == 'nlcoeff_ref':
+                            if str(columns[1]) == 'None':
+                                self.nlcoeff_ref = None
+                            else:
+                                self.nlcoeff_ref = str(columns[1])
+                        elif command == 'zodi_ref':
+                            if str(columns[1]) == 'None':
+                                self.zodi_ref = None
+                            else:
+                                self.zodi_ref = str(columns[1])
+                        elif command == 'nonlin_ref':
+                            if str(columns[1]) == 'None':
+                                self.nonlin_ref = None
+                            else:
+                                self.nonlin_ref = str(columns[1])
+                        elif command == 'readout':
+                            self.readout = boolString_to_Bool(columns[1])
+                        elif command == 'zodibackg':
+                            self.zodibackg = boolString_to_Bool(columns[1])
+                        elif command == 'photon':
+                            self.photon = boolString_to_Bool(columns[1])
+                        elif command == 'superbias':
+                            self.superbias = boolString_to_Bool(columns[1])
+                        elif command == 'flatfield':
+                            self.flatfield = boolString_to_Bool(columns[1])
+                        elif command == 'nonlinearity':
+                            self.nonlinearity = boolString_to_Bool(columns[1])
+                        elif command == 'oneoverf':
+                            self.oneoverf = boolString_to_Bool(columns[1])
+                        elif command == 'darkcurrent':
+                            self.darkcurrent = boolString_to_Bool(columns[1])
+                        elif command == 'cosmicray':
+                            self.cosmicray = boolString_to_Bool(columns[1])
                         elif command == 'gain':
                             self.gain = np.float(columns[1])
                         elif command == 'saturation':
