@@ -134,6 +134,7 @@ simuPars.f277wcal = False
 # Save the input parameters to disk
 simuPars.save_params(os.path.join(pathPars.path_userland,'IDTSOSS_inputs.txt'))
 
+sys.exit()
 # For testing, allow skipping steps.
 skip_sim = True
 skip_addnoise = True

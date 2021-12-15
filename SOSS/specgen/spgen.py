@@ -104,7 +104,7 @@ class ModelPars:
         # Make a copy of the dictionary, converting numpy arrays to lists
         f = open(filename, 'w')
         for key, value in self.__dict__.items():
-            print(key, value)
+            #print(key, value)
             f.write('{:20}     {}\n'.format(key, value))
         f.close()
 
