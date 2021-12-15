@@ -34,7 +34,7 @@ doShow_plots = True
 doSave_plots = False
 
 # If data is saved
-doSave_data = False
+doSave_data = True
 
 ##########################################################
 # Matplotlib defaults
