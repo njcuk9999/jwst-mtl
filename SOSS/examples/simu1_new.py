@@ -69,7 +69,7 @@ verbose = True
 
 # Read in all paths used to locate reference files and directories
 WORKING_DIR = '/home/kmorel/ongenesis/jwst-user-soss/PHY3030/WASP_52/'
-config_paths_filename = os.path.join(WORKING_DIR, 'jwst-mtl_configpath_kim.txt')
+config_paths_filename = os.path.join(WORKING_DIR, 'jwst-mtl_configpath.txt')
 
 pathPars = soss.paths()
 soss.readpaths(config_paths_filename, pathPars)

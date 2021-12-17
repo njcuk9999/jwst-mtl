@@ -21,7 +21,7 @@ github_path = '/home/kmorel/ongenesis/github/jwst-mtl/SOSS/'
 WORKING_DIR = '/home/kmorel/ongenesis/jwst-user-soss/PHY3030/WASP_52/'
     # Configuration file for the NIRISS Instrument Team SOSS simulation pipeline
 # jwst_config_fpath = 'jwst-mtl_configpath.txt'
-jwst_config_fpath = 'jwst-mtl_configpath_kim.txt'
+jwst_config_fpath = 'jwst-mtl_configpath.txt'
 
 
 ######### The 1st step of the simulation process. #########################

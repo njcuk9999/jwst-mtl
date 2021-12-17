@@ -302,7 +302,6 @@ def no_dms_simulation(file_name, gain=1.61):
 
         # Convert data from fits files to float (fits precision is 1e-8)
         data = data.astype('float64', copy=False)
-
     return simu, data
 
 

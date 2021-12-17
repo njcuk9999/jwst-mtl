@@ -21,8 +21,8 @@ from scipy.optimize import least_squares
 # Input and output directory
 WORKING_DIR = '/home/kmorel/ongenesis/jwst-user-soss/PHY3030/WASP_52/'
 # Simulations files names
-simu_noiseless_filename = 'wasp_52_20211103/IDTSOSS_clear_noNoise_rateints.fits'      # Noiseless
-simu_noisy_filename = 'wasp_52_20211118/IDTSOSS_clear_noisy_gainscalestep_loic.fits'  # Noisy
+simu_noiseless_filename = 'IDTSOSS_clear.fits'             # Noiseless
+simu_noisy_filename = 'IDTSOSS_clear_noisy_rateints.fits'  # Noisy
 
 # Radius for box extraction
 radius_pixel = 30   # [pixels]
@@ -46,6 +46,19 @@ plt.rc('lines', lw=1)
 ##########################################################
 ###################### FUNCTIONS #########################
 ##########################################################
+def no_dms_simulation(file_name, gain=1.61):
+    with fits.open(file_name) as hdulist:
+        ng = hdulist[0].header['NGROUPS']  # n_groups
+        t_read = hdulist[0].header['TGROUP']  # Reading time [s]
+        tint = (ng - 1) * t_read  # Integration time [s]
+
+        simu = hdulist
+        data = (hdulist[1].data[:, -1] - hdulist[1].data[:, 0]) / tint / gain  # Images of flux [adu/s]
+
+        # Convert data from fits files to float (fits precision is 1e-8)
+        data = data.astype('float64', copy=False)
+    return simu, data
+
 def rateints_dms_simulation(file_name):
     with fits.open(file_name) as hdulist:
         data_noisy_rateints = hdulist[1].data  # Images of flux [adu/s]
@@ -133,7 +146,7 @@ def transit_depth(f_lambda, t1, t2, t3, t4):
 ################# EXTRACTION, NOISELESS ##################
 ##########################################################
 # Load simulation
-simu_noiseless, data_noiseless = rateints_dms_simulation(WORKING_DIR + simu_noiseless_filename)
+simu_noiseless, data_noiseless = no_dms_simulation(WORKING_DIR + simu_noiseless_filename)
 simulation_noiseless = 'noiseless'
 
 ng = simu_noiseless[0].header['NGROUPS']      # Number of groups

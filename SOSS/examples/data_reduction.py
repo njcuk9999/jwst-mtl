@@ -65,7 +65,7 @@ verbose = True
 ######################################################################
 # Read in all paths used to locate reference files and directories
 WORKING_DIR = '/home/kmorel/ongenesis/jwst-user-soss/PHY3030/WASP_52/'
-config_paths_filename = os.path.join(WORKING_DIR, 'jwst-mtl_configpath_kim.txt')
+config_paths_filename = os.path.join(WORKING_DIR, 'jwst-mtl_configpath.txt')
 
 pathPars = soss.paths()
 soss.readpaths(config_paths_filename, pathPars)
@@ -142,15 +142,15 @@ if f277webcal is True:
     result = calwebb_detector1.saturation_step.SaturationStep.call(result,
              output_dir=pathPars.path_userland, output_file='IDTSOSS_f277_noisy', save_results=False)
 
-    if simuPars.superbias is True: result = calwebb_detector1.superbias_step.SuperBiasStep.call(result,
+    if do_superbias is True: result = calwebb_detector1.superbias_step.SuperBiasStep.call(result,
              output_dir=pathPars.path_userland, output_file='IDTSOSS_f277_noisy', save_results=False,
              override_superbias=superbias_ref_file)
-    if simuPars.oneoverf is True: result = calwebb_detector1.refpix_step.RefPixStep.call(result,
+    if do_oneoverf is True: result = calwebb_detector1.refpix_step.RefPixStep.call(result,
              output_dir=pathPars.path_userland, output_file='IDTSOSS_f277_noisy', save_results=False)
-    if simuPars.nonlinearity is True: result = calwebb_detector1.linearity_step.LinearityStep.call(result,
+    if do_nonlinearity is True: result = calwebb_detector1.linearity_step.LinearityStep.call(result,
              output_dir=pathPars.path_userland, output_file='IDTSOSS_f277_noisy', save_results=False,
              override_linearity=linearity_ref_file)
-    if simuPars.darkcurrent is True: result = calwebb_detector1.dark_current_step.DarkCurrentStep.call(result,
+    if do_darkcurrent is True: result = calwebb_detector1.dark_current_step.DarkCurrentStep.call(result,
              output_dir=pathPars.path_userland, output_file='IDTSOSS_f277_noisy', save_results=False,
              override_dark=dark_ref_file)
 
