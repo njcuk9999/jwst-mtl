@@ -77,10 +77,10 @@ simuPars.read_pars(pathPars.simulationparamfile) #read in parameter file
 f277webcal = False
 
 # Select which noise source to be corrected
-do_superbias = True
-do_oneoverf = True
-do_nonlinearity = True
-do_darkcurrent = True
+do_superbias = False
+do_oneoverf = False
+do_nonlinearity = False
+do_darkcurrent = False
 
 # Here are de paths of the reference files of the noises used for the simulations.
 # One can modify them to use their own reference file(s) for data reduction.

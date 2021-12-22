@@ -9,10 +9,7 @@ import itsosspipeline as soss
 import sys
 import os
 import specgen.spgen as spgen
-import scipy.constants as sc_cst
 import trace.tracepol as tp   #SOSS.
-from scipy.interpolate import interp1d
-from scipy.optimize import least_squares
 
 
 ##########################################################
@@ -21,8 +18,9 @@ from scipy.optimize import least_squares
 # Input and output directory
 WORKING_DIR = '/home/kmorel/ongenesis/jwst-user-soss/PHY3030/WASP_52/'
 # Simulations files names
-simu_noiseless_filename = 'IDTSOSS_clear.fits'             # Noiseless
-simu_noisy_filename = 'IDTSOSS_clear_noisy_rateints.fits'  # Noisy
+# simu_noiseless_filename = 'IDTSOSS_clear.fits'   # Noiseless
+simu_noiseless_filename = 'IDTSOSS_clear_noiseless_rateints.fits'   # Noiseless
+simu_noisy_filename = 'IDTSOSS_clear_noisy_rateints.fits'           # Noisy
 
 # Radius for box extraction
 radius_pixel = 30   # [pixels]
@@ -34,7 +32,7 @@ doShow_plots = True
 doSave_plots = False
 
 # If data is saved
-doSave_data = True
+doSave_data = False
 
 ##########################################################
 # Matplotlib defaults
@@ -146,8 +144,14 @@ def transit_depth(f_lambda, t1, t2, t3, t4):
 ################# EXTRACTION, NOISELESS ##################
 ##########################################################
 # Load simulation
-simu_noiseless, data_noiseless = no_dms_simulation(WORKING_DIR + simu_noiseless_filename)
+# simu_noiseless, data_noiseless = no_dms_simulation(WORKING_DIR + simu_noiseless_filename)
+simu_noiseless, data_noiseless = rateints_dms_simulation(WORKING_DIR + simu_noiseless_filename)
 simulation_noiseless = 'noiseless'
+
+# Index where bad wavelengths start
+bad_wl = -5
+# Remove bad wavelengths
+data_noiseless = data_noiseless[:,:,:bad_wl]
 
 ng = simu_noiseless[0].header['NGROUPS']      # Number of groups
 t_read = simu_noiseless[0].header['TGROUP']   # Reading time [s]
@@ -159,9 +163,7 @@ t1, t2, t3, t4 = 53, 74, 110, 128   # [image]
 
 # Position of trace
 x, y, w = readtrace(os=1)
-
-# Wavelengths array
-lam_array = w   # [um]
+x, y, w = x[:bad_wl], y[:bad_wl], w[:bad_wl]
 
 # BOX EXTRACTION
 print('Extraction: noiseless')
@@ -189,6 +191,9 @@ f_white_noiseless_norm = normalization(f_white_noiseless, t1, t4)
 # Load simulation
 simu_noisy, data_noisy = rateints_dms_simulation(WORKING_DIR + simu_noisy_filename)
 simulation_noisy = 'noisy'
+
+# Remove bad wavelengths
+data_noisy = data_noisy[:,:,:bad_wl]
 
 ng = simu_noisy[0].header['NGROUPS']      # Number of groups
 t_read = simu_noisy[0].header['TGROUP']   # Reading time [s]
@@ -245,19 +250,14 @@ if False:
     plt.title(simulation_noisy)
     plt.legend()
 
-
-# Index where bad wavelengths start
-bad_wl = -5
-
-
 # DISPERSION/PHOTON NOISE RATIO
 # Only the uncontaminated portion of the spectrum is used here
 i_uncont = 1100   # Start of the uncontaminated portion
 # New arrays
-new_w = w[i_uncont:bad_wl]
-new_f_array_noiseless = f_array_noiseless[:, i_uncont:bad_wl]
-new_f_array_noisy = f_array_noisy[:, i_uncont:bad_wl]
-new_f_array_noisy_norm = f_array_noisy_norm[:, i_uncont:bad_wl]
+new_w = w[i_uncont:]
+new_f_array_noiseless = f_array_noiseless[:, i_uncont:]
+new_f_array_noisy = f_array_noisy[:, i_uncont:]
+new_f_array_noisy_norm = f_array_noisy_norm[:, i_uncont:]
 if doSave_data:
     # Saves data for transitfit
     np.save(WORKING_DIR + 'wavelengths', new_w)
@@ -302,7 +302,7 @@ new_f_array_noiseless_elec = new_f_array_noiseless * tint * gain
 phot_noise_elec = np.sqrt(new_f_array_noiseless_elec)   # [e⁻]
 phot_noise = phot_noise_elec / gain / tint   # [adu/s]
 # Noisy out of transit spectra
-out_transit_noisy = np.concatenate((f_array_noisy[: t1 + 1, i_uncont:bad_wl], f_array_noisy[t4:, i_uncont:bad_wl]))
+out_transit_noisy = np.concatenate((f_array_noisy[: t1 + 1, i_uncont:], f_array_noisy[t4:, i_uncont:]))
 # Noisy out of transit spectra means
 out_transit_noisy_mean = np.mean(out_transit_noisy, axis=0)
 # Normalized photon noise (adu/s)
@@ -337,5 +337,13 @@ plt.title('Transit spectrum')
 if doSave_plots:
     plt.savefig(WORKING_DIR + 'transit_spectrum_' + simulation_noisy)
 
+# Graphic of white light curves
+plt.figure()
+plt.plot(time_min, f_white_noisy, '.', markersize=4, color='r', label=simulation_noisy)
+plt.plot(time_min, f_white_noiseless, '.', markersize=4, color='b', label=simulation_noiseless)
+plt.xlabel('Time [min]')
+plt.ylabel('Flux')
+plt.title('White light')
+plt.legend()
 
 if doShow_plots is True: plt.show()
