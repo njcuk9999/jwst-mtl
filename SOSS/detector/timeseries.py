@@ -370,20 +370,20 @@ class TimeSeries(object):
             superbias = hdu[1].data #ADU
 
         # TODO: superbias reference file should have its reference pixels not set to zero
-        # Fix that by adding an arbitrary level to prevent wrapping bug at 65535.
-        if self.subarray == 'SUBSTRIP96':
-            superbias[:, 0:4] =+ 10000
-            superbias[:, 2044:2048] =+ 10000
-        elif self.subarray == 'SUBSTRIP256':
-            superbias[:, 0:4] =+ 10000
-            superbias[:, 2044:2048] =+ 10000
-            superbias[252:256, :] =+ 10000
-        elif self.subarray == 'FULL':
-            superbias[:, 0:3] =+ 10000
-            superbias[:, 2044:2048] =+ 10000
-            superbias[2044:2048, :] =+ 10000
-            superbias[0:4, :] =+ 10000
-
+        if False:
+            # Fix that by adding an arbitrary level to prevent wrapping bug at 65535.
+            if self.subarray == 'SUBSTRIP96':
+                superbias[:, 0:4] =+ 10000
+                superbias[:, 2044:2048] =+ 10000
+            elif self.subarray == 'SUBSTRIP256':
+                superbias[:, 0:4] =+ 10000
+                superbias[:, 2044:2048] =+ 10000
+                superbias[252:256, :] =+ 10000
+            elif self.subarray == 'FULL':
+                superbias[:, 0:3] =+ 10000
+                superbias[:, 2044:2048] =+ 10000
+                superbias[2044:2048, :] =+ 10000
+                superbias[0:4, :] =+ 10000
 
         superbias = superbias*self.gain  # [electrons]
 
@@ -502,8 +502,9 @@ class TimeSeries(object):
         units are converted from electrons back to ADU for this step.
         """
         hdu_new = self.hdu_ideal
-        hdu_new[1].data = (self.data/self.gain).astype('uint16')  # Convert to ADU in 16 bit integers.
+        #hdu_new[1].data = (self.data/self.gain).astype('uint16')  # Convert to ADU in 16 bit integers.
         #hdu_new[1].data = (self.data/self.gain).astype('int16')  # Convert to ADU in 16 bit integers.
+        hdu_new[1].data = (self.data / self.gain).astype('float32')  # Convert to ADU in 16 bit integers.
 
         if filename is None:
             print('Forging output noisy file...')

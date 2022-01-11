@@ -1646,6 +1646,8 @@ def write_dmsready_fits(image, filename, os=1, xpadding=0, ypadding=0,
     # Add keywords to the extension header
     xhdr = ext_hdu.header
     xhdr.set('EXTNAME', 'SCI')
+    ## In order to prevent wrapping of negative values to 65535, add some bias
+    #xhdr.set('BZERO', 32768+10000)
     # Create a list of HDU with primary and extension HDUs
     hdulist = fits.HDUList([prim_hdu, ext_hdu])
     # Save on disk

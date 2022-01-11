@@ -77,69 +77,49 @@ config_paths_filename = os.path.join(WORKING_DIR, 'jwst-mtl_configpath.txt')
 pathPars = soss.paths()
 soss.readpaths(config_paths_filename, pathPars)
 
-if False:
-    pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_twa33_substrip96.txt'
-if False:
-    pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_twa33_substrip256.txt'
-if False:
-    pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_bd601753.txt'
-if False:
-    pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_hatp14b.txt'
-if False:
-    pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_wasp52b.txt'
-if True:
-    pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_target.txt'
+# Template simulation
+#pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_template.txt'
 
-# Make the libraries imports. This needs to come after read_config_path
-# because the system needs to have the path to our own libraries first.
-#soss.init_imports()
+# GTO simulations
+#pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_wasp52b.txt'
+#pathPars.path_userland = os.path.join(pathPars.path_userland, 'GTO/wasp52b/')
 
+#pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_hatp1b_transit.txt'
+#pathPars.path_userland = os.path.join(pathPars.path_userland, 'GTO/hatp1b_transit/')
+
+#pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_wasp127b.txt'
+#pathPars.path_userland = os.path.join(pathPars.path_userland, 'GTO/wasp127b/')
+
+#pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_trappist1f_transit1.txt'
+#pathPars.path_userland = os.path.join(pathPars.path_userland, 'GTO/trappist1f_transit1/')
+
+#pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_gj357b.txt'
+#pathPars.path_userland = os.path.join(pathPars.path_userland, 'GTO/gj357b/')
+
+pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_l9859c.txt'
+pathPars.path_userland = os.path.join(pathPars.path_userland, 'GTO/l9859c/')
+
+
+# CAP rehearsal
+#pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_twa33_substrip96.txt'
+#pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_twa33_substrip256.txt'
+#pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_bd601753.txt'
+#pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_hatp14b.txt'
 
 # Create and read the simulation parameters
 simuPars = spgen.ModelPars() #Set up default parameters
 simuPars.read_pars(pathPars.simulationparamfile) #read in parameter file
+# Save the input parameters to disk
+simuPars.save_params(os.path.join(pathPars.path_userland,'IDTSOSS_inputs.txt'))
 
 print(pathPars.path_planetmodelatm+simuPars.pmodelfile[0])
 print(simuPars.pmodeltype[0])
 
-# Here one can manually edit the parameters (by changing False for True below)
-# but we encourage to rather change the simulation parameter file directly.
-if False:
-    simuPars.noversample = 4  #example of changing a model parameter
-    simuPars.xout = 2048      #spectral axis
-    simuPars.yout = 256       #spatial (cross-dispersed axis)
-    simuPars.xpadding = 10
-    simuPars.ypadding = 10
-    #simuPars.modelfile = 'CONSTANT_FLAMBDA'
-    #simuPars.modelfile = 'CONSTANT_ADU'
-    simuPars.modelfile = 'BLACKBODY'
-    simuPars.bbteff = 3000
-    #simuPars.modelfile = 'lte06000-4.50-0.0.PHOENIX-ACES-AGSS-COND-2011.JWST-RF.simu-SOSS.dat'
-    #simuPars.modelfile = 'lte02300-4.50-0.0.PHOENIX-ACES-AGSS-COND-2011.JWST-RF.simu-SOSS.dat'
-    simuPars.ngroup = 5
-    simuPars.f277wcal = True
-    simuPars.nintf277 = 3
-    simuPars.f277wcal = False
-    #simuPars.tend = -1.80
-    #simuPars.tend = -1.97
-    #simuPars.flatthroughput = False
-    simuPars.flatquantumyield = True
-#simuPars.yout = 2048
-#simuPars.subarray = 'FULL'
-#simuPars.tend = -2.21
-#simuPars.noversample = 2
-#simuPars.nintf277 = 1
-simuPars.f277wcal = False
-
-# Save the input parameters to disk
-simuPars.save_params(os.path.join(pathPars.path_userland,'IDTSOSS_inputs.txt'))
-
-sys.exit()
 # For testing, allow skipping steps.
 skip_sim = True
-skip_addnoise = True
+skip_addnoise = False
+skip_clear = False
 skip_dms = False
-
 
 if skip_sim is False:
 
@@ -188,6 +168,8 @@ if skip_sim is False:
         print('nint={:} nsteps={:} frametime={:}'.format(\
             nint, len(timesteps), frametime))
         print('Generated time steps (in seconds): ', timesteps)
+
+        #sys.exit()
 
         # Generate a constant trace position offsets
         specpix_offset = 0.0
@@ -370,32 +352,33 @@ PROCESS THRU DMS
 # Process the data through the DMS level 1 pipeline
 if skip_dms is False:  # here is the option to investigate individual noise sources
     # GR700XD+CLEAR - PROCESS THROUGH DMS LEVEL 1
-    # Define input/output
-    calwebb_input = os.path.join(pathPars.path_userland, 'IDTSOSS_clear_noisy.fits')
-    calwebb_output = os.path.join(pathPars.path_userland, 'IDTSOSS_clear_noisy_rateints.fits')
+    if skip_clear is False:
+        # Define input/output
+        calwebb_input = os.path.join(pathPars.path_userland, 'IDTSOSS_clear_noisy.fits')
+        calwebb_output = os.path.join(pathPars.path_userland, 'IDTSOSS_clear_noisy_rateints.fits')
 
-    # Step by step DMS processing
-    result = calwebb_detector1.dq_init_step.DQInitStep.call(calwebb_input,
-                output_dir=pathPars.path_userland, output_file='IDTSOSS_clear_noisy', save_results=False)
-    result = calwebb_detector1.saturation_step.SaturationStep.call(result,
-                output_dir=pathPars.path_userland, output_file='IDTSOSS_clear_noisy', save_results=False)
-    if simuPars.superbias is True: result = calwebb_detector1.superbias_step.SuperBiasStep.call(result,
-                output_dir=pathPars.path_userland, output_file='IDTSOSS_clear_noisy', save_results=False,
-                override_superbias=os.path.join(pathPars.path_noisefiles, simuPars.superbias_ref))
-    if simuPars.oneoverf is True: result = calwebb_detector1.refpix_step.RefPixStep.call(result,
-                output_dir=pathPars.path_userland, output_file='IDTSOSS_clear_noisy', save_results=False)
-    if simuPars.nonlinearity is True: result = calwebb_detector1.linearity_step.LinearityStep.call(result,
-                output_dir=pathPars.path_userland, output_file='IDTSOSS_clear_noisy', save_results=False,
-                override_linearity=os.path.join(pathPars.path_noisefiles, simuPars.nonlin_ref))
-    if simuPars.darkcurrent is True: result = calwebb_detector1.dark_current_step.DarkCurrentStep.call(result,
-                output_dir=pathPars.path_userland, output_file='IDTSOSS_clear_noisy', save_results=False,
-                override_dark=os.path.join(pathPars.path_noisefiles, simuPars.dark_ref))
-    _, result = calwebb_detector1.ramp_fit_step.RampFitStep.call(result,
-                output_dir=pathPars.path_userland, output_file='IDTSOSS_clear_noisy', save_results=False)
-    result = calwebb_detector1.gain_scale_step.GainScaleStep.call(result,
-                output_dir=pathPars.path_userland, output_file='IDTSOSS_clear_noisy', save_results=False)
-    result.meta.filetype = 'countrate'
-    result.write(calwebb_output)
+        # Step by step DMS processing
+        result = calwebb_detector1.dq_init_step.DQInitStep.call(calwebb_input,
+                    output_dir=pathPars.path_userland, output_file='IDTSOSS_clear_noisy', save_results=False)
+        result = calwebb_detector1.saturation_step.SaturationStep.call(result,
+                    output_dir=pathPars.path_userland, output_file='IDTSOSS_clear_noisy', save_results=False)
+        if simuPars.superbias is True: result = calwebb_detector1.superbias_step.SuperBiasStep.call(result,
+                    output_dir=pathPars.path_userland, output_file='IDTSOSS_clear_noisy', save_results=False,
+                    override_superbias=os.path.join(pathPars.path_noisefiles, simuPars.superbias_ref))
+        if simuPars.oneoverf is True: result = calwebb_detector1.refpix_step.RefPixStep.call(result,
+                    output_dir=pathPars.path_userland, output_file='IDTSOSS_clear_noisy', save_results=False)
+        if simuPars.nonlinearity is True: result = calwebb_detector1.linearity_step.LinearityStep.call(result,
+                    output_dir=pathPars.path_userland, output_file='IDTSOSS_clear_noisy', save_results=False,
+                    override_linearity=os.path.join(pathPars.path_noisefiles, simuPars.nonlin_ref))
+        if simuPars.darkcurrent is True: result = calwebb_detector1.dark_current_step.DarkCurrentStep.call(result,
+                    output_dir=pathPars.path_userland, output_file='IDTSOSS_clear_noisy', save_results=False,
+                    override_dark=os.path.join(pathPars.path_noisefiles, simuPars.dark_ref))
+        _, result = calwebb_detector1.ramp_fit_step.RampFitStep.call(result,
+                    output_dir=pathPars.path_userland, output_file='IDTSOSS_clear_noisy', save_results=False)
+        result = calwebb_detector1.gain_scale_step.GainScaleStep.call(result,
+                    output_dir=pathPars.path_userland, output_file='IDTSOSS_clear_noisy', save_results=False)
+        result.meta.filetype = 'countrate'
+        result.write(calwebb_output)
 
     # GR700XD+F277W - PROCESS THROUGH DMS LEVEL 1
     if simuPars.f277wcal is True:
@@ -422,6 +405,6 @@ if skip_dms is False:  # here is the option to investigate individual noise sour
         _, result = calwebb_detector1.ramp_fit_step.RampFitStep.call(result,
                  output_dir=pathPars.path_userland, output_file='IDTSOSS_f277_noisy', save_results=False)
         result = calwebb_detector1.gain_scale_step.GainScaleStep.call(result,
-                 output_dir=pathPars.path_userland, output_file='IDTSOSS_f277_noisy', ave_results=False)
+                 output_dir=pathPars.path_userland, output_file='IDTSOSS_f277_noisy', save_results=False)
         result.meta.filetype = 'countrate'
         result.write(calwebb_output)
