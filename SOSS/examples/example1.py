@@ -96,8 +96,18 @@ soss.readpaths(config_paths_filename, pathPars)
 #pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_gj357b.txt'
 #pathPars.path_userland = os.path.join(pathPars.path_userland, 'GTO/gj357b/')
 
-pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_l9859c.txt'
-pathPars.path_userland = os.path.join(pathPars.path_userland, 'GTO/l9859c/')
+#pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_l9859c.txt'
+#pathPars.path_userland = os.path.join(pathPars.path_userland, 'GTO/l9859c/')
+
+#pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_wasp107b_transit.txt'
+#pathPars.path_userland = os.path.join(pathPars.path_userland, 'GTO/wasp107b_transit/')
+
+#pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_l9859d.txt'
+#pathPars.path_userland = os.path.join(pathPars.path_userland, 'GTO/l9859d/')
+
+# Test of the trace position drifts for Etienne
+pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_xytheta.txt'
+pathPars.path_userland = os.path.join(pathPars.path_userland, 'drifts/')
 
 
 # CAP rehearsal
@@ -116,7 +126,7 @@ print(pathPars.path_planetmodelatm+simuPars.pmodelfile[0])
 print(simuPars.pmodeltype[0])
 
 # For testing, allow skipping steps.
-skip_sim = True
+skip_sim = False
 skip_addnoise = False
 skip_clear = False
 skip_dms = False
@@ -169,14 +179,14 @@ if skip_sim is False:
             nint, len(timesteps), frametime))
         print('Generated time steps (in seconds): ', timesteps)
 
-        #sys.exit()
-
         # Generate a constant trace position offsets
-        specpix_offset = 0.0
-        spatpix_offset = 0.0 #5.0
-        # Generate a time-dependent trace position offsets
-        #specpix_offset = np.zeros_like(timesteps)
-        #spatpix_offset = np.linspace(0.0, 5.0, np.size(timesteps))
+        xytheta_filename = os.path.join(pathPars.path_userland,simuPars.xytheta_file_clear)
+        offsets = soss.input_trace_xytheta(xytheta_filename, timesteps,
+                                           x_rms=simuPars.x_rms, y_rms=simuPars.y_rms, theta_rms=simuPars.theta_rms,
+                                           x_slope=simuPars.x_slope, y_slope=simuPars.y_slope, theta_slope=simuPars.theta_slope,
+                                           x_t0=simuPars.x_t0, y_t0=simuPars.y_t0, theta_t0=simuPars.theta_t0)
+        specpix_offset, spatpix_offset, theta_offset = offsets
+
         print('Trace position offsets (as a function of time, or constant):')
         print('specpix_offset = ', specpix_offset)
         print('spatpix_offset = ', spatpix_offset)

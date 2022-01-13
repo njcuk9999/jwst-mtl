@@ -97,6 +97,17 @@ class ModelPars:
         self.oneoverf = True
         self.darkcurrent = True
         self.cosmicray = False
+        self.xytheta_file_clear = 'IDTSOSS_xytheta_offsets_clear.txt'
+        self.xytheta_file_f277 = 'IDTSOSS_xytheta_offsets_f277.txt'
+        self.x_rms = 0.0
+        self.y_rms = 0.0
+        self.theta_rms = 0.0
+        self.x_t0 = 0.0
+        self.y_t0 = 0.0
+        self.theta_t0 = 0.0
+        self.x_slope = 0.0
+        self.y_slope = 0.0
+        self.theta_slope = 0.0
 
     def save_params(self, saved_inputs_file):
         # open file for writing, "w" is writing
@@ -315,6 +326,28 @@ class ModelPars:
                             self.ngroup = int(np.float(columns[1]))
                         elif command == 'nintf277':
                             self.nintf277 = int(np.float(columns[1]))
+                        elif command == 'xytheta_file_clear':
+                            self.xytheta_file_clear = str(columns[1])
+                        elif command == 'xytheta_file_f277':
+                            self.xytheta_file_f277 = str(columns[1])
+                        elif command == 'x_rms':
+                            self.x_rms = np.float(columns[1])
+                        elif command == 'y_rms':
+                            self.y_rms = np.float(columns[1])
+                        elif command == 'theta_rms':
+                            self.theta_rms = np.float(columns[1])
+                        elif command == 'x_t0':
+                            self.x_t0 = np.float(columns[1])
+                        elif command == 'y_t0':
+                            self.y_t0 = np.float(columns[1])
+                        elif command == 'theta_t0':
+                            self.theta_t0 = np.float(columns[1])
+                        elif command == 'x_slope':
+                            self.x_slope = np.float(columns[1])
+                        elif command == 'y_slope':
+                            self.y_slope = np.float(columns[1])
+                        elif command == 'theta_slope':
+                            self.theta_slope = np.float(columns[1])
                         elif command == 'pid':
                             self.pid = int(np.float(columns[1]))
                         elif command == 'onum':

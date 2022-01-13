@@ -705,6 +705,51 @@ def do_not_use_bin_star_model(mod_w, mod_f, mod_ldcoeff, w_grid, dw_grid):
 
     return
 
+def input_trace_xytheta(xytheta_file, timesteps,
+                        x_rms=0.0, y_rms=0.0, theta_rms=0.0,
+                        x_slope=0.0, y_slope=0.0, theta_slope=0.0,
+                        x_t0=0.0, y_t0=0.0, theta_t0=0.0):
+    '''
+    Reads from file or generate the seed trace position movement with time for each
+    timestep in the time-series. dx, dy and dtheta are in native pixels and degrees.
+    It is expected that the file contains as many lines as there are integrations.
+
+    :param xytheta_file:
+    :param timestep:
+    :param x_noisy: if True, add some scatter (x_rms) to the seeded position
+    :param x_rms:
+    :param y_rms:
+    :param theta_rms:
+    :param x_slope:  native pixel per second
+    :param y_slope:  native pixel per second
+    :param theta_slope: degree per second
+    :return:
+    '''
+
+    # Set time relative to first time step
+    t = np.array(timesteps - np.min(timesteps))
+
+    if os.path.isfile(xytheta_file) is True:
+        # read it (3 columns, as many as timesteps)
+        data = ascii.read(xytheta_file)
+        dx = np.array(data[data.keys()[0]])
+        dy = np.array(data[data.keys()[1]])
+        dtheta = np.array(data[data.keys()[2]])
+
+        if np.size(dx) != np.size(t):
+            print('The input xytheta_file does not have the same number of lines as number of integrations.')
+            sys.exit()
+    else:
+        # Assume a linear trend for all 3 parameters (0 by default, no noise)
+        dx = x_t0 + t * x_slope + np.random.standard_normal(np.size(t)) * x_rms
+        dy = y_t0 + t * y_slope + np.random.standard_normal(np.size(t)) * y_rms
+        dtheta = theta_t0 + t * theta_slope + np.random.standard_normal(np.size(t)) * theta_rms
+
+        # Save file on disk
+        ascii.write({'dx': dx, 'dy': dy, 'dtheta': dtheta}, xytheta_file, delimiter=' ')
+
+    return dx, dy, dtheta
+
 
 def seed_trace_geometry(simuPars, tracePars, spectral_order, models_grid_wv,
                         specpix_offset=0, spatpix_offset=0):
@@ -1129,7 +1174,7 @@ def generate_traces(savingprefix, pathPars, simuPars, tracePars, throughput,
             spectral_order = int(np.copy(simuPars.orderlist[m]))  # very important to pass an int here or tracepol fails
             currenttime = second2day(timesteps[t])
             exposetime = second2day(granularitytime)
-            print('Time step {:} minutes - Order {:}'.format(currenttime/60, spectral_order))
+            print('Time step {:} hours - Order {:}'.format(currenttime*24, spectral_order))
             if False:
                 pixels=spgen.gen_unconv_image(simuPars, throughput, star_angstrom_bin, star_flux_bin,
                                       ld_coeff_bin, planet_rprs_bin,
