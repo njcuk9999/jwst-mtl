@@ -106,14 +106,17 @@ soss.readpaths(config_paths_filename, pathPars)
 #pathPars.path_userland = os.path.join(pathPars.path_userland, 'GTO/l9859d/')
 
 # Test of the trace position drifts for Etienne
-pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_xytheta.txt'
-pathPars.path_userland = os.path.join(pathPars.path_userland, 'drifts/')
+#pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_xytheta.txt'
+#pathPars.path_userland = os.path.join(pathPars.path_userland, 'drifts/')
 
 
 # CAP rehearsal
 #pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_twa33_substrip96.txt'
 #pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_twa33_substrip256.txt'
-#pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_bd601753.txt'
+
+pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_bd601753.txt'
+pathPars.path_userland = os.path.join(pathPars.path_userland, 'CAP_rehearsal/bd601753/')
+
 #pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_hatp14b.txt'
 
 # Create and read the simulation parameters
