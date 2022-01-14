@@ -108,6 +108,10 @@ venv.bak/
 AMI/NRM_simulator/save_etc.txt
 AMI/NRM_simulator/Simulated_data/
 AMI/NRM_simulator/SCENES/
+AMI/AMI_SIM_MTL/bin/Saveoifits/
+AMI/AMI_SIM_MTL/bin/outputs/
+AMI/AMI_SIM_MTL/bin/log/
 
 # Reference files
 SOSS/extract/Ref_files/SOSS_Ref_Files/
+

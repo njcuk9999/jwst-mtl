@@ -26,7 +26,7 @@ from astropy.coordinates import SkyCoord, Distance
 from astroquery.utils.tap.core import TapPlus
 import numpy as np
 import os
-from typing import Union
+from typing import List, Tuple, Union
 import warnings
 
 
@@ -87,6 +87,12 @@ header = """#
 #
 #
 """
+# columns in output file
+RA_OUTCOL = 'x_or_RA'
+DEC_OUTCOL = 'y_or_Dec'
+F380M_OUTCOL = 'niriss_f380m_magnitude'
+F430M_OUTCOL = 'niriss_f430m_magnitude'
+F480M_OUTCOL = 'niriss_f480m_magnitude'
 
 
 # =============================================================================
@@ -120,7 +126,8 @@ def tap_query(url: str, query: str) -> Union[Table, None]:
 
 
 def make_catalog(ra: float, dec: float, radius: float, year: float,
-                 outfile = None):
+                 outfile=None, return_data=False
+                 ) -> Union[int, Tuple[int, Table]]:
     """
     Make a catalogue of Gaia/2MASS point sources based on a circle of center
     "ra" and "dec" of "radius" [arcsec]
@@ -136,7 +143,9 @@ def make_catalog(ra: float, dec: float, radius: float, year: float,
     :param year: float, the decimal year (to propagate ra/dec with proper
                  motion/plx)
 
-    :return: None - makes file "outfile"
+    :return: returns position of target in source list table (if return_data is
+             False else returns a tuple 1. the position of target in source
+             list table, 2. the Table of sources centered on the ra/dec
     """
     print('='*50)
     print('Field Catalog Generator')
@@ -152,6 +161,8 @@ def make_catalog(ra: float, dec: float, radius: float, year: float,
     # get observation time
     with warnings.catch_warnings(record=True) as _:
         obs_time = Time(year, format='decimalyear')
+    # get center as SkyCoord
+    coord_cent = SkyCoord(ra * uu.deg, dec * uu.deg)
 
     # -------------------------------------------------------------------------
     # Query Gaia - need proper motion etc
@@ -220,29 +231,236 @@ def make_catalog(ra: float, dec: float, radius: float, year: float,
     # apply space motion
     with warnings.catch_warnings(record=True) as _:
         coords1 = coords0.apply_space_motion(obs_time)
+    # find our target source (closest to input)
+    separation = coord_cent.separation(coords0)
+    # sort rest by brightness
+    order = np.argsort(cat_table['KMAG'])
+    # get the source position (after ordering separation)
+    # assume our source is closest to the center
+    source_pos = int(np.argmin(separation[order]))
     # -------------------------------------------------------------------------
     # make final table
     # -------------------------------------------------------------------------
     # start table instance
     final_table = Table()
     # index column
-    final_table['index'] = np.arange(1, len(cat_table) + 1)
+    final_table['index'] = np.arange(len(coords1))
     # ra column
-    final_table['x_or_RA'] = coords1.ra.value
+    final_table[RA_OUTCOL] = coords1.ra.value[order]
     # dec column
-    final_table['y_or_Dec'] = coords1.dec.value
+    final_table[DEC_OUTCOL] = coords1.dec.value[order]
     # mag columns
-    final_table['niriss_f380m_magnitude'] = cat_table['KMAG']
-    final_table['niriss_f430m_magnitude'] = cat_table['KMAG']
-    final_table['niriss_f480m_magnitude'] = cat_table['KMAG']
+    final_table[F380M_OUTCOL] = cat_table['KMAG'][order]
+    final_table[F430M_OUTCOL] = cat_table['KMAG'][order]
+    final_table[F480M_OUTCOL] = cat_table['KMAG'][order]
+    # -------------------------------------------------------------------------
+    # deal with return data
+    if return_data:
+        return source_pos, final_table
+    # -------------------------------------------------------------------------
+    # write file
+    write_catalog(final_table, outfile)
+    # return the position closest to the input coordinates
+    return source_pos
+
+
+def find_target_in_catalog(target_list: List[str], primary_name: str) -> int:
+    """
+    Find "primary_name" in "target_list" and return the position as an integer
+
+    :param target_list: list of strings - the name of the target (one in each
+                        catalog)
+    :param primary_name: str, the name of the target in target_list
+
+    :return: int, the position of "primary_name" in "target_list"
+    """
+    # find primary in target list
+    tpos = np.where(np.array(target_list) == primary_name)[0]
+    # deal with round target name
+    if len(tpos) == 0:
+        emsg = 'Primary name: {0} not in "target_list"'
+        raise ValueError(emsg.format(primary_name))
+    else:
+        # return the position of "primary_name" in "target_list"
+        return int(tpos)
+
+
+def modify_primary(target_list: List[str], catalog_tables: List[Table],
+                   target_pos: int, primary_name: str,
+                   primary_ra: Union[float, None] = None,
+                   primary_dec: Union[float, None] = None,
+                   primary_f380m: Union[float, None] = None,
+                   primary_f430m: Union[float, None] = None,
+                   primary_f480m: Union[float, None] = None,
+                   log: bool = False) -> List[Table]:
+    """
+    Modify a target with name "primary name" based on its "target_pos" in
+    one of the "catalog_tables".
+
+    We can modify ra (primary_ra), dec (primary dec) or any of the magnitudes
+    (primary_f380m, primary_f430m, primary_f480m) if we do not want to set
+    a value it should be set to None
+
+    :param target_list: list of strings - the name of the target (one in each
+                        catalog)
+    :param catalog_tables: list of tables - the catalogs for each target
+                           (sources around each target) - one for each target
+                           name in target_list
+    :param target_pos: int, the position of target in its catalog table (only
+                       one target, even though we take in all catalog_tables)
+    :param primary_name: str, the name of the target in target_list
+    :param primary_ra: float, the new RA value to add to the target, set to
+                       None to not update RA value
+    :param primary_dec: float, the new Dec to add to the target, set to None to
+                        not update Dec value
+    :param primary_f380m: float, the new F380M magnitude to add to the target
+                          set to None to not update
+    :param primary_f430m: float, the new F430M magnitude to add to the target
+                          set to None to not update
+    :param primary_f480m: float, the new F480M magnitude to add to the target
+                          set to None to not update
+
+    :return: list of tables - the catalog for each target with the updated
+                              target + new target properties
+    """
+    # get the position of "primary_name" in "target_list"
+    tpos = find_target_in_catalog(target_list, primary_name)
+    # get table for this position
+    table = catalog_tables[tpos]
+    # get the source position in given table
+    source_position = target_pos[tpos]
+    # -------------------------------------------------------------------------
+    # add RA if set
+    if primary_ra is not None:
+        # log change
+        if log:
+            msgargs = [table[RA_OUTCOL][source_position], primary_ra]
+            print('\t RA UPDATED {0}-->{1}'.format(*msgargs))
+        # update table
+        table[RA_OUTCOL][source_position] = primary_ra
+    # add Dec if set
+    if primary_dec is not None:
+        # log change
+        if log:
+            msgargs = [table[DEC_OUTCOL][source_position], primary_dec]
+            print('\t Dec UPDATED {0}-->{1}'.format(*msgargs))
+        # update table
+        table[DEC_OUTCOL][source_position] = primary_dec
+    # add F380M magnitude if set
+    if primary_f380m is not None:
+        # log change
+        if log:
+            msgargs = [table[F380M_OUTCOL][source_position], primary_f380m]
+            print('\t F380M UPDATED {0}-->{1}'.format(*msgargs))
+        # update table
+        table[F380M_OUTCOL][source_position] = primary_f380m
+    # add F430M magnitude if set
+    if primary_f430m is not None:
+        # log change
+        if log:
+            msgargs = [table[F430M_OUTCOL][source_position], primary_f430m]
+            print('\t F430M UPDATED {0}-->{1}'.format(*msgargs))
+        # update table
+        table[F430M_OUTCOL][source_position] = primary_f430m
+    # add F480M magnitude if set
+    if primary_f480m is not None:
+        # log change
+        if log:
+            msgargs = [table[F480M_OUTCOL][source_position], primary_f480m]
+            print('\t F480M UPDATED {0}-->{1}'.format(*msgargs))
+        # update table
+        table[F480M_OUTCOL][source_position] = primary_f480m
+    # -------------------------------------------------------------------------
+    # push back into catalog table list
+    catalog_tables[tpos] = table
+    # return catalog of tables
+    return catalog_tables
+
+
+def add_companion_to_cat_entry(target_list: List[str],
+                               catalog_tables: List[Table],
+                               target_pos: int, primary_name: str,
+                               companion_separation: float,
+                               companion_pa: float,
+                               companion_dm: float) -> List[Table]:
+    """
+    Add a companion to the catalog table (primary target at position
+    "target pos" - with name "primary name"
+
+    Companion is added with:
+        separation [arcsec] from primary = "companion_separation"
+        position angle from N = "companion_pa"
+        delta magnitude from primary ="companion_dm"
+
+    :param target_list: list of strings - the name of the target (one in each
+                        catalog)
+    :param catalog_tables: list of tables - the catalogs for each target
+                           (sources around each target) - one for each target
+                           name in target_list
+    :param target_pos: int, the position of target in its catalog table (only
+                       one target, even though we take in all catalog_tables)
+    :param primary_name: str, the name of the target in target_list
+    :param companion_separation: float, the separation in arcsec
+    :param companion_pa: float, the position angle (angle from North) in degrees
+    :param companion_dm: float, the delta magnitude (Kmag) from the primary
+                         i.e. dm = 5 is 5 magnitudes fainter than primary
+
+    :return: list of tables - the catalog for each target with the companion
+                              added to the end of the correct table
+    """
+    # get the position of "primary_name" in "target_list"
+    tpos = find_target_in_catalog(target_list, primary_name)
+    # get table for this position
+    table = catalog_tables[tpos]
+    # get the source position in given table
+    source_position = target_pos[tpos]
+    # change the separation to degrees
+    companion_separation = companion_separation / 3600.0
+    companion_separation = companion_separation * uu.arcsec
+    # get ra and dec and magnitudes for primary
+    primary_ra = table[RA_OUTCOL][source_position] * uu.deg
+    primary_dec = table[DEC_OUTCOL][source_position] * uu.deg
+    primary_f380m = table[F380M_OUTCOL][source_position]
+    primary_f430m = table[F430M_OUTCOL][source_position]
+    primary_f480m = table[F480M_OUTCOL][source_position]
+    # primary coords as SkyCoord instance
+    primary_coord = SkyCoord(primary_ra, primary_dec)
+    # get companion coordinates
+    companion_coord = primary_coord.directional_offset_by(companion_pa * uu.deg,
+                                                          companion_separation)
+    # get the companion magnitudes
+    companion_f380m = primary_f380m + companion_dm
+    companion_f430m = primary_f430m + companion_dm
+    companion_f480m = primary_f480m + companion_dm
+    # get the last row entry
+    pos = np.max(table['index']) + 1
+    # add entry to table
+    table.add_row([pos, companion_coord.ra.value, companion_coord.dec.value,
+                   companion_f380m, companion_f430m, companion_f480m])
+    # push back into catalog table list
+    catalog_tables[tpos] = table
+    # return catalog of tables
+    return catalog_tables
+
+
+def write_catalog(catalog_table: Table, outfile: Union[str, None]):
+    """
+    Write a catalogue file in the correct format for Mirage
+
+    :param catalog_table: astropy Table, the catalogue table
+    :param outfile: str or None, if set this is the output filename and path
+                    if None uses the default in the code
+
+    :return: None - writes the table to disk
+    """
     # construct out file name
     if outfile is None:
         outfile = OUTPUT_TABLE
     # log progress
     print('\nWriting catalog to {0}'.format(os.path.realpath(outfile)))
     # write table
-    final_table.write(outfile, format='ascii.commented_header',
-                      comment=header, overwrite=True)
+    catalog_table.write(outfile, format='ascii.commented_header',
+                        comment=header, overwrite=True)
 
 
 # =============================================================================
