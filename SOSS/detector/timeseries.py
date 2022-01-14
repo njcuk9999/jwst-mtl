@@ -24,17 +24,13 @@ import hxrg
 # Plotting.
 import matplotlib.pyplot as plt
 
-# Global variables.
-GAIN = 1.61
-DARKVALUE = 0.0414
-FULL_WELL = 72000.
 
 # TODO header section which files and values were used.
 
 
 class TimeSeries(object):
 
-    def __init__(self, ima_path):
+    def __init__(self, ima_path, noisefiles_path, ref_path, gain=1.6221, dark_value=0.0414, full_well=72000, ):
         """Make a TimeSeries object from a series of synthetic images."""
 
         self.ima_path = ima_path
@@ -63,17 +59,36 @@ class TimeSeries(object):
         # USER_PATH is the parameter in that file
         self.output_path = '/genesis/jwst/userland-soss/'
 
-    def get_normfactor(self, full_well=FULL_WELL):
+        # Gain, dark, full well
+        self.gain = gain # 1.6221 obtained from CRDS reference file pre-Commissioning
+        self.dark_value = dark_value
+        self.full_well = full_well
+
+        # Reference files defaults
+        self.ref_nonlinearize = 'jwst_niriss_linearity_0011_bounds_0_60000_npoints_100_deg_5.fits'
+        self.ref_pca0 = 'niriss_pca0.fits'
+        self.ref_flatfield = 'jwst_niriss_flat_0181.fits'
+        self.ref_superbias = 'jwst_niriss_superbias_0137.fits'
+        self.ref_zodi = 'background_detectorfield_normalized.fits'
+        self.darkdir_ss256 = '/genesis/jwst/jwst-ref-soss/darks_SS256/'
+        self.darkdir_ss96 = '/genesis/jwst/jwst-ref-soss/darks_SS96/'
+        self.darkdir_full = '/genesis/jwst/jwst-ref-soss/darks_FULL/'
+
+    def get_normfactor(self):
         """Determine a re-normalization factor so that the highest pixel value in the simulation
          will match the full well capacity"""
 
+        raise Warning('get_normfactor, DEPRECATED FUNCTION - DO NOT USE. Simulations are now flux calibrated.')
+
         max_value = np.amax(self.data)
-        normfactor = full_well/max_value
+        normfactor = self.full_well/max_value
 
         return normfactor
 
     def apply_normfactor(self, normfactor):
         """Apply an arbitrary re-normalization to the simulations."""
+
+        raise Warning('aaply_normfactor, DEPRECATED FUNCTION - DO NOT USE. Simulations are now flux calibrated.')
 
         self.data = self.data*normfactor
 
@@ -101,7 +116,7 @@ class TimeSeries(object):
 
         self.modif_str = self.modif_str + '_poisson_noise'
 
-    def add_non_linearity(self, coef_file=None, gain=GAIN):
+    def add_non_linearity(self, coef_file=None):
         """Add non-linearity on top of the linear integration-long ramp."""
 
         if coef_file is None:
@@ -116,7 +131,7 @@ class TimeSeries(object):
 
         # Select the appropriate subarray.
         if self.subarray == 'SUBSTRIP96':
-            slc = slice(1792, 1888)
+            slc = slice(1802, 1898)
         elif self.subarray == 'SUBSTRIP256':
             slc = slice(1792, 2048)
         elif self.subarray == 'FULL':
@@ -130,7 +145,7 @@ class TimeSeries(object):
         for i in range(self.nintegs):
             # select part of the time series lying within this integration
             # (i.e., ith sequence of ngroups groups)
-            new_integ = deepcopy(self.data[i, :, :, :])/gain  # [ADU] because the non-linearity correction works on ADU.
+            new_integ = deepcopy(self.data[i, :, :, :])/self.gain  # [ADU] because the non-linearity correction works on ADU.
 
             # Iterate over groups
             for g in range(self.ngroups):
@@ -142,14 +157,156 @@ class TimeSeries(object):
 
                 new_integ[g, :, :] = corr
 
-            self.data[i, :, :, :] = deepcopy(new_integ)*gain  # [electrons] convert back to electrons for next steps.
+            self.data[i, :, :, :] = deepcopy(new_integ)*self.gain  # [electrons] convert back to electrons for next steps.
 
         self.modif_str = self.modif_str + '_nonlin'
-    
-    def add_detector_noise(self, offset=500., gain=GAIN, pca0_file=None, noise_seed=None, dark_seed=None):
+
+    def add_cv3_dark(self):
+        """Use the pool of CV3 darks (typically 25 files with nint=3 ngroup=50
+        to add detector noise to our simulations.
+        """
+
+        # Select the appropriate subarray.
+        if self.subarray == 'SUBSTRIP96':
+            ls = subprocess.getoutput('ls -1 '+self.darkdir_ss96+' *.fits')
+            darklist = np.array(ls.split('\n'))
+        elif self.subarray == 'SUBSTRIP256':
+            ls = subprocess.getoutput('ls -1 ' + self.darkdir_ss256 + ' *.fits')
+            darklist = np.array(ls.split('\n'))
+        elif self.subarray == 'FULL':
+            #TODO: copy CV3 full frame darks to the genesis darks directory
+            print('FULL frame darks files missing. Ask Loic to copy them from CV3.')
+            sys.exit()
+            #ls = subprocess.getoutput('ls -1 '+self.darkdir_full+' *.fits')
+            #darklist = np.array(ls.split('\n'))
+        else:
+            raise ValueError('SUBARRAY must be one of SUBSTRIP96, SUBSTRIP256 or FULL')
+
+        # Randomly pick files and extract the necessary number of groups
+
+        # TODO: Complete the add_cv3_dark function
+
+
+    def add_readout_noise(self, rms=13.8903):
+        """Add white readout noise"""
+        """This is single-read readout noise rms """
+
+        #TODO: handle FULL or GENERIC case - actually dont`read the ref file readnoise
+        # rms=13.8903 dans le cas SS256 ou SS96
+        # rms=10.34 dans le cas FULL
+        #TODO: do same for gain: 1.6221
+
+        mynoise = np.random.standard_normal(np.size(self.data)) * rms
+        mynoise = np.reshape(mynoise, (self.nintegs, self.ngroups, self.ncols, self.nrows))
+
+        self.data += deepcopy(mynoise)
+
+        self.modif_str = self.modif_str + '_readnoise'
+
+    def add_1overf_noise(self, c_pink = 9.6, alpha = -1):
+        """Extracted from HxRGNoise """
+
+        # Correlated 1/f noise (pink noise)
+        # c_pink = 9.6  # [electrons]
+        # alpha = -1  # Hard code for 1/f noise until proven otherwise
+
+        # Select the appropriate subarray.
+        if self.subarray == 'SUBSTRIP96':
+            cols = 96
+            rows = 2048
+            cols_over = 12
+            rows_over = 2
+            amps = 1
+        elif self.subarray == 'SUBSTRIP256':
+            cols = 256
+            rows = 2048
+            cols_over = 12
+            rows_over = 2
+            amps = 1
+        elif self.subarray == 'FULL':
+            cols = 2048
+            rows = 2048
+            cols_over = 12
+            rows_over = 1
+            amps = 4
+        else:
+            raise ValueError('SUBARRAY must be one of SUBSTRIP96, SUBSTRIP256 or FULL')
+
+
+        # naxis1 is in the detector orientation
+        nstep = (cols // amps + cols_over) * (rows + rows_over) * self.ngroups * self.nintegs
+        # Pad nsteps to a power of 2, which is much faster (JML)
+        nstep2 = int(2 ** np.ceil(np.log2(nstep)))
+
+        # Define frequency arrays
+        f2 = np.fft.rfftfreq(nstep2)  # ... for 2*nstep elements
+
+        # Define pinkening filters. F2 and p_filter2 are used to generate 1/f noise.
+        p_filter2 = np.sqrt(f2 ** alpha)
+        p_filter2[0] = 0.
+        # Generate seed noise
+        mynoise = np.random.standard_normal(nstep2)
+
+        # Save the mean and standard deviation of the first
+        # half. These are restored later. We do not subtract the mean
+        # here. This happens when we multiply the FFT by the pinkening
+        # filter which has no power at f=0.
+        the_mean = np.mean(mynoise[:(2*nstep2) // 2])
+        the_std = np.std(mynoise[:(2*nstep2) // 2])
+
+        # Apply the pinkening filter.
+        thefft = np.fft.rfft(mynoise)
+        thefft = np.multiply(thefft, p_filter2)
+        result = np.fft.irfft(thefft)
+        result = result[:(2*nstep) // 2]  # Keep 1st half of nstep
+
+        # Restore the mean and standard deviation
+        result *= the_std / np.std(result)
+        result = result - np.mean(result) + the_mean
+
+        tt = c_pink * result  # tt is a temp. variable
+
+        # Reshape the time series into the subarray (detector coordinate system, not DMS yet)
+        if (self.subarray == 'SUBSTRIP96') | (self.subarray == 'SUBSTRIP256'):
+            # 3D, with rows and cols overheads
+            tt = np.reshape(tt, (self.nintegs, self.ngroups, rows + rows_over, cols + cols_over))
+            # Remove rows/cols overheads
+            tt = tt[:, :, :rows, :cols]
+            # Apply coordinate transform: detector --> DMS
+            tt = np.swapaxes(tt, 2, 3)
+
+        elif self.subarray == 'FULL':
+            # 3D, with rows and cols overheads
+            tt = np.reshape(tt, (self.nintegs, self.ngroups, rows + rows_over, cols // amps + cols_over))
+            # Remove rows/cols overheads to produce ninteg x ngroup x 2048 x 512 matrix
+            tt = tt[:, :, :rows, :cols // amps]
+            # Replicate this amp to the next 3 amps, respecting the readout direction
+            # -->|<--|-->|<--
+            temp = np.zeros((self.nintegs, self.ngroups, rows, cols))
+            fivehundredtwelve = cols // amps
+            temp[:, :, :, :fivehundredtwelve] = np.copy(tt)
+            temp[:, :, :, fivehundredtwelve:2*fivehundredtwelve] = np.copy(tt[:, :, :, ::-1])
+            temp[:, :, :, 2*fivehundredtwelve:3*fivehundredtwelve] = np.copy(tt)
+            temp[:, :, :, 3*fivehundredtwelve:4*fivehundredtwelve] = np.copy(tt[:, :, :, ::-1])
+            tt = np.copy(temp)
+            del temp
+            # Apply coordinate transform: detector --> DMS
+            tt = np.swapaxes(tt, 2, 3)
+        else:
+            raise ValueError('SUBARRAY must be one of SUBSTRIP96, SUBSTRIP256 or FULL')
+
+        self.data += deepcopy(tt)
+
+        self.modif_str = self.modif_str + '_1overf'
+
+    def add_detector_noise(self, offset=500., pca0_file=None, noise_seed=None, dark_seed=None):
         """Add read-noise, 1/f noise, kTC noise, and alternating column noise
         using the HxRG noise generator.
         """
+
+        """ DEPRECATED. DO NOT USE ANYMORE. Instead call add_1overf_noise and add_readout_noise"""
+
+        raise Warning('Do not use add_detector_noise anymore. Instead use add_1overf_noise and add_readout_noise.')
 
         # In the current implementation the pca0 file goes unused, but it is a mandatory input of HxRG.
         if pca0_file is None:
@@ -181,7 +338,7 @@ class TimeSeries(object):
 
         # Bias pattern.
         bias_amp = 0.  # Do not use PCA0 component.
-        bias_offset = offset*gain  # [electrons]
+        bias_offset = offset*self.gain  # [electrons]
 
         # Dark current.
         dark_current = 0.0  # [electrons/frame] Unused because pca0_amp = 0.
@@ -202,8 +359,8 @@ class TimeSeries(object):
             # Generate a noise-cube for this integration.
             noisecube = noisegenerator.mknoise(c_pink=c_pink, u_pink=u_pink, bias_amp=bias_amp, bias_offset=bias_offset,
                                                acn=acn, pca0_amp=pca0_amp, rd_noise=rd_noise, pedestal=pedestal,
-                                               dark_current=dark_current, dc_seed=dark_seed, noise_seed=seed1,
-                                               gain=gain)
+                                               dark_current=self.dark_current, dc_seed=dark_seed, noise_seed=seed1,
+                                               gain=self.gain)
 
             # Ensure the noise-cube has the correct dimensions (when Ngroups = 1).
             if noisecube.ndim == 2:
@@ -230,7 +387,7 @@ class TimeSeries(object):
 
         # Select the appropriate subarray.
         if self.subarray == 'SUBSTRIP96':
-            slc = slice(1792, 1888)
+            slc = slice(1802, 1898)
         elif self.subarray == 'SUBSTRIP256':
             slc = slice(1792, 2048)
         elif self.subarray == 'FULL':
@@ -245,7 +402,7 @@ class TimeSeries(object):
 
         self.modif_str = self.modif_str + '_flat'
 
-    def add_superbias(self, gain=GAIN, biasfile=None):
+    def add_superbias(self, biasfile=None):
         """Add the bias level to the simulation."""
 
         if biasfile is None:
@@ -255,11 +412,11 @@ class TimeSeries(object):
         with fits.open(biasfile) as hdu:
             superbias = hdu[1].data  # [ADU]
 
-        superbias = superbias*gain  # [electrons]
+        superbias = superbias*self.gain  # [electrons]
 
         # Select the appropriate subarray.
         if self.subarray == 'SUBSTRIP96':
-            slc = slice(1792, 1888)
+            slc = slice(1802, 1898)
         elif self.subarray == 'SUBSTRIP256':
             slc = slice(1792, 2048)
         elif self.subarray == 'FULL':
@@ -274,7 +431,7 @@ class TimeSeries(object):
 
         self.modif_str = self.modif_str + '_bias'
 
-    def add_simple_dark(self, darkvalue=DARKVALUE):  # TODO dark should be lower in the voids.
+    def add_dark(self, darkfile=None):
         """Add a simple dark current to the simulation.
 
         .. note::
@@ -282,13 +439,58 @@ class TimeSeries(object):
         is lower in the voids.
         """
 
-        # Generate the dark ramps for the simulation.
-        # TODO loop over integrations to save memory?
-        dark = rdm.poisson(darkvalue*self.tgroup, size=self.data.shape).astype('float32')  # [electrons]
-        darkramp = np.cumsum(dark, axis=1)
+        # OLD METHOD - scalar value across the detector
+        if False:
+            # Generate the dark ramps for the simulation.
+            # TODO loop over integrations to save memory?
+            dark = rdm.poisson(self.dark_value*self.tgroup, size=self.data.shape).astype('float32')  # [electrons]
+            darkramp = np.cumsum(dark, axis=1)
 
-        # Add the dark ramps to the simulation.
-        self.data = self.data + darkramp
+        if darkfile is None:
+            if self.subarray == 'SUBSTRIP96':
+                darkfile = self.noisefiles_dir+'/jwst_niriss_dark_0150.fits'
+            elif self.subarray == 'SUBSTRIP256':
+                darkfile = self.noisefiles_dir+'/jwst_niriss_dark_0147.fits'
+            elif self.subarray == 'FULL':
+                darkfile = self.noisefiles_dir+'/jwst_niriss_dark_0145.fits'
+            else:
+                raise ValueError('SUBARRAY must be one of SUBSTRIP96, SUBSTRIP256 or FULL')
+
+        # Read the dark from file (in science coordinates).
+        with fits.open(darkfile) as hdu:
+            darkramp = hdu[1].data  # [ADU]
+
+        # Convert dark current to electrons
+        darkramp = darkramp * self.gain  # [electrons]
+
+        # Initialize the dark exposure
+        dark_exposure = np.zeros((self.nintegs, self.ngroups, self.ncols, self.nrows))
+        # Take one 3D ramp of the dark and copy it to all integrations
+        dark_exposure[:][:, :, :] = darkramp[self.ngroups, :, :]
+
+        # Add Poisson noise to the dark exposure
+        # Can be done without loops, but this reduces memory requirements.
+        for i in range(self.nintegs):
+
+            ramp = deepcopy(dark_exposure[i])
+
+            # Convert up the ramp samples, to flux between reads.
+            ramp[1:] = np.diff(ramp, axis=0)
+
+            # Add the poisson noise.
+            ramp = np.where(ramp < 0, 0, ramp)  # Sanity check.
+            ramp = rdm.poisson(ramp)
+
+            # Convert back to up the ramp samples.
+            ramp = np.cumsum(ramp, axis=0)
+
+            dark_exposure[i] = deepcopy(ramp)
+
+        # Add the dark+noise to the simulation.
+        self.data = self.data + dark_exposure
+
+        # Free memory
+        del dark_exposure
 
         self.modif_str = self.modif_str + '_dark'
 
@@ -304,7 +506,7 @@ class TimeSeries(object):
 
         # Select the appropriate subarray.
         if self.subarray == 'SUBSTRIP96':
-            slc = slice(1792, 1888)
+            slc = slice(1802, 1898)
         elif self.subarray == 'SUBSTRIP256':
             slc = slice(1792, 2048)
         elif self.subarray == 'FULL':
@@ -329,11 +531,12 @@ class TimeSeries(object):
 
         self.modif_str = self.modif_str + '_zodibackg'
 
-    def write_to_fits(self, filename=None, gain=GAIN):
-        """Write to a .fits file the new header and data."""
-
+    def write_to_fits(self, filename=None):
+        """Write to a .fits file the new header and data.
+        units are converted from electrons back to ADU for this step.
+        """
         hdu_new = self.hdu_ideal
-        hdu_new[1].data = (self.data/gain).astype('uint16')  # Convert to ADU in 16 bit integers.
+        hdu_new[1].data = (self.data/self.gain).astype('uint16')  # Convert to ADU in 16 bit integers.
 
         if filename is None:
             print('Forging output noisy file...')
