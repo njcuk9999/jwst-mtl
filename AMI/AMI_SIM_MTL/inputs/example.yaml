@@ -3,7 +3,8 @@ Simulation1:
 
   name: Simulation 1
 
-  xmlpath: '/data/jwst_ami/data/neil_wrap/inputs/jwst_ami_p23_example.xml'
+  apt_xmlpath: /data/jwst_ami/data/neil_wrap/inputs/jwst_ami_p23_example.xml
+  apt_pointing_file: None
 
   target:
     name: HD-218396
@@ -11,6 +12,10 @@ Simulation1:
     dec: None
     pmra: None
     pmdec: None
+
+    # None - generates source list?
+    mirage_source_list: None
+
     magnitude:
       F277W: 12.123
       F380M: 12.123
@@ -99,23 +104,10 @@ parameters:
   instrument:
     pix_scale: 0.065
 
-  simulation:
-    psf:
-      F380M:
-        # Must set this - no default value
-        path: /data/jwst_ami/data/neil_wrap/psfs/psf_F380M.fits
-        recompute_psf: False
-      F480M:
-        # Must set this - no default value
-        path: /data/jwst_ami/data/neil_wrap/psfs/psf_F480M.fits
-        recompute_psf: False
-    fov_pixels: 79
-    oversample: 11
-
   ami-sim:
     use: False
     # Must set this no default value
-    path: /data/jwst_ami/data/neil_wrap/amisim/
+    out_path: /data/jwst_ami/data/neil_wrap/amisim/
     create_scene: True
     create_simulation: True
     uptheramp: 0
@@ -129,6 +121,17 @@ parameters:
     package: driver_scene
     modules: pyami
     verbose: 0
+    psf:
+      F380M:
+        # Must set this - no default value
+        path: /data/jwst_ami/data/neil_wrap/psfs/psf_F380M.fits
+        recompute_psf: False
+      F480M:
+        # Must set this - no default value
+        path: /data/jwst_ami/data/neil_wrap/psfs/psf_F480M.fits
+        recompute_psf: False
+    fov_pixels: 79
+    oversample: 11
     # don't set these
     scene:
       F380M: None
@@ -140,8 +143,20 @@ parameters:
 
   mirage:
     use: False
-    test1: True
-    test2: False
+    # maybe this should be output path?
+    out_path: /data/jwst_ami/data/neil_wrap/mirage/
+
+    # psf path
+    psf:
+      path: /data/jwst_ami/data/neil_wrap/mirage/ref_files_non_default/niriss_gridded_psf_library_newmask
+      psf_wing_threshold_file: config
+    # set these None to not use them?
+    reffiles:
+      path: /data/jwst_ami/data/neil_wrap/mirage/ref_files_non_default
+      astrometric: pysaif
+      gain: jwst_niriss_gain_general.fits
+      pixelflat: jwst_niriss_flat_general.fits
+      superbias: jwst_niriss_superbias_sim.fits
 
   dms:
     use: False
@@ -152,8 +167,8 @@ parameters:
     use:
       ami-sim_input: True
       mirage_input: False
-      extraction: True
-      analysis: True
+      extraction: False
+      analysis: False
     extract:
       fake_obj: True
       mask_name: g7
@@ -173,7 +188,7 @@ parameters:
       display_plots: True
       expert_plot: False
       verbose: False
-      path: None
+      out_path: None
     analysis:
       candid:
         use: True
@@ -213,6 +228,7 @@ parameters:
           nth: 30
           ncrat: 60
       plot: True
+      out_path: None
 
   implaneia:
     use: False

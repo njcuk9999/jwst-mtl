@@ -59,7 +59,7 @@ class Simulation:
         self.params = params.copy()
         # ---------------------------------------------------------------------
         # get xml path
-        self.xmlpath = properties.get('xmlpath', None)
+        self.xmlpath = properties.get('apt_xmlpath', None)
         # get xml settings
         self.params = _load_xml(params, self.xmlpath)
         # ---------------------------------------------------------------------

@@ -221,24 +221,24 @@ for _filter in FILTERS:
     Consts.add('PSF_{0}_PATH'.format(_filter), value=None, dtype=str,
                source=__NAME__, user=False, argument=False, group=group,
                description='Define the {0} psf location'.format(_filter),
-               path='simulation.psf.{0}.path'.format(_filter))
+               path='ami-sim.psf.{0}.path'.format(_filter))
     # Define whether to recompute filter {FILTER}
     Consts.add('PSF_{0}_RECOMPUTE'.format(_filter), value=False, dtype=bool,
                source=__NAME__, user=False, argument=False, group=group,
                description='Define the {0} psf location'.format(_filter),
-               path='simulation.psf.{0}.recompute_psf'.format(_filter))
+               path='ami-sim.psf.{0}.recompute_psf'.format(_filter))
 
 # Define the native image size (FOV in pixels)
 Consts.add('FOV_PIXELS', value=79, dtype=int, source=__NAME__,
            user=False, argument=False, group=group,
            description='Define the native image size (FOV in pixels)',
-           path='simulation.fov_pixels')
+           path='ami-sim.fov_pixels')
 
 # Define the oversampling factor
 Consts.add('OVERSAMPLE_FACTOR', value=11, dtype=int, source=__NAME__,
            user=False, argument=False, group=group,
            description='Define the oversampling factor',
-           path='simulation.oversample')
+           path='ami-sim.oversample')
 
 # =============================================================================
 #   AMI-SIM constants
@@ -255,7 +255,7 @@ Consts.add('AMISIM-PATH', value=None, dtype=str, source=__NAME__,
            user=True, argument=False, group=group,
            description='Define path to save ami-sim files to / read ami-sim '
                        'scenes from',
-           path='ami-sim.path')
+           path='ami-sim.out_path')
 
 # Define whether to create scene (if False will try to load from disk)
 Consts.add('AMISIM-CREATE_SCENE', value=True, dtype=bool, source=__NAME__,
@@ -378,6 +378,61 @@ Consts.add('MIRAGE-USE', value=True, dtype=bool, source=__NAME__,
            user=True, argument=False, group=group,
            description='Define switch whether to use Mirage',
            path='mirage.use')
+
+# Define the output directory to save mirage sim files to
+Consts.add('MIRAGE-PATH', value=None, dtype=str, source=__NAME__,
+           user=True, argument=False, group=group,
+           description='Define path to save ami-sim files to / read ami-sim '
+                       'scenes from',
+           path='mirage.out_path')
+
+# Define the psf directory path to get psfs from (if None uses defaults)
+Consts.add('MIRAGE-PSF-DIR', value=None, dtype=str, source=__NAME__,
+           user=True, argument=False, group=group,
+           description='Define the psf directory path to get psfs from '
+                       '(if None uses defaults)',
+           path='mirage.psf.path')
+
+# Define the mirage psf wing threshold file
+Consts.add('MIRAGE-PSF-WING-TFILE', value='config', dtype=str, source=__NAME__,
+           user=True, argument=False, group=group,
+           description='Define the mirage psf wing threshold file',
+           path='mirage.psf.psf_wing_threshold_file')
+
+# Define the reference file path (if None all default reference files are used)
+Consts.add('MIRAGE-REFFILE-DIR', value=None, dtype=str, source=__NAME__,
+           user=True, argument=False, group=group,
+           description='Define the reference file path (if None all default '
+                       'reference files are used)',
+           path='mirage.reffiles.path')
+
+# Define the astrometric reference file to use (None uses default)
+Consts.add('MIRAGE-REFFILE-ASTROMETRIC', value=None, dtype=str,
+           source=__NAME__, user=True, argument=False, group=group,
+           description='Define the astrometric reference file to use '
+                       '(None uses default)',
+           path='mirage.reffiles.astrometric')
+
+# Define the gain reference file to use (None uses default)
+Consts.add('MIRAGE-REFFILE-GAIN', value=None, dtype=str,
+           source=__NAME__, user=True, argument=False, group=group,
+           description='Define the gain reference file to use '
+                       '(None uses default)',
+           path='mirage.reffiles.gain')
+
+# Define the pixel flat reference file to use (None uses default)
+Consts.add('MIRAGE-REFFILE-PIXELFLAT', value=None, dtype=str,
+           source=__NAME__, user=True, argument=False, group=group,
+           description='Define the pixel flat reference file to use '
+                       '(None uses default)',
+           path='mirage.reffiles.pixelflat')
+
+# Define the super bias reference file to use (None uses default)
+Consts.add('MIRAGE-REFFILE-SUPERBIAS', value=None, dtype=str,
+           source=__NAME__, user=True, argument=False, group=group,
+           description='Define the super bias reference file to use '
+                       '(None uses default)',
+           path='mirage.reffiles.superbias')
 
 # =============================================================================
 #   DMS constants
@@ -555,7 +610,7 @@ Consts.add('AMICAL_EXT_PATH', value=None, dtype=str, source=__NAME__,
            user=True, argument=False, group=group,
            description='Define path to save ami-cal extraction files to / '
                        'read ami-cal extraction from',
-           path='amical.extract.path')
+           path='amical.extract.out_path')
 
 # =============================================================================
 #   AMICAL extraction constants
@@ -565,7 +620,7 @@ group = 'amical-ana'
 Consts.add('AMICAL_ANA_PATH', value=None, dtype=str, source=__NAME__,
            user=True, argument=False, group=group,
            description='Define path to save ami-cal analysis files to',
-           path='amical.analysis.path')
+           path='amical.analysis.out_path')
 
 # Define whether to use candid in amical analysis
 Consts.add('AMICAL_ANA_USE_CANDID', value=True, dtype=bool, source=__NAME__,
