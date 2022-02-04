@@ -9,9 +9,9 @@ Created on 2020-05-21
 
 @author: cook
 """
-from ami_sim_mtl.core.instrument import constants
-from ami_sim_mtl.core.core import param_functions
-from ami_sim_mtl.core.core import log_functions
+from ami_mtl.core.instrument import constants
+from ami_mtl.core.core import param_functions
+from ami_mtl.core.core import log_functions
 
 # =============================================================================
 # Define variables
@@ -79,7 +79,8 @@ def __main__(params):
     # test logging
     params.log.info('This is a test of info')
     params.log.warning('This is a test of warning')
-    params.log.error('This is a test of an error')
+    params.log.error('This is a test of an error',
+                     raise_exception=False)
 
     return params
 

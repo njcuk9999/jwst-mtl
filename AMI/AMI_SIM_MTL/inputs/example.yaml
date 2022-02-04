@@ -1,0 +1,218 @@
+# Define targets
+Simulation1:
+
+  name: Simulation 1
+
+  xmlpath: '/data/jwst_ami/data/neil_wrap/inputs/jwst_ami_p23_example.xml'
+
+  target:
+    name: HD-218396
+    ra: None
+    dec: None
+    pmra: None
+    pmdec: None
+    magnitude:
+      F277W: 12.123
+      F380M: 12.123
+      F430M: 12.123
+      F480M: 12.123
+
+    companion1:
+      active: True
+      kind: planet
+      name: planet1
+      planet:
+        separation: 0.5
+        pa: 90
+        plot: False
+      mag:
+        F277W: 17.123
+        F380M: 17.123
+        F430M: 17.123
+        F480M: 17.123
+
+    companion2:
+      active: False
+      kind: planet
+      name: planet2
+      planet:
+        separation: 1.0
+        pa: 180
+        plot: False
+      mag:
+        F277W: 20.123
+        F380M: 20.123
+        F430M: 20.123
+        F480M: 20.123
+
+    companion3:
+      active: False
+      kind: disk
+      name: disk1
+      disk:
+        roll: 15
+        inclination: 60
+        width: 0.4
+        radius: 0.4
+        exponent: 1.2
+        plot: True
+      mag:
+        F277W: 13.123
+        F380M: 13.123
+        F430M: 13.123
+        F480M: 13.123
+
+    companion4:
+      active: False
+      kind: bar
+      name: bar1
+      bar:
+        roll: 135
+        width: 0.02
+        radius: 0.6
+        exponent: 2
+        plot: True
+      mag:
+        F277W: 13.123
+        F380M: 13.123
+        F430M: 13.123
+        F480M: 13.123
+
+  calibrator1:
+    name: HD-218172
+    tot_exp: None
+    ext_flux: None
+    magnitude:
+      F277W: 10.123
+      F380M: 10.123
+      F430M: 10.123
+      F480M: 10.123
+
+
+# Define parameters (that overwrite defaults)
+parameters:
+  general:
+    in_dir: /data/jwst_ami/data/neil_wrap
+    # Must set this - no default value
+    out_dir: /data/jwst_ami/data/neil_wrap
+
+  instrument:
+    pix_scale: 0.065
+
+  simulation:
+    psf:
+      F380M:
+        # Must set this - no default value
+        path: /data/jwst_ami/data/neil_wrap/psfs/psf_F380M.fits
+        recompute_psf: False
+      F480M:
+        # Must set this - no default value
+        path: /data/jwst_ami/data/neil_wrap/psfs/psf_F480M.fits
+        recompute_psf: False
+    fov_pixels: 79
+    oversample: 11
+
+  ami-sim:
+    use: False
+    # Must set this no default value
+    path: /data/jwst_ami/data/neil_wrap/amisim/
+    create_scene: True
+    create_simulation: True
+    uptheramp: 0
+    create_calibrator: 0
+    overwrite: 1
+    uniform_flatfield: 0
+    overwrite_flatfield: 0
+    random-seed: 1
+    include-det-noise: 1
+    install-dir: /data/jwst_ami/bin/ami_sim
+    package: driver_scene
+    modules: pyami
+    verbose: 0
+    # don't set these
+    scene:
+      F380M: None
+      F480M: None
+    # These will override inputs of AMI-CAL (set None to use defaults)
+    out:
+      F380M: None
+      F480M: None
+
+  mirage:
+    use: False
+    test1: True
+    test2: False
+
+  dms:
+    use: False
+    test1: True
+    test2: False
+
+  amical:
+    use:
+      ami-sim_input: True
+      mirage_input: False
+      extraction: True
+      analysis: True
+    extract:
+      fake_obj: True
+      mask_name: g7
+      bs_multi_tri: False
+      peak_method: fft
+      hole_diameter: 0.8
+      cutoff: 0.0001
+      fw_splodge: 0.7
+      native_err: False
+      n_wl: 3
+      n_block: 0
+      theta_detector: 0
+      scaling_uv: 1
+      i_wl: None
+      unbias_v2: True
+      comp_cp_cov: True
+      display_plots: True
+      expert_plot: False
+      verbose: False
+      path: None
+    analysis:
+      candid:
+        use: True
+        rmin: 20
+        rmax: 250
+        step: 50
+        ncore: 12
+        diam: 20
+      pymask:
+        use: False
+        sep_prior:
+          - 100
+          - 180
+        pa_prior:
+          - 20
+          - 80
+        cr_prior:
+          - 230
+          - 270
+        ncore: 12
+        extra_error: 0
+        err_scale: 1
+        mcmc:
+          niters: 800
+          walkers: 100
+          initial_guess:
+            - 146
+            - 47
+            - 244
+          burn_in: 100
+        cr_limit:
+          nsim: 500
+          ncore: 12
+          smax: 250
+          nsep: 100
+          cmax: 5000
+          nth: 30
+          ncrat: 60
+      plot: True
+
+  implaneia:
+    use: False

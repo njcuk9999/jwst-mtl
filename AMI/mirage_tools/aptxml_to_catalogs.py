@@ -87,12 +87,21 @@ def apt2cat(xml_filename, obs_date_float):
         a,b,c = base.partition('.xml')
         catname.append(path+'/'+a+'_'+targetname[i]+'_catalog.list')
 
+    # save the position of the source in the catalogue
+    source_positions = []
+    # save the tables (as opposed to saving them - save later)
+    tables = []
     # Make alpha delta input an array
-    for i in range(len(alpha)):
-        neil.make_catalog(alpha[i], delta[i], 120.0, obs_date_float, catname[i])
+    for it in range(len(alpha)):
+        pos, table = neil.make_catalog(alpha[it], delta[it], 120.0,
+                                       obs_date_float, return_data=True)
+        # append the source position to storage
+        source_positions.append(pos)
+        # append the table to storage
+        tables.append(table)
 
     # Output the catalogue name list as well as the field name list
-    return catname, targetname
+    return catname, targetname, tables, source_positions
 
 
 # Run example
