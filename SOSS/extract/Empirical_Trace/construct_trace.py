@@ -134,7 +134,7 @@ def build_empirical_trace(clear, f277w, badpix_mask, subarray, pad, oversample,
         print(' \nConstructing first pass trace models...')
         print('  Starting the first order trace model...')
     # Pad the trace at this point if no further iterations are to be performed.
-    if max_iter < 2:
+    if max_iter == 0:
         pad_i = pad[0]
     else:
         pad_i = 0
@@ -168,7 +168,7 @@ def build_empirical_trace(clear, f277w, badpix_mask, subarray, pad, oversample,
         # Subtract the second order model use the residuals to get a better
         # estimate of the first order core in the contaminated region, and
         # vice-versa for the second order.
-        if max_iter < 1:
+        if max_iter == 0:
             # If no iterations are requested (unadvised) keep first pass
             # models and move on.
             o1_uncontam = o1_rescale

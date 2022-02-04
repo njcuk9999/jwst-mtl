@@ -105,7 +105,10 @@ class EmpiricalTrace:
 
         # Get default filename if none provided.
         if filename is None:
-            filename = 'SOSS_2D_profile_{}.fits'.format(self.subarray)
+            pad = self.pad[0]
+            ovsmp = self.oversample
+            sub = self.subarray
+            filename = 'SOSS_2D_profile_{0}_os={1}_pad={2}.fits'.format(sub, ovsmp, pad)
         if self.verbose != 0:
             print('Saving trace profiles to file {}...'.format(filename))
 
