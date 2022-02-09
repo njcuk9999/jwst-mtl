@@ -201,8 +201,11 @@ class TimeSeries(object):
         # rms=13.8903 dans le cas SS256 ou SS96
         # rms=10.34 dans le cas FULL
         #TODO: do same for gain: 1.6221
+        # 20220120 - Antoine found that using rms=13.8903 produced
+        # exactly a factor sqrt(2) higher readout noise in the final rateints images
+        # TODO: use rms = 13.8903 / sqrt(2)
 
-        mynoise = np.random.standard_normal(np.size(self.data)) * rms
+        mynoise = np.random.standard_normal(np.size(self.data)) * rms / np.sqrt(2)
         #print(np.std(mynoise))
         mynoise = np.reshape(mynoise, (self.nintegs, self.ngroups, self.ncols, self.nrows))
         #print(np.shape(mynoise))

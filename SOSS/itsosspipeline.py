@@ -194,6 +194,17 @@ def starmodel(simuPars, pathPars, tracePars, throughput, verbose=True):
         model_angstrom = np.linspace(4000, 55000, 2000001)
         model_flambda = planck(model_angstrom/10000, simuPars.bbteff)
         model_ldcoeff = starlimbdarkening(model_angstrom)
+    elif simuPars.modelfile == 'CUSTOM' and simuPars.customstarmodel != 'null':
+        if verbose: print('Star atmopshere model type: CUSTOM')
+        print('CUSTOM star atmosphere model assumed angstrom and Flambda.')
+        print('will be read this way:')
+        print('a = fits.open(simuPars.customstarmodel)')
+        print('model_angstrom = a[1].data["wavelength"]')
+        print('model_flambda = a[1].data["flux"]')
+        a = fits.open(simuPars.customstarmodel)
+        model_angstrom = a[1].data['wavelength']
+        model_flambda = a[1].data['flux']
+        model_ldcoeff = starlimbdarkening(model_angstrom)
     elif simuPars.modelfile == 'CONSTANT_FLAMBDA':
         if verbose: print('Star atmosphere model type: CONSTANT_FLAMBDA')
         model_angstrom = np.linspace(4000, 55000, 2000001)
@@ -869,7 +880,8 @@ def loictrace(simuPars, response, bin_models_wv, bin_starmodel_flux, bin_ld_coef
 
     bin_models_flux = planet_flux_ratio * bin_starmodel_flux * bin_response * bin_quantum_yield
 
-
+    #TODO: return planet_flux_ratio * bin_starmodel_flux to calling program to enable
+    # saving this "input spectrum".
 
     # Flux along x-axis pixels (in e-/column/s) for all columns
     pixelflux = bin_array(bin_models_wv, bin_models_flux, w, dw, debug=False)

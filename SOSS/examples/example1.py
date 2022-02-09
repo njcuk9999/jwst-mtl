@@ -109,6 +109,9 @@ soss.readpaths(config_paths_filename, pathPars)
 #pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_xytheta.txt'
 #pathPars.path_userland = os.path.join(pathPars.path_userland, 'drifts/')
 
+# ERS for Bjorn
+#pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_wasp18b_transit.txt'
+#pathPars.path_userland = os.path.join(pathPars.path_userland, 'ERS/wasp18b_transit/')
 
 # CAP rehearsal
 #pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_twa33_substrip96.txt'
@@ -161,9 +164,10 @@ if skip_sim is False:
         #plt.plot(throughput.wv, throughput.response[1])
         plt.show()
 
-        t = Table([starmodel_angstrom/10000, starmodel_flambda], names=('micron', 'W/m2/um'))
-        ascii.write(t, os.path.join(pathPars.path_userland, 'IDTSOSS_star_model_calibrated.txt'))
-        sys.exit()
+    # Save star model anchored on the magnitude
+    t = Table([starmodel_angstrom/10000, starmodel_flambda], names=('micron', 'W/m2/um'))
+    ascii.write(t, os.path.join(pathPars.path_userland, 'IDTSOSS_star_model_calibrated.txt'))
+
 
     # Read Planet Atmosphere Model (wavelength in angstroms and radius_planet/radius_star ratio)
     if False:

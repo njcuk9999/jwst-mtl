@@ -38,6 +38,7 @@ class ModelPars:
         self.exptime = 0.0  # exposure time (s)
         self.deadtime = 0.0  # dead time (s)
         self.modelfile = 'null'  # stellar spectrum file name
+        self.customstarmodel = 'null' # name of custom star atm model
         self.bbteff = 'null'  # black body temperature if modelfile is 'blackbody'
         self.nmodeltype = 2  # stellar spectrum type. 1=BT-Settl, 2=Atlas-9+NL limbdarkening
         self.rvstar = 0.0  # radial velocity of star (km/s)
@@ -208,6 +209,8 @@ class ModelPars:
                             self.sol[0] = np.float(columns[1])
                         elif command == 'starmodel':
                             self.modelfile = str(columns[1])
+                        elif command == 'customstarmodel':
+                            self.customstarmodel = str(columns[1])
                         elif command == 'bbteff':
                             self.bbteff = np.float(columns[1])
                         elif command == 'startype':
