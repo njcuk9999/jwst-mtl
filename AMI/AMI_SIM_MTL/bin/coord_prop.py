@@ -5,10 +5,30 @@ coord_prop.py
 
 Get astrometric parameters at a different point in time
 
-coord_prop.py [-h] [--ra RA] [--dec DEC] [--pmra PMRA] [--pmde PMDE]
-              [--plx PLX] [--coordtime COORDTIME]
-              [--coordtimefmt {decimalyear,jd,mjd,iso}]
-              [--obstime OBSTIME] [--obstimefmt {decimalyear,jd,mjd,iso}]
+usage: coord_prop.py [-h] [--ra RA] [--dec DEC] [--pmra PMRA] [--pmde PMDE]
+                     [--plx PLX] [--coordtime COORDTIME]
+                     [--coordtimefmt {decimalyear,jd,mjd,iso}]
+                     [--obstime OBSTIME] [--obstimefmt {decimalyear,jd,mjd,iso}]
+
+Apply space motion to coordinates.
+
+Note if ra/dec/pmra/pmde/plx/cordtime/obstime are not given, all values come
+from python code.
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --ra RA               RA in degrees
+  --dec DEC             Dec in degrees
+  --pmra PMRA           PMRA in mas/yr
+  --pmde PMDE           PMDE in mas/yr
+  --plx PLX             plx in mas
+  --coordtime COORDTIME
+                        coordinate time of the ra/dec/pmra/pmde/plx
+  --coordtimefmt {decimalyear,jd,mjd,iso}
+                        coordinate time format
+  --obstime OBSTIME     Time and date to propagate ra/dec/pmra/pmde/plx to
+  --obstimefmt {decimalyear,jd,mjd,iso}
+                        observation time format
 
 Created on 2022-02-09
 
@@ -34,7 +54,10 @@ INPUT_PMDE = 10362.394 * uu.mas / uu.yr
 INPUT_PLX = 546.9759 * uu.mas
 # Note COORD_TIME and OBS_TIME must be Time objects
 #    (formats = 'jd', 'mjd', 'decimalyear', 'iso')
+
+# coord time is the time of the ra/dec/pmra/pmde/plx
 INPUT_COORD_TIME = Time(2015.5, format='decimalyear')
+# obs time is the time with
 INPUT_OBS_TIME = Time('2025-07-02 11:59:59.500', format='iso')
 
 
@@ -51,7 +74,7 @@ def get_args() -> dict:
     props: dict
         The property dictionary
     """
-    description = 'Apply space motion to coordinates'
+    description = 'Apply space motion to coordinates.'
     description += (' Note if ra/dec/pmra/pmde/plx/cordtime/obstime are '
                     'not given, all values come from python code.')
     parser = argparse.ArgumentParser(description=description)
@@ -67,13 +90,16 @@ def get_args() -> dict:
     parser.add_argument('--plx', action='store', default=None,
                         dest='plx', help='plx in mas')
     parser.add_argument('--coordtime', action='store', default=None,
-                        dest='coordtime', help='coordinate time')
+                        dest='coordtime',
+                        help='coordinate time of the ra/dec/pmra/pmde/plx')
     parser.add_argument('--coordtimefmt', default='decimalyear',
                         dest='coordtimefmt',
                         choices=['decimalyear', 'jd', 'mjd', 'iso'],
                         help='coordinate time format')
     parser.add_argument('--obstime', action='store', default=None,
-                        dest='obstime', help='observation time')
+                        dest='obstime',
+                        help='Time and date to propagate ra/dec/pmra/pmde/plx '
+                             'to')
     parser.add_argument('--obstimefmt', default='iso',
                         dest='obstimefmt',
                         choices=['decimalyear', 'jd', 'mjd', 'iso'],
