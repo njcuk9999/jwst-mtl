@@ -49,7 +49,7 @@ Simulation1:
   # Define the name of the simulation
   name: Simulation 1
   # Define the absolute path to the XML file produced by APL
-  apt_xmlpath: /data/jwst_ami/data/neil_wrap/inputs/jwst_ami_p23_example.xml
+  apt_xmlpath: /data/jwst-ami/data/neil_wrap/inputs/jwst_ami_p23_example.xml
   # Define the absolute path to the APT pointing file (Only required if using
   #    Mirage, otherwise you can set this to None)
   apt_pointing_file: None
@@ -78,7 +78,7 @@ Simulation1:
       F277W: 12.123
       F380M: 12.123
       F430M: 12.123
-      F480M: 12.
+      F480M: 12.123
 
     # -------------------------------------------------------------------------
     # Define companion(s). These are optional and can be removed
@@ -228,9 +228,9 @@ parameters:
   # ---------------------------------------------------------------------------
   general:
     # The global input directory
-    in_dir: /data/jwst_ami/data/neil_wrap
+    in_dir: /data/jwst-ami/data/neil_wrap
     # The global output directory
-    out_dir: /data/jwst_ami/data/neil_wrap
+    out_dir: /data/jwst-ami/data/neil_wrap
   # ---------------------------------------------------------------------------
   # The global instrument settings
   # ---------------------------------------------------------------------------
@@ -242,9 +242,9 @@ parameters:
   # ---------------------------------------------------------------------------
   ami-sim:
     # Whether to use AMI-SIM
-    use: False
+    use: True
     # The output file path for AMI-SIM simulations (must be set)
-    out_path: /data/jwst_ami/data/neil_wrap/amisim/
+    out_path: /data/jwst-ami/data/neil_wrap/amisim/
     # Whether we should create the scene (or use one from disk)
     create_scene: True
     # Whether we should create the simulation (or use one from disk)
@@ -265,7 +265,7 @@ parameters:
     # Whether to include detector noise (1 = True, 0 = False)
     include-det-noise: 1
     # The installation directory for AMI SIM (This must be set)
-    install-dir: /data/jwst_ami/bin/ami_sim
+    install-dir: /data/jwst-ami/bin/ami_sim
     # The name of the AMISIM driver scene package (default value recommended)
     package: driver_scene
     # The name of the AMISIM module
@@ -278,12 +278,12 @@ parameters:
     psf:
       F380M:
         # Must set this - no default value
-        path: /data/jwst_ami/data/neil_wrap/psfs/psf_F380M.fits
+        path: /data/jwst-ami/data/neil_wrap/psfs/psf_F380M.fits
         # If it exists already do we recompute the PSF?
         recompute_psf: False
       F480M:
         # Must set this - no default value
-        path: /data/jwst_ami/data/neil_wrap/psfs/psf_F480M.fits
+        path: /data/jwst-ami/data/neil_wrap/psfs/psf_F480M.fits
         # If it exists already do we recompute the PSF?
         recompute_psf: False
     # The Size of the image (field of view) in pixels - should be odd - default
@@ -309,15 +309,15 @@ parameters:
   mirage:
     use: False
     # maybe this should be output path?
-    out_path: /data/jwst_ami/data/neil_wrap/mirage/
+    out_path: /data/jwst-ami/data/neil_wrap/mirage/
 
     # psf path
     psf:
-      path: /data/jwst_ami/data/neil_wrap/mirage/ref_files_non_default/niriss_gridded_psf_library_newmask
+      path: /data/jwst-ami/data/neil_wrap/mirage/ref_files_non_default/niriss_gridded_psf_library_newmask
       psf_wing_threshold_file: config
     # set these None to not use them?
     reffiles:
-      path: /data/jwst_ami/data/neil_wrap/mirage/ref_files_non_default
+      path: /data/jwst-ami/data/neil_wrap/mirage/ref_files_non_default
       astrometric: pysaif
       gain: jwst_niriss_gain_general.fits
       pixelflat: jwst_niriss_flat_general.fits

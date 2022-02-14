@@ -33,6 +33,17 @@ log = log_functions.Log()
 # define group name
 group = 'recipe'
 
+# =============================================================================
+# Define arguments
+# =============================================================================
+# Define the config file
+lconsts.add_argument('WCONFIG', value=None, dtype=str,
+                     source=__NAME__, user=True, argument=True,
+                     group=group,
+                     description='Define the target as it appears in the '
+                                 'APT file',
+                     command=['--config'])
+
 
 # =============================================================================
 # Define functions
@@ -57,8 +68,10 @@ def main(**kwargs):
             return returns
     except Exception as e:
         if hasattr(e, '__log__'):
-            log.exception(e.__log__())
-            log.error(e.__log__())
+            # If it has __log__ it has been triggered already
+            pass
+            # log.exception(e.__log__())
+            # log.error(e.__log__())
         else:
             emsg = 'UNEXPECTED ERROR {0}: {1}'
             log.exception(emsg.format(type(e), str(e)))

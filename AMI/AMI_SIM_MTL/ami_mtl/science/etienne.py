@@ -452,6 +452,8 @@ def ami_sim_run_code(params: ParamDict, path: str, _filter: str,
     """
     # construct tag
     tag = '{0}_{1}'.format(simname, target_name)
+    # clear sys.argv
+    sys.argv = [str(params['AMISIM-PACKAGE']) + '.py']
     # -------------------------------------------------------------------------
     # Get arguments for ami-sim
     # -------------------------------------------------------------------------
@@ -460,8 +462,6 @@ def ami_sim_run_code(params: ParamDict, path: str, _filter: str,
         args = []
         # output directory path (relative to home directory)
         args += ['--target_dir', str(path)]
-        # absolute output directory path, if specified it overrides --target_dir
-        args += ['--output_absolute_path', str(path)]
         # overwrite yes/no, default 0 (no)
         args += ['--overwrite', params['AMISIM-OVERWRITE']]
         # generate up-the-ramp fits file? yes/no, default 0 (no)
@@ -503,8 +503,8 @@ def ami_sim_run_code(params: ParamDict, path: str, _filter: str,
         args += ['--apply_jitter', params['AMISIM-APPLY_JITTER']]
         # Include photon noise, read noise, background noise, and dark
         #     current. Default is on
-        args += ['--include_detection_noise',
-                 params['AMISIM-INCLUDE_DET_NOISE']]
+        # args += ['--include_detection_noise',
+        #          params['AMISIM-INCLUDE_DET_NOISE']]
         # all args must be strings
         args = list(map(lambda x: str(x), args))
         # load module
