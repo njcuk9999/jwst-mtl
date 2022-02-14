@@ -9,7 +9,6 @@ Created on
 
 @author: 
 """
-import amical
 import numpy as np
 import os
 import sys
@@ -18,6 +17,12 @@ from typing import Any, Dict, List, Tuple, Union
 import matplotlib.pyplot as plt
 from mirage.apt import read_apt_xml
 import yaml
+
+# try to import other modules
+try:
+    import amical
+except ImportError:
+    amical = None
 
 from ami_mtl.core.core import constant_functions
 from ami_mtl.core.core import exceptions
