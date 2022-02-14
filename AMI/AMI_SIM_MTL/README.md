@@ -1,5 +1,7 @@
 # The AMI Simulation wrapper
 
+    Last updated 2022-02-14
+
 ## 1 AMISIM
 
 Installing AMISIM requires the of cloning the github repository and installing 
@@ -14,6 +16,21 @@ This will create an ami_sim directory in your current working directory.
 
 Please note down the AMISIM installation location you will need to for the 
 yaml file. From this point on we will refer to this as `{AMISIM_ROOT}`.
+
+All required python modules are installed with the `requirements.txt` file for 
+the AMI Simulation wrapper (section \ref{sec:ami_sim_wrapper}). 
+However one of the modules (webbpsf) requires some additional files to be 
+downloaded and link to via an environmental variable. 
+The instructions are here: 
+
+https://webbpsf.readthedocs.io/en/stable/installation.html#installing-the-required-data-files}
+
+but essentially you need to:
+
+1. Download the following file: webbpsf-data-1.0.0.tar.gz [approx. 280 MB]
+2. Untar webbpsf-data-1.0.0.tar.gz into a directory of your choosing.
+3. Set the environment variable \lstinline{WEBBPSF_PATH} to point to that directory
+   (e.g. `export WEBBPSF_PATH=}\$\lstinline{HOME/data/webbpsf-data`)
 
 
 ## 2 Mirage
