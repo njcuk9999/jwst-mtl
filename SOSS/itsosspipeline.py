@@ -2078,3 +2078,56 @@ def get_spec_csv_path(caselist=None, params_dict={"ComposType": "ChemEqui", "Met
 
     spec_csv_path = path_files + planet_name + "/" + case["fileroot"].data[0] + "Spectrum_FullRes_dppm.csv"
     return spec_csv_path
+
+
+def towardtrace(file_rateints, file_model):
+
+    stack_integrations(file_rateints, '/genesis/jwst/userland-soss/loic_review/stack.fits')
+    clean1, clean2 = decontaminate_exposure(file_rateints, file_model)
+
+    print('towardtrace - medianing clean1...')
+    stack_clean1 = np.nanmedian(clean1, axis=0)
+    print('medianing clean2...')
+    stack_clean2 = np.nanmedian(clean2, axis=0)
+
+    print('writing clean stacks to disk')
+    h = fits.PrimaryHDU(stack_clean1)
+    h.writeto('/genesis/jwst/userland-soss/loic_review/stackclean1.fits', overwrite=True)
+    h = fits.PrimaryHDU(stack_clean2)
+    h.writeto('/genesis/jwst/userland-soss/loic_review/stackclean2.fits', overwrite=True)
+
+
+def stack_integrations(filename, stackname, integ_start=0, integ_end=-1):
+
+    h = fits.open(filename)
+    allintegs = h[1].data
+    nints = h[0].header['NINTS']
+
+    print('Stacking rateints')
+    stack = np.nanmedian(allintegs[integ_start:integ_end,:,:], axis=0)
+    print('Writing on disk...')
+    hout = fits.PrimaryHDU(stack)
+    hout.writeto(stackname, overwrite=True)
+
+def decontaminate_exposure(file_rateints, file_model):
+
+    '''Decontaminate the rateint exposure using the ATOCA models'''
+
+    print('Decontaminating integrations - reading rateints')
+    h = fits.open(file_rateints)
+    allintegs = h[1].data
+
+    # The ATOCA models has 6 extensions, 1,2 are the models in orders 1 and 2
+    # 3,4,5 are the apertures in orders 1 to 3. Ext 6 is the number of good pixels in
+    # the aperture.
+    print('Reading the models')
+    m = fits.open(file_model)
+    model1 = m[1].data
+    model2 = m[2].data
+
+    # Subtract model from rateints, for each integration
+    clean1 = allintegs - model2
+    clean2 = allintegs - model1
+
+    print('Retrun the cleaned integrations...')
+    return clean1, clean2

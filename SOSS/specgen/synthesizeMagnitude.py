@@ -14,7 +14,7 @@ from astropy.io import fits
 import sys
 
 # Import trace position library
-import tracepol as tp
+import trace.tracepol as tp
 
 
 
