@@ -57,7 +57,7 @@ pyami/simcode/
 ### Questions:
 Why do we need a scene that is an odd number of pixels?
 Isn’t better to have psf x scene that is a power of 2 the number of pixels?
-Why is -utr 1 does not increase the number of images in the cube with driver_scene.py? Because the output product is the processed cube of integrations (CDS - dark - background)*ff, not raw data. 
+Why is -utr 1 does not increase the number of images in the cube with `driver_scene.py`? Because the output product is the processed cube of integrations (CDS - dark - background)\*ff, not raw data. 
 
 ---
 
