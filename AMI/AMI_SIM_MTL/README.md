@@ -4,9 +4,9 @@
 
 ## 1 AMISIM
 
-Installing AMISIM requires the of cloning the github repository and installing 
-some python modules (we handle the python modules as part of the requirements 
-to run the AMI simulation wrapper.
+Installing AMISIM requires cloning the github repository and installing some
+python modules (we handle the python modules as part of the requirements) to run
+the AMI simulation wrapper.
 
 To clone AMISIM use the following command:
 
@@ -77,7 +77,7 @@ conda) using the following command:
 
     which pip
 
-It should display something ending in `/envs/ami-env/bion/pip`
+It should display something ending in `/envs/ami-env/bin/pip`
 
 
 You can now install the python modules required for the AMI simulation wrapper 
