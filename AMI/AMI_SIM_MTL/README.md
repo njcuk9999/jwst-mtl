@@ -154,6 +154,6 @@ This should produce the simulation(s) as defined in the yaml file.
 Otherwise if you have set the $PATH correctly then you should be able to just 
 run the following from the command line:
 
-    wrapper.py --config=../inputs/example.yaml
+    wrapper --config=../inputs/example.yaml
 
 
