@@ -17,7 +17,7 @@ This will create an ami_sim directory in your current working directory.
 Please note down the AMISIM installation location you will need to for the 
 yaml file. From this point on we will refer to this as `{AMISIM_ROOT}`.
 
-All required python modules are installed with the `requirements.txt` file for 
+All required python modules are installed with the `setup.cfg` file for 
 the AMI Simulation wrapper (section \ref{sec:ami_sim_wrapper}). 
 However one of the modules (webbpsf) requires some additional files to be 
 downloaded and link to via an environmental variable. 
@@ -50,9 +50,7 @@ To clone the AMI Simulation wrapper use the following command:
 
     git clone git@github.com:njcuk9999/jwst-mtl.git
 
-This should create a directory called `jwst-mtl`. Please note down this 
-installation location you will need to for the yaml file. From this point on 
-we will refer to this as `{WRAPPER_ROOT}`.
+This should create a directory called `jwst-mtl`.
 
 We next recommend a new conda environment (though venv or pip can be used if you prefer).
 
@@ -70,7 +68,7 @@ directory that was created when you cloned the repository above.
 
     cd jwst-mtl/AMI/AMI_SIM_MTL
 
-Once in this directory you should see a `requirements.txt` file.
+Once in this directory you should see a `setup.cfg` file.
 
 Check that you have pip and are in the correct conda environment (if using 
 conda) using the following command:
@@ -83,19 +81,17 @@ It should display something ending in `/envs/ami-env/bin/pip`
 You can now install the python modules required for the AMI simulation wrapper 
 with the following command:
 
-    pip install -r requirements.txt
+    pip install .
 
-Finally we can add the AMI simulation wrapper to the python path by adding the 
-following to the `.bashrc`, `.profile`, `.login` or equivalent file. 
-Note we assume you are using the bash shell, this command may be different for 
-different command line shells.
+To install for development, you can install in editable mode and add the "dev"
+dependencies.
 
-    export PYTHONPATH={WRAPPER_ROOT}:$PYTHONPATH
-    export PATH={WRAPPER_ROOT}/bin/:$PATH
+    pip install -e ".[dev]"
 
-This will allow you to run and call the wrapper from within python or call the 
-wrapper function from the command line. If successful you are ready to set 
-up the simulation yaml file and then run the simulation wrapper.
+This will allow you to run and call the wrapper from within python or call the
+wrapper function from the command line, when working in the virtual environment
+created above. If successful you are ready to set up the simulation yaml file
+and then run the simulation wrapper.
 
 ### 3.2 The simulation yaml file
 
