@@ -134,8 +134,12 @@ When run at the prompt, no image is displayed on screen. Anthony works in Spyder
 
 [http://fmillour.com/wp-content/uploads/Manuscrit_final.pdf](http://fmillour.com/wp-content/uploads/Manuscrit_final.pdf)
 
+## AMICAL
 
-## The “Sydney” IDL pipeline
+AMICAL is a Python rewrite of the IDL pipeline desribed below. It is hosted
+here: https://github.com/SydneyAstrophotonicInstrumentationLab/AMICAL.
+
+### The “Sydney” IDL pipeline
 
 Latest working version is here: [https://github.com/AnthonyCheetham/idl_masking/](https://github.com/AnthonyCheetham/idl_masking/)
 
@@ -150,7 +154,7 @@ Fit a model (binary_gri.pro)
 
 The arts of extracting the measurements is in calc_bispect. The bispectrum is the multiplication of three complex points `FFT(u_i,v_i)*FFT(u_j,v_j)*conj(FFT(u_k,v_k)).`
 
-Calc_bispec.pro calls bispect
+`Calc_bispec.pro` calls bispect
 
 ---
 
