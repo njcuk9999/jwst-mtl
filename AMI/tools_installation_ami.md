@@ -9,7 +9,7 @@ Take from here: [https://docs.google.com/document/d/1Et1MuJjIYzh47M9_41RmO2ZOidC
 
 Install via git clone:
 ```bash
-git clone https://github.com/agreenbaum/ami_sim
+git clone https://github.com/anand0xff/ami_sim
 ```
 
 python requirements:
