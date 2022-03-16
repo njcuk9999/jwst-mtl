@@ -205,10 +205,6 @@ Simulation1:
   calibrator1:
     # The name exactly as it is in the APT file
     name: HD-218172
-    # total exposure time in seconds (if None taken from APT)
-    tot_exp: None
-    # extracted flux in e-/s
-    ext_flux: None
     # magnitudes in each filter of the calibrator
     magnitude:
       F277W: 10.123

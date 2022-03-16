@@ -49,7 +49,6 @@ display_func = general.display_func
 # Define classes
 # =============================================================================
 class Simulation:
-
     classname: str = 'Simulation'
 
     def __init__(self, params: ParamDict, properties: Dict[str, Any]):
@@ -127,7 +126,6 @@ class Simulation:
 
 
 class Observation:
-
     classname: str = 'Observation'
 
     def __init__(self, params: ParamDict, properties: Dict[str, Any],
@@ -262,9 +260,6 @@ class Observation:
             sargs = [xml_filename, self.name, instance.apt]
             self.params.set_source(key, '{0}[{1}].{2}'.format(*sargs))
 
-
-
-
     def _str_properties(self, properties: Dict[str, Any]) -> list:
         """
         Take a dictionary and produce a string representation for each
@@ -382,7 +377,6 @@ class Observation:
                                   funcname=func_name)
         # return value
         return out_values, out_valid
-
 
     def __str__(self) -> str:
         """
@@ -517,7 +511,6 @@ class Observation:
 
 
 class Target(Observation):
-
     classname: str = 'Target'
 
     def __init__(self, params: ParamDict, properties: Dict[str, Any]):
@@ -561,7 +554,6 @@ class Target(Observation):
 
 
 class Calibrator(Observation):
-
     classname: str = 'Calibrator'
 
     def __init__(self, params: ParamDict, properties: Dict[str, Any]):
@@ -581,7 +573,6 @@ class Calibrator(Observation):
 
 
 class Companion(Observation):
-
     classname: str = 'Companion'
 
     def __init__(self, params: ParamDict, properties: Dict[str, Any]):
@@ -1511,7 +1502,7 @@ def run_ami_analysis(observation: Observation, mode: str):
     candid_params = dict()
     pymask_params = dict()
     pymask_param_mcmc = dict()
-    pymask_param_cr= dict()
+    pymask_param_cr = dict()
     # ---------------------------------------------------------------------
     # Load candid variables
     # ---------------------------------------------------------------------
@@ -1565,7 +1556,7 @@ def run_ami_analysis(observation: Observation, mode: str):
                 return
         # ---------------------------------------------------------------------
         # define pymask cr limit parameters
-        names = ['nsim', 'ncore', 'smax' , 'nsep', 'cmax', 'nth', 'ncrat']
+        names = ['nsim', 'ncore', 'smax', 'nsep', 'cmax', 'nth', 'ncrat']
         variables = ['AMICAL_PYMASK_CR_NSIM', 'AMICAL_PYMASK_CR_NCORE',
                      'AMICAL_PYMASK_CR_SMAX', 'AMICAL_PYMASK_CR_NSEP',
                      'AMICAL_PYMASK_CR_CMAX', 'AMICAL_PYMASK_CR_NTH',
