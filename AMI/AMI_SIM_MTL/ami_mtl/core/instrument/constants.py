@@ -167,10 +167,10 @@ Consts.add('APT-TARGET-FILTERS', value=None, dtype=list, source=__NAME__,
 group = 'instrument'
 
 # Define the pixel scale (expected to be very close to 0.065 arcsec/pixel)
-Consts.add('PIX_SCALE', value=0.065, dtype=float, units=uu.arcsec / uu.pixel,
+Consts.add('PIX_SCALE', value=0.0656, dtype=float, units=uu.arcsec / uu.pixel,
            source=__NAME__, user=False, argument=False, group=group,
            description='Define the pixel scale (expected to be very close '
-                       'to 0.065 arcsec/pixel)',
+                       'to 0.0656 arcsec/pixel)',
            path='instrument.pix_scale')
 
 # Define all allowed filters

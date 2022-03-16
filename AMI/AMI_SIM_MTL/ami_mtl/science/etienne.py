@@ -53,7 +53,7 @@ def ami_sim_observation(fov_pixels: float, oversample: int,
 
     :param fov_pixels: the native image size (FOV in pixels)
     :param oversample: the oversampling factor
-    :param pix_scale: pixel scale (expected to be very close to 0.065
+    :param pix_scale: pixel scale (expected to be very close to 0.0656
                       arcsec/pixel)
     :param ext_flux: extracted flux in e-/s
     :param tot_exp: total exposure time in seconds

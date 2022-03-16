@@ -1057,6 +1057,7 @@ def run_ami_sim(simname: str, observation: Observation):
         ngroups = observation.num_groups[_filter]
         # run ami-sim
         if use_amisim and create_sim:
+            # TODO: Warn if ami_sim pixscl is different from the pkwargs one
             tag = etienne.ami_sim_run_code(params, target_dir, _filter,
                                            psf_filename, scenepath, count_rate,
                                            simname, target_name, nint, ngroups)
