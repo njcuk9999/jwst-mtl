@@ -48,7 +48,7 @@ Simulation1:
 
   # Define the name of the simulation
   name: Simulation 1
-  # Define the absolute path to the XML file produced by APL
+  # Define the absolute path to the XML file produced by APT
   apt_xmlpath: /data/jwst-ami/data/neil_wrap/inputs/jwst_ami_p23_example.xml
   # Define the absolute path to the APT pointing file (Only required if using
   #    Mirage, otherwise you can set this to None)
@@ -200,7 +200,7 @@ Simulation1:
   # -------------------------------------------------------------------------
 
   # -------------------------------------------------------------------------
-  # Companion 1: HD-218172
+  # Calibrator 1: HD-218172
   # -------------------------------------------------------------------------
   calibrator1:
     # The name exactly as it is in the APT file

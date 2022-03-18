@@ -5,9 +5,9 @@
 
 # CODE DESCRIPTION HERE
 
-Created on 
+Created on
 
-@author: 
+@author:
 """
 import numpy as np
 import os
@@ -118,7 +118,7 @@ class Simulation:
         for key in keys:
             # companions should start with "companion"
             if key.startswith('calibrator'):
-                # load companion
+                # load calibrator
                 calibrator = Calibrator(self.params, properties[key])
                 # load magnitudes for companion
                 calibrator.get_magnitudes()
