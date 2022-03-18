@@ -251,7 +251,9 @@ parameters:
     create_simulation: True
     # Whether we should create the ramps (1 = True, 0 = False)
     uptheramp: 0
-    # Whether we should create the calibrators (1 = True, 0 = False)
+    # Whether we should create the ami_sim calibrators (1 = True, 0 = False)
+    # NOTE: This is to generate ami_sim "c_*" files for each observation
+    # i.e. it is different from the calibrators specified above or in the APT
     create_calibrator: 0
     # Whether we should override existing simulations (1 = True, 0 = False)
     overwrite: 1
