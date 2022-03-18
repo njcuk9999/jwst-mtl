@@ -104,7 +104,7 @@ Consts.add('DEBUG', value=0, dtype=int, source=__NAME__, user=True,
            argument=True, group=group,
            description='Set debug mode (1-9) the higher the number the '
                        'more verbose',
-           command='--debug')
+           command='--debug', path='general.debug')
 
 
 # =============================================================================

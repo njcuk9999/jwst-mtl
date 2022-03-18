@@ -1291,7 +1291,8 @@ def run_amical_extraction(simname: str, observation: Observation,
         params.log.info('AMI-CAL EXTRACTION: Extracting {0}'.format(*marg))
         # extract the target
         with general.ModifyPrintouts(text='AMI-CAL Output', flush=True,
-                                     logfile=params['LOGFILE']):
+                                     logfile=params['LOGFILE'],
+                                     debugmode=params['DEBUG']):
             target_bs = amical.extract_bs(target_cube, target_inname,
                                           targetname=target_outname,
                                           **params_ami)
@@ -1304,7 +1305,8 @@ def run_amical_extraction(simname: str, observation: Observation,
             params.log.info('AMI-CAL EXTRACTION: Extracting {0}'.format(*marg))
             # extract calibrator - catching printouts
             with general.ModifyPrintouts(text='AMI-CAL Output', flush=True,
-                                         logfile=observation.params['LOGFILE']):
+                                         logfile=observation.params['LOGFILE'],
+                                         debugmode=params['DEBUG']):
                 # extract the calibrator
                 calib_bs = amical.extract_bs(calibrator_cubes[c_it],
                                              calibrator_innames[c_it],
@@ -1322,7 +1324,8 @@ def run_amical_extraction(simname: str, observation: Observation,
         params.log.info('AMI-CAL EXTRACTION: Calibrating {0}'.format(*marg))
         # calibrate target
         with general.ModifyPrintouts(text='AMI-CAL Output', flush=True,
-                                     logfile=observation.params['LOGFILE']):
+                                     logfile=observation.params['LOGFILE'],
+                                     debugmode=params['DEBUG']):
             cal_target = amical.calibrate(target_bs, calibrators_bs)
         # ---------------------------------------------------------------------
         # Deal with plotting
@@ -1330,7 +1333,8 @@ def run_amical_extraction(simname: str, observation: Observation,
         # display the plots
         if observation.params['AMICAL_EXT_DISPLAY_PLOT']:
             with general.ModifyPrintouts(text='AMI-CAL Output', flush=True,
-                                         logfile=observation.params['LOGFILE']):
+                                         logfile=observation.params['LOGFILE'],
+                                         debugmode=params['DEBUG']):
                 amical.show(cal_target)
                 plt.show(block=True)
                 plt.close()
@@ -1610,7 +1614,8 @@ def _amical_run_candid(params: ParamDict, filename: str,
     """
     # hide all text within module
     with general.ModifyPrintouts(text='AMI-CAL-CANDID Output', flush=True,
-                                 logfile=params['LOGFILE']):
+                                 logfile=params['LOGFILE'],
+                                 debugmode=params['DEBUG']):
         # fit using candid
         fit_candid = amical.candid_grid(filename, **kwargs,
                                         doNotFit=[])
@@ -1640,7 +1645,8 @@ def _amical_run_pymask(params: ParamDict, filename: str,
     """
     # hide all text within module
     with general.ModifyPrintouts(text='AMI-CAL-PYMASK Output', flush=True,
-                                 logfile=params['LOGFILE']):
+                                 logfile=params['LOGFILE'],
+                                 debugmode=params['DEBUG']):
         # get the pymask fit with a grid
         fit_pymask1 = amical.pymask_grid(filename, **kwargs1)
         # get the pymask fit with mcmc

@@ -227,6 +227,8 @@ parameters:
     in_dir: /data/jwst-ami/data/neil_wrap
     # The global output directory
     out_dir: /data/jwst-ami/data/neil_wrap
+    # debug mode
+    debug: 1
   # ---------------------------------------------------------------------------
   # The global instrument settings
   # ---------------------------------------------------------------------------

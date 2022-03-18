@@ -522,7 +522,8 @@ def ami_sim_run_code(params: ParamDict, path: str, _filter: str,
         # ---------------------------------------------------------------------
         # run module main function (dealing with print outs)
         with general.ModifyPrintouts(text='AMI-SIM Output', flush=True,
-                                     logfile=params['LOGFILE']):
+                                     logfile=params['LOGFILE'],
+                                     debugmode=params['DEBUG']):
             mod.main(args)
         # clear a line from modified print outs
         print()
