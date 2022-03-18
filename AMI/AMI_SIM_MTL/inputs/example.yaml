@@ -100,7 +100,7 @@ Simulation1:
         separation: 0.5
         # positional angle in degrees
         pa: 90
-        # whether to plot a plot showing the simulated planet
+        # whether to plog a figure showing the simulated planet
         plot: False
       # magnitudes in each filter of the companion
       mag:
@@ -125,7 +125,7 @@ Simulation1:
         separation: 1.0
         # positional angle in degrees
         pa: 180
-        # whether to plot a plot showing the simulated planet
+        # whether to plog a figure showing the simulated planet
         plot: False
       # magnitudes in each filter of the companion
       mag:
@@ -156,7 +156,7 @@ Simulation1:
         radius: 0.4
         # the gaussian exponent of the disk (2 is purely gaussian)
         exponent: 1.2
-        # whether to plot a plot showing the simulated planet
+        # whether to plog a figure showing the simulated planet
         plot: True
       # magnitudes in each filter of the companion
       mag:
@@ -185,7 +185,7 @@ Simulation1:
         radius: 0.6
         # the gaussian exponent of the bar (2 is purely gaussian)
         exponent: 2
-        # whether to plot a plot showing the simulated planet
+        # whether to plog a figure showing the simulated planet
         plot: True
       # magnitudes in each filter of the companion
       mag:
