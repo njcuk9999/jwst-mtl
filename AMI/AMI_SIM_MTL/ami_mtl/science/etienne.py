@@ -465,7 +465,7 @@ def ami_sim_run_code(params: ParamDict, path: str, _filter: str,
         # overwrite yes/no, default 0 (no)
         args += ['--overwrite', params['AMISIM-OVERWRITE']]
         # generate up-the-ramp fits file? yes/no, default 0 (no)
-        args += ['--uptheramp', params['AMISMI-UPTHERAMP']]
+        args += ['--uptheramp', params['AMISIM-UPTHERAMP']]
         # filter name (upper/lower case)
         args += ['--filter', _filter]
         # absolute path to oversampled PSF fits file. Spectral type set in this
@@ -480,7 +480,7 @@ def ami_sim_run_code(params: ParamDict, path: str, _filter: str,
         # number of up-the-ramp readouts
         args += ['--ngroups', ngroups]
         # create calibrator observation yes/no default 1 (yes)
-        args += ['--create_calibrator', params['AMISMI-CREATE_CALIBRATOR']]
+        args += ['--create_calibrator', params['AMISIM-CREATE_CALIBRATOR']]
         # Photon count rate on 25m^2 per sec in the bandpass
         args += ['--countrate', count_rate]
         # Tag to include in the names of the produced files

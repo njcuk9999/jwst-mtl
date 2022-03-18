@@ -288,13 +288,13 @@ for _filter in FILTERS:
                path='ami-sim.out.{0}'.format(_filter))
 
 # Define whether to produce up-the-ramp images
-Consts.add('AMISMI-UPTHERAMP', value=False, dtype=bool, source=__NAME__,
+Consts.add('AMISIM-UPTHERAMP', value=False, dtype=bool, source=__NAME__,
            user=True, argument=False, group=group,
            description='Define whether to produce up-the-ramp images',
            path='ami-sim.uptheramp')
 
 # Define whether to create calibrator (passed to ami-sim)
-Consts.add('AMISMI-CREATE_CALIBRATOR', value=0, dtype=int, source=__NAME__,
+Consts.add('AMISIM-CREATE_CALIBRATOR', value=0, dtype=int, source=__NAME__,
            options=[0, 1], user=False, argument=False, group=group,
            description='Define whether to create calibrator '
                        '(passed to ami-sim)',
