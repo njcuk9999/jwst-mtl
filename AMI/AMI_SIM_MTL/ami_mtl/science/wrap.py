@@ -427,7 +427,7 @@ class Observation:
 
         # get parameters from params
         nints = list(self.params['APT-TARGET-NINT'])
-        ngroups = list(self.params['APT-TARGET-NINT'])
+        ngroups = list(self.params['APT-TARGET-NGROUP'])
         nsubarrays = list(self.params['APT-TARGET-SUBARRAYS'])
         zeropoints = dict(self.params['ZEROPOINTS'])
         tframes = dict(self.params['T_FRAMES'])
