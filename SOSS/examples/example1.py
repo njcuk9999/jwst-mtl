@@ -117,8 +117,11 @@ soss.readpaths(config_paths_filename, pathPars)
 #pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_twa33_substrip96.txt'
 #pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_twa33_substrip256.txt'
 
-pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_bd601753.txt'
-pathPars.path_userland = os.path.join(pathPars.path_userland, 'CAP_rehearsal/bd601753/')
+#pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_bd601753.txt'
+#pathPars.path_userland = os.path.join(pathPars.path_userland, 'CAP_rehearsal/bd601753/')
+
+pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_demo.txt'
+pathPars.path_userland = os.path.join(pathPars.path_userland, 'demo/')
 
 #pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_hatp14b.txt'
 
@@ -134,7 +137,7 @@ print(simuPars.pmodeltype[0])
 # For testing, allow skipping steps.
 skip_sim = False
 skip_addnoise = False
-skip_clear = False
+skip_clear = True
 skip_dms = False
 
 if skip_sim is False:
