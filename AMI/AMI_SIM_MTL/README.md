@@ -167,9 +167,16 @@ run the following from the command line:
 
 ### 4 Observable extraction with AMICAL
 
-AMICAL is developed to analyse AMI observations from multiple facilities. It is
-compatible with JWST/NIRISS. It can analyse either a direct output from
-`ami_sim` or a mirage output processed with the DMS.
+[AMICAL](https://github.com/SydneyAstrophotonicInstrumentationLab/AMICAL) is
+developed to analyse AMI observations from multiple facilities. It is compatible
+with JWST/NIRISS. It can analyse either a direct output from `ami_sim` or a
+mirage output processed with the DMS.
+
+AMICAL should be installed by installing the wrapper (see section 3.1 above).
+Otherwise, it can be installed with
+
+    pip install amical
+
 
 AMICAL performs four main tasks:
 1. Cleaning: bad pixel correction, background subtraction, windowing, etc. (required for mirage output).
