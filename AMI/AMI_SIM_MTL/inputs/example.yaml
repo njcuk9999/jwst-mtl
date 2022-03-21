@@ -97,7 +97,7 @@ Simulation1:
       # the planet parameters
       planet:
         # separation in arcsec
-        separation: 0.5
+        separation: 0.2
         # positional angle in degrees
         pa: 90
         # whether to plog a figure showing the simulated planet
