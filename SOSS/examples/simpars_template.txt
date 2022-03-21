@@ -1,0 +1,129 @@
+##################################
+# SOSS Simulation Parameter file #
+##################################
+# Lines that start with '#' are considered comments.  
+#
+# Blank lines are ignored
+#
+# Format is space separated KEYWORD and VALUE. Any input after VALUE
+# is ignored.
+#
+# KEYWORD entry must start on first column of line.
+#
+# KEYWORDs are case insensitive. 
+#
+# Parameters that absolutely need to be edited for a new target have MUST in the comment 
+#
+# Parameters starting with 3 hashtags are not currently used or supported.
+
+##########################
+# Integration Parameters #
+##########################
+TSTART       -2.222535     # Start time of simulation [hours] # MUST
+TEND         2.222535      # End time of simulation [hours] # MUST
+
+######################
+# Stellar Parameters #
+######################
+RHOSTAR      2.48          # Mean stellar density [cgs] # MUST
+STARMODEL    lte05000-4.50-0.0.PHOENIX-ACES-AGSS-COND-2011.JWST-RF.simu-SOSS.dat # MUST  
+                           # Star spectral model. Or 'BLACKBODY' or 'CONSTANT_FLAMBDA'
+#STARMODEL    CONSTANT_FLAMBDA
+#STARMODEL    BLACKBODY
+#STARMODEL    CUSTOM
+#CUSTOMSTARMODEL /path/where/your/star/mode/is/ # format a[1].data['wavelength'] a[1].data['flam']
+STARTYPE     2             # Model type.  2 = ATLAS + non-linear limb-darkening
+BBTEFF       4000          # Effetive temperature if STARMODEL == 'BLACKBODY'
+VSINI        3.6           # Projected rotation velocity [km/s]
+MAGNITUDE    10.588        # Magnitude to anchor in absolute flux (AB or Vega depends on filter chosen) #MUST
+FILTER       J             # Filter band name
+F277WCAL     True          # Generate F277W calibration integrations at the end of the timeseries?
+NINTF277     10            # number of integrations during the F277W calibration
+
+#####################
+# Planet Parameters #
+#####################
+# Last digit at end of keyword marks planet number.  
+# Up to 9 planets can be included.
+RPRSFILE1     WASP_52_b_HR_Metallicity100_CtoO0.54_pQuench1e-99_TpNonGrayTint75.0f0.25A0.1_pCloud100000.0mbar_Spectrum_FullRes.csv #MUST
+                           # Filename with Rp/R* spectral model
+RPRSTYPE1     2            # planet mode type (for reading properly)
+EMISFILE1     null         # Filename for planet emission model 
+EP1           0.0          # Center of transit time [days]
+PE1           1.7497798    # Orbital period [days]   # MUST
+BB1           0.6          # Impact parameter  #MUST
+ES1           0.0          # sqrt(e)sin(omega)
+EC1           0.0          # sqrt(e)cos(omega)
+RV1           42.5         # Radial velocity semi-amplitude [m/s]
+AL1           0.0          # Geometric albedo (needs emission model)
+EL1           0.0          # Ellipsoidal variations (applied to star model)
+TTVFILE1      null         # File with transit timing offsets (null==None) 
+
+####################
+# Image Parameters #
+####################
+SUBARRAY      SUBSTRIP256   # SUBSTRIP256, SUBSTRIP96 or FULL #MUST
+GRANULARITY   INTEGRATION   # FRAME or INTEGRATION, an image at each ...
+ORDERLIST     1,2,3
+XOUT          2048          # Size of image array along dispersion axis [pixels]
+YOUT          256           # Size of image array along spatial axis [pixels] #MUST
+XPADDING      10            # Native pixel padding at both ends of the spectral axis 
+YPADDING      10            # Same for the spatial axis
+OVERSAMPLE    4             # Oversampling used to generate simulation
+GAIN          1.6           # e- per adu of the detector
+NGROUP        15            # Number of samples up ramp #MUST
+
+###########################################
+# Noise sources and noise reference files #
+###########################################
+READOUT       True
+ZODIBACKG     False
+PHOTON        True
+SUPERBIAS     True
+FLATFIELD     True
+NONLINEARITY  True
+ONEOVERF      True
+DARKCURRENT   True
+COSMICRAY     False
+ZODI_REF      None
+SUPERBIAS_REF None          # test.fits
+FLAT_REF      None
+NLCOEFF_REF   None          # To generate non-linerity in simulation
+NONLIN_REF    None          # To correct for non-linearity 
+                            # should match the file number used to generate NLCOEFF_REF
+DARK_REF      None
+
+################
+# Positional drift in x, y, theta seeded in the time-series
+################
+XYTHETA_FILE_CLEAR     IDTSOSS_xytheta_offsets_clear.txt # 3 columns (x, y, theta), no header
+XYTHETA_FILE_F277      IDTSOSS_xytheta_offsets_f277.txt
+X_RMS                  0.0  # native pixel scatter
+Y_RMS                  0.0  # "
+THETA_RMS              0.0  # degree scatter
+X_T0                   0.0  # native pixel position at first step
+Y_T0                   0.0  # "
+THETA_T0               0.0  # degree at first step
+X_SLOPE                0.0  # native pixel per second
+Y_SLOPE                0.0  # "
+THETA_SLOPE            0.0  # degree per second
+
+#############
+# Simulation Parameters
+####################
+FLATQUANTUMYIELD   False    # Use QY=1 instead of our best estimate 
+FLATTHROUGHPUT     False    # Use a throughput of 100% instead of best estimate
+
+#####################
+# Naming Parameters #
+#####################
+PID       1201     # Program ID
+ONUM      1        # Observation Number
+VNUM      1        # Visit Number
+GNUM      1        # Group Visit
+SPSEQ     1        # Parallel sequence
+ANUMB     1        # Activity number
+ENUM      1        # Exposure number
+ENUMOS    1        # Exposure number of oversampled output
+DETECTOR  NISRAPID # Detector name
+PRODTYPE  cal      # Product Type

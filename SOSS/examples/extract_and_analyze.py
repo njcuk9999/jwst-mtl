@@ -16,12 +16,17 @@ if False:
     outdir = '/genesis/jwst/userland-soss/loic_review/GTO/wasp52b/'
     model_file = '/genesis/jwst/userland-soss/loic_review/test_modeloutput.fits'
 
-if True:
+if False:
     rateints_file = '/genesis/jwst/jwst-user-soss/loic_review/CAP_rehearsal/bd601753/IDTSOSS_clear_noisy_rateints.fits'
     spectrum_file = '/genesis/jwst/jwst-user-soss/loic_review/CAP_rehearsal/bd601753/IDTSOSS_clear_extracted_spectra.fits'
     outdir = '/genesis/jwst/jwst-user-soss/loic_review/CAP_rehearsal/bd601753/'
     model_file = '/genesis/jwst/jwst-user-soss/loic_review/CAP_rehearsal/bd601753/modeloutput.fits'
 
+if True:
+    rateints_file = '/genesis/jwst/jwst-user-soss/loic_review/CAP_rehearsal/bd601753/IDTSOSS_clear_noisy_rateints.fits'
+    spectrum_file = '/genesis/jwst/jwst-user-soss/loic_review/CAP_rehearsal/bd601753/IDTSOSS_clear_extracted_spectra.fits'
+    outdir = '/genesis/jwst/jwst-user-soss/loic_review/CAP_rehearsal/bd601753/'
+    model_file = '/genesis/jwst/jwst-user-soss/loic_review/CAP_rehearsal/bd601753/modeloutput.fits'
 
 bypass_stage2 = True
 bypass_extract1d = True
