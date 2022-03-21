@@ -75,7 +75,7 @@ conda) using the following command:
 
     which pip
 
-It should display something ending in `/envs/ami-env/bin/pip`
+It should display something ending in `/envs/ami-env/bin/pip`.
 
 
 You can now install the python modules required for the AMI simulation wrapper 
@@ -137,17 +137,25 @@ Note do not use the following parts of the wrapper (i.e. set them to False)
 
 Once installation is complete and a yaml file has been made running is very simple.
 
+The wrapper requires an APT file with the observation information. There are
+examples in `inputs/`. The `example.yaml` file contains user-specified
+parameters and `jwst_ami_p23_example.xml` is the corresponding APT file
+(proposile ID 23, NIRISS AMI Observations of Extrasolar Planets Around a Host Star program).
+
+With these two files, the wrapper can be run immediately after installation.
+
 From a python script:
 
-    # Import the wrapper
-    from ami_mtl.science import wrapper
-    
-    # Enter the path to the yaml file (can be relative or absolute)
-    MY_YAML_FILE = "../inputs/example.yaml"
-    
-    # Run the simulations
-    wrapper.main(WCONFIG=MY_YAML_FILE)
+```python
+# Import the wrapper
+from ami_mtl.science import wrapper
 
+# Enter the path to the yaml file (can be relative or absolute)
+MY_YAML_FILE = "../inputs/example.yaml"
+
+# Run the simulations
+wrapper.main(WCONFIG=MY_YAML_FILE)
+```
 
 This should produce the simulation(s) as defined in the yaml file.
 
@@ -157,3 +165,24 @@ run the following from the command line:
     wrapper --config=../inputs/example.yaml
 
 
+### 4 Observable extraction with AMICAL
+
+AMICAL is developed to analyse AMI observations from multiple facilities. It is
+compatible with JWST/NIRISS. It can analyse either a direct output from
+`ami_sim` or a mirage output processed with the DMS.
+
+AMICAL performs four main tasks:
+1. Cleaning: bad pixel correction, background subtraction, windowing, etc. (required for mirage output).
+2. Observable extraction: going from a fits file to a "bispectrum" Python
+   object.
+3. Observable calibration: after extraction of a science target and a
+   calibrator, AMICAL can calibrate the observables and save them to an OIFITS
+    file.
+4. Binary fit: after calibration, the OIFITS observables can be analyzed to fit
+   a binary either with a $\chi^2$ grid (CANDID) or with a MCMC (PyMask).
+
+To run AMICAL on the wrapper output, use the script `misc/run_amical.py`. The
+options are in the "Constants" section at the top of the script. You can edit
+those to analyze a specific file. The, you can run all AMICAL steps with 
+
+    python misc/run_amical.py
