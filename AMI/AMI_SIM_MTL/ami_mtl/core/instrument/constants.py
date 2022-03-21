@@ -344,11 +344,29 @@ Consts.add('AMISIM-APPLY_DITHER', value=0, dtype=int, source=__NAME__,
            description='Define whether ami-sim applies dither',
            path='ami-sim.apply_dither')
 
-# Define whether ami-sim includes detection noise
-Consts.add('AMISIM-INCLUDE_DET_NOISE', value=1, dtype=int, source=__NAME__,
+# Define whether ami-sim includes photon noise
+Consts.add('AMISIM-INCLUDE_PHOTNOISE', value=1, dtype=int, source=__NAME__,
            options=[0, 1], user=False, argument=False, group=group,
-           description='Define whether ami-sim includes detection noise',
-           path='ami-sim.include-det-noise')
+           description='Define whether ami-sim includes photon noise',
+           path='ami-sim.include_photnoise')
+
+# Define whether ami-sim includes read noise
+Consts.add('AMISIM-INCLUDE_READNOISE', value=1, dtype=int, source=__NAME__,
+           options=[0, 1], user=False, argument=False, group=group,
+           description='Define whether ami-sim includes read noise',
+           path='ami-sim.include_readnoise')
+
+# Define whether ami-sim includes dark current
+Consts.add('AMISIM-INCLUDE_DARKCURRENT', value=1, dtype=int, source=__NAME__,
+           options=[0, 1], user=False, argument=False, group=group,
+           description='Define whether ami-sim includes dark current',
+           path='ami-sim.include_darkcurrent')
+
+# Define whether ami-sim includes background noise
+Consts.add('AMISIM-INCLUDE_BACKGROUND', value=1, dtype=int, source=__NAME__,
+           options=[0, 1], user=False, argument=False, group=group,
+           description='Define whether ami-sim includes background noise',
+           path='ami-sim.include_background')
 
 # Define where ami-sim is installed (None means already in python path)
 Consts.add('AMISIM-INSTALL', value=None, dtype=str, source=__NAME__,
