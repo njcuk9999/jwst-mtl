@@ -48,7 +48,7 @@ Simulation1:
 
   # Define the name of the simulation
   name: Simulation 1
-  # Define the absolute path to the XML file produced by APL
+  # Define the absolute path to the XML file produced by APT
   apt_xmlpath: /data/jwst-ami/data/neil_wrap/inputs/jwst_ami_p23_example.xml
   # Define the absolute path to the APT pointing file (Only required if using
   #    Mirage, otherwise you can set this to None)
@@ -97,10 +97,10 @@ Simulation1:
       # the planet parameters
       planet:
         # separation in arcsec
-        separation: 0.5
+        separation: 0.2
         # positional angle in degrees
         pa: 90
-        # whether to plot a plot showing the simulated planet
+        # whether to plog a figure showing the simulated planet
         plot: False
       # magnitudes in each filter of the companion
       mag:
@@ -125,7 +125,7 @@ Simulation1:
         separation: 1.0
         # positional angle in degrees
         pa: 180
-        # whether to plot a plot showing the simulated planet
+        # whether to plog a figure showing the simulated planet
         plot: False
       # magnitudes in each filter of the companion
       mag:
@@ -156,7 +156,7 @@ Simulation1:
         radius: 0.4
         # the gaussian exponent of the disk (2 is purely gaussian)
         exponent: 1.2
-        # whether to plot a plot showing the simulated planet
+        # whether to plog a figure showing the simulated planet
         plot: True
       # magnitudes in each filter of the companion
       mag:
@@ -185,7 +185,7 @@ Simulation1:
         radius: 0.6
         # the gaussian exponent of the bar (2 is purely gaussian)
         exponent: 2
-        # whether to plot a plot showing the simulated planet
+        # whether to plog a figure showing the simulated planet
         plot: True
       # magnitudes in each filter of the companion
       mag:
@@ -200,7 +200,7 @@ Simulation1:
   # -------------------------------------------------------------------------
 
   # -------------------------------------------------------------------------
-  # Companion 1: HD-218172
+  # Calibrator 1: HD-218172
   # -------------------------------------------------------------------------
   calibrator1:
     # The name exactly as it is in the APT file
@@ -233,7 +233,7 @@ parameters:
   # The global instrument settings
   # ---------------------------------------------------------------------------
   instrument:
-    pix_scale: 0.065
+    pix_scale: 0.0656
 
   # ---------------------------------------------------------------------------
   # AMI-SIM settings
@@ -249,7 +249,9 @@ parameters:
     create_simulation: True
     # Whether we should create the ramps (1 = True, 0 = False)
     uptheramp: 0
-    # Whether we should create the calibrators (1 = True, 0 = False)
+    # Whether we should create the ami_sim calibrators (1 = True, 0 = False)
+    # NOTE: This is to generate ami_sim "c_*" files for each observation
+    # i.e. it is different from the calibrators specified above or in the APT
     create_calibrator: 0
     # Whether we should override existing simulations (1 = True, 0 = False)
     overwrite: 1
@@ -260,8 +262,11 @@ parameters:
     overwrite_flatfield: 0
     # The random seed number
     random-seed: 1
-    # Whether to include detector noise (1 = True, 0 = False)
-    include-det-noise: 1
+    # Whether to include detector noises (1 = True, 0 = False)
+    include_photnoise: 1
+    include_readnoise: 1
+    include_background: 1
+    include_darkcurrent: 1
     # The installation directory for AMI SIM (This must be set)
     install-dir: /data/jwst-ami/bin/ami_sim
     # The name of the AMISIM driver scene package (default value recommended)
