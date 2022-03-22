@@ -5,9 +5,9 @@
 
 # CODE DESCRIPTION HERE
 
-Created on 
+Created on
 
-@author: 
+@author:
 """
 import numpy as np
 import os
@@ -118,7 +118,7 @@ class Simulation:
         for key in keys:
             # companions should start with "companion"
             if key.startswith('calibrator'):
-                # load companion
+                # load calibrator
                 calibrator = Calibrator(self.params, properties[key])
                 # load magnitudes for companion
                 calibrator.get_magnitudes()
@@ -427,7 +427,7 @@ class Observation:
 
         # get parameters from params
         nints = list(self.params['APT-TARGET-NINT'])
-        ngroups = list(self.params['APT-TARGET-NINT'])
+        ngroups = list(self.params['APT-TARGET-NGROUP'])
         nsubarrays = list(self.params['APT-TARGET-SUBARRAYS'])
         zeropoints = dict(self.params['ZEROPOINTS'])
         tframes = dict(self.params['T_FRAMES'])
@@ -1057,6 +1057,7 @@ def run_ami_sim(simname: str, observation: Observation):
         ngroups = observation.num_groups[_filter]
         # run ami-sim
         if use_amisim and create_sim:
+            # TODO: Warn if ami_sim pixscl is different from the pkwargs one
             tag = etienne.ami_sim_run_code(params, target_dir, _filter,
                                            psf_filename, scenepath, count_rate,
                                            simname, target_name, nint, ngroups)

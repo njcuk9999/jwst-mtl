@@ -167,10 +167,10 @@ Consts.add('APT-TARGET-FILTERS', value=None, dtype=list, source=__NAME__,
 group = 'instrument'
 
 # Define the pixel scale (expected to be very close to 0.065 arcsec/pixel)
-Consts.add('PIX_SCALE', value=0.065, dtype=float, units=uu.arcsec / uu.pixel,
+Consts.add('PIX_SCALE', value=0.0656, dtype=float, units=uu.arcsec / uu.pixel,
            source=__NAME__, user=False, argument=False, group=group,
            description='Define the pixel scale (expected to be very close '
-                       'to 0.065 arcsec/pixel)',
+                       'to 0.0656 arcsec/pixel)',
            path='instrument.pix_scale')
 
 # Define all allowed filters
@@ -288,13 +288,13 @@ for _filter in FILTERS:
                path='ami-sim.out.{0}'.format(_filter))
 
 # Define whether to produce up-the-ramp images
-Consts.add('AMISMI-UPTHERAMP', value=False, dtype=bool, source=__NAME__,
+Consts.add('AMISIM-UPTHERAMP', value=False, dtype=bool, source=__NAME__,
            user=True, argument=False, group=group,
            description='Define whether to produce up-the-ramp images',
            path='ami-sim.uptheramp')
 
 # Define whether to create calibrator (passed to ami-sim)
-Consts.add('AMISMI-CREATE_CALIBRATOR', value=0, dtype=int, source=__NAME__,
+Consts.add('AMISIM-CREATE_CALIBRATOR', value=0, dtype=int, source=__NAME__,
            options=[0, 1], user=False, argument=False, group=group,
            description='Define whether to create calibrator '
                        '(passed to ami-sim)',
@@ -344,11 +344,29 @@ Consts.add('AMISIM-APPLY_DITHER', value=0, dtype=int, source=__NAME__,
            description='Define whether ami-sim applies dither',
            path='ami-sim.apply_dither')
 
-# Define whether ami-sim includes detection noise
-Consts.add('AMISIM-INCLUDE_DET_NOISE', value=1, dtype=int, source=__NAME__,
+# Define whether ami-sim includes photon noise
+Consts.add('AMISIM-INCLUDE_PHOTNOISE', value=1, dtype=int, source=__NAME__,
            options=[0, 1], user=False, argument=False, group=group,
-           description='Define whether ami-sim includes detection noise',
-           path='ami-sim.include-det-noise')
+           description='Define whether ami-sim includes photon noise',
+           path='ami-sim.include_photnoise')
+
+# Define whether ami-sim includes read noise
+Consts.add('AMISIM-INCLUDE_READNOISE', value=1, dtype=int, source=__NAME__,
+           options=[0, 1], user=False, argument=False, group=group,
+           description='Define whether ami-sim includes read noise',
+           path='ami-sim.include_readnoise')
+
+# Define whether ami-sim includes dark current
+Consts.add('AMISIM-INCLUDE_DARKCURRENT', value=1, dtype=int, source=__NAME__,
+           options=[0, 1], user=False, argument=False, group=group,
+           description='Define whether ami-sim includes dark current',
+           path='ami-sim.include_darkcurrent')
+
+# Define whether ami-sim includes background noise
+Consts.add('AMISIM-INCLUDE_BACKGROUND', value=1, dtype=int, source=__NAME__,
+           options=[0, 1], user=False, argument=False, group=group,
+           description='Define whether ami-sim includes background noise',
+           path='ami-sim.include_background')
 
 # Define where ami-sim is installed (None means already in python path)
 Consts.add('AMISIM-INSTALL', value=None, dtype=str, source=__NAME__,
