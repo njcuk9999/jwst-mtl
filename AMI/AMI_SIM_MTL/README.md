@@ -12,6 +12,8 @@ To clone AMISIM use the following command:
 
     git clone git@github.com:anand0xff/ami_sim.git
 
+(If not using SSH, use `git clone https://github.com/anand0xff/ami_sim.git`).
+
 This will create an ami_sim directory in your current working directory.
 
 Please note down the AMISIM installation location you will need to for the 
@@ -78,12 +80,12 @@ conda) using the following command:
 It should display something ending in `/envs/ami-env/bin/pip`.
 
 
-You can now install the python modules required for the AMI simulation wrapper 
-with the following command:
+You can now install the AMI simulation wrapper and its dependencies with the
+following command:
 
     pip install .
 
-To install for development, you can install in editable mode and add the "dev"
+To install for development, you can install in editable (`-e`) mode and add the "dev"
 dependencies.
 
     pip install -e ".[dev]"
@@ -140,11 +142,11 @@ Once installation is complete and a yaml file has been made running is very simp
 The wrapper requires an APT file with the observation information. There are
 examples in `inputs/`. The `example.yaml` file contains user-specified
 parameters and `jwst_ami_p23_example.xml` is the corresponding APT file
-(proposile ID 23, NIRISS AMI Observations of Extrasolar Planets Around a Host Star program).
+(proposal ID 23, NIRISS AMI Observations of Extrasolar Planets Around a Host
+Star). With these two files, the wrapper can be run immediately after
+installation.
 
-With these two files, the wrapper can be run immediately after installation.
-
-From a python script:
+To run from a python script:
 
 ```python
 # Import the wrapper
@@ -159,8 +161,8 @@ wrapper.main(WCONFIG=MY_YAML_FILE)
 
 This should produce the simulation(s) as defined in the yaml file.
 
-Otherwise if you have set the $PATH correctly then you should be able to just 
-run the following from the command line:
+Otherwise if you have installed the wrapper with `pip` correctly, then you should be
+able to just run the following from the command line:
 
     wrapper --config=../inputs/example.yaml
 
@@ -172,8 +174,8 @@ developed to analyse AMI observations from multiple facilities. It is compatible
 with JWST/NIRISS. It can analyse either a direct output from `ami_sim` or a
 mirage output processed with the DMS.
 
-AMICAL should be installed by installing the wrapper (see section 3.1 above).
-Otherwise, it can be installed with
+AMICAL should be installed when installing the wrapper with `pip`(see section
+3.1 above). Otherwise, it can be installed with
 
     pip install amical
 
@@ -190,6 +192,6 @@ AMICAL performs four main tasks:
 
 To run AMICAL on the wrapper output, use the script `misc/run_amical.py`. The
 options are in the "Constants" section at the top of the script. You can edit
-those to analyze a specific file. The, you can run all AMICAL steps with 
+those to analyze a specific file or to perform specific steps. The, you can run all AMICAL steps with 
 
     python misc/run_amical.py
