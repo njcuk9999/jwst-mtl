@@ -94,18 +94,21 @@ def __main__(params):
     # =========================================================================
     # DMS section
     # =========================================================================
+    # TODO: Add in later
 
     # =========================================================================
     # Extraction section
     # =========================================================================
     # wrap around ami-cal extraction
-    wrap.amical_extraction(simulations)
+    # TODO: Add in later
+    # wrap.amical_extraction(simulations)
 
     # =========================================================================
     # Analysis section
     # =========================================================================
     # wrap around ami-cal analysis
-    wrap.amical_analysis(simulations)
+    # TODO: Add in later
+    # wrap.amical_analysis(simulations)
 
     # =========================================================================
     # End of code

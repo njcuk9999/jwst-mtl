@@ -79,6 +79,8 @@ class Log:
         # if we have a filename defined add a file logger
         if kwargs.get('filename', False):
             self.add_log_file(kwargs['filename'])
+        # whether exception has been triggered flag
+        self.triggered = False
 
     def add_log_file(self, filepath: Union[str, Path],
                      level: Union[str, int, None] = None):
@@ -283,7 +285,9 @@ class Log:
         for message in messages:
             self.logger.exception(message)
         if kwargs.get('raise_exception', True):
-            self.raise_exception(args[0], **kwargs)
+            if not self.triggered:
+                self.raise_exception(args[0], **kwargs)
+                self.triggered = True
 
     def empty(self, message, _colour=None, _wrap=True, *args, **kwargs):
         """
