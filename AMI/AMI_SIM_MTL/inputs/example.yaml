@@ -1,87 +1,211 @@
-# Define targets
+# =============================================================================
+# AMI wrapper
+# =============================================================================
+# This yaml file should be used with the wrapper.py program
+# It consists of Simulations and parameters for each of the possible steps in
+# the AMI wrapper
+
+# Currently, supported simulations are:
+# - target & calibrator(s)
+# - target + planet(s) & calibrator(s)
+# - target + disk(s) & calibrator(s)
+# - target + bar(s) & calibrator(s)
+# - target + planet(s) + disk(s) & calibrator(s)
+# - target + planet(s) + bar(s) & calibrator(s)
+# - target + planet(s) + disk(s) + bar(s) & calibrator(s)
+
+# Note the following parameters MUST be set by the user
+# - parameters.general.in_dir
+# - parameters.general.out_dir
+# - parameters.ami-sim.out_path
+# - parameters.ami-sim.install-dir
+# - parameters.ami-sim.psf.FXXX.path   (for each filter XXX)
+
+# Note: Do not currently use:
+# - mirage
+# - dms
+# - ami-cal
+# - implaneia
+
+# =============================================================================
+# Define Simulation(s)
+# =============================================================================
+# Each simulation consists of one science observation "target"
+#    and a set of calibrators to go with that target.
+#    Note for simulations only targets and calibrators can be separate
+#    simulation. They are only grouped together for later steps of the pipeline
+
+# One can have as many simulations as one wishes using SimulationN to
+#   distinguish the various simulations
+
+
+# -------------------------------------------------------------------------
+#  Simulation 1: HD-218396 + planet (with additional planet + disk model +
+#                bar model ready to use but disabled)
+#                and a calibrator for HD-218396 (HD-218172)
+# -------------------------------------------------------------------------
 Simulation1:
 
+  # Define the name of the simulation
   name: Simulation 1
+  # Define the absolute path to the XML file produced by APT
+  apt_xmlpath: /data/jwst-ami/data/neil_wrap/inputs/jwst_ami_p23_example.xml
+  # Define the absolute path to the APT pointing file (Only required if using
+  #    Mirage, otherwise you can set this to None)
+  apt_pointing_file: None
 
-  xmlpath: '/data/jwst_ami/data/neil_wrap/inputs/jwst_ami_p23_example.xml'
-
+  # -------------------------------------------------------------------------
+  # Define the science observation "target" parameters
+  # -------------------------------------------------------------------------
+  # Target 1: HD-218396
+  # -------------------------------------------------------------------------
   target:
+    # The name exactly as it is in the APT file
     name: HD-218396
+    # Override astrometric parameters from the APT file if necessary
+    #    - these will be taken from APT if set to None (Not used for AMI-SIM)
     ra: None
     dec: None
     pmra: None
     pmdec: None
+
+    # Use a predefined source list (for Mirage simulation only)
+    mirage_source_list: None
+
+    # Define the magnitude of the target for each filter that you wish
+    #    to simulate
     magnitude:
       F277W: 12.123
       F380M: 12.123
       F430M: 12.123
       F480M: 12.123
 
+    # -------------------------------------------------------------------------
+    # Define companion(s). These are optional and can be removed
+    #    Note you can have as many companions as required using companionN
+    #    to distinguish them from each other
+    # -------------------------------------------------------------------------
+    # Companion 1 an example planet (currently enabled)
+    # -------------------------------------------------------------------------
     companion1:
+      # whether to add companion to simulation
       active: True
+      # the kind of companion (planet or disk or bar)
       kind: planet
+      # the name of the planet (used to id multiple companions)
       name: planet1
+      # the planet parameters
       planet:
-        separation: 0.5
+        # separation in arcsec
+        separation: 0.2
+        # positional angle in degrees
         pa: 90
+        # whether to plog a figure showing the simulated planet
         plot: False
+      # magnitudes in each filter of the companion
       mag:
         F277W: 17.123
         F380M: 17.123
         F430M: 17.123
         F480M: 17.123
 
+    # -------------------------------------------------------------------------
+    # Companion 2 an example planet (currently disabled)
+    # -------------------------------------------------------------------------
     companion2:
+      # whether to add companion to simulation
       active: False
+      # the kind of companion (planet or disk or bar)
       kind: planet
+      # the name of the planet (used to id multiple companions)
       name: planet2
+      # the planet parameters
       planet:
+        # separation in arcsec
         separation: 1.0
+        # positional angle in degrees
         pa: 180
+        # whether to plog a figure showing the simulated planet
         plot: False
+      # magnitudes in each filter of the companion
       mag:
         F277W: 20.123
         F380M: 20.123
         F430M: 20.123
         F480M: 20.123
 
+    # -------------------------------------------------------------------------
+    # Companion 3 an example disk (currently disabled)
+    # -------------------------------------------------------------------------
     companion3:
+      # whether to add companion to simulation
       active: False
+      # the kind of companion (planet or disk or bar)
       kind: disk
+      # the name of the planet (used to id multiple companions)
       name: disk1
+      # the disk parameters
       disk:
+        # the rotation of the disk
         roll: 15
+        # the inclination of the disk
         inclination: 60
+        # the width of the disk
         width: 0.4
+        # the radius of the disk
         radius: 0.4
+        # the gaussian exponent of the disk (2 is purely gaussian)
         exponent: 1.2
+        # whether to plog a figure showing the simulated planet
         plot: True
+      # magnitudes in each filter of the companion
       mag:
         F277W: 13.123
         F380M: 13.123
         F430M: 13.123
         F480M: 13.123
 
+    # -------------------------------------------------------------------------
+    # Companion 4 an example bar (currently disabled)
+    # -------------------------------------------------------------------------
     companion4:
+      # whether to add companion to simulation
       active: False
+      # the kind of companion (planet or disk or bar)
       kind: bar
+      # the name of the planet (used to id multiple companions)
       name: bar1
+      # the bar parameters
       bar:
+        # the rotation of the bar
         roll: 135
+        # the width of the bar
         width: 0.02
+        # the radius of the bar
         radius: 0.6
+        # the gaussian exponent of the bar (2 is purely gaussian)
         exponent: 2
+        # whether to plog a figure showing the simulated planet
         plot: True
+      # magnitudes in each filter of the companion
       mag:
         F277W: 13.123
         F380M: 13.123
         F430M: 13.123
         F480M: 13.123
+  # -------------------------------------------------------------------------
+  # Calibrators
+  #    Note you can have as many calibrators as required using calibratorN
+  #    to distinguish them from each other
+  # -------------------------------------------------------------------------
 
+  # -------------------------------------------------------------------------
+  # Calibrator 1: HD-218172
+  # -------------------------------------------------------------------------
   calibrator1:
+    # The name exactly as it is in the APT file
     name: HD-218172
-    tot_exp: None
-    ext_flux: None
+    # magnitudes in each filter of the calibrator
     magnitude:
       F277W: 10.123
       F380M: 10.123
@@ -89,71 +213,136 @@ Simulation1:
       F480M: 10.123
 
 
+# =============================================================================
+# Define Parameters
+# =============================================================================
 # Define parameters (that overwrite defaults)
+#  Note some must be set to run certain steps of the wrapper
 parameters:
+  # ---------------------------------------------------------------------------
+  # General settings (must be set)
+  # ---------------------------------------------------------------------------
   general:
-    in_dir: /data/jwst_ami/data/neil_wrap
-    # Must set this - no default value
-    out_dir: /data/jwst_ami/data/neil_wrap
-
+    # The global input directory
+    in_dir: /data/jwst-ami/data/neil_wrap
+    # The global output directory
+    out_dir: /data/jwst-ami/data/neil_wrap
+    # debug mode
+    debug: 0
+  # ---------------------------------------------------------------------------
+  # The global instrument settings
+  # ---------------------------------------------------------------------------
   instrument:
-    pix_scale: 0.065
+    pix_scale: 0.0656
 
-  simulation:
+  # ---------------------------------------------------------------------------
+  # AMI-SIM settings
+  # ---------------------------------------------------------------------------
+  ami-sim:
+    # Whether to use AMI-SIM
+    use: True
+    # The output file path for AMI-SIM simulations (must be set)
+    out_path: /data/jwst-ami/data/neil_wrap/amisim/
+    # Whether we should create the scene (or use one from disk)
+    create_scene: True
+    # Whether we should create the simulation (or use one from disk)
+    create_simulation: True
+    # Whether we should create the ramps (1 = True, 0 = False)
+    uptheramp: 0
+    # Whether we should create the ami_sim calibrators (1 = True, 0 = False)
+    # NOTE: This is to generate ami_sim "c_*" files for each observation
+    # i.e. it is different from the calibrators specified above or in the APT
+    create_calibrator: 0
+    # Whether we should override existing simulations (1 = True, 0 = False)
+    overwrite: 1
+    # Whether we should use a uniform flat field (1 = True, 0 = False)
+    uniform_flatfield: 0
+    # Whether (when generating a flat field) we should overwrite previous ones
+    #     (1 = True, 0 = False)
+    overwrite_flatfield: 0
+    # The random seed number
+    random-seed: 1
+    # Whether to include detector noises (1 = True, 0 = False)
+    include_photnoise: 1
+    include_readnoise: 1
+    include_background: 1
+    include_darkcurrent: 1
+    # The installation directory for AMI SIM (This must be set)
+    install-dir: /data/jwst-ami/bin/ami_sim
+    # The name of the AMISIM driver scene package (default value recommended)
+    package: driver_scene
+    # The name of the AMISIM module
+    modules: pyami
+    # Whether to run AMISIM in verbose mode (more printouts)
+    verbose: 0
+    # The PSF parameters
+    # For each filter we define the path to the filter (if it is not on
+    #   disk it will be created)
     psf:
       F380M:
         # Must set this - no default value
-        path: /data/jwst_ami/data/neil_wrap/psfs/psf_F380M.fits
+        path: /data/jwst-ami/data/neil_wrap/psfs/psf_F380M.fits
+        # If it exists already do we recompute the PSF?
         recompute_psf: False
       F480M:
         # Must set this - no default value
-        path: /data/jwst_ami/data/neil_wrap/psfs/psf_F480M.fits
+        path: /data/jwst-ami/data/neil_wrap/psfs/psf_F480M.fits
+        # If it exists already do we recompute the PSF?
         recompute_psf: False
+    # The Size of the image (field of view) in pixels - should be odd - default
+    #    value recommended
     fov_pixels: 79
+    # The over sampling factor (again should be odd) - default value recommended
     oversample: 11
-
-  ami-sim:
-    use: False
-    # Must set this no default value
-    path: /data/jwst_ami/data/neil_wrap/amisim/
-    create_scene: True
-    create_simulation: True
-    uptheramp: 0
-    create_calibrator: 0
-    overwrite: 1
-    uniform_flatfield: 0
-    overwrite_flatfield: 0
-    random-seed: 1
-    include-det-noise: 1
-    install-dir: /data/jwst_ami/bin/ami_sim
-    package: driver_scene
-    modules: pyami
-    verbose: 0
-    # don't set these
+    # Set the scene files
+    #    note don't set these unless you are not calculating the scene
+    #    (set None to use defaults)
     scene:
       F380M: None
       F480M: None
-    # These will override inputs of AMI-CAL (set None to use defaults)
+    # Set the output filenames
+    #    note these will override inputs of AMI-CAL (set None to use defaults)
     out:
       F380M: None
       F480M: None
 
+  # ---------------------------------------------------------------------------
+  # Mirage settings - Do not use yet
+  # ---------------------------------------------------------------------------
   mirage:
     use: False
-    test1: True
-    test2: False
+    # maybe this should be output path?
+    out_path: /data/jwst-ami/data/neil_wrap/mirage/
 
+    # psf path
+    psf:
+      path: /data/jwst-ami/data/neil_wrap/mirage/ref_files_non_default/niriss_gridded_psf_library_newmask
+      psf_wing_threshold_file: config
+    # set these None to not use them?
+    reffiles:
+      path: /data/jwst-ami/data/neil_wrap/mirage/ref_files_non_default
+      astrometric: pysaif
+      gain: jwst_niriss_gain_general.fits
+      pixelflat: jwst_niriss_flat_general.fits
+      superbias: jwst_niriss_superbias_sim.fits
+
+  # ---------------------------------------------------------------------------
+  # James Webb Pipeline (DMS) settings - Do not use yet
+  # ---------------------------------------------------------------------------
   dms:
     use: False
     test1: True
     test2: False
 
+  # ---------------------------------------------------------------------------
+  # AMICAL settings - Do not use yet
+  # ---------------------------------------------------------------------------
   amical:
     use:
       ami-sim_input: True
       mirage_input: False
-      extraction: True
-      analysis: True
+      extraction: False
+      analysis: False
     extract:
       fake_obj: True
       mask_name: g7
@@ -173,7 +362,7 @@ parameters:
       display_plots: True
       expert_plot: False
       verbose: False
-      path: None
+      out_path: None
     analysis:
       candid:
         use: True
@@ -213,6 +402,10 @@ parameters:
           nth: 30
           ncrat: 60
       plot: True
+      out_path: None
 
+  # ---------------------------------------------------------------------------
+  # Implania settings - Do not use yet
+  # ---------------------------------------------------------------------------
   implaneia:
     use: False

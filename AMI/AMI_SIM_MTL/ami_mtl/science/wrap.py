@@ -5,11 +5,10 @@
 
 # CODE DESCRIPTION HERE
 
-Created on 
+Created on
 
-@author: 
+@author:
 """
-import amical
 import numpy as np
 import os
 import sys
@@ -18,6 +17,12 @@ from typing import Any, Dict, List, Tuple, Union
 import matplotlib.pyplot as plt
 from mirage.apt import read_apt_xml
 import yaml
+
+# try to import other modules
+try:
+    import amical
+except ImportError:
+    amical = None
 
 from ami_mtl.core.core import constant_functions
 from ami_mtl.core.core import exceptions
@@ -44,7 +49,6 @@ display_func = general.display_func
 # Define classes
 # =============================================================================
 class Simulation:
-
     classname: str = 'Simulation'
 
     def __init__(self, params: ParamDict, properties: Dict[str, Any]):
@@ -59,7 +63,7 @@ class Simulation:
         self.params = params.copy()
         # ---------------------------------------------------------------------
         # get xml path
-        self.xmlpath = properties.get('xmlpath', None)
+        self.xmlpath = properties.get('apt_xmlpath', None)
         # get xml settings
         self.params = _load_xml(params, self.xmlpath)
         # ---------------------------------------------------------------------
@@ -113,7 +117,7 @@ class Simulation:
         for key in keys:
             # companions should start with "companion"
             if key.startswith('calibrator'):
-                # load companion
+                # load calibrator
                 calibrator = Calibrator(self.params, properties[key])
                 # load magnitudes for companion
                 calibrator.get_magnitudes()
@@ -122,7 +126,6 @@ class Simulation:
 
 
 class Observation:
-
     classname: str = 'Observation'
 
     def __init__(self, params: ParamDict, properties: Dict[str, Any],
@@ -197,6 +200,14 @@ class Observation:
         # get xml info for target
         xml_target = apt_targets[self.name]
         xml_filename = xml_target['XML-FILE']
+
+        # ---------------------------------------------------------------------
+        # save raw parameters from xml
+        raw_xml_data = dict()
+        # get number of observations
+        n_robs = len(xml_target[self.params.instances['APT-TARGET-NAME'].apt])
+
+        valids = np.ones(n_robs, dtype=bool)
         # set parameters for target
         for key in self.params:
             # get instance
@@ -209,10 +220,40 @@ class Observation:
             # -----------------------------------------------------------------
             # deal with sub array being None
             if key == 'APT-TARGET-SUBARRAYS':
-                values = self._deal_with_subarray(values, func_name)
+                values, valid = self._deal_with_subarray(values, instance.apt,
+                                                         func_name)
             # check filters are valid
-            if key == 'APT-TARGET-FILTERS':
-                values = self._deal_with_filters(values, func_name)
+            elif key == 'APT-TARGET-FILTERS':
+                values, valid = self._deal_with_filters(values, instance.apt,
+                                                        func_name)
+            elif key in ['APT-TARGET-NGROUP', 'APT-TARGET-NINT']:
+                values, valid = self._deal_with_ints(values, key, instance.apt,
+                                                     func_name)
+            else:
+                valid = [True] * len(values)
+            # -----------------------------------------------------------------
+            # update the valid key
+            valids &= np.array(valid)
+            # add to raw xml data
+            raw_xml_data[key] = values
+        # ---------------------------------------------------------------------
+        # deal with no valid data in xml
+        if np.sum(valids) == 0:
+            emsg = 'ObservationError: No valid XML values'
+            self.params.log.error(emsg, exceptions=ObservationException,
+                                  funcname=func_name)
+        # ---------------------------------------------------------------------
+        # need to deal with validation (removing observations with bad values)
+        for key in raw_xml_data:
+            # get instance
+            instance = self.params.instances[key]
+            # storage of valid values
+            values = []
+            # loop around raw number of observation entries
+            for item in range(n_robs):
+                # only add those which are valid
+                if valids[item]:
+                    values.append(raw_xml_data[key][item])
             # -----------------------------------------------------------------
             # else add to params (if in apt file)
             self.params[key] = values
@@ -243,8 +284,8 @@ class Observation:
         # return list
         return out_list
 
-    def _deal_with_subarray(self, in_values: List[str],
-                            func_name: str) -> List[str]:
+    def _deal_with_subarray(self, in_values: List[str], key: str,
+                            func_name: str) -> Tuple[List[str], List[bool]]:
         """
         Deal specifically with sub array value from APT
 
@@ -254,10 +295,11 @@ class Observation:
         """
         # storage of outputs
         out_values = []
+        out_valid = []
+        # assume source is APT originally
+        subarray_source = 'APT'
         # loop around input values
         for in_value in in_values:
-            # assume source is APT originally
-            subarray_source = 'APT'
             # check for None value
             if in_value in ['None', None, '']:
                 out_value = self.params['DEFAULT_SUBARRAY']
@@ -266,18 +308,23 @@ class Observation:
                 out_value = str(in_value)
             # check that value is now valid (in SUBARRAYS)
             if out_value not in self.params['SUBARRAYS']:
-                emsg = 'ObservationError: XML Subarray value invalid'
-                emsg += '\n\t Subarray = "{0}" (source={1})'
-                emsg = emsg.format([out_value, subarray_source])
-                self.params.log.error(emsg, exception=ObservationException,
-                                      func_name=func_name)
+                out_valid.append(False)
+            else:
+                out_valid.append(True)
             # add to outputs
             out_values.append(out_value)
+        # deal with no sub-arrays
+        if len(out_values) == 0:
+            emsg = 'ObservationError: No valid XML Subarray values'
+            emsg += '\n\t Values = "{0}" (source={1}.{2})'
+            emsg = emsg.format(''.join(in_values), subarray_source, key)
+            self.params.log.error(emsg, exceptions=ObservationException,
+                                  funcname=func_name)
         # return value
-        return out_values
+        return out_values, out_valid
 
-    def _deal_with_filters(self, in_values: List[str],
-                           func_name: str) -> List[str]:
+    def _deal_with_filters(self, in_values: List[str], key: str,
+                           func_name: str) -> Tuple[List[str], List[bool]]:
         """
         Deal specifically with sub array value from APT
 
@@ -285,17 +332,51 @@ class Observation:
         :param func_name: str, the function name
         :return:
         """
+        # storage of outputs
+        out_values = []
+        out_valid = []
         # loop around input values
         for in_value in in_values:
             # check that value is now valid (in SUBARRAYS)
             if in_value not in self.params['ALL_FILTERS']:
-                emsg = 'ObservationError: XML Filters value invalid'
-                emsg += '\n\t Filters = "{0}" (source={1})'
-                emsg = emsg.format(in_value, 'APT')
-                self.params.log.error(emsg, exception=ObservationException,
-                                      func_name=func_name)
+                out_valid.append(False)
+            else:
+                out_valid.append(True)
+            # add to outputs
+            out_values.append(in_value)
+        # deal with no sub-arrays
+        if len(out_values) == 0:
+            emsg = 'ObservationError: No valid XML Filters values'
+            emsg += '\n\t Values = "{0}" (source=APT.{1})'
+            emsg = emsg.format(''.join(in_values), key)
+            self.params.log.error(emsg, exceptions=ObservationException,
+                                  funcname=func_name)
         # return value
-        return in_values
+        return out_values, out_valid
+
+    def _deal_with_ints(self, in_values: List[str], name: str, key: str,
+                        func_name: str) -> Tuple[List[int], List[bool]]:
+        # storage of outputs
+        out_values = []
+        out_valid = []
+        # loop around input values
+        for in_value in in_values:
+
+            try:
+                out_values.append(int(in_value))
+                out_valid.append(True)
+            except Exception as _:
+                out_values.append(-1)
+                out_valid.append(False)
+        # deal with no sub-arrays
+        if len(out_values) == 0:
+            emsg = 'ObservationError: No valid XML {0} values'
+            emsg += '\n\t Values = "{1}" (source=APT.{2})'
+            emsg = emsg.format(name, ''.join(in_values), key)
+            self.params.log.error(emsg, exceptions=ObservationException,
+                                  funcname=func_name)
+        # return value
+        return out_values, out_valid
 
     def __str__(self) -> str:
         """
@@ -340,7 +421,7 @@ class Observation:
 
         # get parameters from params
         nints = list(self.params['APT-TARGET-NINT'])
-        ngroups = list(self.params['APT-TARGET-NINT'])
+        ngroups = list(self.params['APT-TARGET-NGROUP'])
         nsubarrays = list(self.params['APT-TARGET-SUBARRAYS'])
         zeropoints = dict(self.params['ZEROPOINTS'])
         tframes = dict(self.params['T_FRAMES'])
@@ -430,7 +511,6 @@ class Observation:
 
 
 class Target(Observation):
-
     classname: str = 'Target'
 
     def __init__(self, params: ParamDict, properties: Dict[str, Any]):
@@ -474,7 +554,6 @@ class Target(Observation):
 
 
 class Calibrator(Observation):
-
     classname: str = 'Calibrator'
 
     def __init__(self, params: ParamDict, properties: Dict[str, Any]):
@@ -494,7 +573,6 @@ class Calibrator(Observation):
 
 
 class Companion(Observation):
-
     classname: str = 'Companion'
 
     def __init__(self, params: ParamDict, properties: Dict[str, Any]):
@@ -722,6 +800,14 @@ def load_simulations(params: ParamDict, config_file: Union[str, Path]):
     :param config_file:
     :return:
     """
+    # deal with no config file
+    if config_file in [None, 'None', '', 'Null']:
+        params.log.error('Config file cannot be None')
+        return
+    elif not os.path.exists(str(config_file)):
+        params.log.error('Config file {0} does not exists'.format(config_file))
+        return
+
     # load config file
     with open(config_file) as yfile:
         properties = yaml.load(yfile, Loader=yaml.FullLoader)
@@ -962,6 +1048,7 @@ def run_ami_sim(simname: str, observation: Observation):
         ngroups = observation.num_groups[_filter]
         # run ami-sim
         if use_amisim and create_sim:
+            # TODO: Warn if ami_sim pixscl is different from the pkwargs one
             tag = etienne.ami_sim_run_code(params, target_dir, _filter,
                                            psf_filename, scenepath, count_rate,
                                            simname, target_name, nint, ngroups)
@@ -1205,7 +1292,8 @@ def run_amical_extraction(simname: str, observation: Observation,
         params.log.info('AMI-CAL EXTRACTION: Extracting {0}'.format(*marg))
         # extract the target
         with general.ModifyPrintouts(text='AMI-CAL Output', flush=True,
-                                     logfile=params['LOGFILE']):
+                                     logfile=params['LOGFILE'],
+                                     debugmode=params['DEBUG']):
             target_bs = amical.extract_bs(target_cube, target_inname,
                                           targetname=target_outname,
                                           **params_ami)
@@ -1218,7 +1306,8 @@ def run_amical_extraction(simname: str, observation: Observation,
             params.log.info('AMI-CAL EXTRACTION: Extracting {0}'.format(*marg))
             # extract calibrator - catching printouts
             with general.ModifyPrintouts(text='AMI-CAL Output', flush=True,
-                                         logfile=observation.params['LOGFILE']):
+                                         logfile=observation.params['LOGFILE'],
+                                         debugmode=params['DEBUG']):
                 # extract the calibrator
                 calib_bs = amical.extract_bs(calibrator_cubes[c_it],
                                              calibrator_innames[c_it],
@@ -1236,7 +1325,8 @@ def run_amical_extraction(simname: str, observation: Observation,
         params.log.info('AMI-CAL EXTRACTION: Calibrating {0}'.format(*marg))
         # calibrate target
         with general.ModifyPrintouts(text='AMI-CAL Output', flush=True,
-                                     logfile=observation.params['LOGFILE']):
+                                     logfile=observation.params['LOGFILE'],
+                                     debugmode=params['DEBUG']):
             cal_target = amical.calibrate(target_bs, calibrators_bs)
         # ---------------------------------------------------------------------
         # Deal with plotting
@@ -1244,7 +1334,8 @@ def run_amical_extraction(simname: str, observation: Observation,
         # display the plots
         if observation.params['AMICAL_EXT_DISPLAY_PLOT']:
             with general.ModifyPrintouts(text='AMI-CAL Output', flush=True,
-                                         logfile=observation.params['LOGFILE']):
+                                         logfile=observation.params['LOGFILE'],
+                                         debugmode=params['DEBUG']):
                 amical.show(cal_target)
                 plt.show(block=True)
                 plt.close()
@@ -1416,7 +1507,7 @@ def run_ami_analysis(observation: Observation, mode: str):
     candid_params = dict()
     pymask_params = dict()
     pymask_param_mcmc = dict()
-    pymask_param_cr= dict()
+    pymask_param_cr = dict()
     # ---------------------------------------------------------------------
     # Load candid variables
     # ---------------------------------------------------------------------
@@ -1470,7 +1561,7 @@ def run_ami_analysis(observation: Observation, mode: str):
                 return
         # ---------------------------------------------------------------------
         # define pymask cr limit parameters
-        names = ['nsim', 'ncore', 'smax' , 'nsep', 'cmax', 'nth', 'ncrat']
+        names = ['nsim', 'ncore', 'smax', 'nsep', 'cmax', 'nth', 'ncrat']
         variables = ['AMICAL_PYMASK_CR_NSIM', 'AMICAL_PYMASK_CR_NCORE',
                      'AMICAL_PYMASK_CR_SMAX', 'AMICAL_PYMASK_CR_NSEP',
                      'AMICAL_PYMASK_CR_CMAX', 'AMICAL_PYMASK_CR_NTH',
@@ -1524,7 +1615,8 @@ def _amical_run_candid(params: ParamDict, filename: str,
     """
     # hide all text within module
     with general.ModifyPrintouts(text='AMI-CAL-CANDID Output', flush=True,
-                                 logfile=params['LOGFILE']):
+                                 logfile=params['LOGFILE'],
+                                 debugmode=params['DEBUG']):
         # fit using candid
         fit_candid = amical.candid_grid(filename, **kwargs,
                                         doNotFit=[])
@@ -1554,7 +1646,8 @@ def _amical_run_pymask(params: ParamDict, filename: str,
     """
     # hide all text within module
     with general.ModifyPrintouts(text='AMI-CAL-PYMASK Output', flush=True,
-                                 logfile=params['LOGFILE']):
+                                 logfile=params['LOGFILE'],
+                                 debugmode=params['DEBUG']):
         # get the pymask fit with a grid
         fit_pymask1 = amical.pymask_grid(filename, **kwargs1)
         # get the pymask fit with mcmc

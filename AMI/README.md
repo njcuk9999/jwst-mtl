@@ -6,9 +6,11 @@
 
 #### 2.1 Code readmes
 - [AMI master readme](https://github.com/njcuk9999/jwst-mtl/blob/master/AMI/README.md)
+- [AMI Simulation wrapper](https://github.com/njcuk9999/jwst-mtl/AMI_SIM_MTL/README.md)
 
 #### 2.2 Projects:
 - [AMI-SIM](https://github.com/njcuk9999/jwst-mtl/projects/1)
+- [AMI Simulation wrapper](https://github.com/njcuk9999/jwst-mtl/AMI_SIM_MTL/README.md)
 - [AMI commissioning](https://github.com/njcuk9999/jwst-mtl/projects/3)
     - [Simulations Required](https://github.com/njcuk9999/jwst-mtl/wiki/AMI-Simulations-Required)
 

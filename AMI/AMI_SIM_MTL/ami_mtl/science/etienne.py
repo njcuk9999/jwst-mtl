@@ -10,19 +10,18 @@ Created on 2021-02-01
 @author: cook
 """
 import importlib
-import numpy as np
-import matplotlib.pyplot as plt
 import os
-from pathlib import Path
 import sys
-from typing import Tuple, Union, Optional
-import webbpsf
+from pathlib import Path
+from typing import Optional, Tuple, Union
+import warnings
 
-from ami_mtl.io import drs_file
+import matplotlib.pyplot as plt
+import numpy as np
+import webbpsf
 from ami_mtl.core.base import base
-from ami_mtl.core.core import log_functions
-from ami_mtl.core.core import param_functions
-from ami_mtl.core.core import general
+from ami_mtl.core.core import general, log_functions, param_functions
+from ami_mtl.io import drs_file
 
 # =============================================================================
 # Define variables
@@ -53,7 +52,7 @@ def ami_sim_observation(fov_pixels: float, oversample: int,
 
     :param fov_pixels: the native image size (FOV in pixels)
     :param oversample: the oversampling factor
-    :param pix_scale: pixel scale (expected to be very close to 0.065
+    :param pix_scale: pixel scale (expected to be very close to 0.0656
                       arcsec/pixel)
     :param ext_flux: extracted flux in e-/s
     :param tot_exp: total exposure time in seconds
@@ -452,20 +451,23 @@ def ami_sim_run_code(params: ParamDict, path: str, _filter: str,
     """
     # construct tag
     tag = '{0}_{1}'.format(simname, target_name)
+    # clear sys.argv
+    sys.argv = [str(params['AMISIM-PACKAGE']) + '.py']
     # -------------------------------------------------------------------------
     # Get arguments for ami-sim
     # -------------------------------------------------------------------------
+    # NOTE: To avoid this hack, we could send a PR to refactor ami_sim's
+    # driver scene and be able to properly import it and call a function with
+    # all these args
     try:
         # add arguments
         args = []
         # output directory path (relative to home directory)
         args += ['--target_dir', str(path)]
-        # absolute output directory path, if specified it overrides --target_dir
-        args += ['--output_absolute_path', str(path)]
         # overwrite yes/no, default 0 (no)
         args += ['--overwrite', params['AMISIM-OVERWRITE']]
         # generate up-the-ramp fits file? yes/no, default 0 (no)
-        args += ['--uptheramp', params['AMISMI-UPTHERAMP']]
+        args += ['--uptheramp', params['AMISIM-UPTHERAMP']]
         # filter name (upper/lower case)
         args += ['--filter', _filter]
         # absolute path to oversampled PSF fits file. Spectral type set in this
@@ -480,7 +482,7 @@ def ami_sim_run_code(params: ParamDict, path: str, _filter: str,
         # number of up-the-ramp readouts
         args += ['--ngroups', ngroups]
         # create calibrator observation yes/no default 1 (yes)
-        args += ['--create_calibrator', params['AMISMI-CREATE_CALIBRATOR']]
+        args += ['--create_calibrator', params['AMISIM-CREATE_CALIBRATOR']]
         # Photon count rate on 25m^2 per sec in the bandpass
         args += ['--countrate', count_rate]
         # Tag to include in the names of the produced files
@@ -501,10 +503,22 @@ def ami_sim_run_code(params: ParamDict, path: str, _filter: str,
         args += ['--apply_dither', params['AMISIM-APPLY_DITHER']]
         # Include pointing errors in the observations. Default is on
         args += ['--apply_jitter', params['AMISIM-APPLY_JITTER']]
-        # Include photon noise, read noise, background noise, and dark
-        #     current. Default is on
-        args += ['--include_detection_noise',
-                 params['AMISIM-INCLUDE_DET_NOISE']]
+        # Include photon noise in ami_sim
+        args += ['--include_photnoise', params['AMISIM-INCLUDE_PHOTNOISE']]
+        # Include read noise in ami_sim
+        args += ['--include_readnoise', params['AMISIM-INCLUDE_READNOISE']]
+        # Include dark current in ami_sim
+        args += ['--include_darkcurrent', params['AMISIM-INCLUDE_DARKCURRENT']]
+        # Include background noise in ami_sim
+        args += ['--include_background', params['AMISIM-INCLUDE_BACKGROUND']]
+        det_noise_key = 'AMISIM-INCLUDE_DET_NOISE'
+        if det_noise_key in params and params[det_noise_key] == 1:
+            msg = (
+                "ami-sim.include-det-noise is depecreated."
+                "Use ami-sim.include_{photnoise,readnoise,darkcurrent,background}"
+                "to control each noise source. This will cause an error in the future."
+            )
+            warnings.warn(msg, DeprecationWarning)
         # all args must be strings
         args = list(map(lambda x: str(x), args))
         # load module
@@ -522,7 +536,8 @@ def ami_sim_run_code(params: ParamDict, path: str, _filter: str,
         # ---------------------------------------------------------------------
         # run module main function (dealing with print outs)
         with general.ModifyPrintouts(text='AMI-SIM Output', flush=True,
-                                     logfile=params['LOGFILE']):
+                                     logfile=params['LOGFILE'],
+                                     debugmode=params['DEBUG']):
             mod.main(args)
         # clear a line from modified print outs
         print()

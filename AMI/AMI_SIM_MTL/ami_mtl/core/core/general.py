@@ -141,7 +141,8 @@ class ModifyPrintouts:
 
     Taken from https://stackoverflow.com/a/45669280
     """
-    def __init__(self, text=None, flush=False, logfile=None):
+    def __init__(self, text=None, flush=False, logfile=None,
+                 debugmode: int = 0):
         """
         Construct the hidden printouts - if text is set this is displayed
         at the start
@@ -150,10 +151,19 @@ class ModifyPrintouts:
         """
         self.text = text
         self.flush = flush
+        # ---------------------------------------------------------------------
+        # set debug mode (do not hide texst)
+        if debugmode > 0:
+            self.debugmode = True
+        else:
+            self.debugmode = False
+        # ---------------------------------------------------------------------
         if logfile is not None:
             self.logfile = str(logfile)
 
     def __enter__(self):
+        if self.debugmode:
+            return
         self._original_stdout = sys.stdout
         if self.flush:
             sys.stdout = Unbuffered(sys.stdout, text=self.text,
@@ -162,6 +172,8 @@ class ModifyPrintouts:
             sys.stdout = open(os.devnull, 'w')
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.debugmode:
+            return
         if not self.flush:
             sys.stdout.close()
         # reset stdout

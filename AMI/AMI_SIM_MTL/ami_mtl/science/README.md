@@ -1,4 +1,4 @@
-# pyami.science
+# ami_mtl.science
 
 Science functionality should go in here
 
