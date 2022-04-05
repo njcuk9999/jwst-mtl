@@ -51,9 +51,9 @@ class DecontaminationPlot:
             specified in Extract1dStep for ATOCA to produce these
         """
         data = datamodels.open(datafile)
-        model = datamodels.open(modelfile)
         self.datacube = data.data
         self.errorcube = data.err
+        model = datamodels.open(modelfile)
         self.o1model = model.order1
         self.o2model = model.order2
 
