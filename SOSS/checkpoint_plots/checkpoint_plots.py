@@ -177,15 +177,16 @@ class BackgroundSubPlot:
             ax1.xaxis.set_major_formatter(plt.NullFormatter())
             ax1.set_ylabel('Spatial Pixel', fontsize=14)
 
-            #aa = data.copy()
             ax2 = plt.subplot(gs[1, 0])
             obs[bkg_mask] = np.nan
             ax2.plot(np.nanmedian(obs, axis=0))
+            ax2.set_xlim(0, 2048)
             ax2.set_xlabel('Spectral Pixel', fontsize=14)
             ax2.set_ylabel('Background\nColumn Median', fontsize=14)
 
             ax3 = plt.subplot(gs[0, 1])
             ax3.plot(np.nanmedian(obs, axis=1), np.arange(256))
+            ax3.set_ylim(0, 256)
             ax3.yaxis.set_major_formatter(plt.NullFormatter())
             ax3.tick_params(left=False)
             ax3.set_xlabel('Background\nRow Median', fontsize=14)
