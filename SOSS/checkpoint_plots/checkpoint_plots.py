@@ -9,9 +9,11 @@ Checkpoint plotting functions to compare SOSS data at different stages of
 analysis via different pipelines.
 """
 
+from astropy.io import fits
 import matplotlib.backends.backend_pdf
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
+
 from jwst import datamodels
 
 
@@ -50,12 +52,25 @@ class DecontaminationPlot:
             '_SossExtractModel.fits'. The soss_modelname parameter must be
             specified in Extract1dStep for ATOCA to produce these
         """
-        data = datamodels.open(datafile)
-        self.datacube = data.data
-        self.errorcube = data.err
-        model = datamodels.open(modelfile)
-        self.o1model = model.order1
-        self.o2model = model.order2
+        # The DMS datamodels containers provide a useful way to unpack the fits
+        # files produced by the DMS.
+        try:
+            # Unpack the science observations and associated errors.
+            data = datamodels.open(datafile)
+            self.datacube = data.data
+            self.errorcube = data.err
+            # Unpack the decontaminated first and second order profiles
+            # produced by ATOCA.
+            model = datamodels.open(modelfile)
+            self.o1model = model.order1
+            self.o2model = model.order2
+        # Depending on the DMS version that the user has installed, there is a
+        # bug in the ASDF parsing (I think) which prevents datamodels.open
+        # from functioning properly. If this occurs, fall back on astopy fits
+        # handling to unpack the files
+        except AttributeError:
+            result = _fits_fallback(datafile, modelfile)
+            self.datacube, self.errorcube, self.o1model, self.o2model = result
 
     def make_decontamination_plot(self, integrations=0, savefile=None,
                                   cbar_lims=[-5, 5], **imshow_kwargs):
@@ -76,25 +91,30 @@ class DecontaminationPlot:
             Extra kwargs for the imshow function
         """
 
+        # Set integrations to plot.
         if integrations == 'all':
             integrations = np.arange(self.datacube.shape[0])
         else:
             integrations = np.atleast_1d(integrations)
 
+        # Initialize the output pdf file if the user wishes to save the plots.
         if savefile is not None:
             outpdf = matplotlib.backends.backend_pdf.PdfPages(savefile)
 
+        # Make the decontamination plot for each specified integration.
         for i in integrations:
+            # Get data, errors and models for the ith integration.
             obs = self.datacube[i]
             err = self.errorcube[i]
-            err = np.where(err == 0, np.nan, err)
+            err = np.where(err == 0, np.nan, err)  # nan any zero errors
             mod_o1 = self.o1model[i]
             mod_o2 = self.o2model[i]
 
+            # Make the plot.
             fig = plt.figure()
             plt.imshow((obs - mod_o1 - mod_o2) / err, origin='lower',
-                       aspect='auto',
-                       vmin=cbar_lims[0], vmax=cbar_lims[1], **imshow_kwargs)
+                       aspect='auto', vmin=cbar_lims[0], vmax=cbar_lims[1],
+                       **imshow_kwargs)
             cbar = plt.colorbar()
             cbar.set_label(r'o-m / $\sigma$', rotation=270, labelpad=15,
                            fontsize=14)
@@ -102,6 +122,7 @@ class DecontaminationPlot:
             plt.xlabel('Spectral Pixel', fontsize=14)
             plt.ylabel('Spatial Pixel', fontsize=14)
             plt.title('Integration {}'.format(i + 1), fontsize=16)
+            # Either show the plot, or save it to the pdf.
             if savefile is not None:
                 outpdf.savefig(fig)
                 plt.close()
@@ -110,3 +131,21 @@ class DecontaminationPlot:
 
         if savefile is not None:
             outpdf.close()
+
+
+def _fits_fallback(datafile, modelfile):
+    """ Depending on the DMS version that the user has installed, there is a
+    bug in the ASDF parsing (I think) which prevents datamodels.open from
+     functioning properly. If this occurs, fallback on astopy fits handling.
+    """
+
+    # Open and unpack the observed and modeled data via astropy
+    observation = fits.open(datafile)
+    data = observation[1].data
+    error = observation[2].data
+
+    model = fits.open(modelfile)
+    o1model = model[2].data
+    o2model = model[3].data
+
+    return data, error, o1model, o2model
