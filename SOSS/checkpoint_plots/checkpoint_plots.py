@@ -11,7 +11,9 @@ analysis via different pipelines.
 
 from astropy.io import fits
 import matplotlib.backends.backend_pdf
+import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 import numpy as np
 
 from jwst import datamodels
@@ -69,8 +71,8 @@ class DecontaminationPlot:
         # from functioning properly. If this occurs, fall back on astopy fits
         # handling to unpack the files
         except AttributeError:
-            result = _fits_fallback(datafile, modelfile)
-            self.datacube, self.errorcube, self.o1model, self.o2model = result
+            self.datacube, self.errorcube = _fits_fallback(datafile, [1, 2])
+            self.o1model, self.o2model = _fits_fallback(modelfile, [2, 3])
 
     def make_decontamination_plot(self, integrations=0, savefile=None,
                                   cbar_lims=[-5, 5], **imshow_kwargs):
@@ -133,19 +135,86 @@ class DecontaminationPlot:
             outpdf.close()
 
 
-def _fits_fallback(datafile, modelfile):
+class BackgroundSubPlot:
+    def __init__(self, datafile):
+        # The DMS datamodels containers provide a useful way to unpack the fits
+        # files produced by the DMS.
+        try:
+            # Unpack the science observations and associated errors.
+            data = datamodels.open(datafile)
+            self.datacube = data.data
+        # Depending on the DMS version that the user has installed, there is a
+        # bug in the ASDF parsing (I think) which prevents datamodels.open
+        # from functioning properly. If this occurs, fall back on astopy fits
+        # handling to unpack the files
+        except AttributeError:
+            self.datacube = _fits_fallback(datafile, 1)[0]
+
+    def make_backgroundsub_plot(self, bkg_mask, integrations=0, savefile=None,
+                                cbar_lims=[-1, 1], **imshow_kwargs):
+
+        # Set integrations to plot.
+        if integrations == 'all':
+            integrations = np.arange(self.datacube.shape[0])
+        else:
+            integrations = np.atleast_1d(integrations)
+
+        # Initialize the output pdf file if the user wishes to save the plots.
+        if savefile is not None:
+            outpdf = matplotlib.backends.backend_pdf.PdfPages(savefile)
+
+        for i in integrations:
+            obs = self.datacube[i]
+            fig = plt.figure(figsize=(9, 7))
+            gs = gridspec.GridSpec(2, 2, width_ratios=[2, 1],
+                                   height_ratios=[2, 1])
+
+            ax1 = plt.subplot(gs[0, 0])
+            plt.imshow(obs, aspect='auto', origin='lower', vmin=cbar_lims[0],
+                       vmax=cbar_lims[1], **imshow_kwargs)
+            cbaxes = inset_axes(ax1, width="30%", height="3%", loc=2)
+            plt.colorbar(cax=cbaxes, orientation='horizontal')
+            ax1.xaxis.set_major_formatter(plt.NullFormatter())
+            ax1.set_ylabel('Spatial Pixel', fontsize=14)
+
+            #aa = data.copy()
+            ax2 = plt.subplot(gs[1, 0])
+            obs[bkg_mask] = np.nan
+            ax2.plot(np.nanmedian(obs, axis=0))
+            ax2.set_xlabel('Spectral Pixel', fontsize=14)
+            ax2.set_ylabel('Background\nColumn Median', fontsize=14)
+
+            ax3 = plt.subplot(gs[0, 1])
+            ax3.plot(np.nanmedian(obs, axis=1), np.arange(256))
+            ax3.yaxis.set_major_formatter(plt.NullFormatter())
+            ax3.tick_params(left=False)
+            ax3.set_xlabel('Background\nRow Median', fontsize=14)
+
+            plt.subplots_adjust(wspace=0, hspace=0)
+
+            ax1.set_title('Integration {}'.format(i + 1), fontsize=16)
+            # Either show the plot, or save it to the pdf.
+            if savefile is not None:
+                outpdf.savefig(fig)
+                plt.close()
+            else:
+                plt.show()
+
+        if savefile is not None:
+            outpdf.close()
+
+
+def _fits_fallback(file, extensions):
     """ Depending on the DMS version that the user has installed, there is a
     bug in the ASDF parsing (I think) which prevents datamodels.open from
      functioning properly. If this occurs, fallback on astopy fits handling.
     """
 
+    extensions = np.atleast_1d(extensions)
     # Open and unpack the observed and modeled data via astropy
-    observation = fits.open(datafile)
-    data = observation[1].data
-    error = observation[2].data
+    observation = fits.open(file)
+    unpacked = []
+    for extension in extensions:
+        unpacked.append(observation[extension].data)
 
-    model = fits.open(modelfile)
-    o1model = model[2].data
-    o2model = model[3].data
-
-    return data, error, o1model, o2model
+    return unpacked
