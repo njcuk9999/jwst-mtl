@@ -17,7 +17,7 @@ python module tfit5 ! in
             double precision dimension(nplanetmax,nmax),intent(in) :: omc
             double precision dimension(npt),intent(inout) :: tmodel
             integer dimension(npt),intent(in) :: dtype
-	    double precision dimension(npt), intent(in) :: ld1
+	        double precision dimension(npt), intent(in) :: ld1
             double precision dimension(npt), intent(in) :: ld2
             double precision dimension(npt), intent(in) :: ld3
             double precision dimension(npt), intent(in) :: ld4
