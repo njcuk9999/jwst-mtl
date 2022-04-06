@@ -1095,9 +1095,14 @@ def generate_traces(savingprefix, pathPars, simuPars, tracePars, throughput,
     #        spgen.resample_models(dw, star_angstrom, star_flux, ld_coeff, planet_angstrom, planet_rprs, simuPars,
     #        tracePars)
     # New rewritten function for resampling
+#    star_angstrom_bin, star_flux_bin, ld_coeff_bin, planet_angstrom_bin, planet_rprs_bin = resample_models(
+#        star_angstrom, star_flux, ld_coeff, planet_angstrom, planet_rprs, simuPars,
+#        tracePars, gridtype='constant_dispersion', dispersion = 0.1, wavelength_start=5000, wavelength_end=55000)
+    # April 4 2022 - playing with the binning to see if it explains the 400 ppm offset in the extracted
+    # transit spectrum extracted by Michael Radica.
     star_angstrom_bin, star_flux_bin, ld_coeff_bin, planet_angstrom_bin, planet_rprs_bin = resample_models(
         star_angstrom, star_flux, ld_coeff, planet_angstrom, planet_rprs, simuPars,
-        tracePars, gridtype='constant_dispersion', dispersion = 0.1, wavelength_start=5000, wavelength_end=55000)
+        tracePars, gridtype='constant_dispersion', dispersion = 0.001, wavelength_start=5000, wavelength_end=55000)
 
     # Checked and this is absolutely flat, as expected for constant F_lambda
     # plt.figure()
@@ -1383,7 +1388,7 @@ def write_intermediate_fits(image, savingprefix, timestep_index, simuPars):
 
 def write_dmsready_fits_init(imagelist, normalization_scale,
                              ngroup, nint, frametime, granularity,
-                             verbose=None):
+                             verbose=None, os=1):
     if verbose:
         print('Entered write_dmsready_fits_init')
         print('imagelist =', imagelist)
@@ -1393,19 +1398,20 @@ def write_dmsready_fits_init(imagelist, normalization_scale,
     ntimesteps = len(imagelist)
     for t in range(ntimesteps):
         # Read the current image
-        hdu = fits.open(imagelist[t])
-        image = hdu[0].data
-        # Create the cube of reads (if first iteration in loop)
-        if t == 0:
-            # First image, use dimensiosn and create a large cube
-            norders, dimy, dimx = np.shape(image)
-            #print('Bug tracing - norder={:d} dimy={:d} dimx={:d}'.format(norders, dimy, dimx))
-            fluxratecube = np.zeros((ntimesteps, dimy, dimx))
-        # Scale the flux for each order by the normalization factor passed as input
-        for m in range(norders):
-            image[m,:,:] = image[m,:,:] * normalization_scale[m]
-        imflat = np.sum(image, axis=0)
-        fluxratecube[t,:,:] = np.copy(imflat)
+        with fits.open(imagelist[t]) as hdu:
+            image = np.array(hdu[0].data)
+            image = rebin(image, os)
+            # Create the cube of reads (if first iteration in loop)
+            if t == 0:
+                # First image, use dimensiosn and create a large cube
+                norders, dimy, dimx = np.shape(image)
+                #print('Bug tracing - norder={:d} dimy={:d} dimx={:d}'.format(norders, dimy, dimx))
+                fluxratecube = np.zeros((ntimesteps, dimy, dimx))
+            # Scale the flux for each order by the normalization factor passed as input
+            for m in range(norders):
+                image[m,:,:] = image[m,:,:] * normalization_scale[m]
+            imflat = np.sum(image, axis=0)
+            fluxratecube[t,:,:] = np.copy(imflat)
 
     # At this point, each image is a slope image (calibrated flux per second) for
     # a chunk of time that is either at the frame granularity or at the integration

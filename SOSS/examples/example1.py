@@ -120,8 +120,30 @@ soss.readpaths(config_paths_filename, pathPars)
 #pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_bd601753.txt'
 #pathPars.path_userland = os.path.join(pathPars.path_userland, 'CAP_rehearsal/bd601753/')
 
-pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_demo.txt'
-pathPars.path_userland = os.path.join(pathPars.path_userland, 'demo/')
+#pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_demo.txt'
+#pathPars.path_userland = os.path.join(pathPars.path_userland, 'demo/')
+
+#pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_tyler_J80.txt'
+#pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_tyler_J75.txt'
+#pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_tyler_J70.txt'
+#pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_tyler_J65.txt'
+#pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_tyler_J90.txt'
+#pathPars.path_userland = os.path.join(pathPars.path_userland, 'tyler/')
+
+#pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_wasp52b.txt'
+#pathPars.path_userland = os.path.join(pathPars.path_userland, 'GTO/wasp52b_depth_1pct/')
+
+#pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_gj357b_ng2.txt'
+#pathPars.path_userland = os.path.join(pathPars.path_userland, 'GTO/gj357b_ngroups/ng2/')
+#pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_gj357b_ng3.txt'
+#pathPars.path_userland = os.path.join(pathPars.path_userland, 'GTO/gj357b_ngroups/ng3/')
+#pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_gj357b_ng4.txt'
+#pathPars.path_userland = os.path.join(pathPars.path_userland, 'GTO/gj357b_ngroups/ng4/')
+#pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_gj357b_ng5.txt'
+#pathPars.path_userland = os.path.join(pathPars.path_userland, 'GTO/gj357b_ngroups/ng5/')
+
+pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_wasp52b.txt'
+pathPars.path_userland = os.path.join(pathPars.path_userland, 'GTO/wasp52b_depth_1pct_disp0.01/')
 
 #pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_hatp14b.txt'
 
@@ -137,7 +159,7 @@ print(simuPars.pmodeltype[0])
 # For testing, allow skipping steps.
 skip_sim = False
 skip_addnoise = False
-skip_clear = True
+skip_clear = False
 skip_dms = False
 
 if skip_sim is False:
@@ -169,7 +191,7 @@ if skip_sim is False:
 
     # Save star model anchored on the magnitude
     t = Table([starmodel_angstrom/10000, starmodel_flambda], names=('micron', 'W/m2/um'))
-    ascii.write(t, os.path.join(pathPars.path_userland, 'IDTSOSS_star_model_calibrated.txt'))
+    ascii.write(t, os.path.join(pathPars.path_userland, 'IDTSOSS_star_model_calibrated.txt'), overwrite=True)
 
 
     # Read Planet Atmosphere Model (wavelength in angstroms and radius_planet/radius_star ratio)
@@ -179,6 +201,10 @@ if skip_sim is False:
     else:
         planetmodel_angstrom, planetmodel_rprs = soss.readplanetmodel(
             os.path.join(pathPars.path_planetmodelatm, simuPars.pmodelfile[0]))
+
+    # create a flat 1% transit depth
+    if True:
+        planetmodel_rprs = planetmodel_rprs * 0.0 + 0.1
 
     if True:
 
@@ -253,12 +279,13 @@ if skip_sim is False:
         if True:
             data = soss.write_dmsready_fits_init(imagelist, normalization_scale,
                                              simuPars.ngroup, simuPars.nint,
-                                             simuPars.frametime, simuPars.granularity)
+                                             simuPars.frametime, simuPars.granularity,
+                                             os=simuPars.noversample)
 
         # All simulations (e-/sec) are converted to up-the-ramp images.
         if True:
             soss.write_dmsready_fits(data, os.path.join(pathPars.path_userland,'IDTSOSS_clear.fits'),
-                                 os=simuPars.noversample, input_frame='dms',
+                                 os=1, input_frame='dms',
                                  xpadding=simuPars.xpadding, ypadding=simuPars.ypadding,
                                  dark_ref=simuPars.dark_ref, flat_ref=simuPars.flat_ref,
                                  superbias_ref=simuPars.superbias_ref, nlcoeff_ref=simuPars.nlcoeff_ref,
