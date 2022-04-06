@@ -19,8 +19,122 @@ import numpy as np
 from jwst import datamodels
 
 
+class BackgroundSubPlot:
+    """Make a plot to assess the quality of a background subtraction.
+
+    Attributes
+    ----------
+    datacube : array-like
+        Data cube of SOSS observational data.
+
+    Methods
+    -------
+    make_backsub_plot
+        Plot background subtracted data as well as median background counts in
+        each row and column.
+    """
+
+    def __init__(self, datafile):
+        """ Initializer for BackgroundSubPlot.
+
+        Parameters
+        ----------
+        datafile : str
+            Path to fits file containing the background subtracted SOSS
+            observations.
+        """
+
+        # The DMS datamodels containers provide a useful way to unpack the fits
+        # files produced by the DMS.
+        try:
+            # Unpack the science observations and associated errors.
+            data = datamodels.open(datafile)
+            self.datacube = data.data
+        # Depending on the DMS version that the user has installed, there is a
+        # bug in the ASDF parsing (I think) which prevents datamodels.open
+        # from functioning properly. If this occurs, fall back on astopy fits
+        # handling to unpack the files
+        except AttributeError:
+            self.datacube = _fits_fallback(datafile, 1)[0]
+
+    def make_backgroundsub_plot(self, bkg_mask, integrations=0, savefile=None,
+                                cbar_lims=[-0.5, 0.5], **imshow_kwargs):
+        """Make a plot showing the results of a background subtraction.
+
+        Paremeters
+        ----------
+        bkg_mask : array-like
+            Mask of the bright regions of the trace. Should have the same size
+            as a single integration of the observation datacube.
+        integrations : int, array-like, str
+            integration, or list of integrations to show the decontamination
+            results. Pass 'all' to plot decontamination for every integration.
+        savefile : str, optional
+            To save all plots to a pdf instead of showing them, pass a file
+            name here.
+        cbar_lims : array-like, optional
+            Upper and lower limits for the colourbar.
+        **imshow_kwargs : dict
+            Extra kwargs for the imshow function
+        """
+
+        # Set integrations to plot.
+        if integrations == 'all':
+            integrations = np.arange(self.datacube.shape[0])
+        else:
+            integrations = np.atleast_1d(integrations)
+
+        # Initialize the output pdf file if the user wishes to save the plots.
+        if savefile is not None:
+            outpdf = matplotlib.backends.backend_pdf.PdfPages(savefile)
+
+        for i in integrations:
+            # Get the frame for the ith integration.
+            obs = self.datacube[i]
+
+            # Initialize the plot.
+            fig = plt.figure(figsize=(9, 7))
+            gs = gridspec.GridSpec(2, 2, width_ratios=[2, 1],
+                                   height_ratios=[2, 1])
+            # Plot the background subtracted data in the center.
+            ax1 = plt.subplot(gs[0, 0])
+            plt.imshow(obs, aspect='auto', origin='lower', vmin=cbar_lims[0],
+                       vmax=cbar_lims[1], **imshow_kwargs)
+            cbaxes = inset_axes(ax1, width="30%", height="3%", loc=2)
+            plt.colorbar(cax=cbaxes, orientation='horizontal')
+            ax1.xaxis.set_major_formatter(plt.NullFormatter())
+            ax1.set_ylabel('Spatial Pixel', fontsize=14)
+            ax1.set_title('Integration {}'.format(i + 1), fontsize=16)
+            # Show the median counts in each column.
+            ax2 = plt.subplot(gs[1, 0])
+            obs[bkg_mask] = np.nan  # Mask the trace to focus on background
+            ax2.plot(np.nanmedian(obs, axis=0))
+            ax2.set_xlim(0, 2048)
+            ax2.set_xlabel('Spectral Pixel', fontsize=14)
+            ax2.set_ylabel('Background\nColumn Median', fontsize=14)
+            # Show the median counts in each row.
+            ax3 = plt.subplot(gs[0, 1])
+            ax3.plot(np.nanmedian(obs, axis=1), np.arange(256))
+            ax3.set_xlabel('Background\nRow Median', fontsize=14)
+            ax3.set_ylim(0, 256)
+            ax3.yaxis.set_major_formatter(plt.NullFormatter())
+            ax3.tick_params(left=False)
+
+            plt.subplots_adjust(wspace=0, hspace=0)
+
+            # Either show the plot, or save it to the pdf.
+            if savefile is not None:
+                outpdf.savefig(fig)
+                plt.close()
+            else:
+                plt.show()
+
+        if savefile is not None:
+            outpdf.close()
+
+
 class DecontaminationPlot:
-    """ Base class to assess the quality of the ATOCA SOSS spectral order
+    """Base class to assess the quality of the ATOCA SOSS spectral order
     deconamination.
 
     Attributes
@@ -37,17 +151,17 @@ class DecontaminationPlot:
     Methods
     -------
     make_decontamination_plot
-        Plot data - model to assess the quality of the decontamination.
+        Plot (data - model) to assess the quality of the decontamination.
     """
 
     def __init__(self, datafile, modelfile):
-        """ Initializer for DecontaminationPlot.
+        """Initializer for DecontaminationPlot.
 
         Parameters
         ----------
         datafile : str
             Path to fits file containing the SOSS observations. Ideally the
-             file passed to Extract1dStep.
+            file passed to Extract1dStep.
         modelfile : str
             Path to fits file containing the decontaminated SOSS profiles as
             output by ATOCA. Generally will have suffix
@@ -135,87 +249,28 @@ class DecontaminationPlot:
             outpdf.close()
 
 
-class BackgroundSubPlot:
-    def __init__(self, datafile):
-        # The DMS datamodels containers provide a useful way to unpack the fits
-        # files produced by the DMS.
-        try:
-            # Unpack the science observations and associated errors.
-            data = datamodels.open(datafile)
-            self.datacube = data.data
-        # Depending on the DMS version that the user has installed, there is a
-        # bug in the ASDF parsing (I think) which prevents datamodels.open
-        # from functioning properly. If this occurs, fall back on astopy fits
-        # handling to unpack the files
-        except AttributeError:
-            self.datacube = _fits_fallback(datafile, 1)[0]
-
-    def make_backgroundsub_plot(self, bkg_mask, integrations=0, savefile=None,
-                                cbar_lims=[-1, 1], **imshow_kwargs):
-
-        # Set integrations to plot.
-        if integrations == 'all':
-            integrations = np.arange(self.datacube.shape[0])
-        else:
-            integrations = np.atleast_1d(integrations)
-
-        # Initialize the output pdf file if the user wishes to save the plots.
-        if savefile is not None:
-            outpdf = matplotlib.backends.backend_pdf.PdfPages(savefile)
-
-        for i in integrations:
-            obs = self.datacube[i]
-            fig = plt.figure(figsize=(9, 7))
-            gs = gridspec.GridSpec(2, 2, width_ratios=[2, 1],
-                                   height_ratios=[2, 1])
-
-            ax1 = plt.subplot(gs[0, 0])
-            plt.imshow(obs, aspect='auto', origin='lower', vmin=cbar_lims[0],
-                       vmax=cbar_lims[1], **imshow_kwargs)
-            cbaxes = inset_axes(ax1, width="30%", height="3%", loc=2)
-            plt.colorbar(cax=cbaxes, orientation='horizontal')
-            ax1.xaxis.set_major_formatter(plt.NullFormatter())
-            ax1.set_ylabel('Spatial Pixel', fontsize=14)
-
-            ax2 = plt.subplot(gs[1, 0])
-            obs[bkg_mask] = np.nan
-            ax2.plot(np.nanmedian(obs, axis=0))
-            ax2.set_xlim(0, 2048)
-            ax2.set_xlabel('Spectral Pixel', fontsize=14)
-            ax2.set_ylabel('Background\nColumn Median', fontsize=14)
-
-            ax3 = plt.subplot(gs[0, 1])
-            ax3.plot(np.nanmedian(obs, axis=1), np.arange(256))
-            ax3.set_ylim(0, 256)
-            ax3.yaxis.set_major_formatter(plt.NullFormatter())
-            ax3.tick_params(left=False)
-            ax3.set_xlabel('Background\nRow Median', fontsize=14)
-
-            plt.subplots_adjust(wspace=0, hspace=0)
-
-            ax1.set_title('Integration {}'.format(i + 1), fontsize=16)
-            # Either show the plot, or save it to the pdf.
-            if savefile is not None:
-                outpdf.savefig(fig)
-                plt.close()
-            else:
-                plt.show()
-
-        if savefile is not None:
-            outpdf.close()
-
-
 def _fits_fallback(file, extensions):
-    """ Depending on the DMS version that the user has installed, there is a
+    """Depending on the DMS version that the user has installed, there is a
     bug in the ASDF parsing (I think) which prevents datamodels.open from
-     functioning properly. If this occurs, fallback on astopy fits handling.
+    functioning properly. If this occurs, fallback on astopy fits handling.
+
+    Parameters
+    ----------
+    file : str
+        Path to fits file to unpack.
+    extensions : int, array-like
+        Number, or list of numbers of extensions to unpack.
+
+    Returns
+    -------
+    unpacked : tuple
+        Data unpacked from the fits file.
     """
 
     extensions = np.atleast_1d(extensions)
     # Open and unpack the observed and modeled data via astropy
-    observation = fits.open(file)
     unpacked = []
     for extension in extensions:
-        unpacked.append(observation[extension].data)
+        unpacked.append(fits.getdata(file, extension))
 
     return unpacked
