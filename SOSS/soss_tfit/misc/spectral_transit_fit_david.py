@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 
 import transitfit5 as tf
 
-from tqdm.notebook import trange
+from tqdm import tqdm
 from jwst import datamodels
 
 # =============================================================================
@@ -637,6 +637,7 @@ def get_names(sol, clabels, tpars):
                 for j in range(nwav):
                     tran_par_names.append(clabels[15])
 
+        # Question: set twice?
         if tpars.amplitude_scale[i][2] == 'fit':
             if tpars.amplitude_scale[i][1] == 'bolometric':
                 tran_par_names.append(clabels[16])
@@ -644,6 +645,7 @@ def get_names(sol, clabels, tpars):
                 for j in range(nwav):
                     tran_par_names.append(clabels[16])
 
+        # Question: set twice?
         if tpars.length_scale[i][2] == 'fit':
             if tpars.length_scale[i][1] == 'bolometric':
                 tran_par_names.append(clabels[17])
@@ -1096,7 +1098,7 @@ def genchain(x, niter, beta, mcmcfunc, loglikelihood, buffer=None, corbeta=1.0,
     llx = loglikelihood(x)  # pre-compute the log-likelihood for Step 3
 
     if progress:
-        for _ in trange(0, niter):
+        for _ in tqdm(range(0, niter)):
             x, llx, ac = mcmcfunc(x, llx, loglikelihood, beta, buffer, corbeta)
             chain.append(x)
             accept.append(ac)
@@ -1324,7 +1326,7 @@ if __name__ == "__main__":
     # apply spectral binning
     all_spec_binned = {1: {}, 2: {}}
     # num_bins = [30, 15]  # for order 1 and order 2
-    num_bins = [5, 3]  # for order 1 and order 2
+    num_bins = [10, 5]  # for order 1 and order 2
 
     for order, n_bins in zip([1, 2], num_bins):
         n_wl = all_spec[order]['FLUX'].shape[1]
@@ -1477,6 +1479,7 @@ if __name__ == "__main__":
     tpars.rprs[0][3] = np.array([0.1, 0.2])
 
     # Simple labels to identify parameters.
+    # NOTE: VOF is not used, TED not used
     clabels = ['p', 'c1', 'c2', 'q1', 'q2', 'DIL', 'VOF', 'ZPT', 'EP', 'PE',
                'BB', 'RD', 'EC', 'ES', 'KRV', 'TED', 'ELL', 'ALB', 'DSC',
                'ASC', 'LSC']
