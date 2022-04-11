@@ -11,7 +11,6 @@
 #   - prior: the prior distribution to apply
 #     - min: minimum value of a tophat prior [FLOAT]
 #     - max: maximum value of a tophat prior [FLOAT]
-#   - label: Human readable label for outputs [STRING]
 
 global_params:
   # Number of planets (use for N planets) [INT]
@@ -36,7 +35,6 @@ global_params:
     prior:
       min: 0
       max: 2
-    label: DSC
   # GP Kernel Amplitude (default is Matern 3/2) [PARAM]
   amplitude_scale:
     value: 1.0
@@ -45,7 +43,6 @@ global_params:
     prior:
       min: 0
       max: 2000
-    label: ASC
   # GP length scale (default is Matern 3/2) [PARAM]
   length_scale:
     value: 1.0
@@ -54,16 +51,6 @@ global_params:
     prior:
       min: 0
       max: 1
-    label: LSC
-  # ---------------------------------------------------------------------------
-  # Misc parameters (not sure what to do with these)
-  # ---------------------------------------------------------------------------
-  # Parameters for TTVs ntt = number of transit times
-  ntt: 0
-  # Observed centre of transit times
-  tobs: 0
-  # O-C values for each transit
-  omc: 0
 
 # =============================================================================
 # Star Parameters
@@ -76,7 +63,6 @@ global_params:
 #   - prior: the prior distribution to apply
 #     - min: minimum value of a tophat prior [FLOAT]
 #     - max: maximum value of a tophat prior [FLOAT]
-#   - label: Human readable label for outputs [STRING]
 
 star:
   # Mean stellar density [units?] [PARAM]
@@ -87,61 +73,54 @@ star:
     prior:
       min: 1.0e-4
       max: 1000
-    label: p
   # Limb-darkening param 1. Set ld1=ld2=0 and ld3=q1 and ld4=q2 [PARAM]
   ld1:
       value: 0.0
-      wave-fit: chromatic
-      fit-type: fixed
+      wfit: chromatic
+      ftype: fixed
       prior:
         min: -1.0
         max: 1.0
-    label: c1
   # Limb-darkening param 2. Set ld1=ld2=0 and ld3=q1 and ld4=q2 [PARAM]
   ld2:
       value: 0.0
-      wave-fit: chromatic
-      fit-type: fixed
+      wfit: chromatic
+      ftype: fixed
       prior:
         min: -1.0
         max: 1.0
-    label: c2
   # Limb-darkening param 3. Set ld1=ld2=0 and ld3=q1 and ld4=q2 [PARAM]
   ld3:
       value: 0.5
-      wave-fit: chromatic
-      fit-type: fit
+      wfit: chromatic
+      ftype: fit
       prior:
         min: 0.0
         max: 1.0
-      label: q1
   # Limb-darkening param 4. Set ld1=ld2=0 and ld3=q1 and ld4=q2 [PARAM]
   ld4:
       value: 0.5
-      wave-fit: chromatic
-      fit-type: fit
+      wfit: chromatic
+      ftype: fit
       prior:
         min: 0.0
         max: 1.0
-      label: q2
   # Stellar dilution 0=none, 0.99 means 99% of light from other source [PARAM]
   dilution:
       value: 0.0
-      wave-fit: chromatic
-      fit-type: fixed
+      wfit: chromatic
+      ftype: fixed
       prior:
         min: 0.0
         max: 1.0
-      label: DIL
   # Out of transit baseline (set in code) [PARAM]
   zeropoint:
       value: None
-      wave-fit: chromatic
-      fit-type: fit
+      wfit: chromatic
+      ftype: fit
       prior:
         min: 0.0
         max: 1.0e9
-      label: ZPT
 
 
 # =============================================================================
@@ -156,176 +135,155 @@ star:
 #     - prior: the prior distribution to apply
 #       - min: minimum value of a tophat prior [FLOAT]
 #       - max: maximum value of a tophat prior [FLOAT]
-#   - label: Human readable label for outputs [STRING] note labels must not
-#            differ between planets
 
 
 planet1:
   # Center of transit time [PARAM]
   t0:
       value: 1.0
-      wave-fit: bolometric
-      fit-type: fit
+      wfit: bolometric
+      ftype: fit
       prior:
         min: 0.0
         max: 2.0
-      label: EP
   # Orbital period [PARAM]
   period:
       value: 1.0
-      wave-fit: bolometric
-      fit-type: fit
+      wfit: bolometric
+      ftype: fit
       prior:
         min: 0.0
         max: 2.0
-      label: PE
   # Impact parameter [PARAM]
   b:
       value: 0.5
-      wave-fit: bolometric
-      fit-type: fit
+      wfit: bolometric
+      ftype: fit
       prior:
         min: 0.0
         max: 2.0
-      label: BB
   # Scale planet radius [PARAM]
   rprs:
       value: 0.01
-      wave-fit: chromatic
-      fit-type: fit
+      wfit: chromatic
+      ftype: fit
       prior:
         min: 0.0
         max: 1.0
-      label: RD
   # sqrt(e)cos(w) [PARAM]
   sqrt_e_cosw:
     value: 0.0
-    wave-fit: bolometric
-    fit-type: fixed
+    wfit: bolometric
+    ftype: fixed
     prior:
       min: -1.0
       max: 1.0
-    label: EC
-  # sqrt(e)cos(w) [PARAM]
+  # sqrt(e)sin(w) [PARAM]
   sqrt_e_sinw:
     value: 0.0
-    wave-fit: bolometric
-    fit-type: fixed
+    wfit: bolometric
+    ftype: fixed
     prior:
       min: -1.0
       max: 1.0
-    label: ES
-  # Secondard eclipse depth (ppm) [PARAM]
+  # Secondary eclipse depth (ppm) [PARAM]
   eclipse_depth:
     value: 0.0
-    wave-fit: chromatic
-    fit-type: fixed
+    wfit: chromatic
+    ftype: fixed
     prior:
       min: 0
       max: 1.0e4
-    label: TED
   # Amplitude of ellipsoidal variations (ppm) [PARAM]
   ellipsoidal:
     value: 0.0
-    wave-fit: chromatic
-    fit-type: fixed
+    wfit: chromatic
+    ftype: fixed
     prior:
       min: 0
       max: 1.0e4
-    label: None
   # Amplitude of reflected/emission phase curve (ppm) - Lambertian [PARAM]
   phasecurve:
     value: 0.0
-    wave-fit: chromatic
-    fit-type: fixed
+    wfit: chromatic
+    ftype: fixed
     prior:
       min: 0
       max: 1.0e4
-    label: DSC
 
 
-#Planet2:
+#planet2:
 #  # Center of transit time [PARAM]
 #  t0:
 #      value: 1.0
-#      wave-fit: bolometric
-#      fit-type: fit
+#      wfit: bolometric
+#      ftype: fit
 #      prior:
 #        min: 0.0
 #        max: 2.0
-#      label: EP
 #  # Orbital period [PARAM]
 #  period:
 #      value: 1.0
-#      wave-fit: bolometric
-#      fit-type: fit
+#      wfit: bolometric
+#      ftype: fit
 #      prior:
 #        min: 0.0
 #        max: 2.0
-#      label: PE
 #  # Impact parameter [PARAM]
 #  b:
 #      value: 0.5
-#      wave-fit: bolometric
-#      fit-type: fit
+#      wfit: bolometric
+#      ftype: fit
 #      prior:
 #        min: 0.0
 #        max: 2.0
-#      label: BB
 #  # Scale planet radius [PARAM]
 #  rprs:
 #      value: 0.01
-#      wave-fit: chromatic
-#      fit-type: fit
+#      wfit: chromatic
+#      ftype: fit
 #      prior:
 #        min: 0.0
 #        max: 1.0
-#      label: RD
 #  # sqrt(e)cos(w) [PARAM]
 #  sqrt_e_cosw:
 #    value: 0.0
-#    wave-fit: bolometric
-#    fit-type: fixed
+#    wfit: bolometric
+#    ftype: fixed
 #    prior:
 #      min: -1.0
 #      max: 1.0
-#    label: EC
-#  # sqrt(e)cos(w) [PARAM]
+#  # sqrt(e)sin(w) [PARAM]
 #  sqrt_e_sinw:
 #    value: 0.0
-#    wave-fit: bolometric
-#    fit-type: fixed
+#    wfit: bolometric
+#    ftype: fixed
 #    prior:
 #      min: -1.0
 #      max: 1.0
-#    label: ES
-#  # Secondard eclipse depth (ppm) [PARAM]
+#  # Secondary eclipse depth (ppm) [PARAM]
 #  eclipse_depth:
 #    value: 0.0
-#    wave-fit: chromatic
-#    fit-type: fixed
+#    wfit: chromatic
+#    ftype: fixed
 #    prior:
 #      min: 0
 #      max: 1.0e4
-#    label: TED
 #  # Amplitude of ellipsoidal variations (ppm) [PARAM]
 #  ellipsoidal:
 #    value: 0.0
-#    wave-fit: chromatic
-#    fit-type: fixed
+#    wfit: chromatic
+#    ftype: fixed
 #    prior:
 #      min: 0
 #      max: 1.0e4
-#    label: None
 #  # Amplitude of reflected/emission phase curve (ppm) - Lambertian [PARAM]
 #  phasecurve:
 #    value: 0.0
-#    wave-fit: chromatic
-#    fit-type: fixed
+#    wfit: chromatic
+#    ftype: fixed
 #    prior:
 #      min: 0
 #      max: 1.0e4
-#    label: DSC
-
 
 # =============================================================================

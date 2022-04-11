@@ -12,7 +12,7 @@ Created on 2022-04-06
 from astropy.table import Table
 from collections import UserDict
 from copy import deepcopy
-from typing import Any, Dict, Type, Union
+from typing import Any, Dict, List, Optional, Type, Union
 
 from soss_tfit.core import base
 
@@ -51,7 +51,8 @@ class Const:
                  arg: Union[str, None] = None,
                  dtype: Union[Type, None] = None,
                  options: Union[list, None] = None,
-                 path: Union[str] = None, comment: Union[str, None] = None):
+                 path: Union[str] = None, comment: Union[str, None] = None,
+                 label: Union[str] = None):
         """
         Constant class (for storing properties of constants)
 
@@ -65,6 +66,7 @@ class Const:
                 argparse
         :param comment: str or None, if set this is the comment to add to a
                         fits header
+        :param label: str, label for parameter
         """
         self.key = deepcopy(key)
         # set source
@@ -81,6 +83,8 @@ class Const:
         self.path = str(path)
         # the comment for a fits header
         self.comment = deepcopy(comment)
+        # the label for the parameter
+        self.label = str(label)
 
     def __str__(self) -> str:
         return 'Const[{0}]'.format(self.key)
@@ -96,7 +100,7 @@ class Const:
         """
         return Const(self.key, self.source, self.description,
                      self.argument, self.dtype, self.options,
-                     self.path, self.comment)
+                     self.path, self.comment, self.label)
 
     def update(self, key: str, source: Union[str, None] = None,
                desc: Union[str, None] = None,
@@ -104,7 +108,8 @@ class Const:
                dtype: Union[Type, None] = None,
                options: Union[list, None] = None,
                path: Union[str] = None,
-               comment: Union[str, None] = None) -> 'Const':
+               comment: Union[str, None] = None,
+               label: Union[str] = None) -> 'Const':
         """
         Update a constant class - if value is None do not update
 
@@ -118,6 +123,7 @@ class Const:
                 argparse
         :param comment: str or None, if set this is the comment to add to a
                         fits header
+        :param label: str, label for parameter
         """
         if key is None:
             key = self.key
@@ -142,8 +148,12 @@ class Const:
         # the comment for a fits header
         if comment is None:
             comment = self.comment
+        # the label for the parameter
+        if label is None:
+            label = self.label
         # return ne instance
-        return Const(key, source, desc, arg, dtype, options, path, comment)
+        return Const(key, source, desc, arg, dtype, options, path, comment,
+                     label)
 
 
 class ParamDict(UserDict):
@@ -164,7 +174,8 @@ class ParamDict(UserDict):
             desc: Union[str, None] = None, arg: Union[str, None] = None,
             dtype: Union[Type, None] = None, not_none: bool = False,
             options: Union[list, None] = None,
-            path: Union[str] = None, comment: Union[str, None] = None):
+            path: Union[str] = None, comment: Union[str, None] = None,
+            label: Union[str] = None):
         """
         Set a parameter in the dictionary y[key] = value
 
@@ -183,6 +194,7 @@ class ParamDict(UserDict):
         :param path: list or str, the path associated with a yaml file
         :param comment: str or None, if set this is the comment to add to a
                         fits header
+        :param label: str, label for parameter
 
         :return: None - updates dict
         """
@@ -197,7 +209,8 @@ class ParamDict(UserDict):
         # update / add instance
         # ---------------------------------------------------------------------
         # args for const
-        cargs = [key, source, desc, arg, dtype, options, path, comment]
+        cargs = [key, source, desc, arg, dtype, options, path, comment,
+                 label]
         # if instance already exists we just want to update keys that should
         #   be updated (i.e. not None)
         if key in self.instances and self.instances[key] is not None:
@@ -276,15 +289,24 @@ class ParamDict(UserDict):
         # delete key from keys
         del self.data[key]
 
-    def copy(self) -> 'ParamDict':
+    def copy(self, mask: Optional[List[str]] = None) -> 'ParamDict':
         """
         Deep copy a parameter dictionary
 
+        :param mask: if set these are the keys to keep
+
         :return: new instance of ParamDict
         """
+        # deal with no mask
+        if mask is None:
+            mask = self.data.keys()
+
         new = ParamDict()
         keys, values = self.data.keys(), self.data.values()
         for key, value in zip(keys, values):
+            # skip if key in mask
+            if key not in mask:
+                continue
             # copy value
             new[key] = deepcopy(value)
             # copy instance
@@ -335,7 +357,13 @@ class ParamDict(UserDict):
                 source = 'Not set'
             else:
                 source = sources[key]
-            sargs = [key + ':', str(values[it])[:40], source]
+
+            if isinstance(values[it], ParamDict):
+                value = 'ParamDict[]'
+            else:
+                value = str(values[it])
+
+            sargs = [key + ':', value[:40], source]
             string += '\n{0:30s}\t{1:40s}\t// {2}'.format(*sargs)
         return string
 
@@ -354,11 +382,11 @@ class FitParam:
     value: Any
     wfit: str
     ftype: str
-    prior: Any
+    prior: Dict[str, Any]
     label: str
 
     def __init__(self, name: str, value: Any, wfit: str, ftype: str,
-                 prior: Any, label: str):
+                 prior: Dict[str, Any], label: str):
         # set the name
         self.name = name
         # set the value of
@@ -367,25 +395,51 @@ class FitParam:
         if wfit in ['bolometric', 'chromatic']:
             self.wfit = wfit
         else:
-            emsg = ('FitParamError: For constant {0} wfit must be '
+            emsg = (f'FitParamError: For constant {self.name} wfit must be '
                     '"bolometric" or "chromatic"' )
-            raise TransitFitExcept(emsg.format(self.name))
+            raise TransitFitExcept(emsg)
         # deal with fit/fixed type parameter
         if ftype in ['fixed', 'fit']:
             self.ftype = ftype
         else:
-            emsg = ('FitParamError: For constant {0} wfit must be '
+            emsg = (f'FitParamError: For constant {self.name} wfit must be '
                     '"fixed" or "fit"' )
-            raise TransitFitExcept(emsg.format(self.name))
+            raise TransitFitExcept(emsg)
         # deal with prior
-        # TODO: how do we want to handle prior?
-        self.prior = prior
+        self.prior = dict(prior)
         # deal with label
         if label is None:
             self.label = str(self.name)
         else:
             self.label = label
 
+    def print(self):
+        """
+        print all terms
+
+        :return:
+        """
+        string = self.__str__()
+        string += f'\n\tvalue: {self.value}'
+        string += f'\n\twfit:  {self.wfit}'
+        string += f'\n\tftype: {self.ftype}'
+        string += f'\n\tprior: {self.prior}'
+        string += f'\n\tlabel: {self.label}'
+        print(string)
+
+    def __str__(self) -> str:
+        """
+        String representation of FitParam
+        :return:
+        """
+        return 'FitParam[{0}]'.format(self.name)
+
+    def __repr__(self) -> str:
+        """
+        String representation of FitParam
+        :return:
+        """
+        return self.__str__()
 
 
 # =============================================================================
