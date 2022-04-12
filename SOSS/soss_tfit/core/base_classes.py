@@ -9,17 +9,19 @@ Created on 2022-04-06
 
 @author: cook
 """
-from astropy.table import Table
 from collections import UserDict
 from copy import deepcopy
+from jwst import datamodels
+import numpy as np
 from typing import Any, Dict, List, Optional, Type, Union
 
 from soss_tfit.core import base
+from soss_tfit.core import io
 
 # =============================================================================
 # Define variables
 # =============================================================================
-__NAME__ = 'base_classes.py'
+__NAME__ = 'core.base_classes.py'
 __version__ = base.__version__
 __date__ = base.__date__
 __authors__ = base.__authors__
@@ -300,7 +302,7 @@ class ParamDict(UserDict):
         # deal with no mask
         if mask is None:
             mask = self.data.keys()
-
+        # start a new parameter dictionary
         new = ParamDict()
         keys, values = self.data.keys(), self.data.values()
         for key, value in zip(keys, values):
@@ -314,6 +316,8 @@ class ParamDict(UserDict):
                 new.instances[key] = None
             else:
                 new.instances[key] = self.instances[key].copy()
+        # copy not_none keys
+        new.not_none = list(self.not_none)
         # return parameter dictionary
         return new
 
@@ -377,7 +381,9 @@ class ParamDict(UserDict):
 
 
 class FitParam:
-
+    """
+    Fit parameter class, for parameters that can be fit (or fixed)
+    """
     name: str
     value: Any
     wfit: str
@@ -386,7 +392,7 @@ class FitParam:
     label: str
 
     def __init__(self, name: str, value: Any, wfit: str, ftype: str,
-                 prior: Dict[str, Any], label: str):
+                 prior: Dict[str, Any], label: Optional[str] = None):
         # set the name
         self.name = name
         # set the value of
@@ -440,6 +446,26 @@ class FitParam:
         :return:
         """
         return self.__str__()
+
+    @staticmethod
+    def check(**kwargs):
+        """
+        Check we have keywords required arguments (for construction)
+        :param kwargs:
+        :return:
+        """
+        # define required keys
+        keys = ['value', 'wfit', 'ftype', 'prior']
+        # loop around keys
+        for key in keys:
+            # if we don't have this key raise an error
+            if key not in kwargs:
+                emsg = ('ParamError: {name} must have a "{key}" attribute. '
+                        'Please set')
+                ekwargs = dict(name=kwargs['name'], key=key)
+                raise TransitFitExcept(emsg.format(**ekwargs))
+
+
 
 
 # =============================================================================

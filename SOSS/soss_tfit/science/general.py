@@ -1,0 +1,281 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""
+# CODE NAME HERE
+
+# CODE DESCRIPTION HERE
+
+Created on 2022-04-12
+
+@author: cook
+"""
+from jwst import datamodels
+import numpy as np
+from typing import Any, Dict, List, Optional, Type, Union
+
+from soss_tfit.core import base
+from soss_tfit.core import base_classes
+from soss_tfit.core import io
+
+# =============================================================================
+# Define variables
+# =============================================================================
+__NAME__ = 'science.general.py'
+__version__ = base.__version__
+__date__ = base.__date__
+__authors__ = base.__authors__
+# get parameter dictionary
+ParamDict = base_classes.ParamDict
+
+
+# =============================================================================
+# Define functions
+# =============================================================================
+class Inputdata:
+    """
+    Class handling the loading and manipulation of input data
+    """
+    filename: str
+    n_group: int
+    t_group: float
+    n_int: int
+    time_int: float
+    all_spec: Dict[int, np.ndarray]
+    # order names
+    orders: List[int]
+    # number of wave length elements in each order
+    n_wav: Dict[int, int]
+
+    def __init__(self, params: ParamDict, filename: str, verbose: bool = False):
+        # set filename
+        self.filename = filename
+        # ---------------------------------------------------------------------
+        # print progress
+        if verbose:
+            print('Loading JWST datamodel')
+        # load data model from jwst
+        data = datamodels.open(filename)
+        # ---------------------------------------------------------------------
+        # print progress
+        if verbose:
+            print('Stacking multi spec')
+        # set orders
+        self.orders = list(params['ORDERS'])
+        # convert data into a stack
+        self.all_spec = io.stack_multi_spec(data, self.orders)
+        # storage for number of pixels in spectral dimensions
+        self.n_wav = dict()
+        # set number of pixels in each order
+        for onum in self.orders:
+            # get the number of wavelengths
+            self.n_wav[onum] = self.all_spec[onum]['WAVELENGTH'].shape[1]
+        # ---------------------------------------------------------------------
+        # assign meta data for this observation
+        # ---------------------------------------------------------------------
+        # Number of groups
+        self.n_group = data.meta.exposure.ngroups
+        # Reading time [s]
+        self.t_group = data.meta.exposure.group_time
+        # Number of integrations
+        self.n_int = data.meta.exposure.nints
+        # integration time
+        self.time_int = (self.n_group + 1) * self.t_group
+        # can now delete data (no longer needed)
+        del data
+
+    def compute_time(self):
+        """
+        Compute the time for each pixel accounting for readout time
+
+        :return:
+        """
+        # loop around each order
+        for onum in self.orders:
+            # get this orders values
+            n_wav = self.n_wav[onum]
+            time_int = self.time_int
+            n_int = self.n_int
+
+            # if n_wav not 2048 must check and update this value,
+            #     will it always be 2048?
+            pix0 = 0
+
+            time_pix = (pix0 + np.arange(n_wav) - 1024) / 2048 * time_int
+
+            # the 2d array of time, for all integrations and all pixels
+            #     (wavelengths)
+            # check order here, which end of spectrum is read first?
+            time_obs = np.zeros(n_wav) + (np.arange(n_int) * time_int)[:, None]
+            time_obs += time_pix[None, :]
+            # could choose appropriate time here
+            t0 = time_int / 2
+            # add to matrix
+            time_obs += t0
+            # convert to days
+            time_obs /= 86400
+
+            # push into the all spec dictionary for this order
+            self.all_spec[onum]['TIME'] = time_obs
+
+    def remove_null_flux(self):
+        """
+        Remove all exactly zero values and NaN values from all integrations
+
+        :return: None, updates self.all_spec
+        """
+        # get the orders
+        orders = self.orders
+        # get the spectrum storage
+        all_spec = self.all_spec
+        # loop around orders
+        for onum in orders:
+            # find the bad flux values
+            bad_mask = all_spec[onum]['FLUX'] == 0
+            bad_mask |= np.isnan(all_spec[onum]['FLUX'])
+            # mask all values bad for all wavelengths
+            bad_mask = bad_mask.all(axis=0)
+            # loop around all columns and mask
+            for quantity in all_spec[onum]:
+                # get the wave/flux/fluxerror/time
+                qvector = all_spec[onum][quantity]
+                # create a new cut down version of quantity
+                new_image = np.delete(qvector, bad_mask, axis=1)
+                # overwrite original values
+                self.all_spec[onum][quantity] = new_image
+            # update the number of pixels and wavelengths
+            self.n_wav[onum] = self.all_spec[onum]['WAVELENGTH'].shape[1]
+
+    def apply_spectral_binning(self, params: ParamDict):
+        """
+        Apply spectral binning
+
+        :param params: ParamDict, parameter dictionary of constants
+        :return:
+        """
+        # TODO: Must make sure binning is consistent between orders
+        # get the number of bins required per order
+        binning = params['ORDER_BINS']
+        # get the number of integrations
+        n_int = self.n_int
+        # get the number of wavelength pixels
+        n_wav = self.n_wav
+        # get the orders
+        orders = self.orders
+        # get the spectrum storage
+        all_spec = self.all_spec
+        # ---------------------------------------------------------------------
+        # loop around each order
+        for onum in orders:
+            # get the number of bins for this order
+            n_bins = binning[onum]
+            # deal with no binning required
+            if n_bins is None:
+                # get the original wavelength
+                wavelength1 = all_spec[onum]['WAVELENGTH']
+                # work out start and end points (in wavelengths)
+                wave_start = wavelength1[0, 0]
+                wave_end = wavelength1[0, -1]
+                # append to all_spec
+                all_spec[onum]['BIN_LIMITS'] = (wave_start, wave_end)
+                # skip binning
+                continue
+            # calculate the bin size
+            bin_size = n_wav[onum] // n_bins
+            # set up storage for bin limits
+            bin_limits = np.zeros((2, n_bins))
+            # get original vectors
+            wavelength1 = all_spec[onum]['WAVELENGTH']
+            time1 = all_spec[onum]['TIME']
+            flux1 = all_spec[onum]['FLUX']
+            flux_err1 = all_spec[onum]['FLUX_ERROR']
+            # set up binned vectors
+            wavelength2 = np.zeros((n_int, n_bins))
+            time2 = np.zeros((n_int, n_bins))
+            flux2 = np.zeros((n_int, n_bins))
+            flux_err2 = np.zeros((n_int, n_bins))
+            # loop aroun the bins and fill vectors
+            for bin_it in range(n_bins):
+                # calculate the start and end point for this bin
+                start, end = bin_it * bin_size, (bin_it + 1) * bin_size
+                # calculate the binned values (mean)
+                bin_wave = np.mean(wavelength1[:, start:end], axis=1)
+                bin_time = np.mean(time1[:, start:end], axis=1)
+                bin_flux = np.mean(flux1[:, start:end], axis=1)
+                # sqrt of the mean squared values
+                mean_flux2_err = np.mean(flux_err1[:, start:end]**2, axis=1)
+                bin_flux_err = np.sqrt(mean_flux2_err)
+                # work out bin limits
+                wave_start = wavelength1[0, start]
+                wave_end = wavelength1[0, end-1]
+                # push into binned vectors
+                wavelength2[:, bin_it] = bin_wave
+                time2[:, bin_it] = bin_time
+                flux2[:, bin_it] = bin_flux
+                flux_err2[:, bin_it] = bin_flux_err
+                # update the bin limits
+                bin_limits[:, bin_it] = (wave_start, wave_end)
+            # -----------------------------------------------------------------
+            # finally update the all_spec values
+            self.all_spec[onum]['WAVELENGTH'] = wavelength2
+            self.all_spec[onum]['TIME'] = time2
+            self.all_spec[onum]['FLUX'] = flux2
+            self.all_spec[onum]['FLUX_ERROR'] = flux_err2
+            self.all_spec[onum]['BIN_LIMITS'] = bin_limits
+            # update the number of pixels and wavelengths
+            self.n_wav[onum] = n_bins
+
+    def normalize_by_out_of_transit_flux(self, params: ParamDict):
+        """
+        Normalize by the mean of the out-of-transit flux at each wavelength
+
+        :param params: ParamDict, the parameter dictionary of constants
+
+        :return:
+        """
+        # get the normalized time value before and after transit
+        tnorm0 = params['TNORM']['before']
+        tnorm1 = params['TNORM']['after']
+        # deal with no normalization required
+        if tnorm0 is None and tnorm1 is None:
+            return
+        # get the orders
+        orders = self.orders
+        # get the spectrum storage
+        all_spec = self.all_spec
+
+        # loop around orders
+        for onum in orders:
+            # get time and flux
+            time = all_spec[onum]['TIME']
+            flux = all_spec[onum]['FLUX']
+            # get a mask of the orders
+            out_mask = np.zeros_like(time, dtype=bool)
+            # deal with before transit part
+            if tnorm0 is not None:
+                out_mask |= time < tnorm0
+            # deal with after transit part
+            if tnorm1 is not None:
+                out_mask |= time > tnorm1
+            # all to all integrations
+            out_mask = out_mask.all(axis=1)
+
+            # work out mean of out-of-transit flux at each wavelength
+            out_flux = np.mean(flux[out_mask, :], axis=0)
+
+            # normalize flux and flux error by out of transit flux
+
+
+
+        orders = self.orders
+
+
+# =============================================================================
+# Start of code
+# =============================================================================
+if __name__ == "__main__":
+    # print hello world
+    print('Hello World')
+
+# =============================================================================
+# End of code
+# =============================================================================

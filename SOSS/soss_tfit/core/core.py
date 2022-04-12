@@ -60,9 +60,16 @@ def load_params(config_file: str) -> ParamDict:
             continue
         # need to check for Null value --> use default value
         if value is None:
-            continue
+            # force error if non None parameter is still none
+            if key in params.not_none:
+                emsg = (f'ParamError: Parameter "{key}" ({instance.path}) '
+                        f'cannot be None. Please set.')
+                raise base_classes.TransitFitExcept(emsg)
+            else:
+                continue
         # deal with dtype = FitParam
         if issubclass(instance.dtype, FitParam):
+            FitParam.check(name=key, **value)
             value = FitParam(key, label=instance.label, **value)
         # now update params
         params.set(key=key, value=value, source=func_name)
@@ -75,24 +82,29 @@ def load_params(config_file: str) -> ParamDict:
         planet_dict = params.copy(mask=planet_keys)
         # loop around planet keys
         for key in planet_keys:
+            # set the name
+            name = f'{pkey}_{key}'
             # skip keys without instance
             if key not in params.instances:
                 continue
             # get the parameter instance
             instance = params.instances[key]
-
+            # get the path
             path = instance.path.format(N=nplanet+1)
             # check for yaml path
             if path is not None:
                 value = get_yaml_from_path(yaml_inputs, path)
             # else we use default value
             else:
-                continue
+                emsg = f'ParamError: {pkey} must have "{key}" ({path}) set.'
+                raise base_classes.TransitFitExcept(emsg)
             # need to check for Null value --> use default value
             if value is None:
-                continue
+                emsg = f'ParamError: {pkey} must have "{key}" ({path}) set.'
+                raise base_classes.TransitFitExcept(emsg)
             # deal with dtype = FitParam
             if issubclass(instance.dtype, FitParam):
+                FitParam.check(name=name, **value)
                 value = FitParam(key, label=instance.label, **value)
             # now update params
             planet_dict.set(key=key, value=value, source=func_name)
@@ -104,8 +116,6 @@ def load_params(config_file: str) -> ParamDict:
         del params[key]
     # -------------------------------------------------------------------------
     return params
-
-
 
 
 def get_yaml_from_path(ydict: dict, path: str):

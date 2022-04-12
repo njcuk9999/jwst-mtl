@@ -32,6 +32,34 @@ params.set(key='NPLANETS', value=1, source=__NAME__,
            desc='Number of planets to use',
            dtype=int, path='global_params.nplanets')
 
+# Orders to use (list of orders)
+params.set(key='ORDERS', value=[1, 2], source=__NAME__,
+           desc='Orders to use ',
+           dtype=list, path='global_params.orders')
+
+# Number of bins used for each order for spectral binning
+#       (set to None for no binning)
+
+# default value depends on params['ORDERS']
+order_bins = dict()
+for onum in params['ORDERS']:
+    order_bins[onum] = None
+
+params.set(key='ORDER_BINS', value=order_bins, source=__NAME__,
+           desc='Number of bins used for each order for spectral binning '
+                '(set to None for no binning)',
+           dtype=dict, path='global_params.order_bins')
+
+# The normalization value before and after transit [days from start of observation]
+#    setting None for before or after does not normalize by this region
+#    setting both to None does not normalize
+params.set(key='TNORM', value=dict(before=None, after=None), source=__NAME__,
+           desc='The normalization value before and after transit '
+                '[days from start of observation] \n\t setting None for before '
+                'or after does not normalize by this region \n\t setting both '
+                'to None does not normalize',
+           dtype=dict, path='global_params.tnorm')
+
 # input extracted spctrum - aboslute path (must be set)
 params.set(key='INSPECTRUM', value=None, source=__NAME__,
            desc='input extracted spctrum - aboslute path (must be set)',
@@ -94,7 +122,7 @@ params.set(key='OMC', value=0.0, source=__NAME__,
 # =============================================================================
 # Mean stellar density [units?] [PARAM]
 params.set(key='RHO_STAR', value=None, source=__NAME__,
-           desc='Mean stellar density',
+           desc='Mean stellar density [g/cm3]',
            dtype=FitParam, path='star.rhostar', label='p')
 
 # Limb-darkening param 1. Set ld1=ld2=0 and ld3=q1 and ld4=q2 [PARAM]

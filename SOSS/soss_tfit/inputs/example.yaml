@@ -15,6 +15,21 @@
 global_params:
   # Number of planets (use for N planets) [INT]
   nplanets: 1
+  # Orders to use (list of orders)
+  orders:
+    - 1
+    - 2
+  # Number of bins used for each order for spectral binning (set to None for no binning)
+  order_bins:
+    1: 10
+    2: 5
+  # The normalization value before and after transit [days from start of observation]
+  #    setting None for before or after does not normalize by this region
+  #    setting both to None does not normalize
+  tnorm:
+    before: 0.05
+    after: 0.135
+
   # ---------------------------------------------------------------------------
   # Input/Output parameters
   # ---------------------------------------------------------------------------
@@ -65,7 +80,7 @@ global_params:
 #     - max: maximum value of a tophat prior [FLOAT]
 
 star:
-  # Mean stellar density [units?] [PARAM]
+  # Mean stellar density [g/cm3] [PARAM]
   rhostar:
     value: 1.0
     wfit: bolometric
