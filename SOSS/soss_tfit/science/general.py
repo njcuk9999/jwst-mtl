@@ -26,6 +26,8 @@ __date__ = base.__date__
 __authors__ = base.__authors__
 # get parameter dictionary
 ParamDict = base_classes.ParamDict
+# Define quantities
+QUANTITIES = ['WAVELENGTH', 'FLUX', 'FLUX_ERROR']
 
 
 # =============================================================================
@@ -40,7 +42,12 @@ class Inputdata:
     t_group: float
     n_int: int
     time_int: float
-    all_spec: Dict[int, np.ndarray]
+    # spectrum dictionary spec[order][quantity]
+    #       quantities defined by QUANTITIES constant
+    spec: Dict[int, Dict[str, np.ndarray]]
+    # photo spectra  phot[i][quantity]
+    #       quantities are [WAVELENGTH, TIME, FLUX, FLUXERROR, ITIME]
+    phot: List[Dict[str, np.ndarray]]
     # order names
     orders: List[int]
     # number of wave length elements in each order
@@ -62,13 +69,14 @@ class Inputdata:
         # set orders
         self.orders = list(params['ORDERS'])
         # convert data into a stack
-        self.all_spec = io.stack_multi_spec(data, self.orders)
+        self.spec = io.stack_multi_spec(data, self.orders,
+                                        quantities=QUANTITIES)
         # storage for number of pixels in spectral dimensions
         self.n_wav = dict()
         # set number of pixels in each order
         for onum in self.orders:
             # get the number of wavelengths
-            self.n_wav[onum] = self.all_spec[onum]['WAVELENGTH'].shape[1]
+            self.n_wav[onum] = self.spec[onum]['WAVELENGTH'].shape[1]
         # ---------------------------------------------------------------------
         # assign meta data for this observation
         # ---------------------------------------------------------------------
@@ -115,35 +123,35 @@ class Inputdata:
             time_obs /= 86400
 
             # push into the all spec dictionary for this order
-            self.all_spec[onum]['TIME'] = time_obs
+            self.spec[onum]['TIME'] = time_obs
 
     def remove_null_flux(self):
         """
         Remove all exactly zero values and NaN values from all integrations
 
-        :return: None, updates self.all_spec
+        :return: None, updates self.spec
         """
         # get the orders
         orders = self.orders
         # get the spectrum storage
-        all_spec = self.all_spec
+        spec = self.spec
         # loop around orders
         for onum in orders:
             # find the bad flux values
-            bad_mask = all_spec[onum]['FLUX'] == 0
-            bad_mask |= np.isnan(all_spec[onum]['FLUX'])
+            bad_mask = spec[onum]['FLUX'] == 0
+            bad_mask |= np.isnan(spec[onum]['FLUX'])
             # mask all values bad for all wavelengths
             bad_mask = bad_mask.all(axis=0)
             # loop around all columns and mask
-            for quantity in all_spec[onum]:
+            for quantity in spec[onum]:
                 # get the wave/flux/fluxerror/time
-                qvector = all_spec[onum][quantity]
+                qvector = spec[onum][quantity]
                 # create a new cut down version of quantity
                 new_image = np.delete(qvector, bad_mask, axis=1)
                 # overwrite original values
-                self.all_spec[onum][quantity] = new_image
+                self.spec[onum][quantity] = new_image
             # update the number of pixels and wavelengths
-            self.n_wav[onum] = self.all_spec[onum]['WAVELENGTH'].shape[1]
+            self.n_wav[onum] = self.spec[onum]['WAVELENGTH'].shape[1]
 
     def apply_spectral_binning(self, params: ParamDict):
         """
@@ -161,8 +169,6 @@ class Inputdata:
         n_wav = self.n_wav
         # get the orders
         orders = self.orders
-        # get the spectrum storage
-        all_spec = self.all_spec
         # ---------------------------------------------------------------------
         # loop around each order
         for onum in orders:
@@ -171,12 +177,14 @@ class Inputdata:
             # deal with no binning required
             if n_bins is None:
                 # get the original wavelength
-                wavelength1 = all_spec[onum]['WAVELENGTH']
-                # work out start and end points (in wavelengths)
-                wave_start = wavelength1[0, 0]
-                wave_end = wavelength1[0, -1]
-                # append to all_spec
-                all_spec[onum]['BIN_LIMITS'] = (wave_start, wave_end)
+                wavelength1 = self.spec[onum]['WAVELENGTH']
+                # set bin limits
+                bin_limits = np.zeros((2, n_wav[onum]))
+                # set the bin limits to the wavelength (delta function?)
+                for bin_it in range(n_wav[onum]):
+                    wave_start = wavelength1[:, bin_it]
+                    bin_limits[:, bin_it] = (wave_start, wave_start)
+                self.spec[onum]['BIN_LIMITS'] = bin_limits
                 # skip binning
                 continue
             # calculate the bin size
@@ -184,10 +192,10 @@ class Inputdata:
             # set up storage for bin limits
             bin_limits = np.zeros((2, n_bins))
             # get original vectors
-            wavelength1 = all_spec[onum]['WAVELENGTH']
-            time1 = all_spec[onum]['TIME']
-            flux1 = all_spec[onum]['FLUX']
-            flux_err1 = all_spec[onum]['FLUX_ERROR']
+            wavelength1 = self.spec[onum]['WAVELENGTH']
+            time1 = self.spec[onum]['TIME']
+            flux1 = self.spec[onum]['FLUX']
+            flux_err1 = self.spec[onum]['FLUX_ERROR']
             # set up binned vectors
             wavelength2 = np.zeros((n_int, n_bins))
             time2 = np.zeros((n_int, n_bins))
@@ -215,12 +223,12 @@ class Inputdata:
                 # update the bin limits
                 bin_limits[:, bin_it] = (wave_start, wave_end)
             # -----------------------------------------------------------------
-            # finally update the all_spec values
-            self.all_spec[onum]['WAVELENGTH'] = wavelength2
-            self.all_spec[onum]['TIME'] = time2
-            self.all_spec[onum]['FLUX'] = flux2
-            self.all_spec[onum]['FLUX_ERROR'] = flux_err2
-            self.all_spec[onum]['BIN_LIMITS'] = bin_limits
+            # finally update the spec values
+            self.spec[onum]['WAVELENGTH'] = wavelength2
+            self.spec[onum]['TIME'] = time2
+            self.spec[onum]['FLUX'] = flux2
+            self.spec[onum]['FLUX_ERROR'] = flux_err2
+            self.spec[onum]['BIN_LIMITS'] = bin_limits
             # update the number of pixels and wavelengths
             self.n_wav[onum] = n_bins
 
@@ -241,13 +249,13 @@ class Inputdata:
         # get the orders
         orders = self.orders
         # get the spectrum storage
-        all_spec = self.all_spec
+        spec = self.spec
 
         # loop around orders
         for onum in orders:
             # get time and flux
-            time = all_spec[onum]['TIME']
-            flux = all_spec[onum]['FLUX']
+            time = spec[onum]['TIME']
+            flux = spec[onum]['FLUX']
             # get a mask of the orders
             out_mask = np.zeros_like(time, dtype=bool)
             # deal with before transit part
@@ -263,10 +271,46 @@ class Inputdata:
             out_flux = np.mean(flux[out_mask, :], axis=0)
 
             # normalize flux and flux error by out of transit flux
+            self.spec[onum]['FLUX'] /= out_flux[None, :]
+            self.spec[onum]['FLUX_ERROR'] /= out_flux[None, :]
+
+    def photospectra(self):
+        """
+        Move the spec data into a photospectra list (self.phot)
+
+        :return: None, updates self.phot
+        """
+        # create phot list storage
+        self.phot = []
+        # Integration time [days]
+        int_time = (self.n_group - 1) * self.t_group / (60 * 60 * 24)
+        # push integration time into an array
+        itime = np.full(self.n_int, int_time)
+        # loop around order
+        for onum in self.orders:
+            # get the spectrum
+            wave_arr = self.spec[onum]['WAVELENGTH']
+            time_arr = self.spec[onum]['TIME']
+            flux_arr = self.spec[onum]['FLUX']
+            eflux_arr = self.spec[onum]['FLUX_ERROR']
+            # loop around wave bandpasses
+            for w_it in range(self.n_wav[onum]):
+                # define a dictionary to hold the phot element
+                phot_it = dict()
+                # add the wavelength vector for this bandpass
+                phot_it['WAVELENGTH'] = np.array(wave_arr[:, w_it])
+                # add the time vector for this bandpass
+                phot_it['TIME'] = np.array(time_arr[:, w_it])
+                # add the flux vector for this bandpass
+                phot_it['FLUX'] = np.array(flux_arr[:, w_it])
+                # add the flux error vector for this bandpass
+                phot_it['FLUX_ERROR'] = np.array(eflux_arr[:, w_it])
+                # add the integration time for this bandpass
+                phot_it['ITIME'] = np.array(itime)
+                # append to photospectra
+                self.phot.append(phot_it)
 
 
-
-        orders = self.orders
 
 
 # =============================================================================

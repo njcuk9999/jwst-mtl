@@ -9,9 +9,12 @@ Created on 2022-04-06
 
 @author: cook
 """
+import matplotlib.pyplot as plt
+
 from soss_tfit.core import core
-from soss_tfit.core import base_classes
 from soss_tfit.science import general
+
+
 
 # =============================================================================
 # Define variables
@@ -61,6 +64,31 @@ if __name__ == "__main__":
     # apply normalization (normalize by mean out-of-transit)
     print('Normalizing by out-of-transit flux for each wavelength')
     data.normalize_by_out_of_transit_flux(params)
+
+    # -------------------------------------------------------------------------
+    # check that all looks good
+    order, ibin = 2, 0
+    time_arr = data.spec[order]['TIME'][:, ibin]
+    flux_arr = data.spec[order]['FLUX'][:, ibin]
+    eflux_arr = data.spec[order]['FLUX_ERROR'][:, ibin]
+    fig, frame = plt.subplots(ncols=1, nrows=1)
+    frame.errorbar(time_arr, flux_arr, yerr=eflux_arr, ls='None', marker='o')
+    frame.set(xlabel='Time [days]', ylabel='Flux',
+              title=f'Order {order} wave bin: {ibin}')
+
+    # -------------------------------------------------------------------------
+    # remove a few lambdas from order 2 (S/N) too low
+    order = 2
+    imin = 1   # david uses 4 for bins = [30, 15]
+    # loop around each quantity
+    for quantity in data.spec[order]:
+        data.spec[order][quantity] = data.spec[order][quantity][:, imin:]
+    # update nwave
+    data.n_wav[order] = data.spec[order]['WAVELENGTH'].shape[1]
+
+    # -------------------------------------------------------------------------
+    # create the photospectra
+    data.photospectra()
 
     # -------------------------------------------------------------------------
     # Step 3: fit the multi-spectrum model (trial run)

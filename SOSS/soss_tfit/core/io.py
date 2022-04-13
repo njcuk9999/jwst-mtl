@@ -10,7 +10,7 @@ Created on 2022-04-12
 @author: cook
 """
 import numpy as np
-from typing import List, Tuple
+from typing import List, Dict
 
 # =============================================================================
 # Define variables
@@ -20,10 +20,21 @@ from typing import List, Tuple
 # =============================================================================
 # Define functions
 # =============================================================================
-def stack_multi_spec(multi_spec,
-                     use_orders: List[int],
-                     quantities: Tuple = ('WAVELENGTH', 'FLUX', 'FLUX_ERROR')):
+def stack_multi_spec(multi_spec, use_orders: List[int],
+                     quantities: List[str]) -> Dict[int, Dict[str, np.ndarray]]:
+    """
+    Convert a jwst multi_spec into a dictionary
 
+    all_spec[order][quantity]
+
+    where order is [1, 2, 3] etc
+    quantity is ['WAVELENGTH', 'FLUX', 'FLUX_ERROR', 'TIME', 'BIN_LIMITS']
+
+    :param multi_spec:
+    :param use_orders:
+    :param quantities:
+    :return:
+    """
     # define a container for the stack
     all_spec = dict()
     # -------------------------------------------------------------------------
@@ -44,7 +55,9 @@ def stack_multi_spec(multi_spec,
             continue
         # load values for each quantity
         for quantity in quantities:
-            all_spec[sp_ord][quantity].append(spec.spec_table[quantity])
+            # only add quantities
+            if quantity in spec.spec_table.columns.names:
+                all_spec[sp_ord][quantity].append(spec.spec_table[quantity])
     # -------------------------------------------------------------------------
     # convert list to array
     for sp_ord in all_spec:

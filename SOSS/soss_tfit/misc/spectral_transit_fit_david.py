@@ -1387,7 +1387,7 @@ if __name__ == "__main__":
 
     # here I want to remove a few lambdas from order 1, S/N too low
     order = 2
-    imin = 4
+    imin = 1   # david uses 4 for bins = [30, 15]
     all_spec_binned[order]['WAVELENGTH'] = all_spec_binned[order]['WAVELENGTH'][:, imin:]
     all_spec_binned[order]['TIME'] = all_spec_binned[order]['TIME'][:, imin:]
     all_spec_binned[order]['FLUX'] = all_spec_binned[order]['FLUX'][:, imin:]
@@ -1694,7 +1694,7 @@ if __name__ == "__main__":
     # -------------------------------------------------------------------------
 
     # quick check of chain
-    plt.plot(chain[:, 140])
+    plt.plot(chain[:, -1])
 
     # -------------------------------------------------------------------------
 
@@ -1713,7 +1713,7 @@ if __name__ == "__main__":
     # -------------------------------------------------------------------------
 
     # quick check of posterior
-    _ = plt.hist(chain[::10, 142])
+    _ = plt.hist(chain[::10, -1])
 
     # -------------------------------------------------------------------------
 
