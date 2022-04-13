@@ -11,10 +11,12 @@ Created on 2022-04-06
 """
 import matplotlib.pyplot as plt
 
+
 from soss_tfit.core import core
 from soss_tfit.science import general
 from soss_tfit.science import mcmc
 from soss_tfit.science import plot
+
 
 
 # =============================================================================
@@ -101,31 +103,111 @@ if __name__ == "__main__":
     # Show a plot of the data. Each colour is a different wavelength.
     plot.plot_flux(data)
 
+
+    # TODO: Move to David only
+    # Fill in a few necessary parameters
+    # (Overwrites default parameters that were given in def)
+
+    # [g/cm³]
+    params['RHO_STAR'].value = 2.48
+    # boundaries for valid models, if needed.
+    params['RHO_STAR'].prior = dict(min=2.0, max=3.0)
+    # limb dark. coeff1
+    params['LD3'].value = 0.2
+    # limb dark. coeff2
+    params['LD4'].value = 0.15
+    # zero point to zero
+    params['ZEROPOINT'].value = 0.0
+    params['ZEROPOINT'].prior = dict(min=-0.005, max=0.005)
+    # period priors
+    params['PLANET1']['PERIOD'].value = 1.7497798
+    params['PLANET1']['PERIOD'].ftype = 'fixed'
+    # t0: center of transit time
+    params['PLANET1']['T0'].value = 0.093
+    params['PLANET1']['T0'].prior = dict(min=0.093 - 0.03, max=0.093 + 0.03)
+    # impact parameter
+    params['PLANET1']['B'].value = 0.6
+    params['PLANET1']['B'].prior = dict(min=0.4, max=0.8)
+    # Rp/Rs
+    params['PLANET1']['RPRS'].value = 0.1645
+    params['PLANET1']['RPRS'].prior = dict(min=0.1, max=0.2)
+
     # -------------------------------------------------------------------------
     # Step 3: set up the parameters
     #         All data manipulation + parameter changes should be done
     #         before this point
     # -------------------------------------------------------------------------
-    # get starting parmaeters for transit fit
+    # get starting parameters for transit fit
     tfit = mcmc.get_starting_params(params, data)
 
-    # -------------------------------------------------------------------------
-    # Step 3: fit the multi-spectrum model (trial run)
-    # -------------------------------------------------------------------------
-    mcmc.run_mcmc()
+
+    # TODO: David adjustment
+    # added by DL, trying to adjust the beta factors get better acceptance
+    # rates right away
+    bkwargs = dict()
+    bkwargs['p'] = 0.03
+    bkwargs['q1'] = 0.2
+    bkwargs['q1'] = 0.2
+    bkwargs['q2'] = 0.2
+    bkwargs['ZPT'] = 1.0e-3
+    bkwargs['EP1'] = 2.0e-4
+    bkwargs['BB1'] = 2.0e-3
+    bkwargs['RD1'] = 3.0e-3
+    bkwargs['DSC'] = 0.002
+
+    # assign beta values
+    tfit.assign_beta(beta_kwargs=bkwargs)
+
+    # Check that all is good
+    plot.plot_transit_fit(tfit, bandpass=3)
 
     # -------------------------------------------------------------------------
-    # Step 4: fit the multi-spectrum model (full run)
+    # Step 3: Calculate rescaling of beta to improve acceptance rates
+    # -------------------------------------------------------------------------
+    # get corrscale and save to tfit
+    niter_cor = 5000
+    burnin_cor = 1000
+    # set loglikelihood function
+    tfit.loglikelihood = mcmc.lnprob
+    # set MCMC function
+    tfit.mcmcfunc = mcmc.mhg_mcmc
+    # Calculate rescaling of beta to improve acceptance rates
+    tfit = mcmc.beta_rescale(params, tfit)
+
+    # -------------------------------------------------------------------------
+    # Step 4: fit the multi-spectrum model (trial run)
+    # -------------------------------------------------------------------------
+    # TODO: David adjustments
+    # TODO: Add these to parameters.py
+    nwalkers = 3  # Number of walkers for MCMC
+    nsteps1 = 10000  # Total length of chain will be nwalkers*nsteps
+    nsteps2 = 200000  # nstep1 is to check that MCMC is okay, nstep2 is the real work.
+    nsteps_inc = 100000
+    burninf = 0.5  # burn-in for evalulating convergence
+
+    nthin = 101
+    nloopmax = 3
+    converge_crit = 1.02  # Convergence criteria
+    buf_converge_crit = 1.2  # Convergence criteria for buffer
+    itermax = 5  # Maximum iterations allowed
+
+    # run the mcmc in trial mode
+    sampler = mcmc.Sampler(params, tfit, mode='trial')
+    sampler.run_mcmc()
+
+    # -------------------------------------------------------------------------
+    # Step 5: fit the multi-spectrum model (full run)
+    # -------------------------------------------------------------------------
+    sampler = mcmc.Sampler(params, tfit, mode='full')
+    sampler.run_mcmc()
+
+    # -------------------------------------------------------------------------
+    # Step 6: save results
     # -------------------------------------------------------------------------
 
 
     # -------------------------------------------------------------------------
-    # Step 5: save results
-    # -------------------------------------------------------------------------
-
-
-    # -------------------------------------------------------------------------
-    # Step 6: plot spectrum
+    # Step 7: plot spectrum
     # -------------------------------------------------------------------------
 
 

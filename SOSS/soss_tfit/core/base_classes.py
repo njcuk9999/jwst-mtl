@@ -464,7 +464,8 @@ class FitParam:
                 ekwargs = dict(name=kwargs['name'], key=key)
                 raise TransitFitExcept(emsg.format(**ekwargs))
 
-    def get_value(self, n_phot: int) -> Tuple[np.ndarray, np.ndarray, str]:
+    def get_value(self, n_phot: int
+                  ) -> Tuple[np.ndarray, bool, bool, Dict[str, Any], str]:
         """
         Get the properties for the transit fitting
 
@@ -487,14 +488,15 @@ class FitParam:
         else:
             p0 = np.full(n_phot, self.value)
         # get whether fixed or fitted
-        if self.ftype == 'fixed':
-            mask = np.zeros(n_phot, dtype=bool)
-        else:
-            mask = np.ones(n_phot, dtype=bool)
+        fitted = self.ftype == 'fit'
+        # get whether chromatic
+        chromatic = self.wfit == 'chromatic'
+        # pass back the prior dictionary
+        prior = self.prior
         # get name
         name = self.label
         # return values
-        return p0, mask, name
+        return p0, fitted, chromatic, prior, name
 
 
 # =============================================================================

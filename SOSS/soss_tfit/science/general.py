@@ -295,6 +295,8 @@ class InputData:
         # fill phot with first order
         for quantity in TQUANTITIES:
             self.phot[quantity] = self.spec[order0][quantity].T
+        # keep track of the orders
+        self.phot['ORDERS'] = np.full_like(self.phot['WAVELENGTH'], order0)
         # loop around all other order
         for onum in self.orders[1:]:
             # loop around all transit quantities
@@ -304,6 +306,10 @@ class InputData:
                 # concatenate with previous orders
                 self.phot[quantity] = np.concatenate([self.phot[quantity],
                                                       spec_quant.T])
+            # keep track of the orders
+            order_quant = np.full_like(self.spec[onum]['WAVELENGTH'].T, onum)
+            self.phot['ORDERS'] = np.concatenate([self.phot['ORDERS'],
+                                                 order_quant])
         # update number of photometric bandpasses
         self.n_phot = self.phot['WAVELENGTH'].shape[0]
         # add itime

@@ -1272,8 +1272,7 @@ def lnprob(x):
 # =============================================================================
 # Start of code
 # =============================================================================
-#if __name__ == "__main__":
-def main():
+if __name__ == "__main__":
     # -------------------------------------------------------------------------
     # Load model and data
     # -------------------------------------------------------------------------
@@ -1481,7 +1480,7 @@ def main():
     tpars.rprs[0][3] = np.array([0.1, 0.2])
 
     # Simple labels to identify parameters.
-    # NOTE: VOF is not used, TED not used
+    # Question: VOF is not used, TED not used
     clabels = ['p', 'c1', 'c2', 'q1', 'q2', 'DIL', 'VOF', 'ZPT', 'EP', 'PE',
                'BB', 'RD', 'EC', 'ES', 'KRV', 'TED', 'ELL', 'ALB', 'DSC',
                'ASC', 'LSC']
@@ -1499,7 +1498,7 @@ def main():
     nloopmax = 3
     converge_crit = 1.02  # Convergence criteria
     buf_converge_crit = 1.2  # Convergence criteria for buffer
-    itermax = 5  # Maximum iterations allowed
+    itermax = 5  # Maximum iterations allowed  [NOT USED]
 
     # Creates internal array used to create transit model.
     sol = get_all_parameters(tpars, photospectra)

@@ -40,7 +40,7 @@ global_params:
   # model file path - absolute path (set None to not plot model)
   modelpath: /data/jwst-soss/data/jwst-mtl-user/wasp52b/WASP_52_b_HR_Metallicity100_CtoO0.54_pQuench1e-99_TpNonGrayTint75.0f0.25A0.1_pCloud100000.0mbar_Spectrum_FullRes.csv
   # ---------------------------------------------------------------------------
-  # Fitting parameters
+  # Fitting hyper parameters
   # ---------------------------------------------------------------------------
   # Scale to apply to photometric errors [PARAM]
   error_scale:
@@ -66,6 +66,45 @@ global_params:
     prior:
       min: 0
       max: 1
+
+# =============================================================================
+# MCMC parameters
+# =============================================================================
+# TODO: Add all paramters to parameters.py
+# General mcmc parameters
+mcmc_params:
+  # Number of steps in the beta rescale
+  niter_cor: 5000
+  # burn-in for the beta rescale
+  burnin_cor: 1000
+  # do trial
+  trial: true
+  # do full
+  full: true
+  # Number of walkers for MCMC
+  nwalkers:
+    trial: 3
+    full: 3
+  # Total length of chain will be nwalkers*nsteps
+  nsteps:
+    trial: 10000
+    full: 200000
+  # the number of steps we add on second loop (if convergence not met)
+  nsteps_inc:
+    trial: 10000
+    full: 100000
+  # burn-in for evaluating convergence
+  burninf:
+    trial: 0.5
+    full: 0.5
+  # Maximum number of times to try the MCMC (if convergence not met on a loop)
+  nloopmax:
+    trial: 3
+    full: 3
+  # Convergence criteria
+  converge_crit: 1.02
+  # Convergence criteria for buffer
+  buf_converge_crit: 1.2
 
 # =============================================================================
 # Star Parameters
@@ -137,7 +176,6 @@ star:
         min: 0.0
         max: 1.0e9
 
-
 # =============================================================================
 # Planet Parameters
 # =============================================================================
@@ -150,7 +188,6 @@ star:
 #     - prior: the prior distribution to apply
 #       - min: minimum value of a tophat prior [FLOAT]
 #       - max: maximum value of a tophat prior [FLOAT]
-
 
 planet1:
   # Center of transit time [PARAM]
@@ -225,7 +262,6 @@ planet1:
     prior:
       min: 0
       max: 1.0e4
-
 
 #planet2:
 #  # Center of transit time [PARAM]
