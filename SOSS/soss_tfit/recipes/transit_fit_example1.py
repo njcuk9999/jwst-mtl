@@ -22,7 +22,7 @@ from soss_tfit.science import plot
 # =============================================================================
 # Define variables
 # =============================================================================
-CONFIG_FILE = '/data/jwst-soss/bin/jwst-mtl-soss/SOSS/soss_tfit/inputs/example.yaml'
+CONFIG_FILE = '/data/jwst-soss/bin/jwst-mtl-soss/SOSS/soss_tfit/recipes/example.yaml'
 
 # =============================================================================
 # Define functions

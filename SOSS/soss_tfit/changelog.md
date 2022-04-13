@@ -1,10 +1,15 @@
-# Change log
+# Change log / Notes
 
 
 
 Starting point "spectral_transitFit_WASP-52b_david-ord12.ipydb"
 
 
+- structure
+  - core: core functionality (should probably not be changed by user)
+  - science: possible changes (mcmc, general, plot)
+  - recipes: what the user runs
+  - inputs: example inputs
 
 - all constants moved to "params"
       - special dictionary class
