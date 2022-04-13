@@ -26,14 +26,16 @@ __date__ = base.__date__
 __authors__ = base.__authors__
 # get parameter dictionary
 ParamDict = base_classes.ParamDict
+# get FitParam class
+FitParam = base_classes.FitParam
 # Define quantities
 QUANTITIES = ['WAVELENGTH', 'FLUX', 'FLUX_ERROR']
-
+TQUANTITIES = ['WAVELENGTH', 'FLUX', 'FLUX_ERROR', 'TIME']
 
 # =============================================================================
 # Define functions
 # =============================================================================
-class Inputdata:
+class InputData:
     """
     Class handling the loading and manipulation of input data
     """
@@ -47,11 +49,13 @@ class Inputdata:
     spec: Dict[int, Dict[str, np.ndarray]]
     # photo spectra  phot[i][quantity]
     #       quantities are [WAVELENGTH, TIME, FLUX, FLUXERROR, ITIME]
-    phot: List[Dict[str, np.ndarray]]
+    phot: Dict[str, np.ndarray]
     # order names
     orders: List[int]
-    # number of wave length elements in each order
+    # number of wave length elements in each order of the spectrum
     n_wav: Dict[int, int]
+    # number of photometric bandpasses
+    n_phot: int
 
     def __init__(self, params: ParamDict, filename: str, verbose: bool = False):
         # set filename
@@ -280,37 +284,49 @@ class Inputdata:
 
         :return: None, updates self.phot
         """
-        # create phot list storage
-        self.phot = []
+        # create phot dictionary storage
+        self.phot = dict()
+        # set the number of band passes to zero
+        self.n_phot = 0
         # Integration time [days]
         int_time = (self.n_group - 1) * self.t_group / (60 * 60 * 24)
-        # push integration time into an array
-        itime = np.full(self.n_int, int_time)
         # loop around order
-        for onum in self.orders:
-            # get the spectrum
-            wave_arr = self.spec[onum]['WAVELENGTH']
-            time_arr = self.spec[onum]['TIME']
-            flux_arr = self.spec[onum]['FLUX']
-            eflux_arr = self.spec[onum]['FLUX_ERROR']
-            # loop around wave bandpasses
-            for w_it in range(self.n_wav[onum]):
-                # define a dictionary to hold the phot element
-                phot_it = dict()
-                # add the wavelength vector for this bandpass
-                phot_it['WAVELENGTH'] = np.array(wave_arr[:, w_it])
-                # add the time vector for this bandpass
-                phot_it['TIME'] = np.array(time_arr[:, w_it])
-                # add the flux vector for this bandpass
-                phot_it['FLUX'] = np.array(flux_arr[:, w_it])
-                # add the flux error vector for this bandpass
-                phot_it['FLUX_ERROR'] = np.array(eflux_arr[:, w_it])
-                # add the integration time for this bandpass
-                phot_it['ITIME'] = np.array(itime)
-                # append to photospectra
-                self.phot.append(phot_it)
+        order0 = self.orders[0]
+        # fill phot with first order
+        for quantity in TQUANTITIES:
+            self.phot[quantity] = self.spec[order0][quantity].T
+        # loop around all other order
+        for onum in self.orders[1:]:
+            # loop around all transit quantities
+            for quantity in TQUANTITIES:
+                # get this orders spectrum for this quantity
+                spec_quant = self.spec[onum][quantity]
+                # concatenate with previous orders
+                self.phot[quantity] = np.concatenate([self.phot[quantity],
+                                                      spec_quant.T])
+        # update number of photometric bandpasses
+        self.n_phot = self.phot['WAVELENGTH'].shape[0]
+        # add itime
+        self.phot['ITIME'] = np.full_like(self.phot['WAVELENGTH'], int_time)
 
+    def update_zeropoint(self, params: ParamDict) -> ParamDict:
+        """
+        Update the zeropoint value with the median of each band pass
 
+        :param params: ParamDict, the parameter dictionary of constants
+
+        :return:
+        """
+        # get the median flux value of each photometric bandpass
+        zpt = np.median(self.phot['FLUX'], axis=1)
+        # deal with zeropoint not being a FitParam class
+        if not isinstance(params['ZEROPOINT'], FitParam):
+            emsg = 'Param Error: Zeropoint must be a "FitParam" class'
+            raise base_classes.TransitFitExcept(emsg)
+        # update the zeropoints value
+        params['ZEROPOINT'].value = zpt
+        # return the parameter dictionary
+        return params
 
 
 # =============================================================================

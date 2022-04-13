@@ -1212,6 +1212,8 @@ def lnprob(x):
 
     if logl > badlpr:
 
+        # Question: logl is a joint fit - so it one gets to "badlpr" then we should stop?
+        # Question: is each "i" indepentent? -> we could parallelise?
         for i in range(nwav):
             dscale = solnew[npars - 3][i]  # photometric scale
             ascale = solnew[npars - 2][i]  # photometric scale
@@ -1270,8 +1272,8 @@ def lnprob(x):
 # =============================================================================
 # Start of code
 # =============================================================================
-if __name__ == "__main__":
-
+#if __name__ == "__main__":
+def main():
     # -------------------------------------------------------------------------
     # Load model and data
     # -------------------------------------------------------------------------

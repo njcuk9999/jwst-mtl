@@ -13,7 +13,8 @@ import matplotlib.pyplot as plt
 
 from soss_tfit.core import core
 from soss_tfit.science import general
-
+from soss_tfit.science import mcmc
+from soss_tfit.science import plot
 
 
 # =============================================================================
@@ -42,7 +43,7 @@ if __name__ == "__main__":
     # -------------------------------------------------------------------------
     # load data model
     print('Loading input data: {0}'.format(params['INSPECTRUM']))
-    data = general.Inputdata(params, filename=params['INSPECTRUM'],
+    data = general.InputData(params, filename=params['INSPECTRUM'],
                              verbose=True)
 
     # -------------------------------------------------------------------------
@@ -66,6 +67,7 @@ if __name__ == "__main__":
     data.normalize_by_out_of_transit_flux(params)
 
     # -------------------------------------------------------------------------
+    # TODO: Move to David only
     # check that all looks good
     order, ibin = 2, 0
     time_arr = data.spec[order]['TIME'][:, ibin]
@@ -75,8 +77,11 @@ if __name__ == "__main__":
     frame.errorbar(time_arr, flux_arr, yerr=eflux_arr, ls='None', marker='o')
     frame.set(xlabel='Time [days]', ylabel='Flux',
               title=f'Order {order} wave bin: {ibin}')
+    plt.show()
+    plt.close()
 
     # -------------------------------------------------------------------------
+    # TODO: Move to David only
     # remove a few lambdas from order 2 (S/N) too low
     order = 2
     imin = 1   # david uses 4 for bins = [30, 15]
@@ -87,13 +92,27 @@ if __name__ == "__main__":
     data.n_wav[order] = data.spec[order]['WAVELENGTH'].shape[1]
 
     # -------------------------------------------------------------------------
-    # create the photospectra
+    # create the photospectra dictionary (data.phot)
     data.photospectra()
+
+    # update zeropoint parameters using data
+    params = data.update_zeropoint(params)
+
+    # Show a plot of the data. Each colour is a different wavelength.
+    plot.plot_flux(data)
+
+    # -------------------------------------------------------------------------
+    # Step 3: set up the parameters
+    #         All data manipulation + parameter changes should be done
+    #         before this point
+    # -------------------------------------------------------------------------
+    # get starting parmaeters for transit fit
+    tfit = mcmc.get_starting_params(params, data)
 
     # -------------------------------------------------------------------------
     # Step 3: fit the multi-spectrum model (trial run)
     # -------------------------------------------------------------------------
-    print('done')
+    mcmc.run_mcmc()
 
     # -------------------------------------------------------------------------
     # Step 4: fit the multi-spectrum model (full run)

@@ -11,12 +11,11 @@ Created on 2022-04-06
 """
 from collections import UserDict
 from copy import deepcopy
-from jwst import datamodels
 import numpy as np
-from typing import Any, Dict, List, Optional, Type, Union
+from typing import Any, Dict, List, Optional, Tuple, Type, Union
 
 from soss_tfit.core import base
-from soss_tfit.core import io
+
 
 # =============================================================================
 # Define variables
@@ -465,7 +464,37 @@ class FitParam:
                 ekwargs = dict(name=kwargs['name'], key=key)
                 raise TransitFitExcept(emsg.format(**ekwargs))
 
+    def get_value(self, n_phot: int) -> Tuple[np.ndarray, np.ndarray, str]:
+        """
+        Get the properties for the transit fitting
 
+        :param n_phot:
+        :return: tuple, 1. the array of values for each bandpass for this
+                           fit variable
+                        2. the array of True/False for each bandpass (if True
+                           this is a fit parameter, if False this is fixed)
+                        3. the name of this parameter
+        """
+        # get the values and push to full n_phot array
+
+        if isinstance(self.value, (np.ndarray, list)):
+            p0 = np.array(self.value)
+            # if we do not have the right length break here
+            if p0.shape[0] != n_phot:
+                emsg = (f'Data Error: {self.name} is an array and must have '
+                        f'length={n_phot}')
+                raise TransitFitExcept(emsg)
+        else:
+            p0 = np.full(n_phot, self.value)
+        # get whether fixed or fitted
+        if self.ftype == 'fixed':
+            mask = np.zeros(n_phot, dtype=bool)
+        else:
+            mask = np.ones(n_phot, dtype=bool)
+        # get name
+        name = self.label
+        # return values
+        return p0, mask, name
 
 
 # =============================================================================
