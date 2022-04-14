@@ -87,6 +87,8 @@ class TransitFit:
     fluxerr: np.ndarray
     # the order array [n_phot, n_int]
     orders: np.ndarray
+    # the fitted params flattened
+    x: np.ndarray
 
     def __getstate__(self) -> dict:
         """
@@ -127,6 +129,10 @@ class TransitFit:
         
         :return: 
         """
+
+
+
+
         pass
 
     def view(self, parameter):
@@ -339,6 +345,15 @@ def mhg_mcmc(tfit: TransitFit):
 
 # TODO: Fill out
 def beta_rescale(params: ParamDict, tfit: TransitFit) -> TransitFit:
+
+
+    # get alow, ahigh define the acceptance rate range we want
+    alow = params['BETA_ALOW']
+    ahigh = params['BETA_AHIGH']
+    # parameter controling how fast corscale changes - from Gregory 2011.
+    delta = params['BETA_DELTA']
+
+
     return tfit
 
 

@@ -940,7 +940,8 @@ def betarescale(x, beta, niter, burnin, mcmcfunc, loglikelihood, imax=20,
     corscale = np.ones(npars)
 
     # inital run
-    chain, accept = genchain(x, niter, beta, mcmcfunc, loglikelihood)  # Get a MC
+    chain, accept = genchain(x, niter, beta, mcmcfunc, loglikelihood,
+                             progress=True)  # Get a MC
     nchain = len(chain[:, 0])
 
     # calcalate initial values of npropp and nacor
@@ -981,7 +982,8 @@ def betarescale(x, beta, niter, burnin, mcmcfunc, loglikelihood, imax=20,
         # New beta for Gibbs sampling
         betain = beta * corscale
         # Get a MC
-        chain, accept = genchain(xin, niter, betain, mcmcfunc, loglikelihood)
+        chain, accept = genchain(xin, niter, betain, mcmcfunc, loglikelihood,
+                                 progress=True)
         xin = chain[niter, :]  # Store current parameter state
 
         # scan through Markov-Chains and count number of states and acceptances
