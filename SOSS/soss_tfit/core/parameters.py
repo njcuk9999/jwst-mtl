@@ -94,7 +94,7 @@ params.set(key='AMPLITUDE_SCALE', value=None, source=__NAME__,
 # GP length scale (default is Matern 3/2) [PARAM]
 params.set(key='LENGTH_SCALE', value=None, source=__NAME__,
            desc='GP Kernel Amplitude (default is Matern 3/2)',
-           dtype=FitParam, path='global_params.amplitude_scale',
+           dtype=FitParam, path='global_params.length_scale',
            label='LSC')
 
 # =============================================================================
@@ -242,7 +242,7 @@ params.set(key='DILUTION', value=None, source=__NAME__,
 # Out of transit baseline (set in code) [PARAM]
 params.set(key='ZEROPOINT', value=None, source=__NAME__,
            desc='Out of transit baseline (set in code)',
-           dtype=FitParam, path='star.dilution', label='ZPT')
+           dtype=FitParam, path='star.zeropoint', label='ZPT')
 
 # =============================================================================
 # Define planet parameters

@@ -115,7 +115,8 @@ def plot_transit_fit(tfit: TransitFit, bandpass: Optional[int] = None):
                         bottom=0.05)
     # show and close
     plt.show()
-    plt.close()
+    if not plt.isinteractive():
+        plt.close()
 
 
 # =============================================================================

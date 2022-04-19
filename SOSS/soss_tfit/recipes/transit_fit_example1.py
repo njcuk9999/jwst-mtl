@@ -138,8 +138,7 @@ if __name__ == "__main__":
     #         before this point
     # -------------------------------------------------------------------------
     # get starting parameters for transit fit
-    tfit = mcmc.get_starting_params(params, data)
-
+    tfit = mcmc.setup_params_mcmc(params, data)
 
     # TODO: David adjustment
     # added by DL, trying to adjust the beta factors get better acceptance
@@ -164,9 +163,6 @@ if __name__ == "__main__":
     # -------------------------------------------------------------------------
     # Step 3: Calculate rescaling of beta to improve acceptance rates
     # -------------------------------------------------------------------------
-    # get corrscale and save to tfit
-    niter_cor = 5000
-    burnin_cor = 1000
     # set loglikelihood function
     tfit.loglikelihood = mcmc.lnprob
     # set MCMC function
@@ -177,20 +173,6 @@ if __name__ == "__main__":
     # -------------------------------------------------------------------------
     # Step 4: fit the multi-spectrum model (trial run)
     # -------------------------------------------------------------------------
-    # TODO: David adjustments
-    # TODO: Add these to parameters.py
-    nwalkers = 3  # Number of walkers for MCMC
-    nsteps1 = 10000  # Total length of chain will be nwalkers*nsteps
-    nsteps2 = 200000  # nstep1 is to check that MCMC is okay, nstep2 is the real work.
-    nsteps_inc = 100000
-    burninf = 0.5  # burn-in for evalulating convergence
-
-    nthin = 101
-    nloopmax = 3
-    converge_crit = 1.02  # Convergence criteria
-    buf_converge_crit = 1.2  # Convergence criteria for buffer
-    itermax = 5  # Maximum iterations allowed
-
     # run the mcmc in trial mode
     sampler = mcmc.Sampler(params, tfit, mode='trial')
     sampler.run_mcmc()

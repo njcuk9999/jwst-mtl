@@ -350,8 +350,8 @@ class ParamDict(UserDict):
         :return: str, the string representation of the parameter dictionary
         """
         # get keys, values, sources
-        keys = list(self.keys())
-        values = list(self.values())
+        keys = list(self.data.keys())
+        values = list(self.data.values())
         sources = self.sources()
         string = 'ParamDict:'
         for it, key in enumerate(keys):
