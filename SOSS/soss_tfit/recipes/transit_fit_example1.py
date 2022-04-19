@@ -163,25 +163,21 @@ if __name__ == "__main__":
     # -------------------------------------------------------------------------
     # Step 3: Calculate rescaling of beta to improve acceptance rates
     # -------------------------------------------------------------------------
-    # set loglikelihood function
-    tfit.loglikelihood = mcmc.lnprob
-    # set MCMC function
-    tfit.mcmcfunc = mcmc.mhg_mcmc
     # Calculate rescaling of beta to improve acceptance rates
-    tfit = mcmc.beta_rescale(params, tfit)
+    corscale = mcmc.beta_rescale(params, tfit)
 
     # -------------------------------------------------------------------------
     # Step 4: fit the multi-spectrum model (trial run)
     # -------------------------------------------------------------------------
     # run the mcmc in trial mode
     sampler = mcmc.Sampler(params, tfit, mode='trial')
-    sampler.run_mcmc()
+    sampler.run_mcmc(corscale, mcmc.lnprob, mcmc.mhg_mcmc)
 
     # -------------------------------------------------------------------------
     # Step 5: fit the multi-spectrum model (full run)
     # -------------------------------------------------------------------------
     sampler = mcmc.Sampler(params, tfit, mode='full')
-    sampler.run_mcmc()
+    sampler.run_mcmc(corscale, mcmc.lnprob, mcmc.mhg_mcmc)
 
     # -------------------------------------------------------------------------
     # Step 6: save results

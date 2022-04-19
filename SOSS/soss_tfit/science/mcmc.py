@@ -10,7 +10,8 @@ Created on 2022-04-06
 @author: cook
 """
 import numpy as np
-from typing import Any, Dict, List, Optional
+from tqdm import tqdm
+from typing import Any, Dict, List, Optional, Tuple
 
 import transitfit5 as transit_fit
 
@@ -58,9 +59,6 @@ class TransitFit:
     One could just set all the correct values manually in this and
     expect it to work later
     """
-    # not sure about these - can't be pickled
-    loglikelihood: None
-    mcmcfunc: None
     # the number of integrations we have
     n_int: int
     # the number of parameters we have
@@ -150,14 +148,82 @@ class TransitFit:
         # update dict with state
         self.__dict__.update(state)
 
-    def copy(self):
+    def copy(self) -> 'TransitFit':
         """
         Copy class - deep copying values which need copying
-        (p0, ptmp)
+        e.g. p0, ptmp, x0, xtmp
 
         :return:
         """
-        pass
+        new = TransitFit()
+        # the number of integrations we have
+        new.n_int = self.n_int
+        # the number of parameters we have
+        new.n_param = self.n_param
+        # the number of photometric bandpasses we have
+        new.n_phot = self.n_phot
+        # numpy array [n_param, n_phot] the initial value of each parameter
+        new.p0 = np.array(self.p0)
+        # numpy array [n_param, n_phot] the current value of each parameter
+        new.ptmp = np.array(self.ptmp)
+        # numpy array [n_param] whether we are fitting each parameter [Bool]
+        new.fmask = self.fmask
+        # numpy array [n_param] whether chromatic fit used for each
+        #     parameter [Bool]
+        new.wmask = self.wmask
+        # priors [n_param]
+        new.prior = self.prior
+        # name of each parameter
+        new.pnames = self.pnames
+        # additional arguments passed to mcmc
+        new.pkwargs = self.pkwargs
+        # the position in the flattened x array [n_param, n_phot]
+        new.p0pos = self.p0pos
+        # ---------------------------------------------------------------------
+        # the data:
+        # ---------------------------------------------------------------------
+        #     [0][WAVELENGTH][n_phot, n_int]
+        new.phot = self.phot
+        # the wavelength array [n_phot, n_int]
+        new.wavelength = self.wavelength
+        # the time array [n_phot, n_int]
+        new.time = self.time
+        # the integration time array [n_phot, n_int]
+        new.itime = self.itime
+        # the flux array [n_phot, n_int]
+        new.flux = self.flux
+        # the flux error array [n_phot, n_int]
+        new.fluxerr = self.fluxerr
+        # the order array [n_phot, n_int]
+        new.orders = self.orders
+        # ---------------------------------------------------------------------
+        # parameters that must have shape [n_x]
+        # ---------------------------------------------------------------------
+        # the initial fitted parameters
+        new.x0 = np.array(self.x0)
+        # the fitted params flattened [n_x]
+        new.xtmp = np.array(self.xtmp)
+        # name of the fitted params flattened [n_x]
+        new.xnames = self.xnames
+        # length of fitted params flattened [n_x]
+        new.n_x = self.n_x
+        # numpy array [n_param]
+        new.beta = np.arary(self.beta)
+        # the mapping from x0 onto p0 (or xtmp onto ptmp) [n_x, 2] each element
+        #   is the tuple poisition in p0 or ptmp
+        new.x0pos = self.x0pos
+        # ---------------------------------------------------------------------
+        # will be filled out by the mcmc
+        # ---------------------------------------------------------------------
+        # the current position chosen by the sampler
+        new.n_tmp = 0
+        # the previous loglikelihood value
+        new.llx = 1.0
+        # the rejection [rejected, parameter number]   where rejected = 0 for
+        #   accepted and rejected = 1 for rejected
+        new.ac = []
+        # ---------------------------------------------------------------------
+        return new
 
     def get_fitted_params(self):
         """
@@ -236,14 +302,14 @@ class TransitFit:
             # push the value into x
             self.xtmp[it] = self.ptmp[tuple(self.x0pos)]
 
-    def generate_gibbs_sample(self):
+    def generate_gibbs_sample(self, beta: np.ndarray):
         # choose random parameter to vary
         param_it = np.random.randint(0, self.n_x + 1)
         # update the position choosen by the sampler
         self.n_tmp = param_it
         # update the choosen value by a random number drawn from a gaussian
         #   with centre = 0 and fwhm = beta
-        self.xtmp[param_it] += np.random.normal(0.0, self.beta[param_it])
+        self.xtmp[param_it] += np.random.normal(0.0, beta[param_it])
         # update full solution
         self.update_ptmp_from_xtmp()
 
@@ -660,7 +726,8 @@ def lnprob(tfit: TransitFit) -> float:
     return logl
 
 
-def mhg_mcmc(tfit: TransitFit, loglikelihood: Any, buffer, corbeta):
+def mhg_mcmc(tfit: TransitFit, loglikelihood: Any, beta: np.ndarray, buffer,
+             corbeta) -> TransitFit:
     """
     A Metropolis-Hastings MCMC with Gibbs sampler
 
@@ -668,6 +735,7 @@ def mhg_mcmc(tfit: TransitFit, loglikelihood: Any, buffer, corbeta):
     :param loglikelihood: The loglikelihodd function here
                           loglikelihood must have a single argument of type
                           Transit fit class
+    :param beta: ibb's factor : characteristic step size for each parameter
     :param buffer:
     :param corbeta:
 
@@ -679,14 +747,11 @@ def mhg_mcmc(tfit: TransitFit, loglikelihood: Any, buffer, corbeta):
     # Step 1: Generate trial state
     # -------------------------------------------------------------------------
     # Generate trial state with Gibbs sampler
-    tfit.generate_gibbs_sample()
+    tfit.generate_gibbs_sample(beta)
     # -------------------------------------------------------------------------
     # Step 2: Compute log(p(x'|d))=log(p(x'))+log(p(d|x'))
     # -------------------------------------------------------------------------
-    if loglikelihood is None:
-        llxt = tfit.loglikelihood(tfit)
-    else:
-        llxt = loglikelihood(tfit)
+    llxt = loglikelihood(tfit)
     # -------------------------------------------------------------------------
     # Step 3 Compute the acceptance probability
     # -------------------------------------------------------------------------
@@ -701,15 +766,20 @@ def mhg_mcmc(tfit: TransitFit, loglikelihood: Any, buffer, corbeta):
         tfit.x0 = np.array(tfit.xtmp)
         tfit.llx = float(llxt)
         tfit.ac = [0, tfit.n_tmp]
+        # update full solution
+        tfit.update_ptmp_from_xtmp()
+        tfit.p0 = np.array(tfit.ptmp)
     # else we reject and start from previous point
     else:
         tfit.xtmp = tfit.x0
+        tfit.ptmp = tfit.p0
         tfit.ac = [1, tfit.n_tmp]
     # return tfit instance
     return tfit
 
 
-def de_mhg_mcmc(tfit: TransitFit, loglikelihood: Any, buffer, corbeta):
+def de_mhg_mcmc(tfit: TransitFit, loglikelihood: Any, beta: np.ndarray, buffer,
+                corbeta) -> TransitFit:
     """
     A Metropolis-Hastings MCMC with Gibbs sampler
 
@@ -717,6 +787,7 @@ def de_mhg_mcmc(tfit: TransitFit, loglikelihood: Any, buffer, corbeta):
     :param loglikelihood: The loglikelihodd function here
                           loglikelihood must have a single argument of type
                           Transit fit class
+    :param beta: ibb's factor : characteristic step size for each parameter
     :param buffer:
     :param corbeta:
 
@@ -730,7 +801,7 @@ def de_mhg_mcmc(tfit: TransitFit, loglikelihood: Any, buffer, corbeta):
     # if rsamp is less than 0.5 use a Gibbs sampler
     if rsamp < 0.5:
         # Generate trial state with Gibbs sampler
-        tfit.generate_gibbs_sample()
+        tfit.generate_gibbs_sample(beta)
     # else we use our deMCMC sampler
     else:
         tfit.generate_demcmc_sample(buffer, corbeta)
@@ -752,16 +823,20 @@ def de_mhg_mcmc(tfit: TransitFit, loglikelihood: Any, buffer, corbeta):
         tfit.x0 = np.array(tfit.xtmp)
         tfit.llx = float(llxt)
         tfit.ac = [0, tfit.n_tmp]
+        # update full solution
+        tfit.update_ptmp_from_xtmp()
+        tfit.p0 = np.array(tfit.ptmp)
     # else we reject and start from previous point
     else:
         tfit.xtmp = tfit.x0
+        tfit.ptmp = tfit.p0
         tfit.ac = [1, tfit.n_tmp]
     # return tfit instance
     return tfit
 
 
 # TODO: Fill out
-def beta_rescale(params: ParamDict, tfit: TransitFit) -> TransitFit:
+def beta_rescale(params: ParamDict, tfit: TransitFit) -> np.ndarray:
 
     # get alow, ahigh define the acceptance rate range we want
     alow = params['BETA_ALOW']
@@ -769,21 +844,144 @@ def beta_rescale(params: ParamDict, tfit: TransitFit) -> TransitFit:
     # parameter controling how fast corscale changes - from Gregory 2011.
     delta = params['BETA_DELTA']
 
-    return tfit
+    return corscale
+
+
+def genchain(tfit: TransitFit, niter: int, beta: np.ndarray,
+             mcmcfunc, loglikelihood,
+             buffer: Optional = None, corbeta: float = 1.0,
+             progress: bool = False) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Generate Markov Chain
+
+    :param tfit:
+    :param niter:
+    :param betacor: np.ndarray, the Gibb's factor : characteristic step size
+                    for each parameter
+    :param mcmcfunc:
+    :param loglikelihood:
+    :param progress:
+
+    :return:
+    """
+    # deal with no buffer set
+    if buffer is None:
+        buffer = []
+    # -------------------------------------------------------------------------
+    # Initialize list to hold chain values and set first value to the initial
+    #    solution
+    chains = [np.array(tfit.x0)]
+    # Track our acceptance rate - and set the first one to (0, 0)
+    #    note reject=(rejected 1 or 0, parameter changed)
+    rejections = [(0, 0)]
+    # -------------------------------------------------------------------------
+    # pre-compute the first log-likelihood
+    tfit.llx = loglikelihood(tfit)
+    # -------------------------------------------------------------------------
+    # now to the full loop of niterations
+    if progress:
+        # loop around iterations
+        for _ in tqdm(range(0, niter)):
+            # run the mcmc function
+            tfit = mcmcfunc(tfit, loglikelihood, buffer, corbeta)
+            # append results to chains and rejections lists
+            chains.append(np.array(tfit.p0))
+            rejections.append(np.array(tfit.ac))
+    else:
+        # loop around iterations
+        for _ in range(0, niter):
+            # run the mcmc function
+            tfit = mcmcfunc(tfit, loglikelihood, buffer, corbeta)
+            # append results to chains and rejections lists
+            chains.append(np.array(tfit.p0))
+            rejections.append(np.array(tfit.ac))
+    # -------------------------------------------------------------------------
+    # convert lists to arrays
+    chains = np.array(chains)
+    rejections = np.array(rejections)
+    # -------------------------------------------------------------------------
+    # return the chains and rejections
+    return chains, rejections
 
 
 # =============================================================================
 # MCMC Sampler
 # =============================================================================
 class Sampler:
+    wchains: Dict[int, np.ndarray]
+    wrejects: Dict[int, np.ndarray]
+
     def __init__(self, params: ParamDict, tfit: TransitFit, mode='full'):
         self.params = params
         self.tfit = tfit
         self.mode = mode
+        self.wchains = dict()
+        self.wrejects = dict()
+        # set up storage of chainns
+        for nwalker in range(self.params['WALKERS']):
+            self.wchains[nwalker] = np.array([])
+            self.wrejects[nwalker] = np.array([])
+
 
     # TODO: fill out
-    def run_mcmc(self):
-        pass
+    def run_mcmc(self, corscale, loglikelihood, mcmcfunc):
+
+        # ---------------------------------------------------------------------
+        # get parameters from params
+        # ---------------------------------------------------------------------
+        # get the maximum number of loops for this mode
+        nloopsmax = self.params['NLOOPMAX'][self.mode]
+        # get the number of steps for the MCMC for this mode
+        nsteps = self.params['NSTEPS'][self.mode]
+
+        # set number of walkers
+        nwalkers = self.params['WALKERS']
+
+        # ---------------------------------------------------------------------
+        # loop around
+        # ---------------------------------------------------------------------
+        # start loop counter
+        nloop = 0
+
+
+        # set the constant genchain parameters
+        gkwargs = dict(niter=nsteps, betacor=self.tfit.beta * corscale,
+                       loglikelihood=loglikelihood, mcmcfunc=mcmcfunc,
+                       progress=True)
+
+
+        # while loop to continue until break point or we hit the maximum number
+        #   of loops
+        while nloop < nloopsmax:
+
+            # print progress
+            print(f'Loop {nloop+1}')
+
+            # adjust beta by corscale
+            betacor = self.tfit.beta * corscale
+
+            # get the chains
+
+            for nwalker in range(nwalkers):
+
+                hchains, hrejects = genchain(self.tfit.copy(), **gkwargs)
+
+                # push chains into walker storage
+                wcs = np.concatenate([self.wchains[nwalker], hchains])
+                self.wchains[nwalker] = wcs
+                # push rejects into walker storage
+                rcs = np.concatenate([self.wrejects[nwalker], hrejects])
+                self.wrejects[nwalker] = rcs
+
+            # TODO: parallize this
+
+
+
+            hchain1, haccept1 = genchain(self.tfit.copy(), **gkwargs)
+            hchain2, haccept2 = genchain(self.tfit.copy(), **gkwargs)
+            hchain3, haccept3 = genchain(self.tfit.copy(), **gkwargs)
+
+
 
 
 

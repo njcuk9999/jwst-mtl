@@ -1639,6 +1639,8 @@ if __name__ == "__main__":
         # Create buffer for deMCMC
         buffer = np.concatenate((chain1[burnin:], chain2[burnin:],
                                  chain3[burnin:]))
+
+        # Question: do you mean to start x1, x2 and x3 from chain1?
         x1 = np.copy(chain1[chain1.shape[0] - 1, :])
         x2 = np.copy(chain1[chain2.shape[0] - 1, :])
         x3 = np.copy(chain1[chain2.shape[0] - 1, :])
