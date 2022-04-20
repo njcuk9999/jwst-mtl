@@ -1021,15 +1021,12 @@ def gelman_rubin_convergence(chains: Dict[int, np.ndarray],
     # loop over each walker
     for walker in range(n_walkers):
         # Generate means for each parameter in each chain
-        # TODO: check axis
-        pmean[walker] = np.mean(chains[walker][burnin:], axis=1)
+        pmean[walker] = np.mean(chains[walker][burnin:], axis=0)
         # Generate variance for each parameter in each chain
-        # TODO: check axis
-        pvar[walker] = np.var(chains[walker][burnin:], axis=1)
+        pvar[walker] = np.var(chains[walker][burnin:], axis=0)
     # -------------------------------------------------------------------------
     # calculate the posterior mean for each parameter
-    # TODO: check axis
-    posteriormean = np.mean(pmean, axis=1)
+    posteriormean = np.mean(pmean, axis=0)
     # -------------------------------------------------------------------------
     # Calculate between chains variance
     bvar = np.sum((pmean - posteriormean) ** 2, axis=0)
