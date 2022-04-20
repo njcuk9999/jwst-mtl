@@ -1071,6 +1071,8 @@ def calcacrate(accept, burnin):  # ,label):
         pargs = [str(j), (nprop - acrate) / (nprop + 1)]
         print('{0} Acceptance Rate {1:.3f}'.format(*pargs))
 
+    # Question: This is only calculated for the last loop (as denprop reset
+    #           inside loop) is this what we want?
     # if we have deMCMC results, report the acceptance rate.
     if denprop > 0:
         pargs = ['deMCMC', (denprop - deacrate) / denprop]

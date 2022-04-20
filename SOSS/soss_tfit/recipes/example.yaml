@@ -98,7 +98,7 @@ mcmc_params:
   nsteps_inc:
     trial: 10000
     full: 100000
-  # burn-in for evaluating convergence
+# burn-in fraction for evaluating convergence
   burninf:
     trial: 0.5
     full: 0.5

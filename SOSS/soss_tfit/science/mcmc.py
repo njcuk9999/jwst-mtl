@@ -904,6 +904,130 @@ def genchain(tfit: TransitFit, niter: int, beta: np.ndarray,
     return chains, rejections
 
 
+def calculate_acceptance_rates(rejections: np.ndarray,
+                               burnin: int) -> Dict[int, float]:
+    """
+    Calculate Acceptance Rates
+
+    :param rejections: np.ndarray [n_chains, 2]
+                       where the second axis is (rejected, param_number)
+                       rejected: 0 when accepted, 1 when rejected
+                       param_number is either [-1, 0 to n_param]
+                       when param_number is -1 we have deMCMC fit
+
+    :param burnin: int, the number of chains the burn at the start
+
+    :return: acceptance dictionary, keys = [-1, 0 to n_param]
+             values = the acceptance for each key
+    """
+    # get the number of chains
+    nchain = len(rejections[:, 0])
+    # get the number of chains minus the burnin
+    nchainb = nchain - burnin
+    # acceptance is the fraction of chains accepted compared to total number
+    #  (when burn in is considered)
+    gaccept = (nchainb - np.sum(rejections[burnin:, 0])) / nchainb
+    # print the global acceptance rate
+    print(f'Global Acceptance Rate: {gaccept:.3f}')
+    # -------------------------------------------------------------------------
+    # storage of values
+    acceptance_dict = dict()
+    # -------------------------------------------------------------------------
+    # deMCMC number of proposals
+    de_nprop = 0
+    # deMCMC acceptance rate
+    de_accept_rate = 0
+    # -------------------------------------------------------------------------
+    # loop around parameter number
+    # Question: Why can't we use the max number of parameters here?
+    #           Is it because all parameters might not be selected by
+    #           the Gibbs sampler?
+    for p_num in range(max(rejections[burnin:, 1]) + 1):
+        # deMCMC number of proposals
+        de_nprop = 0
+        # deMCMC acceptance rate
+        de_accept_rate = 0
+        # number of proposals
+        n_prop = 0
+        # acceptance rate
+        accept_rate = 0
+        # loop around each chain
+        for chain_it in range(burnin, nchain):
+            # if the rejection comes from this parameter
+            if rejections[chain_it, 1] == p_num:
+                # add one to the number of proposals
+                n_prop +=  1
+                # add to the acceptance rate (0 = accept, 1 = reject)
+                accept_rate += rejections[chain_it, 0]
+            # if we are in deMCMC mode (n_param = -1) add to de variables
+            elif rejections[chain_it, 1] == -1:
+                # add one to the de number of proposals
+                de_nprop += 1
+                # add to the de acceptance rate (0 = accept, 1 = reject)
+                de_accept_rate += rejections[chain_it, 0]
+        # print the acceptance rate for this
+        acceptance = (n_prop - accept_rate) / (n_prop + 1)
+        print(f'Param {p_num}: Acceptance Rate {acceptance:.3f}')
+        # store for later use
+        acceptance_dict[p_num] = acceptance
+
+    # Question: This is only calculated for the last loop (as denprop reset
+    #           inside loop) is this what we want?
+    # if we have deMCMC results, report the acceptance rate.
+    if de_nprop > 0:
+        de_acceptance = (de_nprop - de_accept_rate) / de_nprop
+        print(f'deMCMC: Acceptance Rate {de_acceptance:.3f}')
+        # store for later use
+        acceptance_dict[-1] = de_acceptance
+    # return the acceptance dictionary
+    return acceptance_dict
+
+
+def gelman_rubin_convergence(chains: Dict[int, np.ndarray],
+                             burnin: int, npt: int):
+    """
+    Estimating PSRF
+
+    See pdf doc BrooksGelman for info
+
+    :param chains:
+    :param burnin:
+    :param npt:
+    :return:
+    """
+
+    # get the number of walkers (c.f. number of chains)
+    n_walkers = len(chains)
+    # assume all chains have the same size
+    n_chain = chains[0].shape[0] - burnin
+    # get the number of parameters
+    n_param = chains[0].shape[1]
+    # -------------------------------------------------------------------------
+    # allocate an array to hold mean calculations
+    pmean = np.zeros((n_walkers, n_param))
+    # allocate an array to hold variance calculations
+    pvar = np.zeros((n_walkers, n_param))
+    # -------------------------------------------------------------------------
+    # loop over each walker
+    for walker in range(n_walkers):
+        # Generate means for each parameter in each chain
+        # TODO: check axis
+        pmean[walker] = np.mean(chains[walker][burnin:], axis=1)
+        # Generate variance for each parameter in each chain
+        # TODO: check axis
+        pvar[walker] = np.var(chains[walker][burnin:], axis=1)
+
+    # calculate the posterior mean for each parameter
+    # TODO: check axis
+    posteriormean = np.mean(pmean, axis=1)
+    # -------------------------------------------------------------------------
+    # Calculate between chains variance
+
+    bvar = np.zeros(n_param)
+
+
+
+
 # =============================================================================
 # MCMC Sampler
 # =============================================================================
@@ -933,53 +1057,57 @@ class Sampler:
         nloopsmax = self.params['NLOOPMAX'][self.mode]
         # get the number of steps for the MCMC for this mode
         nsteps = self.params['NSTEPS'][self.mode]
-
         # set number of walkers
         nwalkers = self.params['WALKERS']
-
+        # set the burnin parameter
+        burninf = self.params['BURNINF'][self.mode]
         # ---------------------------------------------------------------------
         # loop around
         # ---------------------------------------------------------------------
         # start loop counter
         nloop = 0
 
-
         # set the constant genchain parameters
         gkwargs = dict(niter=nsteps, betacor=self.tfit.beta * corscale,
                        loglikelihood=loglikelihood, mcmcfunc=mcmcfunc,
                        progress=True)
-
-
-        # while loop to continue until break point or we hit the maximum number
-        #   of loops
+        # -----------------------------------------------------------------
+        # Loop around iterations until we break (convergence met) or max
+        #     number of loops exceeded
+        # -----------------------------------------------------------------
         while nloop < nloopsmax:
-
             # print progress
             print(f'Loop {nloop+1}')
-
-            # adjust beta by corscale
-            betacor = self.tfit.beta * corscale
-
+            # -----------------------------------------------------------------
+            # loop around walkers
+            # -----------------------------------------------------------------
             # get the chains
-
+            # TODO: parallize this
             for nwalker in range(nwalkers):
-
+                # get chains and rejects for this walker
                 hchains, hrejects = genchain(self.tfit.copy(), **gkwargs)
-
                 # push chains into walker storage
                 wcs = np.concatenate([self.wchains[nwalker], hchains])
                 self.wchains[nwalker] = wcs
                 # push rejects into walker storage
                 rcs = np.concatenate([self.wrejects[nwalker], hrejects])
                 self.wrejects[nwalker] = rcs
+            # -----------------------------------------------------------------
+            # Calculate acceptance rate
+            # -----------------------------------------------------------------
+            # get number of chains to burn (using burn in fraction)
+            burnin = int(self.wchains[0].shape[0] * burninf)
+            # calculate acceptance for chain1
+            self.acc_dict = calculate_acceptance_rates(self.wrejects[0],
+                                                       burnin=burnin)
+            # -----------------------------------------------------------------
+            # Calculate the Gelman-Rubin Convergence
+            # -----------------------------------------------------------------
 
-            # TODO: parallize this
+            grtest = gelman_rubin_convergence(self.wchains, burnin=burnin,
+                                              npt=self.tfit.n_phot)
 
 
-
-            hchain1, haccept1 = genchain(self.tfit.copy(), **gkwargs)
-            hchain2, haccept2 = genchain(self.tfit.copy(), **gkwargs)
-            hchain3, haccept3 = genchain(self.tfit.copy(), **gkwargs)
 
 
 

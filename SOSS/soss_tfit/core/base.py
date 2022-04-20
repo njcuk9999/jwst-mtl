@@ -14,8 +14,8 @@ Created on 2022-04-11
 # Define variables
 # =============================================================================
 __NAME__: str = 'base.py'
-__version__: str = '0.5'
-__date__: str = '2022-04-19'
+__version__: str = '0.0.6'
+__date__: str = '2022-04-20'
 __authors__: str = 'Neil Cook, Jason Rowe, David Lafreniere, Loic Albert'
 __package__: str = 'soss_tfit'
 

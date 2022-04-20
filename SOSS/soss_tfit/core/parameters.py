@@ -152,7 +152,7 @@ params.set(key='NSTEPS', value=dict(trial=10000, full=100000), source=__NAME__,
                 '(if convergence not met)',
            dtype=dict, path='mcmc_params.nsteps_inc')
 
-# burn-in for evaluating convergence
+# burn-in fraction for evaluating convergence
 params.set(key='BURNINF', value=dict(trial=0.5, full=0.5), source=__NAME__,
            desc='burn-in for evaluating convergence',
            dtype=dict, path='mcmc_params.burninf')
