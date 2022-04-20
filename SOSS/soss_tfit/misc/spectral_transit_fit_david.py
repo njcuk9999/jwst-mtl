@@ -1491,10 +1491,24 @@ if __name__ == "__main__":
 
     # -------------------------------------------------------------------------
 
+    # nwalkers = 3  # Number of walkers for MCMC
+    # nsteps1 = 10000  # Total length of chain will be nwalkers*nsteps
+    # nsteps2 = 200000  # nstep1 is to check that MCMC is okay, nstep2 is the real work.
+    # nsteps_inc = 100000
+    # burninf = 0.5  # burn-in for evalulating convergence
+    # niter_cor = 5000
+    # burnin_cor = 1000
+    # nthin = 101
+    # nloopmax = 3
+    # converge_crit = 1.02  # Convergence criteria
+    # buf_converge_crit = 1.2  # Convergence criteria for buffer
+    # itermax = 5  # Maximum iterations allowed  [NOT USED]
+
+    # TODO: remove Neil's values
     nwalkers = 3  # Number of walkers for MCMC
-    nsteps1 = 10000  # Total length of chain will be nwalkers*nsteps
-    nsteps2 = 200000  # nstep1 is to check that MCMC is okay, nstep2 is the real work.
-    nsteps_inc = 100000
+    nsteps1 = 100  # Total length of chain will be nwalkers*nsteps
+    nsteps2 = 2000  # nstep1 is to check that MCMC is okay, nstep2 is the real work.
+    nsteps_inc = 1000
     burninf = 0.5  # burn-in for evalulating convergence
     niter_cor = 5000
     burnin_cor = 1000
@@ -1503,6 +1517,7 @@ if __name__ == "__main__":
     converge_crit = 1.02  # Convergence criteria
     buf_converge_crit = 1.2  # Convergence criteria for buffer
     itermax = 5  # Maximum iterations allowed  [NOT USED]
+
 
     # Creates internal array used to create transit model.
     sol = get_all_parameters(tpars, photospectra)

@@ -22,7 +22,8 @@ from soss_tfit.science import plot
 # =============================================================================
 # Define variables
 # =============================================================================
-CONFIG_FILE = '/data/jwst-soss/bin/jwst-mtl-soss/SOSS/soss_tfit/recipes/example.yaml'
+CONFIG_FILE = ('/data/jwst-soss/bin/jwst-mtl-soss/SOSS/soss_tfit/recipes/'
+               'example_neiltest.yaml')
 
 # =============================================================================
 # Define functions
@@ -170,14 +171,27 @@ if __name__ == "__main__":
     # Step 4: fit the multi-spectrum model (trial run)
     # -------------------------------------------------------------------------
     # run the mcmc in trial mode
-    sampler = mcmc.Sampler(params, tfit, mode='trial')
-    sampler.run_mcmc(corscale, mcmc.lnprob, mcmc.mhg_mcmc)
+    sampler1 = mcmc.Sampler(params, tfit, mode='trial')
+    sampler1.run_mcmc(corscale, mcmc.lnprob, mcmc.mhg_mcmc)
+    # print result
+    sampler1.posterior_print()
 
     # -------------------------------------------------------------------------
     # Step 5: fit the multi-spectrum model (full run)
     # -------------------------------------------------------------------------
-    sampler = mcmc.Sampler(params, tfit, mode='full')
-    sampler.run_mcmc(corscale, mcmc.lnprob, mcmc.mhg_mcmc)
+    sampler2 = mcmc.Sampler(params, tfit, mode='full')
+    sampler2.run_mcmc(corscale, mcmc.lnprob, mcmc.mhg_mcmc,
+                     trial=sampler1)
+    # print result
+    sampler2.posterior_print()
+    # plot a specific chain
+    plot.plot_chain(sampler2.chain, chain_num=-1)
+    # update tfit
+    tfit_final = mcmc.update_x0_p0_from_chain(tfit, sampler2.chain, -1)
+    # plot transit
+    plot.plot_transit_fit(tfit, 5)
+    # plot the chains
+    plot.plot_chains(sampler2.chain, 0, tfit.xnames)
 
     # -------------------------------------------------------------------------
     # Step 6: save results

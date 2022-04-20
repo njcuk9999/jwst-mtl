@@ -48,7 +48,7 @@ TPH_ORDERED = ['ERROR_SCALE', 'AMPLITUDE_SCALE', 'LENGTH_SCALE']
 TP_KWARGS = ['NTT', 'T_OBS', 'OMC']
 
 # These are the attributes of TransitFit that have the same length as x0
-X_ATTRIBUTES = ['x0', 'xtmp', 'beta', 'x0pos']
+X_ATTRIBUTES = ['x0', 'beta', 'x0pos']
 
 
 # =============================================================================
@@ -67,8 +67,6 @@ class TransitFit:
     n_phot: int
     # numpy array [n_param, n_phot] the initial value of each parameter
     p0: np.ndarray
-    # numpy array [n_param, n_phot] the current value of each parameter
-    ptmp: np.ndarray
     # numpy array [n_param] whether we are fitting each parameter [Bool]
     fmask: np.ndarray
     # numpy array [n_param] whether chromatic fit used for each parameter [Bool]
@@ -103,16 +101,14 @@ class TransitFit:
     # -------------------------------------------------------------------------
     # the initial fitted parameters
     x0: np.ndarray
-    # the fitted params flattened [n_x]
-    xtmp: np.ndarray
     # name of the fitted params flattened [n_x]
     xnames: np.ndarray
     # length of fitted params flattened [n_x]
     n_x: int
     # numpy array [n_param]
     beta: np.ndarray
-    # the mapping from x0 onto p0 (or xtmp onto ptmp) [n_x, 2] each element
-    #   is the tuple poisition in p0 or ptmp
+    # the mapping from x0 onto p0 [n_x, 2] each element
+    #   is the tuple position in p0
     x0pos: np.ndarray
     # -------------------------------------------------------------------------
     # will be filled out by the mcmc
@@ -151,7 +147,7 @@ class TransitFit:
     def copy(self) -> 'TransitFit':
         """
         Copy class - deep copying values which need copying
-        e.g. p0, ptmp, x0, xtmp
+        e.g. p0, x0
 
         :return:
         """
@@ -164,8 +160,6 @@ class TransitFit:
         new.n_phot = self.n_phot
         # numpy array [n_param, n_phot] the initial value of each parameter
         new.p0 = np.array(self.p0)
-        # numpy array [n_param, n_phot] the current value of each parameter
-        new.ptmp = np.array(self.ptmp)
         # numpy array [n_param] whether we are fitting each parameter [Bool]
         new.fmask = self.fmask
         # numpy array [n_param] whether chromatic fit used for each
@@ -182,8 +176,6 @@ class TransitFit:
         # ---------------------------------------------------------------------
         # the data:
         # ---------------------------------------------------------------------
-        #     [0][WAVELENGTH][n_phot, n_int]
-        new.phot = self.phot
         # the wavelength array [n_phot, n_int]
         new.wavelength = self.wavelength
         # the time array [n_phot, n_int]
@@ -201,16 +193,14 @@ class TransitFit:
         # ---------------------------------------------------------------------
         # the initial fitted parameters
         new.x0 = np.array(self.x0)
-        # the fitted params flattened [n_x]
-        new.xtmp = np.array(self.xtmp)
         # name of the fitted params flattened [n_x]
         new.xnames = self.xnames
         # length of fitted params flattened [n_x]
         new.n_x = self.n_x
         # numpy array [n_param]
         new.beta = np.arary(self.beta)
-        # the mapping from x0 onto p0 (or xtmp onto ptmp) [n_x, 2] each element
-        #   is the tuple poisition in p0 or ptmp
+        # the mapping from x0 onto p0 [n_x, 2] each element
+        #   is the tuple poisition in p0
         new.x0pos = self.x0pos
         # ---------------------------------------------------------------------
         # will be filled out by the mcmc
@@ -231,7 +221,7 @@ class TransitFit:
         Here chromatic values add self.n_phot values and bolometric values add
         a single value
 
-        :return: None, updates self.xtmp and self.xnames
+        :return: None, updates self.x0 and self.xnames
         """
         # set up storage
         x0 = []
@@ -271,16 +261,15 @@ class TransitFit:
                 x0pos += [(it, 0)]
         # set values
         self.x0 = np.array(x0)
-        self.xtmp = np.array(x0)
         self.xnames = np.array(xnames)
         self.n_x = len(x0)
         self.p0pos = np.array(p0pos, dtype=int)
         self.x0pos = np.array(x0pos)
 
-    def update_ptmp_from_xtmp(self):
+    def update_p0_from_x0(self):
         """
-        Take a set of fitted parameters (xtmp) and project back into the
-        full solution (ptmp)
+        Take a set of fitted parameters (x0) and project back into the
+        full solution (p0)
 
         :return:
         """
@@ -288,19 +277,19 @@ class TransitFit:
         for it in range(self.n_x):
             # find all places where it is valid
             mask = it == self.p0pos
-            # update ptmp with xtmp value
-            self.ptmp[mask] = self.xtmp[it]
+            # update p0 with x0 value
+            self.p0[mask] = self.x0[it]
 
-    def update_xtmp_from_ptmp(self):
+    def update_x0_from_p0(self):
         """
-        Take a full solution (ptmp) and project back into the set of fitted
-        parameters (xtmp)
+        Take a full solution (p0) and project back into the set of fitted
+        parameters (x0)
 
         :return:
         """
         for it in range(self.n_x):
             # push the value into x
-            self.xtmp[it] = self.ptmp[tuple(self.x0pos)]
+            self.x0[it] = self.p0[tuple(self.x0pos)]
 
     def generate_gibbs_sample(self, beta: np.ndarray):
         # choose random parameter to vary
@@ -309,9 +298,9 @@ class TransitFit:
         self.n_tmp = param_it
         # update the choosen value by a random number drawn from a gaussian
         #   with centre = 0 and fwhm = beta
-        self.xtmp[param_it] += np.random.normal(0.0, beta[param_it])
+        self.x0[param_it] += np.random.normal(0.0, beta[param_it])
         # update full solution
-        self.update_ptmp_from_xtmp()
+        self.update_p0_from_x0()
 
     def generate_demcmc_sample(self, buffer, corbeta: float):
         # get the length of the buffer
@@ -322,10 +311,10 @@ class TransitFit:
         int1, int2 = np.random.randint(0, nbuffer + 1, size=2)
         # calculate the vector jump
         vector_jump = buffer[int1, :] - buffer[int2, :]
-        # apply the vector jump to xtmp
-        self.xtmp += vector_jump * corbeta
+        # apply the vector jump to x0
+        self.x0 += vector_jump * corbeta
         # update full solution
-        self.update_ptmp_from_xtmp()
+        self.update_p0_from_x0()
 
     def get(self, param_name: str, attribute_name: str):
         # get attribute
@@ -339,7 +328,7 @@ class TransitFit:
     def view(self, attribute_name: str,
              attribute: Optional[Any] = None):
         """
-        View a parameter (i.e. p0, ptmp, fmask, wmasl, beta, prior)
+        View a parameter (i.e. p0, fmask, wmasl, beta, prior)
         with its associated
 
         :param attribute_name: if parameter is None this must be an attribute of
@@ -354,7 +343,7 @@ class TransitFit:
             >> tfit.view('p0', tfit.p0[:, 0])  # view the 0th bandpass p0 values
             >> tfit.view('prior')      # view the prior values
             >> tfit.view('fmask')     # view which values are fitted
-            >> tfit.view('xtmp')      # view the flattened fitted parameters
+            >> tfit.view('x0')      # view the flattened fitted parameters
 
         :return: None, prints to stdout
         """
@@ -542,7 +531,6 @@ def setup_params_mcmc(params: ParamDict, data: InputData) -> TransitFit:
     tfit.orders = data.phot['ORDERS']
     # add the parameters
     tfit.p0 = transit_p0
-    tfit.ptmp = np.array(transit_p0)
     tfit.fmask = transit_fmask
     tfit.wmask = transit_wmask
     tfit.prior = transit_prior
@@ -565,10 +553,10 @@ def setup_params_mcmc(params: ParamDict, data: InputData) -> TransitFit:
     # -------------------------------------------------------------------------
     # update fitted parameters
     # -------------------------------------------------------------------------
-    # set xtmp and xnames
+    # set x0 and xnames
     tfit.get_fitted_params()
     # start of beta
-    tfit.beta = np.zeros_like(tfit.xtmp)
+    tfit.beta = np.zeros_like(tfit.x0)
     # -------------------------------------------------------------------------
     # return the transit fit class
     # -------------------------------------------------------------------------
@@ -587,7 +575,7 @@ def lnpriors(tfit) -> float:
         tfit must have attributes:
             n_phot: int, the number of band passes
             n_param: int, the number of parameters (fitted and fixed)
-            ptmp: np.ndarray - the trial solution [n_param, n_phot]
+            p0: np.ndarray - the trial solution [n_param, n_phot]
             pnames: np.ndarray [n_param, n_phot] {STRING} - parameter names
             fmask: np.ndarray [n_param] {BOOL} - whether parameter is to be fit
 
@@ -604,7 +592,7 @@ def lnpriors(tfit) -> float:
     # whether parameters are fitted or fixed
     fmask = tfit.fmask
     # trial solution
-    sol = tfit.ptmp
+    sol = np.array(tfit.p0)
     # get priors
     priors = tfit.get(names, 'prior')
     # -------------------------------------------------------------------------
@@ -643,7 +631,7 @@ def lnprob(tfit: TransitFit) -> float:
             ntt:
             tobs:
             omc:
-            ptmp: np.ndarray - the trial solution [n_param, n_phot]
+            p0: np.ndarray - the trial solution [n_param, n_phot]
             pnames: np.ndarray [n_param, n_phot] {STRING} - parameter names
 
     :return:
@@ -663,15 +651,15 @@ def lnprob(tfit: TransitFit) -> float:
     tobs = tfit.pkwargs['T_OBS']
     omc = tfit.pkwargs['OMC']
     # trial solution
-    sol = tfit.ptmp
+    sol = np.array(tfit.p0)
     # -------------------------------------------------------------------------
     # the hyper parameters
     # photometric error scale (DSC) for this bandpass
-    dscale = tfit.get('DSC', 'ptmp')
+    dscale = tfit.get('DSC', 'p0')
     # GP Kernel Amplitude (ASC) for this bandpass
-    ascale = tfit.get('ASC', 'ptmp')
+    ascale = tfit.get('ASC', 'p0')
     # GP length scale (LSC) for this bandpass
-    lscale = tfit.get('LSC', 'ptmp')
+    lscale = tfit.get('LSC', 'p0')
     # deal with the fitting of hyper parameters
     fit_error_scale = tfit.get('DSC', 'fmask')
     fit_amplitude_scale = tfit.get('DSC', 'fmask')
@@ -726,8 +714,9 @@ def lnprob(tfit: TransitFit) -> float:
     return logl
 
 
-def mhg_mcmc(tfit: TransitFit, loglikelihood: Any, beta: np.ndarray, buffer,
-             corbeta) -> TransitFit:
+def mhg_mcmc(tfit: TransitFit, loglikelihood: Any, beta: np.ndarray,
+             buffer: Optional[np.ndarray] = None,
+             corbeta: Optional[float] = None) -> TransitFit:
     """
     A Metropolis-Hastings MCMC with Gibbs sampler
 
@@ -736,13 +725,15 @@ def mhg_mcmc(tfit: TransitFit, loglikelihood: Any, beta: np.ndarray, buffer,
                           loglikelihood must have a single argument of type
                           Transit fit class
     :param beta: ibb's factor : characteristic step size for each parameter
-    :param buffer:
-    :param corbeta:
+    :param buffer: Not used for mhg_mcmc (used in de_mhg_mcmc)
+    :param corbeta: Not used for mhg_mcmc (used in de_mhg_mcmc)
 
     :return:
     """
-    # we do not use bugger and corbeta here (used for dmhg_mcmc)
+    # we do not use bugger and corbeta here (used for de_mhg_mcmc)
     _ = buffer, corbeta
+    # copy fit
+    tfit0 = tfit.copy()
     # -------------------------------------------------------------------------
     # Step 1: Generate trial state
     # -------------------------------------------------------------------------
@@ -763,23 +754,24 @@ def mhg_mcmc(tfit: TransitFit, loglikelihood: Any, beta: np.ndarray, buffer,
     test = np.random.rand()
     # if test is less than our acceptance level accept new trial
     if test <= alpha:
-        tfit.x0 = np.array(tfit.xtmp)
+        tfit.x0 = np.array(tfit.x0)
         tfit.llx = float(llxt)
         tfit.ac = [0, tfit.n_tmp]
         # update full solution
-        tfit.update_ptmp_from_xtmp()
-        tfit.p0 = np.array(tfit.ptmp)
-    # else we reject and start from previous point
+        tfit.update_p0_from_x0()
+        tfit.p0 = np.array(tfit.p0)
+    # else we reject and start from previous point (tfit0)
     else:
-        tfit.xtmp = tfit.x0
-        tfit.ptmp = tfit.p0
+        tfit.x0 = np.array(tfit0.x0)
+        tfit.p0 = np.array(tfit0.p0)
         tfit.ac = [1, tfit.n_tmp]
     # return tfit instance
     return tfit
 
 
-def de_mhg_mcmc(tfit: TransitFit, loglikelihood: Any, beta: np.ndarray, buffer,
-                corbeta) -> TransitFit:
+def de_mhg_mcmc(tfit: TransitFit, loglikelihood: Any, beta: np.ndarray,
+                buffer: Optional[np.ndarray] = None,
+                corbeta: Optional[float] = None) -> TransitFit:
     """
     A Metropolis-Hastings MCMC with Gibbs sampler
 
@@ -788,11 +780,18 @@ def de_mhg_mcmc(tfit: TransitFit, loglikelihood: Any, beta: np.ndarray, buffer,
                           loglikelihood must have a single argument of type
                           Transit fit class
     :param beta: ibb's factor : characteristic step size for each parameter
-    :param buffer:
-    :param corbeta:
+    :param buffer: np.ndarray, previous chains used as a buffer state to
+                   calculate a vector jump
+    :param corbeta: float, scale factor correction to the vector jump
 
     :return:
     """
+    # deal with no buffer or corbeta
+    if buffer is None and corbeta is None:
+        emsg = 'buffer and corbeta must not be None for de_mhg_mcmc()'
+        raise base_classes.TransitFitExcept(emsg)
+    # copy fit
+    tfit0 = tfit.copy()
     # draw a random number to decide which sampler to use
     rsamp = np.random.rand()
     # -------------------------------------------------------------------------
@@ -820,16 +819,16 @@ def de_mhg_mcmc(tfit: TransitFit, loglikelihood: Any, beta: np.ndarray, buffer,
     test = np.random.rand()
     # if test is less than our acceptance level accept new trial
     if test <= alpha:
-        tfit.x0 = np.array(tfit.xtmp)
+        tfit.x0 = np.array(tfit.x0)
         tfit.llx = float(llxt)
         tfit.ac = [0, tfit.n_tmp]
         # update full solution
-        tfit.update_ptmp_from_xtmp()
-        tfit.p0 = np.array(tfit.ptmp)
-    # else we reject and start from previous point
+        tfit.update_p0_from_x0()
+        tfit.p0 = np.array(tfit.p0)
+    # else we reject and start from previous point (tfit0)
     else:
-        tfit.xtmp = tfit.x0
-        tfit.ptmp = tfit.p0
+        tfit.x0 = np.array(tfit0.x0)
+        tfit.p0 = np.array(tfit0.p0)
         tfit.ac = [1, tfit.n_tmp]
     # return tfit instance
     return tfit
@@ -844,6 +843,9 @@ def beta_rescale(params: ParamDict, tfit: TransitFit) -> np.ndarray:
     # parameter controling how fast corscale changes - from Gregory 2011.
     delta = params['BETA_DELTA']
 
+    # TODO: Fill out code
+    corscale = np.zeros_like(tfit.n_param)
+
     return corscale
 
 
@@ -854,15 +856,23 @@ def genchain(tfit: TransitFit, niter: int, beta: np.ndarray,
     """
     Generate Markov Chain
 
-    :param tfit:
-    :param niter:
+    :param tfit: Transit fit class of parameters
+    :param niter: int, the number of steps for each chain to run through
     :param betacor: np.ndarray, the Gibb's factor : characteristic step size
                     for each parameter
-    :param mcmcfunc:
-    :param loglikelihood:
-    :param progress:
+    :param mcmcfunc: MCMC function
+            - arguments: tfit: TransitFit,
+                         loglikelihood: Any,
+                         beta: np.ndarray,
+                         buffer: np.ndarray, corbeta: float
+    :param loglikelihood: log likelihood function
+        - arguments: tfit: TransitFit
+    :param progress: bool, if True uses tqdm to print progress of the
+                     MCMC chain
 
-    :return:
+    :return: tuple, 1. chains (numpy array [n_iter, n_x])
+                    2. rejects (numpy array [n_iter, 2]
+                       where reject=(rejected 1 or 0, parameter num changed)
     """
     # deal with no buffer set
     if buffer is None:
@@ -883,7 +893,7 @@ def genchain(tfit: TransitFit, niter: int, beta: np.ndarray,
         # loop around iterations
         for _ in tqdm(range(0, niter)):
             # run the mcmc function
-            tfit = mcmcfunc(tfit, loglikelihood, buffer, corbeta)
+            tfit = mcmcfunc(tfit, loglikelihood, beta, buffer, corbeta)
             # append results to chains and rejections lists
             chains.append(np.array(tfit.p0))
             rejections.append(np.array(tfit.ac))
@@ -891,7 +901,7 @@ def genchain(tfit: TransitFit, niter: int, beta: np.ndarray,
         # loop around iterations
         for _ in range(0, niter):
             # run the mcmc function
-            tfit = mcmcfunc(tfit, loglikelihood, buffer, corbeta)
+            tfit = mcmcfunc(tfit, loglikelihood, beta, buffer, corbeta)
             # append results to chains and rejections lists
             chains.append(np.array(tfit.p0))
             rejections.append(np.array(tfit.ac))
@@ -984,18 +994,20 @@ def calculate_acceptance_rates(rejections: np.ndarray,
 
 
 def gelman_rubin_convergence(chains: Dict[int, np.ndarray],
-                             burnin: int, npt: int):
+                             burnin: int, npt: int) -> np.ndarray:
     """
     Estimating PSRF
 
     See pdf doc BrooksGelman for info
 
-    :param chains:
-    :param burnin:
-    :param npt:
-    :return:
-    """
+    :param chains: dictionary of chains, each one being a np.ndarray
+                   of shape [n_params, n_phot]
+    :param burnin: int, the number of chains to burn
+    :param npt: int, the number of parameters
 
+    :return: numpy array [n_params], the gelman rubin convergence for each
+             parameter
+    """
     # get the number of walkers (c.f. number of chains)
     n_walkers = len(chains)
     # assume all chains have the same size
@@ -1016,16 +1028,40 @@ def gelman_rubin_convergence(chains: Dict[int, np.ndarray],
         # Generate variance for each parameter in each chain
         # TODO: check axis
         pvar[walker] = np.var(chains[walker][burnin:], axis=1)
-
+    # -------------------------------------------------------------------------
     # calculate the posterior mean for each parameter
     # TODO: check axis
     posteriormean = np.mean(pmean, axis=1)
     # -------------------------------------------------------------------------
     # Calculate between chains variance
-
-    bvar = np.zeros(n_param)
-
-
+    bvar = np.sum((pmean - posteriormean) ** 2, axis=0)
+    bvar = bvar * n_chain / (n_walkers - 1.0)
+    # -------------------------------------------------------------------------
+    # Calculate within chain variance
+    wvar = np.sum(pvar, axis=0)
+    wvar = wvar / n_walkers
+    # -------------------------------------------------------------------------
+    # Calculate the pooled variance
+    part1 = (wvar / n_chain)
+    part2 = bvar * (n_walkers + 1) / (n_walkers * n_chain)
+    vvar = (n_chain - 1) * part1 * part2
+    # -------------------------------------------------------------------------
+    # degrees of freedom
+    dof = npt - 1
+    # -------------------------------------------------------------------------
+    # dof ratio for rc and ru
+    dofr = (dof + 3.0) / (dof + 1.0)
+    # -------------------------------------------------------------------------
+    # PSRF from Brooks and Gelman (1997)
+    rc = np.sqrt(dofr * vvar / wvar)
+    # -------------------------------------------------------------------------
+    # Calculate Ru
+    # part1 = (n_chain - 1.0)/n_cahin
+    # part2 = qa * (n_walkers + 1)/n_walkers
+    # ru = np.sqrt((dofr * part1 * wvar) + part2)
+    # -------------------------------------------------------------------------
+    # return rc
+    return rc
 
 
 # =============================================================================
@@ -1037,7 +1073,7 @@ class Sampler:
 
     def __init__(self, params: ParamDict, tfit: TransitFit, mode='full'):
         self.params = params
-        self.tfit = tfit
+        self.tfit = tfit.copy()
         self.mode = mode
         self.wchains = dict()
         self.wrejects = dict()
@@ -1046,10 +1082,24 @@ class Sampler:
             self.wchains[nwalker] = np.array([])
             self.wrejects[nwalker] = np.array([])
 
+    def run_mcmc(self, corscale: np.ndarray, loglikelihood, mcmcfunc,
+                 trial: Optional['Sampler'] = None):
+        """
+        Run the MCMC using a correction scale of beta previously
+        calculated by betarescale)
 
-    # TODO: fill out
-    def run_mcmc(self, corscale, loglikelihood, mcmcfunc):
-
+        :param corscale: numpy array [n_param]
+        :param loglikelihood: log likelihood function
+                - arguments: tfit: TransitFit
+        :param mcmcfunc: MCMC function
+                - arguments: tfit: TransitFit,
+                             loglikelihood: Any,
+                             beta: np.ndarray,
+                             buffer: np.ndarray, corbeta: float
+        :param trial: optional, Sampler class, a previous sampler to start
+                      the chains from
+        :return:
+        """
         # ---------------------------------------------------------------------
         # get parameters from params
         # ---------------------------------------------------------------------
@@ -1061,16 +1111,24 @@ class Sampler:
         nwalkers = self.params['WALKERS']
         # set the burnin parameter
         burninf = self.params['BURNINF'][self.mode]
+        # convergence criteria for buffer
+        buf_converge_crit = self.params['BUFFER_COVERGE_CRIT']
+        # the number of steps we add on next loop (if convergence not met)
+        nsteps_inc = self.params['NSTEPS_INC']
+        # correction to beta term for deMCMC
+        corbeta = self.params['CORBETA'][self.mode]
+        # ---------------------------------------------------------------------
+        # deal with having a trial sampler
+        sampler = trial
         # ---------------------------------------------------------------------
         # loop around
         # ---------------------------------------------------------------------
         # start loop counter
         nloop = 0
-
         # set the constant genchain parameters
         gkwargs = dict(niter=nsteps, betacor=self.tfit.beta * corscale,
                        loglikelihood=loglikelihood, mcmcfunc=mcmcfunc,
-                       progress=True)
+                       corbeta=corbeta, progress=True)
         # -----------------------------------------------------------------
         # Loop around iterations until we break (convergence met) or max
         #     number of loops exceeded
@@ -1084,33 +1142,166 @@ class Sampler:
             # get the chains
             # TODO: parallize this
             for nwalker in range(nwalkers):
+                # copy tfit
+                htfit = self.tfit.copy()
+                # get the buffer from previous chain and update tfit from
+                #   previous chain.
+                # Previous chain can be from another sampler or from a
+                #   previous iteration of the NLOOP while loop
+                # Also updates the starting x0 and p0 for htfit
+                buffer, htfit = start_from_previous_chains(self, htfit, sampler)
                 # get chains and rejects for this walker
-                hchains, hrejects = genchain(self.tfit.copy(), **gkwargs)
+                hchains, hrejects = genchain(htfit, buffer=buffer, **gkwargs)
                 # push chains into walker storage
                 wcs = np.concatenate([self.wchains[nwalker], hchains])
                 self.wchains[nwalker] = wcs
                 # push rejects into walker storage
                 rcs = np.concatenate([self.wrejects[nwalker], hrejects])
                 self.wrejects[nwalker] = rcs
-            # -----------------------------------------------------------------
-            # Calculate acceptance rate
-            # -----------------------------------------------------------------
-            # get number of chains to burn (using burn in fraction)
-            burnin = int(self.wchains[0].shape[0] * burninf)
-            # calculate acceptance for chain1
-            self.acc_dict = calculate_acceptance_rates(self.wrejects[0],
-                                                       burnin=burnin)
+
             # -----------------------------------------------------------------
             # Calculate the Gelman-Rubin Convergence
             # -----------------------------------------------------------------
-
+            # get number of chains to burn (using burn in fraction)
+            burnin = int(self.wchains[0].shape[0] * burninf)
+            # calculate the rc factor
             grtest = gelman_rubin_convergence(self.wchains, burnin=burnin,
                                               npt=self.tfit.n_phot)
+            # print the factors
+            print('Gelman-Rubin Convergence. Rc param:')
+            for param_it in range(self.tfit.n_param):
+                # print Rc parameter
+                pargs = [param_it, self.tfit.pnames[param_it],
+                         grtest[param_it]]
+                print(f'\t{0:3d} {1:3s}: {2:.4f}'.format(*pargs))
+            # update the full chains
+            self.chain, self.reject = join_chains(self, burnin)
+
+            # -----------------------------------------------------------------
+            # Calculate acceptance rate
+            # -----------------------------------------------------------------
+            if self.mode == 'trial':
+                rejects = self.wrejects[0]
+                burnin_full = int(self.wchains[0].shape[0] * burninf)
+            else:
+                rejects = self.reject
+                burnin_full = int(self.chain.shape[0] * burninf)
+
+            # calculate acceptance for chain1
+            self.acc_dict = calculate_acceptance_rates(rejects,
+                                                       burnin=burnin_full)
+
+            # -----------------------------------------------------------------
+            # Test criteria for success
+            # -----------------------------------------------------------------
+            # criteria for accepting mcmc chains
+            #   all parameters grtest greater than or equal to
+            #   buf_converge_crit
+            # Question: Is this the same thing?
+            #  previously sum(grtest[accept_mask] / grtest[accept_mask])
+            if np.sum(grtest < buf_converge_crit) == len(grtest):
+                break
+            else:
+                # add to the number of steps (for next loop)
+                nsteps += nsteps_inc
+                # add to the loop iteration
+                nloop += 1
+                # deal with chain update for next loop
+                if self.mode == 'full':
+                    sampler = self
+
+    def posterior_print(self):
+
+        # calulate medians
+        medians = np.median(self.chain, axis=0)
+
+        print('Posterior median values')
+        # loop around parameters
+        for x_it in range(self.tfit.n_x):
+            # print argument
+            pargs = [x_it, self.tfit.xnames[x_it], medians[x_it]]
+            print('\t{0} {1: 3s}: {2:.5f}'.format(*pargs))
 
 
 
+def start_from_previous_chains(current: Sampler, tfit: TransitFit,
+                               previous: Sampler
+                               ) -> Tuple[Optional[np.ndarray], TransitFit]:
+    """
+    Start from a previous chain (be it a previous sampler (i.e. trial) or
+    from the current chain)
+
+    :param tfit: Transit fit parameter container
+    :param sampler: Sampler class
+
+    :return: tuple, 1. the buffer (previous chains burnt in and combined)
+             2. the update tfit (x0 and p0) using most recent chain
+             (chains[-1])
+    """
+    # if in trial mode we don't do this
+    if current.mode == 'trial':
+        # set the buffer to None and return tfit as it is
+        return None, tfit
+    # set the burnin parameter
+    burninf = current.params['BURNINF'][current.mode]
+    # get the burn in from trial shape
+    burnin = int(previous.wchains[0].shape[0] * burninf)
+    # get buffer (by joining chains)
+    buffer, _ = join_chains(previous, burnin)
+    # loop around walkers in the trial
+    for walker in previous.wchains:
+        # get start point for this chain (the last chain
+        #    from trial sampler)
+        # Question: do you mean to start x1, x2 and x3 from chain1?
+        #           if so change [0] to [walker]
+        update_x0_p0_from_chain(tfit, previous.wchains[0], -1)
+
+    # return the buffer (
+    return buffer, tfit
 
 
+def join_chains(sampler: Sampler, burnin: int) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Join a set of sampler chains and rejects (using a burnin)
+
+    :param sampler: Sampler class
+    :param burnin: int, the number of chains to burn
+
+    :return: tuple 1. the combined chain arrays, 2. the combined reject arrays
+    """
+    chains, rejects = [], []
+    # loop around chains
+    for walker in sampler.wchains:
+        # get the chains without the burnin chains
+        walker_chain = sampler.wchains[walker][burnin:]
+        # get the rejects
+        walker_reject = sampler.wrejects[walker][burnin:]
+        # add walker to chains
+        chains = np.concatenate([chains, walker_chain])
+        # add walker to rejects
+        rejects = np.concatenate([rejects, walker_reject])
+    # return the combined chains and rejects
+    return chains, rejects
+
+
+def update_x0_p0_from_chain(tfit: TransitFit, chain: np.ndarray,
+                            chain_num: int) -> TransitFit:
+    """
+    Update the x0 and p0 from a specific chain
+
+    :param tfit: Transit fit parameter container
+    :param chain: np.ndarray, the chain [n_steps, x_n]
+    :param chain_num: int, the position in chain to get (positive to count
+                      from start, negative to count from end)
+
+    :return: the updated Transit fit parameter container
+    """
+    # set x0 to the last chain position
+    tfit.x0 = chain[0][chain_num, :]
+    # update solution
+    tfit.update_p0_from_x0()
+    # return updated tfit
+    return tfit
 
 
 # =============================================================================

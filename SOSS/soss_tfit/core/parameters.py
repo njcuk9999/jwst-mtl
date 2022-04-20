@@ -126,16 +126,6 @@ params.set(key='BETA_DELTA', value=0.01, source=__NAME__,
                 'from Gergory 2011',
            dtype=float, path='mcmc_params.beta.delta')
 
-# do trial mcmc run
-params.set(key='TRIAL_MCMC', value=True, source=__NAME__,
-           desc='do trial mcmc run',
-           dtype=bool, path='mcmc_params.trial')
-
-# do trial mcmc run
-params.set(key='FULL_MCMC', value=True, source=__NAME__,
-           desc='do full mcmc run',
-           dtype=bool, path='mcmc_params.full')
-
 # Number of walkers for MCMC
 params.set(key='WALKERS', value=3, source=__NAME__,
            desc='Number of walkers for MCMC',
@@ -147,7 +137,7 @@ params.set(key='NSTEPS', value=dict(trial=10000, full=100000), source=__NAME__,
            dtype=dict, path='mcmc_params.nsteps')
 
 # the number of steps we add on next loop (if convergence not met)
-params.set(key='NSTEPS', value=dict(trial=10000, full=100000), source=__NAME__,
+params.set(key='NSTEPS_INC', value=dict(trial=10000, full=100000), source=__NAME__,
            desc='the number of steps we add on next loop '
                 '(if convergence not met)',
            dtype=dict, path='mcmc_params.nsteps_inc')
@@ -172,6 +162,11 @@ params.set(key='COVERGE_CRIT', value=1.02, source=__NAME__,
 params.set(key='BUFFER_COVERGE_CRIT', value=1.2, source=__NAME__,
            desc='Convergence criteria',
            dtype=float, path='mcmc_params.buf_converge_crit')
+
+# correction to beta term for deMCMC vector jump
+params.set(key='CORBETA', value=0.3, source=__NAME__,
+           desc='correction to beta term for deMCMC vector jump',
+           dtype=float, path='mcmc_params.corbeta')
 
 # Number of walker threads
 #      Must be equal to 1 or a multiple of the number of walkers

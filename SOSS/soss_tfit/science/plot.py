@@ -51,7 +51,8 @@ def plot_flux(data: InputData):
                         bottom=0.05)
     # show and close
     plt.show()
-    plt.close()
+    if not plt.isinteractive():
+        plt.close()
 
 
 def plot_transit_fit(tfit: TransitFit, bandpass: Optional[int] = None):
@@ -91,7 +92,7 @@ def plot_transit_fit(tfit: TransitFit, bandpass: Optional[int] = None):
         # get the frame for this bandpass
         frame = frames[b_it]
         # get transit for current parameters
-        tkwargs = dict(sol=tfit.ptmp, time=tfit.time[bpass],
+        tkwargs = dict(sol=tfit.p0, time=tfit.time[bpass],
                        itime=tfit.itime[bpass],
                        ntt=tfit.pkwargs['NTT'], tobs=tfit.pkwargs['T_OBS'],
                        omc=tfit.pkwargs['OMC'])
@@ -117,6 +118,54 @@ def plot_transit_fit(tfit: TransitFit, bandpass: Optional[int] = None):
     plt.show()
     if not plt.isinteractive():
         plt.close()
+
+
+def plot_chain(chain: np.ndarray, chain_num: int):
+    """
+    Plot a single chain
+
+    :param chain: np.ndarray, the chain [n_steps, x_n]
+    :param chain_num: int, the position in chain to get (positive to count
+                      from start, negative to count from end)
+    :return:
+    """
+    plt.plot(chain[:, chain_num])
+    # show and close
+    plt.show()
+    if not plt.isinteractive():
+        plt.close()
+
+
+def plot_chains(chain: np.ndarray, burnin: int, labels: np.ndarray):
+    """
+    Plot the full set of chains
+
+    :param chain: np.ndarray, the chain [n_steps, x_n]
+    :param burnin: int, the number of chains to burn (ignore) at start
+    :param labels: np.ndarray, the array of names of fitted params [x_n]
+    :return:
+    """
+    # get the number of parameters
+    n_param = chain.shape[1]
+    # setup figure and frames
+    fig, frames = plt.subplots(nrows=n_param, cols=1,
+                               figsize=(12, 1.5 * n_param))
+    # loop around parameters
+    for param_it in range(n_param):
+        # fig[i].subplot(npars, 1, i+1)
+        frames[param_it].plot(chain[burnin:, param_it])  # ,c=colour[i])
+        # set the tick parameters
+        frames[param_it].tick_params(direction='in', length=10, width=2)
+        # set the ylabel
+        frames[param_it].set_ylabel(labels[param_it])
+        # turn off the xtick labels for all but the last frame
+        if param_it + 1 < n_param:
+            frames[param_it].set_xticklabels([])
+    # show and close
+    plt.show()
+    if not plt.isinteractive():
+        plt.close()
+
 
 
 # =============================================================================
