@@ -112,26 +112,27 @@ if __name__ == "__main__":
     # [g/cm³]
     params['RHO_STAR'].value = 2.48
     # boundaries for valid models, if needed.
-    params['RHO_STAR'].prior = dict(min=2.0, max=3.0)
+    params['RHO_STAR'].prior = dict(minimum=2.0, maximum=3.0)
     # limb dark. coeff1
     params['LD3'].value = 0.2
     # limb dark. coeff2
     params['LD4'].value = 0.15
     # zero point to zero
     params['ZEROPOINT'].value = 0.0
-    params['ZEROPOINT'].prior = dict(min=-0.005, max=0.005)
+    params['ZEROPOINT'].prior = dict(minimum=-0.005, maximum=0.005)
     # period priors
     params['PLANET1']['PERIOD'].value = 1.7497798
     params['PLANET1']['PERIOD'].ftype = 'fixed'
     # t0: center of transit time
     params['PLANET1']['T0'].value = 0.093
-    params['PLANET1']['T0'].prior = dict(min=0.093 - 0.03, max=0.093 + 0.03)
+    params['PLANET1']['T0'].prior = dict(minimum=0.093 - 0.03,
+                                         maximum=0.093 + 0.03)
     # impact parameter
     params['PLANET1']['B'].value = 0.6
-    params['PLANET1']['B'].prior = dict(min=0.4, max=0.8)
+    params['PLANET1']['B'].prior = dict(minimum=0.4, maximum=0.8)
     # Rp/Rs
     params['PLANET1']['RPRS'].value = 0.1645
-    params['PLANET1']['RPRS'].prior = dict(min=0.1, max=0.2)
+    params['PLANET1']['RPRS'].prior = dict(minimum=0.1, maximum=0.2)
 
     # -------------------------------------------------------------------------
     # Step 3: set up the parameters

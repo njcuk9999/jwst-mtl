@@ -198,7 +198,7 @@ class TransitFit:
         # length of fitted params flattened [n_x]
         new.n_x = self.n_x
         # numpy array [n_param]
-        new.beta = np.arary(self.beta)
+        new.beta = np.array(self.beta)
         # the mapping from x0 onto p0 [n_x, 2] each element
         #   is the tuple poisition in p0
         new.x0pos = self.x0pos
@@ -293,7 +293,7 @@ class TransitFit:
 
     def generate_gibbs_sample(self, beta: np.ndarray):
         # choose random parameter to vary
-        param_it = np.random.randint(0, self.n_x + 1)
+        param_it = np.random.randint(0, self.n_x)
         # update the position choosen by the sampler
         self.n_tmp = param_it
         # update the choosen value by a random number drawn from a gaussian
@@ -308,7 +308,7 @@ class TransitFit:
         # update the position choosen by the sampler
         self.n_tmp = -1
         # get two random numbers
-        int1, int2 = np.random.randint(0, nbuffer + 1, size=2)
+        int1, int2 = np.random.randint(0, nbuffer, size=2)
         # calculate the vector jump
         vector_jump = buffer[int1, :] - buffer[int2, :]
         # apply the vector jump to x0
@@ -593,8 +593,6 @@ def lnpriors(tfit) -> float:
     fmask = tfit.fmask
     # trial solution
     sol = np.array(tfit.p0)
-    # get priors
-    priors = tfit.get(names, 'prior')
     # -------------------------------------------------------------------------
     # loop around all parameters and test priors
     for param_it in range(n_param):
@@ -602,13 +600,13 @@ def lnpriors(tfit) -> float:
         if not fmask[param_it]:
             continue
         # get this parameters priors
-        prior = priors[param_it]
+        prior = tfit.get(names[param_it], 'prior')
         # loop around band passes
         for phot_it in range(n_phot):
             # get prior function - default prior is a tophat function
             func = prior.get('func', tophat_prior)
             # function returns True if pass prior condition
-            if not func(sol[:, phot_it], **prior):
+            if not func(sol[param_it, phot_it], **prior):
                 return BADLPR
     # if we have got to here we return the good loglikelihood (all priors have
     #    passed)
@@ -895,7 +893,7 @@ def genchain(tfit: TransitFit, niter: int, beta: np.ndarray,
             # run the mcmc function
             tfit = mcmcfunc(tfit, loglikelihood, beta, buffer, corbeta)
             # append results to chains and rejections lists
-            chains.append(np.array(tfit.p0))
+            chains.append(np.array(tfit.x0))
             rejections.append(np.array(tfit.ac))
     else:
         # loop around iterations
@@ -903,7 +901,7 @@ def genchain(tfit: TransitFit, niter: int, beta: np.ndarray,
             # run the mcmc function
             tfit = mcmcfunc(tfit, loglikelihood, beta, buffer, corbeta)
             # append results to chains and rejections lists
-            chains.append(np.array(tfit.p0))
+            chains.append(np.array(tfit.x0))
             rejections.append(np.array(tfit.ac))
     # -------------------------------------------------------------------------
     # convert lists to arrays
@@ -1126,19 +1124,21 @@ class Sampler:
         # start loop counter
         nloop = 0
         # set the constant genchain parameters
-        gkwargs = dict(niter=nsteps, betacor=self.tfit.beta * corscale,
+        gkwargs = dict(niter=nsteps, beta=self.tfit.beta * corscale,
                        loglikelihood=loglikelihood, mcmcfunc=mcmcfunc,
                        corbeta=corbeta, progress=True)
-        # -----------------------------------------------------------------
+        # ---------------------------------------------------------------------
         # Loop around iterations until we break (convergence met) or max
         #     number of loops exceeded
-        # -----------------------------------------------------------------
+        # ---------------------------------------------------------------------
         while nloop < nloopsmax:
             # print progress
-            print(f'Loop {nloop+1}')
+            print(f'MCMC Loop {nloop+1} [{self.mode}]')
             # -----------------------------------------------------------------
             # loop around walkers
             # -----------------------------------------------------------------
+            # print progress
+            print(f'\tGetting chains for {nwalkers} walkers')
             # get the chains
             # TODO: parallize this
             for nwalker in range(nwalkers):
@@ -1153,33 +1153,38 @@ class Sampler:
                 # get chains and rejects for this walker
                 hchains, hrejects = genchain(htfit, buffer=buffer, **gkwargs)
                 # push chains into walker storage
-                wcs = np.concatenate([self.wchains[nwalker], hchains])
-                self.wchains[nwalker] = wcs
+                self.wchains[nwalker] = merge_chains(self.wchains[nwalker],
+                                                     hchains)
                 # push rejects into walker storage
-                rcs = np.concatenate([self.wrejects[nwalker], hrejects])
-                self.wrejects[nwalker] = rcs
+                self.wrejects[nwalker] = merge_chains(self.wrejects[nwalker],
+                                                      hrejects)
 
             # -----------------------------------------------------------------
             # Calculate the Gelman-Rubin Convergence
             # -----------------------------------------------------------------
+            # print progress
+            print('\tGelman-Rubin Convergence.')
             # get number of chains to burn (using burn in fraction)
             burnin = int(self.wchains[0].shape[0] * burninf)
             # calculate the rc factor
             grtest = gelman_rubin_convergence(self.wchains, burnin=burnin,
                                               npt=self.tfit.n_phot)
             # print the factors
-            print('Gelman-Rubin Convergence. Rc param:')
+            print('\tRc param:')
             for param_it in range(self.tfit.n_param):
                 # print Rc parameter
                 pargs = [param_it, self.tfit.pnames[param_it],
                          grtest[param_it]]
-                print(f'\t{0:3d} {1:3s}: {2:.4f}'.format(*pargs))
+                print(f'\t\t{0:3d} {1:3s}: {2:.4f}'.format(*pargs))
             # update the full chains
             self.chain, self.reject = join_chains(self, burnin)
 
             # -----------------------------------------------------------------
             # Calculate acceptance rate
             # -----------------------------------------------------------------
+            # print progress
+            print('\tCalculate acceptance rate')
+            # deal with differences between trial and full run
             if self.mode == 'trial':
                 rejects = self.wrejects[0]
                 burnin_full = int(self.wchains[0].shape[0] * burninf)
@@ -1222,6 +1227,20 @@ class Sampler:
             pargs = [x_it, self.tfit.xnames[x_it], medians[x_it]]
             print('\t{0} {1: 3s}: {2:.5f}'.format(*pargs))
 
+
+
+def merge_chains(chain1: np.ndarray, chain2: np.ndarray) -> np.ndarray:
+    """
+    Merge two chains, and account for the first chain being empty
+
+    :param chain1: np.ndarray, the first chain
+    :param chain2: np.ndarray, the second chain
+    :return:
+    """
+    if chain1.shape[0] == 0:
+        return np.array(chain2)
+    else:
+        return np.concatenate([chain1, chain2])
 
 
 def start_from_previous_chains(current: Sampler, tfit: TransitFit,
@@ -1277,9 +1296,9 @@ def join_chains(sampler: Sampler, burnin: int) -> Tuple[np.ndarray, np.ndarray]:
         # get the rejects
         walker_reject = sampler.wrejects[walker][burnin:]
         # add walker to chains
-        chains = np.concatenate([chains, walker_chain])
+        chains = merge_chains(chains, walker_chain)
         # add walker to rejects
-        rejects = np.concatenate([rejects, walker_reject])
+        rejects = merge_chains(rejects, walker_reject)
     # return the combined chains and rejects
     return chains, rejects
 
