@@ -91,12 +91,16 @@ class EmpiricalTrace:
             print('', flush=True)
 
         # Run the empirical trace construction.
-        o1, o2 = tm.build_empirical_trace(self.clear, self.f277w,
+        # o1, o2 = tm.build_empirical_trace(self.clear, self.f277w,
+        #                                   self.badpix_mask, self.subarray,
+        #                                   self.pad, self.oversample, normalize,
+        #                                   max_iter, self.verbose)
+        o1 = tm.build_empirical_trace(self.clear, self.f277w,
                                           self.badpix_mask, self.subarray,
                                           self.pad, self.oversample, normalize,
                                           max_iter, self.verbose)
         # Store the uncontaminated profiles as attributes.
-        self.order1, self.order2 = o1, o2
+        self.order1, self.order2 = o1, np.ones_like(o1)
 
     def save_to_file(self, filename=None):
         """Write the uncontaminated 2D trace profiles to a fits file.
