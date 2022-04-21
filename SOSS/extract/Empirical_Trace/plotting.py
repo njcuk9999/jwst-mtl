@@ -150,6 +150,18 @@ def plot_wing_reconstruction(profile, ycens, axis_r, prof_r2, pp_r, newprof,
     plt.show()
 
 
+def plot_wing_simulation(stand, halfwidth, wing, wing2, ax, ystart, yend):
+    plt.figure(figsize=(8, 5))
+    plt.plot(np.log10(stand), label='Simulated Profile')
+    plt.axvline(256 // 2 + halfwidth, ls=':', c='black')
+    plt.axvline(256 // 2 - halfwidth, ls=':', c='black')
+    plt.plot(ax[yend:], np.log10(wing), c='red', label='Wing Model')
+    plt.plot(ax[:ystart], np.log10(wing2), c='red')
+    plt.legend(fontsize=12)
+    plt.xlabel('Spatial Pixel', fontsize=14)
+    plt.show()
+
+
 def plot_f277_rescale(f277_init, f277_rescale, clear_prof):
     """Do diagnoostic plot for F277W rescaling.
     """
@@ -169,3 +181,5 @@ def plot_f277_rescale(f277_init, f277_rescale, clear_prof):
 
     plt.subplots_adjust(hspace=0)
     plt.show()
+
+

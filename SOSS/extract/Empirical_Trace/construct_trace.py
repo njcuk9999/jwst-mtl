@@ -106,14 +106,21 @@ def build_empirical_trace(clear, f277w, badpix_mask, subarray, pad, oversample,
         # Note that the detector was trimmed.
         trim = True
 
+    # Add a floor level such that all pixel values are positive
+    floor = np.nanpercentile(clear, 0.1)
+    clear_floorsub = clear - floor
+    floor_f277w = np.nanpercentile(f277w, 0.1)
+    f277w_floorsub = f277w - floor_f277w
+
     # Get the centroid positions for both orders from the data using the
     # edgetrig method.
     if verbose != 0:
         print(' Initial processing...')
         print('  Getting trace centroids...')
-    centroids = get_soss_centroids(clear, mask=badpix_mask, subarray=subarray)
+    centroids = get_soss_centroids(clear_floorsub, mask=badpix_mask,
+                                   subarray=subarray)
     if verbose == 3:
-        plotting.plot_centroid(clear, centroids)
+        plotting.plot_centroid(clear_floorsub, centroids)
 
     # ========= CONSTRUCT FIRST PASS MODELS =========
     # Build a first estimate of the first and second order spatial profiles
@@ -129,8 +136,8 @@ def build_empirical_trace(clear, f277w, badpix_mask, subarray, pad, oversample,
         pad_i = pad[0]
     else:
         pad_i = 0
-    o1_rough = construct_order1(clear, f277w, centroids, subarray=subarray,
-                                pad=pad_i, verbose=verbose)
+    o1_rough = construct_order1(clear_floorsub, f277w_floorsub, centroids,
+                                subarray=subarray, pad=pad_i, verbose=verbose)
 
     # For the other subarrays, construct a second order profile.
     # TODO : I think just throughput should be enough here?
@@ -138,11 +145,14 @@ def build_empirical_trace(clear, f277w, badpix_mask, subarray, pad, oversample,
     if verbose != 0:
         print('   Rescaling first order to native flux level...',
               flush=True)
-    o1_rescale = rescale_model(clear, o1_rough, centroids, pad=pad_i,
+    o1_rescale = rescale_model(clear_floorsub, o1_rough, centroids, pad=pad_i,
                                verbose=verbose)
+    # Add back the floor level
+    o1_rescale += floor
 
-    # # Construct the second order profile.
-    #
+    # Construct the second order profile.
+    o2_rough = make_order2(clear - o1_rescale, centroids)
+
     # # ========= FINAL TUNING =========
     # # Pad the spectral axis.
     # if pad != 0:
@@ -199,7 +209,7 @@ def build_empirical_trace(clear, f277w, badpix_mask, subarray, pad, oversample,
     #     print('\nDone.')
 
     #return o1_uncontam, o2_uncontam
-    return o1_rescale
+    return o1_rescale, o2_rough
 
 
 def _chromescale(profile, wave_start, wave_end, ycen, poly_coef):
@@ -828,7 +838,7 @@ def rescale_model(data, model, centroids, pad=0, verbose=0):
 def rescale_f277(f277_prof, clear_prof, ycen=71, width=50, max_iter=10,
                  verbose=0):
     start, end = int(ycen - width), int(ycen + width)
-    chi2 = np.nansum(((f277_prof / np.nansum(f277_prof))[start:end] - \
+    chi2 = np.nansum(((f277_prof / np.nansum(f277_prof))[start:end] -
                       (clear_prof / np.nansum(clear_prof))[start:end]) ** 2)
     chi2_arr = [chi2]
     anchor_arr = [f277_prof / np.nansum(f277_prof)]
@@ -840,7 +850,7 @@ def rescale_f277(f277_prof, clear_prof, ycen=71, width=50, max_iter=10,
 
         f277_prof = f277_prof / np.nansum(f277_prof) + offset
 
-        chi2 = np.nansum(((f277_prof / np.nansum(f277_prof))[start:end] - \
+        chi2 = np.nansum(((f277_prof / np.nansum(f277_prof))[start:end] -
                           (clear_prof / np.nansum(clear_prof))[
                           start:end]) ** 2)
         chi2_arr.append(chi2)
@@ -855,3 +865,78 @@ def rescale_f277(f277_prof, clear_prof, ycen=71, width=50, max_iter=10,
         plotting.plot_f277_rescale(anchor_arr[0], f277_rescale, clear_prof)
 
     return f277_rescale
+
+
+def simulate_wings(halfwidth=12, verbose=0):
+    stand = _calc_interp_coefs.loicpsf([1.0 * 1e-6], save_to_disk=False,
+                                       oversampling=1, pixel=256,
+                                       verbose=False)[0][0].data
+    stand = np.sum(stand[124:132, :], axis=0)
+
+    maxx = np.nanmax(stand)
+    stand /= maxx
+
+    ystart = int(round(256 // 2 - halfwidth, 0))
+    yend = int(round(256 // 2 + halfwidth, 0))
+    wing = stand[yend:]
+    ax = np.arange(256)
+    pp = np.polyfit(ax[yend:], np.log10(wing), 7)
+    wing = 10 ** (np.polyval(pp, ax[yend:]))
+    wing2 = stand[:ystart]
+    pp = np.polyfit(ax[:ystart], np.log10(wing2), 7)
+    wing2 = 10 ** (np.polyval(pp, ax[:ystart]))
+
+    if verbose == 3:
+        plotting.plot_wing_simulation(stand, halfwidth, wing, wing2, ax,
+                                      ystart, yend)
+
+    return wing, wing2
+
+
+def make_order2(o1sub, cen, mini=750, halfwidth=12):
+    new_2 = np.zeros_like(o1sub)
+    maxi = 2048
+
+    wing, wing2 = simulate_wings()
+
+    for i in range(2048):
+        if i < mini:
+            continue
+        cen2 = int(round(cen['order 2']['Y centroid'][i], 0))
+        if cen2 + halfwidth > 255:
+            if i < maxi:
+                maxi = i
+            continue
+
+        working_prof = np.copy(o1sub[:, i])
+        maxx = np.nanmax(working_prof)
+        working_prof /= maxx
+
+        end = int(round((cen2 + 1 * halfwidth), 0))
+        start = int(round((cen2 - 1 * halfwidth), 0))
+        stitch = np.concatenate([wing2, working_prof[start:end], wing])
+
+        stitch *= maxx
+
+        stitch = np.interp(np.arange(256), np.arange(256) - 256 // 2 + cen2,
+                           stitch)
+
+        new_2[:, i] = stitch
+
+    for i in range(mini):
+        anchor_prof = new_2[:, mini]
+        sc = cen['order 2']['Y centroid'][mini]
+        ec = cen['order 2']['Y centroid'][i]
+        working_prof = np.interp(np.arange(256), np.arange(256) - sc + ec,
+                                 anchor_prof)
+        new_2[:, i] = working_prof
+
+    for i in range(maxi, 2048):
+        anchor_prof = new_2[:, maxi - 1]
+        sc = cen['order 2']['Y centroid'][maxi - 1]
+        ec = cen['order 2']['Y centroid'][i]
+        working_prof = np.interp(np.arange(256), np.arange(256) - sc + ec,
+                                 anchor_prof)
+        new_2[:, i] = working_prof
+
+    return new_2
