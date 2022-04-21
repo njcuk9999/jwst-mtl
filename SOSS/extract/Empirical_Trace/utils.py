@@ -17,6 +17,7 @@ import warnings
 from SOSS.extract.empirical_trace import _calc_interp_coefs
 
 # Local path to reference files.
+# TODO : remove local path
 path = '/Users/michaelradica/Documents/GitHub/jwst-mtl/SOSS/extract/empirical_trace/'
 
 
@@ -146,6 +147,7 @@ def read_interp_coefs(f277w=True, verbose=0):
 
     # Attempt to read interpolation coefficients from reference file.
     try:
+        # TODO : remove local path
         df = pd.read_csv(path+'Ref_files/interpolation_coefficients.csv')
         # If there is an F277W exposure, get the coefficients to 2.45µm.
         if f277w is True:
@@ -192,8 +194,8 @@ def robust_polyfit(x, y, p0):
     return res.x
 
 
-def sigma_clip(xdata, ydata):
-    """Perform rough sigma clipping on data to remove 5-sigma outliers.
+def sigma_clip(xdata, ydata, thresh=5):
+    """Perform rough sigma clipping on data to remove outliers.
 
     Parameters
     ----------
@@ -201,21 +203,23 @@ def sigma_clip(xdata, ydata):
         Independent variable.
     ydata : list, np.array
         Dependent variable.
+    thresh : int
+        Sigma threshold at which to clip.
 
     Returns
     -------
     xdata : np.array
-        Independent variable, sigma clipped.
+        Independent variable; sigma clipped.
     ydata : np.array
-        Dependent variable, sigma clipped.
+        Dependent variable; sigma clipped.
     """
 
     xdata, ydata = np.atleast_1d(xdata), np.atleast_1d(ydata)
     # Get mean and standard deviation.
     mean = np.mean(ydata)
     std = np.std(ydata)
-    # Points which are >5-sigma deviant.
-    inds = np.where(np.abs(ydata - mean) < 5*std)
+    # Points which are >thresh-sigma deviant.
+    inds = np.where(np.abs(ydata - mean) < thresh*std)
 
     return xdata[inds], ydata[inds]
 

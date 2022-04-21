@@ -1,4 +1,4 @@
-## Code for the Empirical Trace Construction&trade; Module
+## Code for the appleSOSS&trade Empirical Trace Construction Module
 
 The empirical trace construction aka the *appleSOSS* (A Producer of ProfiLEs for SOSS) module builds uncontaminated 2D trace profiles for the first and second diffraction orders for a NIRISS/SOSS
 GR700XD/CLEAR observation. The uncontaminated profiles are entirely data driven, only employing models where absolutely necessary (e.g., in the overlap region on the detector), and as such retain a high level of fidelity to the original observations.

@@ -17,6 +17,7 @@ import webbpsf
 from SOSS.extract.empirical_trace import plotting
 
 # Local path to reference files.
+# TODO : remove local path
 path = '/Users/michaelradica/Documents/GitHub/jwst-mtl/SOSS/extract/empirical_trace/Ref_files/'
 
 
@@ -147,6 +148,7 @@ def calc_interp_coefs(f277w=True, verbose=0):
     # Save the coefficients to disk so that they can be accessed by the
     # empirical trace construction module.
     try:
+        # TODO : remove local path
         df = pd.read_csv(path+'interpolation_coefficients.csv')
     except FileNotFoundError:
         # If the interpolation coefficients file does not already exist, create
@@ -161,6 +163,7 @@ def calc_interp_coefs(f277w=True, verbose=0):
         df['NF_blue'] = pb
     # Write to file.
     df = pd.DataFrame(data=df)
+    # TODO : remove local path
     df.to_csv(path+'interpolation_coefficients.csv', index=False)
 
     return pb, pr

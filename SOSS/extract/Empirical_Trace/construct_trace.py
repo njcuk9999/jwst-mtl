@@ -25,6 +25,7 @@ from SOSS.extract.empirical_trace import utils
 warnings.simplefilter(action='ignore', category=RuntimeWarning)
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
+# TODO : Get rid of local paths
 # Local path to reference files.
 path = '/Users/michaelradica/Documents/School/Ph.D./Research/SOSS/Extraction/Input_Files/'
 
@@ -88,6 +89,7 @@ def build_empirical_trace(clear, f277w, badpix_mask, subarray, pad, oversample,
         print('Starting the Empirical Trace Construction module.\n')
 
     # ========= INITIAL SETUP =========
+    # TODO : Get from file header
     # Determine correct subarray dimensions.
     dimy, dimx = np.shape(clear)
     # Initialize trim variable to False unless the subarray is FULL.
@@ -104,6 +106,7 @@ def build_empirical_trace(clear, f277w, badpix_mask, subarray, pad, oversample,
         # Note that the detector was trimmed.
         trim = True
 
+    # TODO : maybe find a better way to do this? Use DQ flags to find bad pix?
     # Replace bad pixels using the median of pixels in the surrounding 5x5 box.
     if verbose != 0:
         print(' Initial processing...')
@@ -133,6 +136,7 @@ def build_empirical_trace(clear, f277w, badpix_mask, subarray, pad, oversample,
     if verbose != 0:
         print(' \nConstructing first pass trace models...')
         print('  Starting the first order trace model...')
+    # TODO : iterations
     # Pad the trace at this point if no further iterations are to be performed.
     if max_iter == 0:
         pad_i = pad[0]
@@ -148,6 +152,7 @@ def build_empirical_trace(clear, f277w, badpix_mask, subarray, pad, oversample,
 
     # For the other subarrays, construct a second order profile.
     else:
+        # TODO : I think just throughput should be enough here?
         # Rescale the first order profile to the native flux level.
         if verbose != 0:
             print('   Rescaling first order to native flux level...',
@@ -368,6 +373,7 @@ def construct_order1(clear, f277w, ycens, subarray, pad=0, verbose=0):
 
     # ========= INITIAL SETUP =========
     # Open wavelength calibration file.
+    # TODO : remove local paths
     wavecal = fits.getdata(path+'jwst_niriss_soss-256-ord1_trace.fits', 1)
     # Get wavelength and detector pixel calibration info.
     pp_w = np.polyfit(wavecal['Detector_Pixels'],
@@ -377,11 +383,13 @@ def construct_order1(clear, f277w, ycens, subarray, pad=0, verbose=0):
     # Determine how the trace width changes with wavelength.
     if verbose != 0:
         print('   Calibrating trace widths...')
+    # TODO : replace with ref file?
     wave_polys = _fit_trace_widths(clear, pp_w, verbose=verbose)
 
     # ========= GET ANCHOR PROFILES =========
     if verbose != 0:
         print('   Getting anchor profiles...')
+    # TODO : remove hardcoding
     # Determine the anchor profiles - blue anchor.
     # Find the pixel position of 2.1µm.
     i_b = np.where(wavecal_w >= 2.1)[0][-1]
@@ -404,6 +412,7 @@ def construct_order1(clear, f277w, ycens, subarray, pad=0, verbose=0):
                                        verbose=verbose, smooth=True,
                                        **{'text': 'Blue anchor'})
     # Remove the lambda/D scaling.
+    # TODO : do this relative
     bl_anch = _chromescale(bl_anch, 2.1, 2.5, ydb + pad, wave_polys)
     # Normalize
     bl_anch /= np.nansum(bl_anch)
@@ -413,6 +422,7 @@ def construct_order1(clear, f277w, ycens, subarray, pad=0, verbose=0):
         # If an F277W exposure is provided, only interpolate out to 2.45µm.
         # Red-wards of 2.45µm we have perfect knowledge of the order 1 trace.
         # Find the pixel position of 2.45µm.
+        # TODO : this 2.45 is arbitrary, figure out a better red anchor
         i_r = np.where(wavecal_w >= 2.45)[0][-1]
         xdr = int(wavecal_x[i_r])
         ydr = ycens['order 1']['Y centroid'][xdr]
@@ -439,10 +449,12 @@ def construct_order1(clear, f277w, ycens, subarray, pad=0, verbose=0):
     else:
         # If no F277W exposure is provided, interpolate out to 2.9µm.
         # Generate a simulated 2.9µm PSF.
+        # TODO : again arbitrary, fix this
         stand = _calc_interp_coefs.loicpsf([2.9*1e-6], save_to_disk=False,
                                            oversampling=1, pixel=256,
                                            verbose=False)[0][0].data
         # Extract the spatial profile.
+        # TODO : hardcoded, but I think its ok here
         rd_anch = np.sum(stand[124:132, :], axis=0)
         # Extend y centroids and wavelengths off of the detector.
         pp_w = np.polyfit(wavecal_x, wavecal_w, 1)
@@ -451,10 +463,12 @@ def construct_order1(clear, f277w, ycens, subarray, pad=0, verbose=0):
         xpix = np.arange(dimx) - 250
         wave_ext = np.polyval(pp_w, xpix)
         ycen_ext = np.polyval(pp_y, xpix)
+        # TODO : probably better to find reddest lambda on detector and webbpsf a profile for there
         # Find position of 2.9µm on extended detector.
         i_r = np.where(wave_ext >= 2.9)[0][-1]
         ydr = ycen_ext[i_r]
         # Interpolate the WebbPSF generated profile to the correct location.
+        # TODO : can we improve accuracy here? Centroiding only good to ~0.1pix
         rd_anch = np.interp(np.arange(256), np.arange(256) - 128 + ydr,
                             rd_anch)
         # Reconstruct wing structure and pad.
@@ -467,10 +481,11 @@ def construct_order1(clear, f277w, ycens, subarray, pad=0, verbose=0):
         # Normalize
         rd_anch /= np.nansum(rd_anch)
         # Interpolation polynomial coefficients, calculated via
-        # calc_interp_coefs.
         coef_b, coef_r = utils.read_interp_coefs(verbose=verbose)
         # Pixel coordinates at which to start the interpolation.
         xdr = 0
+
+    rd_anch = rescale_f277(rd_anch, clear[:, xdr], ycen=ydr, verbose=verbose)
 
     # ========= INTERPOLATE THE CONTAMINATED REGION =========
     # Create the interpolated order 1 PSF.
@@ -512,6 +527,7 @@ def construct_order1(clear, f277w, ycens, subarray, pad=0, verbose=0):
     if verbose != 0:
         print('   Stitching data and reconstructing wings...', flush=True)
     # Stitch together the interpolation and data.
+    # TODO : double check that stitching is working as expected
     o1frame = np.zeros((dimy + 2*pad, dimx))
     # Insert interpolated data.
     o1frame[:, rd_end:bl_end] = map2d[:, rd_end:bl_end]
@@ -554,10 +570,14 @@ def construct_order1(clear, f277w, ycens, subarray, pad=0, verbose=0):
                                                       ycen=cen, pad=pad)
             else:
                 cens = [ycens['order 1']['Y centroid'][col]]
+                # TODO : wing reconstruct probably not necessary here
                 o1frame[:, col] = reconstruct_wings256(f277w[:, col],
                                                        ycens=cens,
                                                        contamination=None,
                                                        pad=pad, smooth=True)
+
+                o1frame[:, col] = rescale_f277(o1frame[:, col], clear[:, col],
+                                               ycen=cens[0], verbose=0)
 
     # Column normalize - necessary for uniformity as anchor profiles are
     # normalized whereas stitched data is not.
@@ -598,6 +618,7 @@ def construct_order2(clear, order1_rescale, ycens, pad=0, verbose=0):
 
     # ========= INITIAL SETUP =========
     # Get wavelength and detector pixel calibration info.
+    # TODO : remove local path
     wavecal_o1 = fits.getdata(path+'jwst_niriss_soss-256-ord1_trace.fits', 1)
     wavecal_o2 = fits.getdata(path+'jwst_niriss_soss-256-ord2_trace.fits', 1)
     pp_p = np.polyfit(wavecal_o1['WAVELENGTH'][::-1],
@@ -790,7 +811,7 @@ def construct_order2(clear, order1_rescale, ycens, pad=0, verbose=0):
 
     return o2frame
 
-
+# TODO : Consider going with relative widths
 def _fit_trace_widths(clear, wave_coefs, verbose=0):
     """Due to the defocusing of the SOSS PSF, the width in the spatial
     direction does not behave as if it is diffraction limited. Calculate the
@@ -834,10 +855,11 @@ def _fit_trace_widths(clear, wave_coefs, verbose=0):
         # highest flux values as the maximum.
         inds = prof_sort[-5:]
         maxx = np.nanmedian(prof[inds])
-        # Count how many pixels have flux greater than twice this value.
+        # Count how many pixels have flux greater than half this value.
         above_av = np.where(prof >= maxx/2)[0]
         trace_widths.append(len(above_av)/4)
 
+    # TODO : hardcodng of blue anchor wavelength
     # Only fit the trace widths up to the blue anchor (2.1µm) where
     # contamination from the second order begins to be a problem.
     end = np.where(wax < 2.1)[0][0]
@@ -849,6 +871,7 @@ def _fit_trace_widths(clear, wave_coefs, verbose=0):
     pp_b = np.polyfit(fit_waves_b, fit_widths_b, 1)
     wfit_b = utils.robust_polyfit(fit_waves_b, fit_widths_b, pp_b)
 
+    # TODO : treat these regions differently, or just use uncontam region?
     # Separate fit to contaminated region.
     fit_waves_r = np.array(wax[:(end+10)])
     fit_widths_r = np.array(trace_widths[:(end+10)])
@@ -889,9 +912,11 @@ def get_goodwing(clear96, centroids):
     ind = np.where(centroids['order 1']['Y centroid'] == ymin)[0][0]
     # Ensure that the second order core is off the detector so there is no
     # contamination.
+    # TODO : remove hardcoding
     while centroids['order 2']['Y centroid'][ind] < 100:
         ind += 1
 
+    # TODO : remove hardcoding
     # Extract the right wing of the chosen column.
     ycen = int(round(centroids['order 1']['Y centroid'][ind], 0))
     goodwing = np.nanmedian(clear96[(ycen+13):, (ind-2):(ind+2)], axis=1)
@@ -1098,7 +1123,7 @@ def reconstruct_wings256(profile, ycens=None, contamination=[2, 3], pad=0,
     # mask negative and zero values.
     profile[profile <= 0] = np.nan
 
-    # ======= RECONSTRUCT RIGHT WING =======
+    # ======= RECONSTRUCT CONTAMINATED WING =======
     # Mask the cores of the first three diffraction orders and fit a straight
     # line to the remaining pixels. Additionally mask any outlier pixels that
     # are >3-sigma deviant from that line. Fit a 7th order polynomial to
@@ -1111,8 +1136,10 @@ def reconstruct_wings256(profile, ycens=None, contamination=[2, 3], pad=0,
     for order, ycen in enumerate(ycens):
         if order == 0:
             start = 0
+            # TODO : remove hardcoding
             end = ycen+30
         else:
+            # TODO : remove hardcoding
             start = np.min([ycen-18, dimy-2])
             end = np.min([ycen+18, dimy-1])
         # Set core of each order to NaN.
@@ -1125,32 +1152,37 @@ def reconstruct_wings256(profile, ycens=None, contamination=[2, 3], pad=0,
     stddev_m = np.sqrt(np.median((prof_r[inds] - wing_mean[inds])**2))
 
     # === Wing fit ===
-    # Get fresh right wing profile.
+    # Get fresh contaminated wing profile.
     prof_r2 = np.log10(profile)
     # Mask first order core.
+    # TODO : remove hardcoding
     prof_r2[:(ycens[0]+13)] = np.nan
     # Mask second and third orders.
     if contamination is not None:
         for order, ycen in enumerate(ycens):
             if order + 1 in contamination:
+                # TODO : remove hardcoding
                 start = np.max([ycen-18, 0])
                 end = np.max([ycen+18, 1])
                 # Set core of each order to NaN.
                 prof_r2[start:end] = np.nan
     # Find all outliers that are >3-sigma deviant from the mean.
+    # TODO : remove hardcoding
     start = ycens[0]+25
     inds2 = np.where(np.abs(prof_r2[start:] - wing_mean[start:]) > 3*stddev_m)
     # Mask outliers
     prof_r2[start:][inds2] = np.nan
     # Mask edge of the detector.
     prof_r2[-3:] = np.nan
-    # Indices of all unmasked points in the left wing.
+    # Indices of all unmasked points in the contaminated wing.
     inds3 = np.isfinite(prof_r2)
 
     # Fit with a 7th order polynomial.
     # To ensure that the polynomial does not start turning up in the padded
     # region, extend the linear fit to the edge of the pad to force the fit
     # to continue decreasing.
+    # TODO : better way to do this?
+    # TODO : remove hardcoding
     ext_ax = np.arange(25) + np.max(axis_r[inds3]) + np.max([pad, 25])
     ext_prof = pp[1] + pp[0]*ext_ax
     # Concatenate right-hand profile with the extended linear trend.
@@ -1164,6 +1196,8 @@ def reconstruct_wings256(profile, ycens=None, contamination=[2, 3], pad=0,
     # === Stitching ===
     newprof = profile*1
     # Interpolate contaminated regions.
+    # TODO : honestly not sure what's going on here - just interpolate the contamination by 2nd + 3rd orders and leave rest alone
+    # I think that is what's happening, but need to take a closer look.
     if contamination is not None:
         for order in contamination:
             # Interpolate for +/- 20 pixels around the trace centroid.
@@ -1183,6 +1217,7 @@ def reconstruct_wings256(profile, ycens=None, contamination=[2, 3], pad=0,
         newprof[pixel] = np.nanmedian(newprof[minp:maxp])
 
     if smooth is True:
+        # TODO : remove hardcoding
         # Replace highly deviant pixels throughout the wings.
         wing_fit = np.polyval(pp_r, axis_r[(ycens[0]+30):])
         # Calculate the standard dev of unmasked points from the wing fit.
@@ -1252,6 +1287,7 @@ def reconstruct_wings96(profile, ycen, goodwing=None, contamination=False,
             errmsg = 'Uncontaminated wing must not be None if profile is \
                       contaminated.'
             raise ValueError(errmsg)
+        # TODO : should think of a better way to handle this in general
         newprof = np.concatenate([profile[:(ycen+13)], goodwing])
         # Smooth over the joint with a polynomial fit.
         fitprof = newprof[(ycen+10):(ycen+20)]
@@ -1523,3 +1559,35 @@ def smooth_spec_discont(o2frame, verbose):
         plotting.plot_flux_deviations(dev_0, dev, iteration)
 
     return o2frame
+
+
+def rescale_f277(f277_prof, clear_prof, ycen=71, width=50, max_iter=10,
+                 verbose=0):
+    start, end = int(ycen - width), int(ycen + width)
+    chi2 = np.nansum(((f277_prof / np.nansum(f277_prof))[start:end] - \
+                      (clear_prof / np.nansum(clear_prof))[start:end]) ** 2)
+    chi2_arr = [chi2]
+    anchor_arr = [f277_prof / np.nansum(f277_prof)]
+
+    niter = 0
+    while niter < max_iter:
+        offset = np.nanpercentile(clear_prof / np.nansum(clear_prof), 1) - \
+                 np.nanpercentile(f277_prof / np.nansum(f277_prof), 1)
+
+        f277_prof = f277_prof / np.nansum(f277_prof) + offset
+
+        chi2 = np.nansum(((f277_prof / np.nansum(f277_prof))[start:end] - \
+                          (clear_prof / np.nansum(clear_prof))[
+                          start:end]) ** 2)
+        chi2_arr.append(chi2)
+        anchor_arr.append(f277_prof / np.nansum(f277_prof))
+
+        niter += 1
+
+    min_chi2 = np.argmin(chi2_arr)
+    f277_rescale = anchor_arr[min_chi2]
+
+    if verbose == 3:
+        plotting.plot_f277_rescale(anchor_arr[0], f277_rescale, clear_prof)
+
+    return f277_rescale

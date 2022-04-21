@@ -15,7 +15,8 @@ import warnings
 from SOSS.extract.empirical_trace import construct_trace as tm
 from SOSS.extract.empirical_trace import utils
 
-
+# TODO : just skip all substrip96
+# TODO : also don't worry about no F277 case
 class EmpiricalTrace:
     """Class wrapper around the empirical trace construction module.
 
@@ -78,6 +79,9 @@ class EmpiricalTrace:
             Number of refinement iterations to complete.
         """
 
+        # TODO : Deal with reference pixels
+
+        # TODO : reassess iterations
         # Warn user that not iterating will yield inaccurate solutions.
         if max_iter < 1:
             warn_msg = 'max_iter has been set to 0 - not iterating is ' \
@@ -126,3 +130,24 @@ class EmpiricalTrace:
         """Validate the input parameters.
         """
         return utils.validate_inputs(self)
+
+from astropy.io import fits
+import numpy as np
+
+if __name__ == '__main__':
+    filepath = '/Users/michaelradica/transfer/IDTSOSS_clear_noisy_1_flatfieldstep.fits'
+    clear = fits.getdata(filepath, 1)
+    error = fits.getdata(filepath, 2)
+    clear = np.nansum(clear, axis=0)
+    filepath = '/Users/michaelradica/transfer/IDTSOSS_f277_noisy_1_flatfieldstep.fits'
+    f277 = fits.open(filepath)[1].data
+    f277 = np.nansum(f277, axis=0)
+
+    floor = np.nanpercentile(clear, 0.1)
+    clear += -1 * floor
+    floor_f277 = np.nanpercentile(f277, 0.1)
+    f277 += -1 * floor_f277
+
+    bad_pix = np.isnan(clear)
+    etrace = EmpiricalTrace(clear, f277, bad_pix, verbose=3)
+    etrace.build_empirical_trace(normalize=False, max_iter=0)

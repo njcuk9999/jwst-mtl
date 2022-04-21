@@ -9,6 +9,7 @@ File containing all diagnostic plotting functions for the empirical trace
 construction and centroiding.
 """
 
+import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -53,6 +54,25 @@ def plot_flux_deviations(dev_init, dev_fin, iteration):
     ax[1].set_xlabel('Spectral Pixel', fontsize=14)
     ax[0].set_ylabel('Flux Variations (i=0)', fontsize=14)
     ax[1].set_ylabel('Flux Variations (i={})'.format(iteration-1), fontsize=14)
+    plt.show()
+
+
+def plot_f277_rescale(f277_init, f277_rescale, clear_prof):
+
+    plt.figure(figsize=(8, 8))
+    gs = gridspec.GridSpec(2, 1, height_ratios=[1, 1])
+
+    ax1 = plt.subplot(gs[0])
+    ax1.plot(clear_prof / np.nansum(clear_prof), c='blue')
+    ax1.plot(f277_init, c='red', ls='--')
+    ax1.xaxis.set_major_formatter(plt.NullFormatter())
+
+    ax2 = plt.subplot(gs[1])
+    ax2.plot(clear_prof / np.nansum(clear_prof), c='blue')
+    ax2.plot(f277_rescale, c='red', ls='--')
+    ax2.set_xlabel('Spatial Pixel', fontsize=14)
+
+    plt.subplots_adjust(hspace=0)
     plt.show()
 
 
