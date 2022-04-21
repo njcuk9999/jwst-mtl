@@ -17,6 +17,7 @@ from SOSS.extract.empirical_trace import utils
 
 # TODO : just skip all substrip96
 # TODO : also don't worry about no F277 case
+# TODO: remove bad pixel stuff
 class EmpiricalTrace:
     """Class wrapper around the empirical trace construction module.
 

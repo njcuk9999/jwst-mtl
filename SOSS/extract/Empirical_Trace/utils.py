@@ -240,10 +240,13 @@ def validate_inputs(etrace):
         dataframe.
     """
 
-    # Ensure F277W and CLEAR have the same dimensions.
-    if etrace.f277w is not None:
+    # Ensure F277 exposure is provided and has same shapse as CLEAR.
+    if etrace.f277w is None:
+        msg = 'A F277W exposure must be passed.'
+        raise NotImplementedError(msg)
+    else:
         if np.shape(etrace.f277w) != np.shape(etrace.clear):
-            msg = 'F277W and CLEAR dataframes must be the same shape.'
+            msg = 'F277W and CLEAR frames must be the same shape.'
             raise ValueError(msg)
     # Ensure bad pixel mask and clear have the same dimensions.
     if np.shape(etrace.clear) != np.shape(etrace.badpix_mask):
@@ -260,18 +263,9 @@ def validate_inputs(etrace):
     # Determine correct subarray dimensions.
     dimy, dimx = np.shape(etrace.clear)
     if dimy == 96:
-        subarray = 'SUBSTRIP96'
-        # Fail if user wants to create reference files with a SUBSTRIP96
-        # exposure. Use a SUBSTRIP256 for this.
-        if etrace.oversample != 1 or etrace.pad != (0, 0):
-            errmsg = 'The creation of reference files is not supported for \
-SUBSTRIP96. Please use a SUBSTRIP256 observation instead.'
-            raise NotImplementedError(errmsg)
-        # Warn the user that only the first pass, first order profile can be
-        # generated for SUBSTRIP96 data.
-        warnmsg = 'Only a first order 2D profile can be generated for \
-SUBSTRIP96.\nPlease use a reference file for the second order.'
-        warnings.warn(warnmsg)
+        # Fail if user wants to use a SUBSTRIP96 exposure
+        msg = 'SUBSTRIP96 is currently not supported.'
+        raise NotImplementedError(msg)
     elif dimy == 256:
         subarray = 'SUBSTRIP256'
     elif dimy == 2048:
