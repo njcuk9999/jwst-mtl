@@ -5,8 +5,8 @@ Created on Wed Feb 3 11:31 2021
 
 @author: MCR
 
-Functions to calculate the interpolation coefficients for the empirical trace
-construction.
+Functions to calculate the interpolation coefficients needed for the empirical
+spatial profile construction.
 """
 
 from astropy.io import fits
@@ -14,11 +14,12 @@ import numpy as np
 import os
 import pandas as pd
 import webbpsf
-from SOSS.extract.empirical_trace import plotting
+
+from SOSS.extract.applesoss import plotting
 
 # Local path to reference files.
 # TODO : remove local path
-path = '/Users/michaelradica/Documents/GitHub/jwst-mtl/SOSS/extract/empirical_trace/Ref_files/'
+path = '/Users/michaelradica/Documents/GitHub/jwst-mtl/SOSS/extract/applesoss/Ref_files/'
 
 
 def calc_interp_coefs(f277w=True, verbose=0):

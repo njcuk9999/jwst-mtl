@@ -5,7 +5,7 @@ Created on Thurs Mar 11 14:35 2020
 
 @author: MCR
 
-Miscellaneous utility functions for the empirical trace construction.
+Miscellaneous utility functions for APPLESOSS.
 """
 
 from astropy.io import fits
@@ -13,12 +13,13 @@ from datetime import datetime
 import numpy as np
 import pandas as pd
 from scipy.optimize import least_squares
-import warnings
-from SOSS.extract.empirical_trace import _calc_interp_coefs
+from tqdm import tqdm
+
+from SOSS.extract.applesoss import _calc_interp_coefs
 
 # Local path to reference files.
 # TODO : remove local path
-path = '/Users/michaelradica/Documents/GitHub/jwst-mtl/SOSS/extract/empirical_trace/'
+path = '/Users/michaelradica/Documents/GitHub/jwst-mtl/SOSS/extract/applesoss/'
 
 
 def _gen_imagehdu_header(hdu, order, pad, oversample):
@@ -168,6 +169,65 @@ def read_interp_coefs(f277w=True, verbose=0):
     return coef_b, coef_r
 
 
+def replace_badpix(clear, badpix_mask, fill_negatives=True, verbose=0):
+    """Replace all bad pixels with the median of the pixels values of a 5x5 box
+    centered on the bad pixel.
+
+    Parameters
+    ----------
+    clear : np.array
+        Dataframe with bad pixels.
+    badpix_mask : np.array
+        Boolean array with the same dimensions as clear. Values of True
+        indicate a bad pixel.
+    fill_negatives : bool
+        If True, also interpolates all negatives values in the frame.
+    verbose : int
+        Level of verbosity.
+
+    Returns
+    -------
+    clear_r : np.array
+        Input clear frame with bad pixels interpolated.
+    """
+
+    # Get frame dimensions
+    dimy, dimx = np.shape(clear)
+
+    # Include all negative and zero pixels in the mask if necessary.
+    if fill_negatives is True:
+        mask = badpix_mask | (clear <= 0)
+    else:
+        mask = badpix_mask
+
+    # Loop over all bad pixels.
+    clear_r = clear*1
+    ys, xs = np.where(mask)
+
+    disable = verbose_to_bool(verbose)
+    for y, x in tqdm(zip(ys, xs), total=len(ys), disable=disable):
+        # Get coordinates of pixels in the 5x5 box.
+        starty = np.max([(y-2), 0])
+        endy = np.min([(y+3), dimy])
+        startx = np.max([0, (x-2)])
+        endx = np.min([dimx, (x+3)])
+        # calculate replacement value to be median of surround pixels.
+        rep_val = np.nanmedian(clear[starty:endy, startx:endx])
+        i = 1
+        # if the median value is still bad, widen the surrounding region
+        while np.isnan(rep_val) or rep_val <= 0:
+            starty = np.max([(y-2-i), 0])
+            endy = np.min([(y+3+i), dimy])
+            startx = np.max([0, (x-2-i)])
+            endx = np.min([dimx, (x+3-i)])
+            rep_val = np.nanmedian(clear[starty:endy, startx:endx])
+            i += 1
+        # Replace bad pixel with the new value.
+        clear_r[y, x] = rep_val
+
+    return clear_r
+
+
 def robust_polyfit(x, y, p0):
     """Wrapper around scipy's least_squares fitting routine implementing the
      Huber loss function - to be more resistant to outliers.
@@ -240,10 +300,13 @@ def validate_inputs(etrace):
         dataframe.
     """
 
-    # Ensure F277W and CLEAR have the same dimensions.
-    if etrace.f277w is not None:
+    # Ensure F277 exposure is provided and has same shapse as CLEAR.
+    if etrace.f277w is None:
+        msg = 'A F277W exposure must be passed.'
+        raise NotImplementedError(msg)
+    else:
         if np.shape(etrace.f277w) != np.shape(etrace.clear):
-            msg = 'F277W and CLEAR dataframes must be the same shape.'
+            msg = 'F277W and CLEAR frames must be the same shape.'
             raise ValueError(msg)
     # Ensure bad pixel mask and clear have the same dimensions.
     if np.shape(etrace.clear) != np.shape(etrace.badpix_mask):
@@ -260,18 +323,9 @@ def validate_inputs(etrace):
     # Determine correct subarray dimensions.
     dimy, dimx = np.shape(etrace.clear)
     if dimy == 96:
-        subarray = 'SUBSTRIP96'
-        # Fail if user wants to create reference files with a SUBSTRIP96
-        # exposure. Use a SUBSTRIP256 for this.
-        if etrace.oversample != 1 or etrace.pad != (0, 0):
-            errmsg = 'The creation of reference files is not supported for \
-SUBSTRIP96. Please use a SUBSTRIP256 observation instead.'
-            raise NotImplementedError(errmsg)
-        # Warn the user that only the first pass, first order profile can be
-        # generated for SUBSTRIP96 data.
-        warnmsg = 'Only a first order 2D profile can be generated for \
-SUBSTRIP96.\nPlease use a reference file for the second order.'
-        warnings.warn(warnmsg)
+        # Fail if user wants to use a SUBSTRIP96 exposure
+        msg = 'SUBSTRIP96 is currently not supported.'
+        raise NotImplementedError(msg)
     elif dimy == 256:
         subarray = 'SUBSTRIP256'
     elif dimy == 2048:
