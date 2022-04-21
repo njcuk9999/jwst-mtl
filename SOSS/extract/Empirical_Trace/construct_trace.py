@@ -106,18 +106,10 @@ def build_empirical_trace(clear, f277w, badpix_mask, subarray, pad, oversample,
         # Note that the detector was trimmed.
         trim = True
 
-    # TODO : maybe find a better way to do this? Use DQ flags to find bad pix?
-    # Replace bad pixels using the median of pixels in the surrounding 5x5 box.
-    if verbose != 0:
-        print(' Initial processing...')
-        print('  Replacing bad pixels...', flush=True)
-    clear = replace_badpix(clear, badpix_mask, verbose=verbose)
-    if f277w is not None:
-        f277w = replace_badpix(f277w, badpix_mask, verbose=verbose)
-
     # Get the centroid positions for both orders from the data using the
     # edgetrig method.
     if verbose != 0:
+        print(' Initial processing...')
         print('  Getting trace centroids...')
     centroids = get_soss_centroids(clear, mask=badpix_mask, subarray=subarray)
     if verbose == 3:
@@ -783,65 +775,6 @@ def reconstruct_wings256(profile, ycens=None, contamination=[2, 3], pad=0,
                                           pad, **kwargs)
 
     return newprof
-
-
-def replace_badpix(clear, badpix_mask, fill_negatives=True, verbose=0):
-    """Replace all bad pixels with the median of the pixels values of a 5x5 box
-    centered on the bad pixel.
-
-    Parameters
-    ----------
-    clear : np.array
-        Dataframe with bad pixels.
-    badpix_mask : np.array
-        Boolean array with the same dimensions as clear. Values of True
-        indicate a bad pixel.
-    fill_negatives : bool
-        If True, also interpolates all negatives values in the frame.
-    verbose : int
-        Level of verbosity.
-
-    Returns
-    -------
-    clear_r : np.array
-        Input clear frame with bad pixels interpolated.
-    """
-
-    # Get frame dimensions
-    dimy, dimx = np.shape(clear)
-
-    # Include all negative and zero pixels in the mask if necessary.
-    if fill_negatives is True:
-        mask = badpix_mask | (clear <= 0)
-    else:
-        mask = badpix_mask
-
-    # Loop over all bad pixels.
-    clear_r = clear*1
-    ys, xs = np.where(mask)
-
-    disable = utils.verbose_to_bool(verbose)
-    for y, x in tqdm(zip(ys, xs), total=len(ys), disable=disable):
-        # Get coordinates of pixels in the 5x5 box.
-        starty = np.max([(y-2), 0])
-        endy = np.min([(y+3), dimy])
-        startx = np.max([0, (x-2)])
-        endx = np.min([dimx, (x+3)])
-        # calculate replacement value to be median of surround pixels.
-        rep_val = np.nanmedian(clear[starty:endy, startx:endx])
-        i = 1
-        # if the median value is still bad, widen the surrounding region
-        while np.isnan(rep_val) or rep_val <= 0:
-            starty = np.max([(y-2-i), 0])
-            endy = np.min([(y+3+i), dimy])
-            startx = np.max([0, (x-2-i)])
-            endx = np.min([dimx, (x+3-i)])
-            rep_val = np.nanmedian(clear[starty:endy, startx:endx])
-            i += 1
-        # Replace bad pixel with the new value.
-        clear_r[y, x] = rep_val
-
-    return clear_r
 
 
 def rescale_model(data, model, centroids, pad=0, verbose=0):

@@ -540,3 +540,59 @@ def smooth_spec_discont(o2frame, verbose):
         plotting.plot_flux_deviations(dev_0, dev, iteration)
 
     return o2frame
+
+
+def plot_wing_reconstruction96(profile, newprof, text=None):
+    """Do diagnostic plotting for the SUBSTRIP96 wing reconstruction.
+    """
+
+    plt.figure(figsize=(8, 5))
+    plt.plot(np.arange(len(profile)), np.log10(profile), ls=':', c='black',
+             label='original profile')
+    add = len(newprof) - len(profile)
+    plt.plot(np.arange(len(newprof))-add/2, np.log10(newprof), c='blue',
+             label='reconstructed profile')
+    if text is not None:
+        plt.text(np.arange(len(newprof))[10], np.min(np.log10(newprof)), text,
+                 fontsize=14)
+
+    plt.xlabel('Spatial Pixel', fontsize=12)
+    plt.legend(fontsize=12)
+    plt.show()
+
+
+def plot_flux_deviations(dev_init, dev_fin, iteration):
+    """Plot the diagnostic results of the order 2 smoothing iterations. The
+    upper plot shows the initial column-wise flux deviations from the local
+    mean, and the lower plot shows the same variations after the smoothing has
+    been completed.
+    """
+
+    f, ax = plt.subplots(2, figsize=(15, 6), sharex=True)
+    ax[0].plot(dev_init)
+    ax[0].axhline(0.1, ls='--', c='black')
+    ax[1].plot(dev_fin)
+    ax[1].axhline(0.1, ls='--', c='black')
+
+    max_val = np.max([len(dev_init), 2048])
+    ax[1].set_xlim(0, max_val)
+    ax[1].set_xlabel('Spectral Pixel', fontsize=14)
+    ax[0].set_ylabel('Flux Variations (i=0)', fontsize=14)
+    ax[1].set_ylabel('Flux Variations (i={})'.format(iteration-1), fontsize=14)
+    plt.show()
+
+
+def plot_scaling_coefs(pixels, k_coefs, pp_k):
+    """Do diagnostic plotting for the first-to-second order flux scaling
+    relationship.
+    """
+
+    plt.figure(figsize=(8, 5))
+    plt.scatter(pixels, k_coefs, s=4, c='blue', alpha=0.8,
+                label='calculated')
+    plt.plot(pixels, np.polyval(pp_k, pixels), ls='--', c='red', label='fit')
+
+    plt.xlabel('Spectral Pixel', fontsize=14)
+    plt.ylabel('O1-to-O2 Scaling', fontsize=14)
+    plt.legend(fontsize=12)
+    plt.show()

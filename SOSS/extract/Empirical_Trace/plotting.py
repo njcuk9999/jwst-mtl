@@ -36,46 +36,6 @@ def plot_centroid(clear, centroid_dict):
     plt.show()
 
 
-def plot_flux_deviations(dev_init, dev_fin, iteration):
-    """Plot the diagnostic results of the order 2 smoothing iterations. The
-    upper plot shows the initial column-wise flux deviations from the local
-    mean, and the lower plot shows the same variations after the smoothing has
-    been completed.
-    """
-
-    f, ax = plt.subplots(2, figsize=(15, 6), sharex=True)
-    ax[0].plot(dev_init)
-    ax[0].axhline(0.1, ls='--', c='black')
-    ax[1].plot(dev_fin)
-    ax[1].axhline(0.1, ls='--', c='black')
-
-    max_val = np.max([len(dev_init), 2048])
-    ax[1].set_xlim(0, max_val)
-    ax[1].set_xlabel('Spectral Pixel', fontsize=14)
-    ax[0].set_ylabel('Flux Variations (i=0)', fontsize=14)
-    ax[1].set_ylabel('Flux Variations (i={})'.format(iteration-1), fontsize=14)
-    plt.show()
-
-
-def plot_f277_rescale(f277_init, f277_rescale, clear_prof):
-
-    plt.figure(figsize=(8, 8))
-    gs = gridspec.GridSpec(2, 1, height_ratios=[1, 1])
-
-    ax1 = plt.subplot(gs[0])
-    ax1.plot(clear_prof / np.nansum(clear_prof), c='blue')
-    ax1.plot(f277_init, c='red', ls='--')
-    ax1.xaxis.set_major_formatter(plt.NullFormatter())
-
-    ax2 = plt.subplot(gs[1])
-    ax2.plot(clear_prof / np.nansum(clear_prof), c='blue')
-    ax2.plot(f277_rescale, c='red', ls='--')
-    ax2.set_xlabel('Spatial Pixel', fontsize=14)
-
-    plt.subplots_adjust(hspace=0)
-    plt.show()
-
-
 def plot_interpmodel(waves, nw1, nw2, p1, p2):
     """Plot the diagnostic results of the derive_model function. Four plots
     are generated, showing the normalized interpolation coefficients for the
@@ -123,22 +83,6 @@ def plot_interpmodel(waves, nw1, nw2, p1, p2):
     ax[1, 1].legend(loc=1, fontsize=12)
 
     f.tight_layout()
-    plt.show()
-
-
-def plot_scaling_coefs(pixels, k_coefs, pp_k):
-    """Do diagnostic plotting for the first-to-second order flux scaling
-    relationship.
-    """
-
-    plt.figure(figsize=(8, 5))
-    plt.scatter(pixels, k_coefs, s=4, c='blue', alpha=0.8,
-                label='calculated')
-    plt.plot(pixels, np.polyval(pp_k, pixels), ls='--', c='red', label='fit')
-
-    plt.xlabel('Spectral Pixel', fontsize=14)
-    plt.ylabel('O1-to-O2 Scaling', fontsize=14)
-    plt.legend(fontsize=12)
     plt.show()
 
 
@@ -206,20 +150,22 @@ def plot_wing_reconstruction(profile, ycens, axis_r, prof_r2, pp_r, newprof,
     plt.show()
 
 
-def plot_wing_reconstruction96(profile, newprof, text=None):
-    """Do diagnostic plotting for the SUBSTRIP96 wing reconstruction.
+def plot_f277_rescale(f277_init, f277_rescale, clear_prof):
+    """Do diagnoostic plot for F277W rescaling.
     """
 
-    plt.figure(figsize=(8, 5))
-    plt.plot(np.arange(len(profile)), np.log10(profile), ls=':', c='black',
-             label='original profile')
-    add = len(newprof) - len(profile)
-    plt.plot(np.arange(len(newprof))-add/2, np.log10(newprof), c='blue',
-             label='reconstructed profile')
-    if text is not None:
-        plt.text(np.arange(len(newprof))[10], np.min(np.log10(newprof)), text,
-                 fontsize=14)
+    plt.figure(figsize=(8, 8))
+    gs = gridspec.GridSpec(2, 1, height_ratios=[1, 1])
 
-    plt.xlabel('Spatial Pixel', fontsize=12)
-    plt.legend(fontsize=12)
+    ax1 = plt.subplot(gs[0])
+    ax1.plot(clear_prof / np.nansum(clear_prof), c='blue')
+    ax1.plot(f277_init, c='red', ls='--')
+    ax1.xaxis.set_major_formatter(plt.NullFormatter())
+
+    ax2 = plt.subplot(gs[1])
+    ax2.plot(clear_prof / np.nansum(clear_prof), c='blue')
+    ax2.plot(f277_rescale, c='red', ls='--')
+    ax2.set_xlabel('Spatial Pixel', fontsize=14)
+
+    plt.subplots_adjust(hspace=0)
     plt.show()

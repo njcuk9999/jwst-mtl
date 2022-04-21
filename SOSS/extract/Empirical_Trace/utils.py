@@ -13,7 +13,9 @@ from datetime import datetime
 import numpy as np
 import pandas as pd
 from scipy.optimize import least_squares
+from tqdm import tqdm
 import warnings
+
 from SOSS.extract.empirical_trace import _calc_interp_coefs
 
 # Local path to reference files.
@@ -166,6 +168,65 @@ def read_interp_coefs(f277w=True, verbose=0):
                                                               verbose=verbose)
 
     return coef_b, coef_r
+
+
+def replace_badpix(clear, badpix_mask, fill_negatives=True, verbose=0):
+    """Replace all bad pixels with the median of the pixels values of a 5x5 box
+    centered on the bad pixel.
+
+    Parameters
+    ----------
+    clear : np.array
+        Dataframe with bad pixels.
+    badpix_mask : np.array
+        Boolean array with the same dimensions as clear. Values of True
+        indicate a bad pixel.
+    fill_negatives : bool
+        If True, also interpolates all negatives values in the frame.
+    verbose : int
+        Level of verbosity.
+
+    Returns
+    -------
+    clear_r : np.array
+        Input clear frame with bad pixels interpolated.
+    """
+
+    # Get frame dimensions
+    dimy, dimx = np.shape(clear)
+
+    # Include all negative and zero pixels in the mask if necessary.
+    if fill_negatives is True:
+        mask = badpix_mask | (clear <= 0)
+    else:
+        mask = badpix_mask
+
+    # Loop over all bad pixels.
+    clear_r = clear*1
+    ys, xs = np.where(mask)
+
+    disable = verbose_to_bool(verbose)
+    for y, x in tqdm(zip(ys, xs), total=len(ys), disable=disable):
+        # Get coordinates of pixels in the 5x5 box.
+        starty = np.max([(y-2), 0])
+        endy = np.min([(y+3), dimy])
+        startx = np.max([0, (x-2)])
+        endx = np.min([dimx, (x+3)])
+        # calculate replacement value to be median of surround pixels.
+        rep_val = np.nanmedian(clear[starty:endy, startx:endx])
+        i = 1
+        # if the median value is still bad, widen the surrounding region
+        while np.isnan(rep_val) or rep_val <= 0:
+            starty = np.max([(y-2-i), 0])
+            endy = np.min([(y+3+i), dimy])
+            startx = np.max([0, (x-2-i)])
+            endx = np.min([dimx, (x+3-i)])
+            rep_val = np.nanmedian(clear[starty:endy, startx:endx])
+            i += 1
+        # Replace bad pixel with the new value.
+        clear_r[y, x] = rep_val
+
+    return clear_r
 
 
 def robust_polyfit(x, y, p0):
