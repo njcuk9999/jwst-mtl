@@ -66,7 +66,7 @@ class EmpiricalTrace:
         self.order1 = None
         self.order2 = None
 
-    def build_empirical_trace(self, normalize=True, max_iter=1):
+    def build_empirical_trace(self, normalize=True):
         """Run the empirical trace construction module.
 
         Parameters
@@ -74,25 +74,16 @@ class EmpiricalTrace:
         normalize : bool
             if True, column normalize the final spatial profiles such that the
             flux in each column sums to one.
-        max_iter : int
-            Number of refinement iterations to complete.
         """
 
         # TODO : Deal with reference pixels
 
         # TODO : reassess iterations
-        # Warn user that not iterating will yield inaccurate solutions.
-        if max_iter < 1:
-            warn_msg = 'max_iter has been set to 0 - not iterating is ' \
-                'inadvisable, and will lead to inaccurate trace solutions.'
-            warnings.warn(warn_msg)
-            print('', flush=True)
-
         # Run the empirical trace construction.
         o1, o2 = tm.build_empirical_trace(self.clear, self.f277w,
                                           self.badpix_mask, self.subarray,
                                           self.pad, self.oversample, normalize,
-                                          max_iter, self.verbose)
+                                          self.verbose)
         # Store the uncontaminated profiles as attributes.
         self.order1, self.order2 = o1, o2
 
@@ -143,11 +134,20 @@ if __name__ == '__main__':
     f277 = fits.open(filepath)[1].data
     f277 = np.nansum(f277, axis=0)
 
+    # Add a floor level such that all pixels are positive
     floor = np.nanpercentile(clear, 0.1)
-    clear += -1 * floor
+    clear -= floor
     floor_f277 = np.nanpercentile(f277, 0.1)
-    f277 += -1 * floor_f277
+    f277 -= floor_f277
+
+    # Replace bad pixels.
+    clear = utils.replace_badpix(clear, np.isnan(np.log10(clear)))
+    f277 = utils.replace_badpix(f277, np.isnan(np.log10(f277)))
+
+    # Add back the floor level
+    clear += floor
+    f277 += floor_f277
 
     bad_pix = np.isnan(clear)
     etrace = EmpiricalTrace(clear, f277, bad_pix, verbose=3)
-    etrace.build_empirical_trace(normalize=False, max_iter=0)
+    etrace.build_empirical_trace(normalize=False)

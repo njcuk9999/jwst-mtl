@@ -31,7 +31,7 @@ path = '/Users/michaelradica/Documents/School/Ph.D./Research/SOSS/Extraction/Inp
 
 
 def build_empirical_trace(clear, f277w, badpix_mask, subarray, pad, oversample,
-                          normalize, max_iter, verbose):
+                          normalize, verbose):
     """Main procedural function for the empirical trace construction module.
     Calling this function will initialize and run all the required subroutines
     to produce an uncontaminated spatial profile for the first and second
@@ -62,8 +62,6 @@ def build_empirical_trace(clear, f277w, badpix_mask, subarray, pad, oversample,
     normalize : bool
         if True, column normalize the final spatial profiles such that the
         flux in each column sums to one.
-    max_iter : int
-        Number of refinement iterations to complete.
     verbose : int
         Level of verbosity: either 3, 2, 1, or 0.
          3 - show all of progress prints, progress bars, and diagnostic plots.
@@ -130,14 +128,9 @@ def build_empirical_trace(clear, f277w, badpix_mask, subarray, pad, oversample,
     if verbose != 0:
         print(' \nConstructing first pass trace models...')
         print('  Starting the first order trace model...')
-    # TODO : iterations
     # Pad the trace at this point if no further iterations are to be performed.
-    if max_iter == 0:
-        pad_i = pad[0]
-    else:
-        pad_i = 0
     o1_rough = construct_order1(clear_floorsub, f277w_floorsub, centroids,
-                                subarray=subarray, pad=pad_i, verbose=verbose)
+                                subarray=subarray, pad=pad[0], verbose=verbose)
 
     # For the other subarrays, construct a second order profile.
     # TODO : I think just throughput should be enough here?
@@ -145,71 +138,74 @@ def build_empirical_trace(clear, f277w, badpix_mask, subarray, pad, oversample,
     if verbose != 0:
         print('   Rescaling first order to native flux level...',
               flush=True)
-    o1_rescale = rescale_model(clear_floorsub, o1_rough, centroids, pad=pad_i,
+    o1_rescale = rescale_model(clear_floorsub, o1_rough, centroids, pad=pad[0],
                                verbose=verbose)
     # Add back the floor level
-    o1_rescale += floor
+    o1_uncontam = o1_rescale + floor
 
     # Construct the second order profile.
-    o2_rough = make_order2(clear - o1_rescale, centroids)
+    o2_uncontam = make_order2(clear - o1_rescale[pad[0]:dimy+pad[0], :],
+                           centroids, verbose=verbose)
+    # Add padding to the second order if necessary
+    if pad[0] != 0:
+        o2_uncontam = pad_order2(o2_uncontam, centroids, pad[0])
 
-    # # ========= FINAL TUNING =========
-    # # Pad the spectral axis.
-    # if pad != 0:
-    #     if verbose != 0:
-    #         print(' Adding padding to the spectral axis...')
-    #     o1_uncontam = pad_spectral_axis(o1_uncontam,
-    #                                     centroids['order 1']['X centroid'],
-    #                                     centroids['order 1']['Y centroid'],
-    #                                     pad=pad[1])
-    # # Even if padding is not requested, fill in the zero valued area of the
-    # # frame where the order 2 trace is off of the detector.
-    # edge = np.where(np.nanmedian(o2_uncontam, axis=0) == 0)[0][0] - 5
-    # o2_uncontam = pad_spectral_axis(o2_uncontam,
-    #                                 centroids['order 2']['X centroid'],
-    #                                 centroids['order 2']['Y centroid'],
-    #                                 pad=pad[1],
-    #                                 ref_cols=(5, edge - dimx))
-    #
-    # # Plot a map of the residuals.
-    # if verbose == 3:
-    #     o1_unpad = o1_uncontam[pad[0]:(dimy + pad[0]),
-    #                            pad[1]:(dimx+pad[1])]
-    #     o2_unpad = o2_uncontam[pad[0]:(dimy + pad[0]),
-    #                            pad[1]:(dimx+pad[1])]
-    #     plotting.plot_trace_residuals(clear, o1_unpad, o2_unpad)
-    #
-    # # Add oversampling.
-    # if oversample != 1:
-    #     if verbose != 0:
-    #         print(' Oversampling...')
-    #     o1_uncontam = oversample_frame(o1_uncontam, oversample=oversample)
-    #     o2_uncontam = oversample_frame(o2_uncontam, oversample=oversample)
-    #
-    # # Column normalize.
-    # if normalize is True:
-    #     o1_uncontam /= np.nansum(o1_uncontam, axis=0)
-    #     o2_uncontam /= np.nansum(o2_uncontam, axis=0)
-    #
-    # # If the original subarray was FULL - add back the rest of the frame
-    # if trim is True:
-    #     # Create the FULL frame including oversampling and padding.
-    #     o1_full = np.zeros(((2048 + 2 * pad[0]) * oversample,
-    #                         (2048+2*pad[1]) * oversample))
-    #     o2_full = np.zeros(((2048 + 2 * pad[0]) * oversample,
-    #                         (2048+2*pad[1]) * oversample))
-    #     # Put the uncontaminated SUBSTRIP256 frames on the FULL detector.
-    #     dimy = np.shape(o1_uncontam)[0]
-    #     o1_full[-dimy:, :] = o1_uncontam
-    #     o2_full[-dimy:, :] = o2_uncontam
-    #     o1_uncontam = o1_full
-    #     o2_uncontam = o2_full
-    #
-    # if verbose != 0:
-    #     print('\nDone.')
+    # ========= FINAL TUNING =========
+    # Pad the spectral axis.
+    if pad[1] != 0:
+        if verbose != 0:
+            print(' Adding padding to the spectral axis...')
+        o1_uncontam = pad_spectral_axis(o1_rescale,
+                                        centroids['order 1']['X centroid'],
+                                        centroids['order 1']['Y centroid'],
+                                        pad=pad[1])
+    # Even if padding is not requested, fill in the zero valued area of the
+    # frame where the order 2 trace is off of the detector.
+    #edge = np.where(np.nanmedian(o2_rough, axis=0) == 0)[0][0] - 5
+        o2_uncontam = pad_spectral_axis(o2_uncontam,
+                                        centroids['order 2']['X centroid'],
+                                        centroids['order 2']['Y centroid'],
+                                        pad=pad[1])#,
+                                        #ref_cols=(5, edge - dimx))
 
-    #return o1_uncontam, o2_uncontam
-    return o1_rescale, o2_rough
+    # Plot a map of the residuals.
+    if verbose == 3:
+        o1_unpad = o1_uncontam[pad[0]:(dimy + pad[0]),
+                               pad[1]:(dimx+pad[1])]
+        o2_unpad = o2_uncontam[pad[0]:(dimy + pad[0]),
+                               pad[1]:(dimx+pad[1])]
+        plotting.plot_trace_residuals(clear, o1_unpad, o2_unpad)
+
+    # Add oversampling.
+    if oversample != 1:
+        if verbose != 0:
+            print(' Oversampling...')
+        o1_uncontam = oversample_frame(o1_uncontam, oversample=oversample)
+        o2_uncontam = oversample_frame(o2_uncontam, oversample=oversample)
+
+    # Column normalize.
+    if normalize is True:
+        o1_uncontam /= np.nansum(o1_uncontam, axis=0)
+        o2_uncontam /= np.nansum(o2_uncontam, axis=0)
+
+    # If the original subarray was FULL - add back the rest of the frame
+    if trim is True:
+        # Create the FULL frame including oversampling and padding.
+        o1_full = np.zeros(((2048 + 2 * pad[0]) * oversample,
+                            (2048+2*pad[1]) * oversample))
+        o2_full = np.zeros(((2048 + 2 * pad[0]) * oversample,
+                            (2048+2*pad[1]) * oversample))
+        # Put the uncontaminated SUBSTRIP256 frames on the FULL detector.
+        dimy = np.shape(o1_uncontam)[0]
+        o1_full[-dimy:, :] = o1_uncontam
+        o2_full[-dimy:, :] = o2_uncontam
+        o1_uncontam = o1_full
+        o2_uncontam = o2_full
+
+    if verbose != 0:
+        print('\nDone.')
+
+    return o1_uncontam, o2_uncontam
 
 
 def _chromescale(profile, wave_start, wave_end, ycen, poly_coef):
@@ -377,7 +373,8 @@ def construct_order1(clear, f277w, ycens, subarray, pad=0, verbose=0):
     # Since there will lkely be a different number of integrations for the
     # F277W exposure vs the CLEAR, the flux levels of the two anchors will
     # likely be different. Rescale the F277W anchor to match the CLEAR level.
-    rd_anch = rescale_f277(rd_anch, clear[:, xdr], ycen=ydr, verbose=verbose)
+    rd_anch = rescale_f277(rd_anch, clear[:, xdr], ycen=ydr, pad=pad,
+                           verbose=verbose)
 
     # ========= INTERPOLATE THE CONTAMINATED REGION =========
     # Create the interpolated order 1 PSF.
@@ -568,6 +565,27 @@ def oversample_frame(frame, oversample=1):
         osframe[j, :] = prof_os
 
     return osframe
+
+
+def pad_order2(order2, cen, pad):
+    dimy, dimx = np.shape(order2)
+    o2_padded = np.zeros((dimy + pad, dimx))
+    o2_padded[:-pad] = order2
+
+    anchor_prof = order2[-1]
+    ii = np.where(cen['order 2']['Y centroid'] >= dimy - 1)[0][0]
+    xcen_anchor = cen['order 2']['X centroid'][ii]
+
+    for i in range(pad):
+        i += 1
+        shift = cen['order 2']['X centroid'][ii + i] - xcen_anchor
+        working_prof = np.interp(np.arange(dimx),
+                                 np.arange(dimx) + shift, anchor_prof)
+        o2_padded[dimy + i - 1] = working_prof
+
+    o2_padded = np.pad(o2_padded, ((pad, 0), (0, 0)), mode='edge')
+
+    return o2_padded
 
 
 def pad_spectral_axis(frame, xcens, ycens, pad=0, ref_cols=None):
@@ -835,10 +853,12 @@ def rescale_model(data, model, centroids, pad=0, verbose=0):
     return model_rescale
 
 
-def rescale_f277(f277_prof, clear_prof, ycen=71, width=50, max_iter=10,
+def rescale_f277(f277_prof, clear_prof, ycen=71, width=50, max_iter=10, pad=0,
                  verbose=0):
+    dimy = len(f277_prof)
     start, end = int(ycen - width), int(ycen + width)
-    chi2 = np.nansum(((f277_prof / np.nansum(f277_prof))[start:end] -
+    chi2 = np.nansum(((f277_prof[pad:(dimy+pad)] /
+                       np.nansum(f277_prof[pad:(dimy+pad)]))[start:end] -
                       (clear_prof / np.nansum(clear_prof))[start:end]) ** 2)
     chi2_arr = [chi2]
     anchor_arr = [f277_prof / np.nansum(f277_prof)]
@@ -850,7 +870,8 @@ def rescale_f277(f277_prof, clear_prof, ycen=71, width=50, max_iter=10,
 
         f277_prof = f277_prof / np.nansum(f277_prof) + offset
 
-        chi2 = np.nansum(((f277_prof / np.nansum(f277_prof))[start:end] -
+        chi2 = np.nansum(((f277_prof[pad:(dimy+pad)] /
+                           np.nansum(f277_prof[pad:(dimy+pad)]))[start:end] -
                           (clear_prof / np.nansum(clear_prof))[
                           start:end]) ** 2)
         chi2_arr.append(chi2)
@@ -862,7 +883,9 @@ def rescale_f277(f277_prof, clear_prof, ycen=71, width=50, max_iter=10,
     f277_rescale = anchor_arr[min_chi2]
 
     if verbose == 3:
-        plotting.plot_f277_rescale(anchor_arr[0], f277_rescale, clear_prof)
+        plotting.plot_f277_rescale(anchor_arr[0][pad:(dimy+pad)],
+                                   f277_rescale[pad:(dimy+pad)],
+                                   clear_prof)
 
     return f277_rescale
 
@@ -893,11 +916,11 @@ def simulate_wings(halfwidth=12, verbose=0):
     return wing, wing2
 
 
-def make_order2(o1sub, cen, mini=750, halfwidth=12):
+def make_order2(o1sub, cen, mini=750, halfwidth=12, verbose=0):
     new_2 = np.zeros_like(o1sub)
     maxi = 2048
 
-    wing, wing2 = simulate_wings()
+    wing, wing2 = simulate_wings(verbose=verbose)
 
     for i in range(2048):
         if i < mini:
