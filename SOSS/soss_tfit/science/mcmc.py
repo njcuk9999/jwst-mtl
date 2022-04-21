@@ -1253,7 +1253,7 @@ class Sampler:
         # convergence criteria for buffer
         buf_converge_crit = self.params['BUFFER_COVERGE_CRIT']
         # the number of steps we add on next loop (if convergence not met)
-        nsteps_inc = self.params['NSTEPS_INC']
+        nsteps_inc = self.params['NSTEPS_INC'][self.mode]
         # correction to beta term for deMCMC
         corbeta = self.params['CORBETA'][self.mode]
         # ---------------------------------------------------------------------
