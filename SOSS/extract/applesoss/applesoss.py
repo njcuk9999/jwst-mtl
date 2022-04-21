@@ -99,7 +99,6 @@ class EmpiricalProfile:
             flux in each column sums to one.
         """
 
-        # TODO : Deal with reference pixels
         # Run the empirical spatial profile construction.
         o1, o2 = build_empirical_profile(self.clear, self.f277w,
                                          self.badpix_mask, self.subarray,
@@ -229,7 +228,19 @@ def build_empirical_profile(clear, f277w, badpix_mask, subarray, pad,
     if verbose == 3:
         plotting.plot_centroid(clear_floorsub, centroids)
 
-    # ========= CONSTRUCT TRACE MODELS =========
+    # The four columns of pixels on the left and right edge of the SOSS
+    # detector are reference pixels. Trim them off and replace them with
+    # interpolations of the edge-most profiles.
+    clear_floorsub = pad_spectral_axis(clear_floorsub[:, 4:-4],
+                                       centroids['order 1']['X centroid'],
+                                       centroids['order 1']['Y centroid'],
+                                       pad=4)
+    f277w_floorsub = pad_spectral_axis(f277w_floorsub[:, 4:-4],
+                                       centroids['order 1']['X centroid'],
+                                       centroids['order 1']['Y centroid'],
+                                       pad=4)
+
+    # ========= CONSTRUCT SPATIAL PROFILE MODELS =========
     # Build a first estimate of the first and second order spatial profiles
     # through an interpolation model in the contaminated region, and
     # wing reconstruction for each order.
@@ -251,8 +262,8 @@ def build_empirical_profile(clear, f277w, badpix_mask, subarray, pad,
     # Construct the second order profile.
     if verbose != 0:
         print('  Starting the second order trace model...')
-    o2_uncontam = make_order2(clear - o1_rescale[pad[0]:dimy + pad[0], :],
-                              centroids, verbose=verbose)
+    o2_uncontam = construct_order2(clear - o1_rescale[pad[0]:dimy + pad[0], :],
+                                   centroids, verbose=verbose)
     # Add padding to the second order if necessary
     if pad[0] != 0:
         o2_uncontam = pad_order2(o2_uncontam, centroids, pad[0])
@@ -1015,7 +1026,7 @@ def simulate_wings(halfwidth=12, verbose=0):
     return wing, wing2
 
 
-def make_order2(o1sub, cen, mini=750, halfwidth=12, verbose=0):
+def construct_order2(o1sub, cen, mini=750, halfwidth=12, verbose=0):
     new_2 = np.zeros_like(o1sub)
     maxi = 2048
 
