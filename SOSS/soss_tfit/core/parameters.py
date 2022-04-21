@@ -110,6 +110,11 @@ params.set(key='BURNIN_COR', value=5000, source=__NAME__,
            desc='burn-in for the beta rescale',
            dtype=int, path='mcmc_params.beta.burnin_cor')
 
+# maximum number of iterations for the beta rescale
+params.set(key='BETA_NLOOPMAX', value=2, source=__NAME__,
+           desc='maximum number of iterations for the beta rescale',
+           dtype=int, path='mcmc_params.beta.nloopmax')
+
 # beta acceptance rate low value
 params.set(key='BETA_ALOW', value=0.22, source=__NAME__,
            desc='beta acceptance rate low value',

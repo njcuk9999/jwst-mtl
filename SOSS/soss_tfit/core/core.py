@@ -22,8 +22,6 @@ __NAME__ = 'core.core.py'
 ParamDict = base_classes.ParamDict
 # Get the Fit Parameter class
 FitParam = base_classes.FitParam
-# set up parameter dictionary
-params = base_classes.ParamDict()
 
 
 # =============================================================================
@@ -146,10 +144,6 @@ def get_yaml_from_path(ydict: dict, path: str):
         ydict_tmp = value
     # return the bottom level key described by path
     return ydict_tmp
-
-
-
-
 
 
 # =============================================================================

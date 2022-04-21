@@ -78,6 +78,8 @@ mcmc_params:
     niter_cor: 5000
     # burn-in for the beta rescale
     burnin_cor: 1000
+    # maximum number of iterations for the beta rescale
+    nloopmax: 2
     # beta acceptance rate low value
     alow: 0.22
     # beta acceptance rate high value

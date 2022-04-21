@@ -18,7 +18,6 @@ from soss_tfit.science import mcmc
 from soss_tfit.science import plot
 
 
-
 # =============================================================================
 # Define variables
 # =============================================================================
@@ -104,7 +103,6 @@ if __name__ == "__main__":
     # Show a plot of the data. Each colour is a different wavelength.
     plot.plot_flux(data)
 
-
     # TODO: Move to David only
     # Fill in a few necessary parameters
     # (Overwrites default parameters that were given in def)
@@ -166,7 +164,7 @@ if __name__ == "__main__":
     # Step 3: Calculate rescaling of beta to improve acceptance rates
     # -------------------------------------------------------------------------
     # Calculate rescaling of beta to improve acceptance rates
-    corscale = mcmc.beta_rescale(params, tfit)
+    corscale = mcmc.beta_rescale(params, tfit, mcmc.mhg_mcmc, mcmc.lnprob)
 
     # -------------------------------------------------------------------------
     # Step 4: fit the multi-spectrum model (trial run)
@@ -182,7 +180,7 @@ if __name__ == "__main__":
     # -------------------------------------------------------------------------
     sampler2 = mcmc.Sampler(params, tfit, mode='full')
     sampler2.run_mcmc(corscale, mcmc.lnprob, mcmc.mhg_mcmc,
-                     trial=sampler1)
+                      trial=sampler1)
     # print result
     sampler2.posterior_print()
     # plot a specific chain
@@ -198,11 +196,9 @@ if __name__ == "__main__":
     # Step 6: save results
     # -------------------------------------------------------------------------
 
-
     # -------------------------------------------------------------------------
     # Step 7: plot spectrum
     # -------------------------------------------------------------------------
-
 
 
 # =============================================================================

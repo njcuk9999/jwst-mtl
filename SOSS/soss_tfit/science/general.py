@@ -11,7 +11,7 @@ Created on 2022-04-12
 """
 from jwst import datamodels
 import numpy as np
-from typing import Any, Dict, List, Optional, Type, Union
+from typing import Dict, List
 
 from soss_tfit.core import base
 from soss_tfit.core import base_classes
@@ -30,6 +30,7 @@ FitParam = base_classes.FitParam
 # Define quantities
 QUANTITIES = ['WAVELENGTH', 'FLUX', 'FLUX_ERROR']
 TQUANTITIES = ['WAVELENGTH', 'FLUX', 'FLUX_ERROR', 'TIME']
+
 
 # =============================================================================
 # Define classes
@@ -382,6 +383,7 @@ def stack_multi_spec(multi_spec, use_orders: List[int],
     # -------------------------------------------------------------------------
     # return the all spectrum dictionary
     return all_spec
+
 
 # =============================================================================
 # Start of code

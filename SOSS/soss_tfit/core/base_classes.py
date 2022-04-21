@@ -122,6 +122,7 @@ class Const:
                       required if arg is set
         :param options: list or None, the options (choices) to allow for
                 argparse
+        :param path: str or None, the yaml path to the constant (if present)
         :param comment: str or None, if set this is the comment to add to a
                         fits header
         :param label: str, label for parameter
@@ -401,14 +402,14 @@ class FitParam:
             self.wfit = wfit
         else:
             emsg = (f'FitParamError: For constant {self.name} wfit must be '
-                    '"bolometric" or "chromatic"' )
+                    '"bolometric" or "chromatic"')
             raise TransitFitExcept(emsg)
         # deal with fit/fixed type parameter
         if ftype in ['fixed', 'fit']:
             self.ftype = ftype
         else:
             emsg = (f'FitParamError: For constant {self.name} wfit must be '
-                    '"fixed" or "fit"' )
+                    '"fixed" or "fit"')
             raise TransitFitExcept(emsg)
         # deal with prior
         self.prior = dict(prior)

@@ -832,18 +832,146 @@ def de_mhg_mcmc(tfit: TransitFit, loglikelihood: Any, beta: np.ndarray,
     return tfit
 
 
-# TODO: Fill out
-def beta_rescale(params: ParamDict, tfit: TransitFit) -> np.ndarray:
+def beta_rescale(params: ParamDict, tfit: TransitFit,
+                 mcmcfunc, loglikelihood,) -> np.ndarray:
+    """
+    Calculate rescaling of beta to improve acceptance rates
 
+    :param params: ParamDict, parameter dictionary of constants
+    :param tfit: Transit fit class of parameters
+    :param mcmcfunc: MCMC function
+            - arguments: tfit: TransitFit,
+                         loglikelihood: Any,
+                         beta: np.ndarray,
+                         buffer: np.ndarray, corbeta: float
+    :param loglikelihood: log likelihood function
+        - arguments: tfit: TransitFit
+    :return:
+    """
     # get alow, ahigh define the acceptance rate range we want
-    alow = params['BETA_ALOW']
-    ahigh = params['BETA_AHIGH']
+    a_low = params['BETA_ALOW']
+    a_high = params['BETA_AHIGH']
     # parameter controling how fast corscale changes - from Gregory 2011.
     delta = params['BETA_DELTA']
-
-    # TODO: Fill out code
-    corscale = np.zeros_like(tfit.n_param)
-
+    # Number of steps in the beta rescale
+    nsteps = params['NITER_COR']
+    # burn-in for the beta rescale
+    burnin_cor = params['BURNIN_COR']
+    # maximum number of iterations for the beta rescale
+    nloopmax = params['BETA_NLOOPMAX']
+    # number of fitted parameters
+    n_x = tfit.n_x
+    # copy tfit (for beta rescale only)
+    tfitb = tfit.copy()
+    # -------------------------------------------------------------------------
+    # total number of accepted proposals
+    nacor = np.zeros(n_x)
+    # total number of accepted proposals immediately prior to rescaling
+    nacor_sub = np.zeros(n_x)
+    # total number of proposals
+    nprop_p = np.zeros(n_x)
+    # total number of proposals immediately prior to rescaling
+    nprop_psub = np.zeros(n_x)
+    # correction rescaling for each parameter
+    corscale = np.ones(n_x)
+    # -------------------------------------------------------------------------
+    # print progress
+    print('Beta Rescale: Gen Chain 1')
+    # initial run of gen chain
+    hchain, hrejects = genchain(tfit, nsteps, tfit.beta, mcmcfunc,
+                                loglikelihood, progress=True)
+    # update x0 and p0 with the last chain
+    tfitb = update_x0_p0_from_chain(tfitb, hchain, -1)
+    # -------------------------------------------------------------------------
+    # get the length of the chain
+    nchain = hchain.shape[0]
+    # calculate the initial values of n_prop and n_acc
+    for chain_it in range(burnin_cor, nchain):
+        # get the parameter number
+        x_it = hrejects[chain_it, 1]
+        # update the total number of proposals for this parameter number
+        nprop_p[x_it] += 1
+        # update total number of accepted proposals (hreject = 1 for rejection)
+        nacor[x_it] += 1 - hrejects[chain_it, 0]
+    # -------------------------------------------------------------------------
+    # calculate the initial acceptance rate
+    ac_rate = nacor / nprop_p
+    # afix is an integer flag to indicate which beta entries need ot be
+    #   updated
+    a_fix = (ac_rate < a_high) & (ac_rate < a_low)
+    # -------------------------------------------------------------------------
+    # Iterate around until all parameters are accepted (a_fix = False) or
+    #   we hit the maximum number of iterations permitted
+    # -------------------------------------------------------------------------
+    # start counter to track number of iterations
+    count = 0
+    # condition based on all parameters being False (in a_fix)
+    while np.sum(a_fix) > 0:
+        # ---------------------------------------------------------------------
+        # if we have a previous count on the number of proposal copy it
+        #   over the total count
+        if count > 0:
+            nprop_p = np.array(nprop_psub)
+            nacor = np.array(nacor_sub)
+        # reset the sub counts for this loop
+        nprop_psub = np.zeros(n_x)
+        nacor_sub = np.zeros(n_x)
+        # ---------------------------------------------------------------------
+        # Make another chain starting with xin
+        # New beta for Gibbs sampling
+        beta_in = tfitb.beta * corscale
+        # ---------------------------------------------------------------------
+        # print progress
+        print(f'Beta Rescale: Gen Chain loop {count + 1}')
+        # initial run of gen chain
+        hchain, hrejects = genchain(tfit, nsteps, beta_in, mcmcfunc,
+                                    loglikelihood, progress=True)
+        # update x0 and p0 with the last chain
+        tfitb = update_x0_p0_from_chain(tfitb, hchain, -1)
+        # ---------------------------------------------------------------------
+        # scan through Markov-Chains and count number of states and acceptances
+        # get the length of the chain
+        nchain = hchain.shape[0]
+        # calculate the initial values of n_prop and n_acc
+        for chain_it in range(burnin_cor, nchain):
+            # get the parameter number
+            x_it = hrejects[chain_it, 1]
+            # update the total number of proposals for this parameter number
+            nprop_p[x_it] += 1
+            # update total number of accepted proposals (hreject=1=rejection)
+            nacor[x_it] += 1 - hrejects[chain_it, 0]
+            # Update current number of proposals
+            nprop_psub[x_it] += 1
+            # Update current number of accepted proposals
+            nacor_sub[x_it] += 1 - hrejects[chain_it, 0]
+        # ---------------------------------------------------------------------
+        # calculate the acceptance rates for each parameter
+        ac_rate = nacor_sub / nprop_psub
+        ac_rate_sub = (nacor - nacor_sub) / (nprop_p - nprop_psub)
+        # calculate correction scale (only for a_fix = True)
+        part1 = 0.75 * (ac_rate_sub[a_fix] + delta)
+        part2 = 0.25 * (1.0 - ac_rate_sub[a_fix] + delta)
+        corscale[a_fix] = np.abs(corscale[a_fix] * (part1/part2)**0.25)
+        # ---------------------------------------------------------------------
+        # print current acceptance
+        print(f'Beta Rescale: Loop {count + 1}, Current Acceptance: ')
+        for x_it in range(n_x):
+            print(f'\t{tfitb.xnames[x_it]:3s}:{ac_rate[x_it]}')
+        # ---------------------------------------------------------------------
+        # check which parameters have achieved required acceptance rate
+        a_fix = (ac_rate < a_high) & (ac_rate < a_low)
+        # ---------------------------------------------------------------------
+        # if too many iterations, then we give up and exit
+        if count > nloopmax:
+            break
+    # -------------------------------------------------------------------------
+    # print the final acceptance
+    # print current acceptance
+    print(f'Beta Rescale: Final Acceptance: ')
+    for x_it in range(n_x):
+        print(f'\t{tfitb.xnames[x_it]:3s}:{ac_rate[x_it]}')
+    # -------------------------------------------------------------------------
+    # return the correction scale
     return corscale
 
 
@@ -856,8 +984,8 @@ def genchain(tfit: TransitFit, niter: int, beta: np.ndarray,
 
     :param tfit: Transit fit class of parameters
     :param niter: int, the number of steps for each chain to run through
-    :param betacor: np.ndarray, the Gibb's factor : characteristic step size
-                    for each parameter
+    :param beta: np.ndarray, the Gibb's factor : characteristic step size
+                 for each parameter
     :param mcmcfunc: MCMC function
             - arguments: tfit: TransitFit,
                          loglikelihood: Any,
@@ -865,6 +993,10 @@ def genchain(tfit: TransitFit, niter: int, beta: np.ndarray,
                          buffer: np.ndarray, corbeta: float
     :param loglikelihood: log likelihood function
         - arguments: tfit: TransitFit
+    :param buffer: np.ndarray, previous chains to use as a buffer
+                   (mcmcfunc=deMCMC only)
+    :param corbeta: float, a fractional multipier for previous chain used
+                    as a buffer (mcmcfunc=deMCMC only)
     :param progress: bool, if True uses tqdm to print progress of the
                      MCMC chain
 
@@ -964,7 +1096,7 @@ def calculate_acceptance_rates(rejections: np.ndarray,
             # if the rejection comes from this parameter
             if rejections[chain_it, 1] == p_num:
                 # add one to the number of proposals
-                n_prop +=  1
+                n_prop += 1
                 # add to the acceptance rate (0 = accept, 1 = reject)
                 accept_rate += rejections[chain_it, 0]
             # if we are in deMCMC mode (n_param = -1) add to de variables
@@ -1065,6 +1197,9 @@ def gelman_rubin_convergence(chains: Dict[int, np.ndarray],
 class Sampler:
     wchains: Dict[int, np.ndarray]
     wrejects: Dict[int, np.ndarray]
+    chains: np.ndarray
+    reject: np.ndarray
+    acc_dict: Dict[int, float]
 
     def __init__(self, params: ParamDict, tfit: TransitFit, mode='full'):
         self.params = params
@@ -1072,6 +1207,9 @@ class Sampler:
         self.mode = mode
         self.wchains = dict()
         self.wrejects = dict()
+        self.chain = np.array([])
+        self.reject = np.array([])
+        self.acc_dict = dict()
         # set up storage of chainns
         for nwalker in range(self.params['WALKERS']):
             self.wchains[nwalker] = np.array([])
@@ -1222,8 +1360,7 @@ class Sampler:
         for x_it in range(self.tfit.n_x):
             # print argument
             pargs = [x_it, self.tfit.xnames[x_it], medians[x_it]]
-            print('\t{0} {1: 3s}: {2:.5f}'.format(*pargs))
-
+            print('\t{0} {1:3s}: {2:.5f}'.format(*pargs))
 
 
 def merge_chains(chain1: np.ndarray, chain2: np.ndarray) -> np.ndarray:
@@ -1247,8 +1384,11 @@ def start_from_previous_chains(current: Sampler, tfit: TransitFit,
     Start from a previous chain (be it a previous sampler (i.e. trial) or
     from the current chain)
 
+    :param current: Current Sampler class (usually self)
     :param tfit: Transit fit parameter container
-    :param sampler: Sampler class
+    :param previous: Previous Sampler class (can also be self if using a
+                     previous chain from the same sampler) or a different
+                     sampler (e.g. from a trial run)
 
     :return: tuple, 1. the buffer (previous chains burnt in and combined)
              2. the update tfit (x0 and p0) using most recent chain
@@ -1265,7 +1405,7 @@ def start_from_previous_chains(current: Sampler, tfit: TransitFit,
     # get buffer (by joining chains)
     buffer, _ = join_chains(previous, burnin)
     # loop around walkers in the trial
-    for walker in previous.wchains:
+    for _ in previous.wchains:
         # get start point for this chain (the last chain
         #    from trial sampler)
         # Question: do you mean to start x1, x2 and x3 from chain1?
