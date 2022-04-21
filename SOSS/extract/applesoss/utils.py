@@ -5,7 +5,7 @@ Created on Thurs Mar 11 14:35 2020
 
 @author: MCR
 
-Miscellaneous utility functions for the empirical trace construction.
+Miscellaneous utility functions for APPLESOSS.
 """
 
 from astropy.io import fits
@@ -14,13 +14,12 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import least_squares
 from tqdm import tqdm
-import warnings
 
-from SOSS.extract.empirical_trace import _calc_interp_coefs
+from SOSS.extract.applesoss import _calc_interp_coefs
 
 # Local path to reference files.
 # TODO : remove local path
-path = '/Users/michaelradica/Documents/GitHub/jwst-mtl/SOSS/extract/empirical_trace/'
+path = '/Users/michaelradica/Documents/GitHub/jwst-mtl/SOSS/extract/applesoss/'
 
 
 def _gen_imagehdu_header(hdu, order, pad, oversample):

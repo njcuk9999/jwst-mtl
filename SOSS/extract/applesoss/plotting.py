@@ -86,21 +86,6 @@ def plot_interpmodel(waves, nw1, nw2, p1, p2):
     plt.show()
 
 
-def plot_trace_residuals(clear, order1, order2):
-    """Plot the residuals after subtracting the first and second order spatial
-    profile models from the original CLEAR dataframe.
-    """
-
-    plt.figure(figsize=(15, 3))
-    plt.imshow((clear - (order1 + order2))/np.nansum(clear, axis=0),
-               origin='lower', vmin=1e-7, vmax=1e-4)
-
-    plt.xlabel('Spectral Pixel', fontsize=14)
-    plt.ylabel('Spatial Pixel', fontsize=14)
-    plt.colorbar()
-    plt.show()
-
-
 def plot_width_cal(fit_widths, fit_waves, width_poly):
     """Do the diagnostic plot for the trace width calibration relation.
     """
@@ -151,12 +136,16 @@ def plot_wing_reconstruction(profile, ycens, axis_r, prof_r2, pp_r, newprof,
 
 
 def plot_wing_simulation(stand, halfwidth, wing, wing2, ax, ystart, yend):
+    """Do diagnostic plot for order 2 wing simulation.
+    """
+
     plt.figure(figsize=(8, 5))
     plt.plot(np.log10(stand), label='Simulated Profile')
     plt.axvline(256 // 2 + halfwidth, ls=':', c='black')
     plt.axvline(256 // 2 - halfwidth, ls=':', c='black')
     plt.plot(ax[yend:], np.log10(wing), c='red', label='Wing Model')
     plt.plot(ax[:ystart], np.log10(wing2), c='red')
+
     plt.legend(fontsize=12)
     plt.xlabel('Spatial Pixel', fontsize=14)
     plt.show()
