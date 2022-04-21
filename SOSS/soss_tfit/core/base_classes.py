@@ -9,6 +9,7 @@ Created on 2022-04-06
 
 @author: cook
 """
+from astropy.time import Time
 from collections import UserDict
 from copy import deepcopy
 import numpy as np
@@ -24,6 +25,8 @@ __NAME__ = 'core.base_classes.py'
 __version__ = base.__version__
 __date__ = base.__date__
 __authors__ = base.__authors__
+# start the time once (can take extra time to load the first time)
+t0 = Time.now()
 
 
 # =============================================================================
@@ -378,6 +381,67 @@ class ParamDict(UserDict):
         :return: str, the string representation of the parameter dictionary
         """
         return self.__str__()
+
+
+class Printer:
+    """
+    Basic coloured log level printer
+    """
+    def __init__(self):
+        """
+        Construct the printer class
+        """
+        # get format
+        if base.COLORLOG:
+            self.fmt = '{0}{1}{2}{3}'
+        else:
+            self.fmt = '{1}{2}'
+
+    def color_level(self, level: str = 'general') -> Tuple[str, str]:
+        """
+        Get the color level
+
+        :param level: str, the level of the message (which gives the color)
+
+        :return: tuple, 1. start colour string, 2. end colour string
+        """
+        # end point is the same
+        c1 = '\033[0;0m'
+        # deal with colour based on level
+        if level == 'error':
+            c0 = '\033[1;91;1m'
+        elif level == 'warning':
+            c0 = '\033[1;93;1m'
+        elif level == 'info':
+            c0 = '\033[94;1m'
+        else:
+            c0 = '\033[92;1m'
+        # return the start and end string
+        return c0, c1
+
+    def __call__(self, message: str, timestamp: bool=True,
+                 level: str = 'general'):
+        """
+        Main functionality, act like print function
+        cprint = Printer()
+        cprint('This is my message')
+
+        :param message: str, the message to print
+        :param timestamp: bool, if True adds a time stamp
+        :param level: str, message color: error, warning, info, general
+
+        :return: None prints to standard output
+        """
+        # get timestamp
+        if timestamp:
+            tstamp = Time.now().fits + '| '
+        else:
+            tstamp = ''
+        # deal with colour
+        c0, c1 = self.color_level(level)
+        # print the message
+        print(self.fmt.format(c0, tstamp, message, c1))
+
 
 
 class FitParam:

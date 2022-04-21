@@ -19,6 +19,8 @@ __date__: str = '2022-04-20'
 __authors__: str = 'Neil Cook, Jason Rowe, David Lafreniere, Loic Albert'
 __package__: str = 'soss_tfit'
 
+# global variables
+COLORLOG = True
 
 # =============================================================================
 # End of code

@@ -21,8 +21,11 @@ from soss_tfit.science import plot
 # =============================================================================
 # Define variables
 # =============================================================================
+# config file (could be an argument)
 CONFIG_FILE = ('/data/jwst-soss/bin/jwst-mtl-soss/SOSS/soss_tfit/recipes/'
                'example_neiltest.yaml')
+# printer
+cprint = core.base_classes.Printer()
 
 # =============================================================================
 # Define functions
@@ -37,35 +40,35 @@ if __name__ == "__main__":
     # -------------------------------------------------------------------------
     # Step 1: load parameter file into our parameter class
     # -------------------------------------------------------------------------
-    print('Loading parameters from yaml file')
+    cprint('Loading parameters from yaml file', level='info')
     params = core.load_params(CONFIG_FILE)
 
     # -------------------------------------------------------------------------
     # Step 2: load data
     # -------------------------------------------------------------------------
     # load data model
-    print('Loading input data: {0}'.format(params['INSPECTRUM']))
+    cprint('Loading input data: {0}'.format(params['INSPECTRUM']), level='info')
     data = general.InputData(params, filename=params['INSPECTRUM'],
                              verbose=True)
 
     # -------------------------------------------------------------------------
     # create time array (in future should be loaded from data model)
-    print('Computing time vector for data')
+    cprint('Computing time vector for data')
     data.compute_time()
 
     # -------------------------------------------------------------------------
     # remove wavelengths corresponding to null flux
-    print('Removing null flux values')
+    cprint('Removing null flux values')
     data.remove_null_flux()
 
     # -------------------------------------------------------------------------
     # apply spectral binning
-    print('Applying spectral binning')
+    cprint('Applying spectral binning')
     data.apply_spectral_binning(params)
 
     # -------------------------------------------------------------------------
     # apply normalization (normalize by mean out-of-transit)
-    print('Normalizing by out-of-transit flux for each wavelength')
+    cprint('Normalizing by out-of-transit flux for each wavelength')
     data.normalize_by_out_of_transit_flux(params)
 
     # -------------------------------------------------------------------------
@@ -186,7 +189,7 @@ if __name__ == "__main__":
     # plot a specific chain
     plot.plot_chain(sampler2.chain, chain_num=-1)
     # update tfit
-    tfit_final = mcmc.update_x0_p0_from_chain(tfit, sampler2.chain, -1)
+    tfit_final = mcmc.update_x0_p0_from_chain(tfit, sampler2.chain[0], -1)
     # plot transit
     plot.plot_transit_fit(tfit, 5)
     # plot the chains

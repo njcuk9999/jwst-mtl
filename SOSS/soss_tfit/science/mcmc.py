@@ -32,6 +32,8 @@ ParamDict = base_classes.ParamDict
 FitParam = base_classes.FitParam
 # get data class
 InputData = general.InputData
+# printer
+cprint = base_classes.Printer()
 # Out of bounds value
 BADLPR = -np.inf
 # transit fit (fortran code) stellar parameters in correct order
@@ -364,7 +366,7 @@ class TransitFit:
             base_classes.TransitFitExcept(emsg)
         # loop around and print info
         for it in range(length):
-            print(f'{names[it]:14s}: {attribute[it]}')
+            cprint(f'{names[it]:14s}: {attribute[it]}')
 
     def __get_attribute(self, attribute_name: str,
                         attribute: Optional[Any] = None) -> Any:
@@ -660,8 +662,8 @@ def lnprob(tfit: TransitFit) -> float:
     lscale = tfit.get('LSC', 'p0')
     # deal with the fitting of hyper parameters
     fit_error_scale = tfit.get('DSC', 'fmask')
-    fit_amplitude_scale = tfit.get('DSC', 'fmask')
-    fit_length_scale = tfit.get('DSC', 'fmask')
+    fit_amplitude_scale = tfit.get('ASC', 'fmask')
+    fit_length_scale = tfit.get('LSC', 'fmask')
     # -------------------------------------------------------------------------
     # Select model type: 1 = GP model, 2 = uncorrelated noise model
     model_type = int(fit_amplitude_scale | fit_length_scale)
@@ -700,7 +702,8 @@ def lnprob(tfit: TransitFit) -> float:
             #           logl
             # non-correlated noise-model
             if model_type == 0:
-                sum1 = np.sum(np.log(fluxerr[phot_it] ** 2 * dscale ** 2))
+                log1 = np.log(fluxerr[phot_it] ** 2 * dscale[phot_it] ** 2)
+                sum1 = np.sum(log1)
                 sqrdiff = (flux[phot_it] - model)**2
                 sum2 = np.sum(sqrdiff / (fluxerr**2 * dscale[phot_it]**2))
                 logl += -0.5 * (sum1 + sum2)
@@ -876,7 +879,7 @@ def beta_rescale(params: ParamDict, tfit: TransitFit,
     corscale = np.ones(n_x)
     # -------------------------------------------------------------------------
     # print progress
-    print('Beta Rescale: Gen Chain 1')
+    cprint('Beta Rescale: Gen Chain 1', level='info')
     # initial run of gen chain
     hchain, hrejects = genchain(tfit, nsteps, tfit.beta, mcmcfunc,
                                 loglikelihood, progress=True)
@@ -922,7 +925,7 @@ def beta_rescale(params: ParamDict, tfit: TransitFit,
         beta_in = tfitb.beta * corscale
         # ---------------------------------------------------------------------
         # print progress
-        print(f'Beta Rescale: Gen Chain loop {count + 1}')
+        cprint(f'Beta Rescale: Gen Chain loop {count + 1}')
         # initial run of gen chain
         hchain, hrejects = genchain(tfit, nsteps, beta_in, mcmcfunc,
                                     loglikelihood, progress=True)
@@ -954,9 +957,9 @@ def beta_rescale(params: ParamDict, tfit: TransitFit,
         corscale[a_fix] = np.abs(corscale[a_fix] * (part1/part2)**0.25)
         # ---------------------------------------------------------------------
         # print current acceptance
-        print(f'Beta Rescale: Loop {count + 1}, Current Acceptance: ')
+        cprint(f'Beta Rescale: Loop {count + 1}, Current Acceptance: ')
         for x_it in range(n_x):
-            print(f'\t{tfitb.xnames[x_it]:3s}:{ac_rate[x_it]}')
+            cprint(f'\t{tfitb.xnames[x_it]:3s}:{ac_rate[x_it]}')
         # ---------------------------------------------------------------------
         # check which parameters have achieved required acceptance rate
         a_fix = (ac_rate < a_high) & (ac_rate < a_low)
@@ -964,12 +967,15 @@ def beta_rescale(params: ParamDict, tfit: TransitFit,
         # if too many iterations, then we give up and exit
         if count > nloopmax:
             break
+        # else update the count
+        else:
+            count += 1
     # -------------------------------------------------------------------------
     # print the final acceptance
     # print current acceptance
-    print(f'Beta Rescale: Final Acceptance: ')
+    cprint(f'Beta Rescale: Final Acceptance: ')
     for x_it in range(n_x):
-        print(f'\t{tfitb.xnames[x_it]:3s}:{ac_rate[x_it]}')
+        cprint(f'\t{tfitb.xnames[x_it]:3s}:{ac_rate[x_it]}')
     # -------------------------------------------------------------------------
     # return the correction scale
     return corscale
@@ -1068,7 +1074,7 @@ def calculate_acceptance_rates(rejections: np.ndarray,
     #  (when burn in is considered)
     gaccept = (nchainb - np.sum(rejections[burnin:, 0])) / nchainb
     # print the global acceptance rate
-    print(f'Global Acceptance Rate: {gaccept:.3f}')
+    cprint(f'Global Acceptance Rate: {gaccept:.3f}')
     # -------------------------------------------------------------------------
     # storage of values
     acceptance_dict = dict()
@@ -1107,7 +1113,7 @@ def calculate_acceptance_rates(rejections: np.ndarray,
                 de_accept_rate += rejections[chain_it, 0]
         # print the acceptance rate for this
         acceptance = (n_prop - accept_rate) / (n_prop + 1)
-        print(f'Param {p_num}: Acceptance Rate {acceptance:.3f}')
+        cprint(f'Param {p_num}: Acceptance Rate {acceptance:.3f}')
         # store for later use
         acceptance_dict[p_num] = acceptance
 
@@ -1116,7 +1122,7 @@ def calculate_acceptance_rates(rejections: np.ndarray,
     # if we have deMCMC results, report the acceptance rate.
     if de_nprop > 0:
         de_acceptance = (de_nprop - de_accept_rate) / de_nprop
-        print(f'deMCMC: Acceptance Rate {de_acceptance:.3f}')
+        cprint(f'deMCMC: Acceptance Rate {de_acceptance:.3f}')
         # store for later use
         acceptance_dict[-1] = de_acceptance
     # return the acceptance dictionary
@@ -1268,12 +1274,12 @@ class Sampler:
         # ---------------------------------------------------------------------
         while nloop < nloopsmax:
             # print progress
-            print(f'MCMC Loop {nloop+1} [{self.mode}]')
+            cprint(f'MCMC Loop {nloop+1} [{self.mode}]', level='info')
             # -----------------------------------------------------------------
             # loop around walkers
             # -----------------------------------------------------------------
             # print progress
-            print(f'\tGetting chains for {nwalkers} walkers')
+            cprint(f'\tGetting chains for {nwalkers} walkers', level='info')
             # get the chains
             # TODO: parallize this
             for nwalker in range(nwalkers):
@@ -1298,19 +1304,19 @@ class Sampler:
             # Calculate the Gelman-Rubin Convergence
             # -----------------------------------------------------------------
             # print progress
-            print('\tGelman-Rubin Convergence.')
+            cprint('\tGelman-Rubin Convergence.', level='info')
             # get number of chains to burn (using burn in fraction)
             burnin = int(self.wchains[0].shape[0] * burninf)
             # calculate the rc factor
             grtest = gelman_rubin_convergence(self.wchains, burnin=burnin,
                                               npt=self.tfit.n_phot)
             # print the factors
-            print('\tRc param:')
+            cprint('\tRc param:')
             for param_it in range(self.tfit.n_param):
                 # print Rc parameter
                 pargs = [param_it, self.tfit.pnames[param_it],
                          grtest[param_it]]
-                print(f'\t\t{0:3d} {1:3s}: {2:.4f}'.format(*pargs))
+                cprint('\t\t{0:3d} {1:3s}: {2:.4f}'.format(*pargs))
             # update the full chains
             self.chain, self.reject = join_chains(self, burnin)
 
@@ -1318,7 +1324,7 @@ class Sampler:
             # Calculate acceptance rate
             # -----------------------------------------------------------------
             # print progress
-            print('\tCalculate acceptance rate')
+            cprint('\tCalculate acceptance rate', level='info')
             # deal with differences between trial and full run
             if self.mode == 'trial':
                 rejects = self.wrejects[0]
@@ -1355,12 +1361,12 @@ class Sampler:
         # calulate medians
         medians = np.median(self.chain, axis=0)
 
-        print('Posterior median values')
+        cprint('Posterior median values')
         # loop around parameters
         for x_it in range(self.tfit.n_x):
             # print argument
             pargs = [x_it, self.tfit.xnames[x_it], medians[x_it]]
-            print('\t{0} {1:3s}: {2:.5f}'.format(*pargs))
+            cprint('\t{0} {1:3s}: {2:.5f}'.format(*pargs))
 
 
 def merge_chains(chain1: np.ndarray, chain2: np.ndarray) -> np.ndarray:
@@ -1425,7 +1431,7 @@ def join_chains(sampler: Sampler, burnin: int) -> Tuple[np.ndarray, np.ndarray]:
 
     :return: tuple 1. the combined chain arrays, 2. the combined reject arrays
     """
-    chains, rejects = [], []
+    chains, rejects = np.array([]), np.array([])
     # loop around chains
     for walker in sampler.wchains:
         # get the chains without the burnin chains
@@ -1453,7 +1459,7 @@ def update_x0_p0_from_chain(tfit: TransitFit, chain: np.ndarray,
     :return: the updated Transit fit parameter container
     """
     # set x0 to the last chain position
-    tfit.x0 = chain[0][chain_num, :]
+    tfit.x0 = chain[chain_num, :]
     # update solution
     tfit.update_p0_from_x0()
     # return updated tfit

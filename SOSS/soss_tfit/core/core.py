@@ -22,6 +22,8 @@ __NAME__ = 'core.core.py'
 ParamDict = base_classes.ParamDict
 # Get the Fit Parameter class
 FitParam = base_classes.FitParam
+# printer
+cprint = base_classes.Printer()
 
 
 # =============================================================================
@@ -112,6 +114,9 @@ def load_params(config_file: str) -> ParamDict:
     # remove planet keys from params
     for key in planet_keys:
         del params[key]
+    # -------------------------------------------------------------------------
+    # report loading
+    cprint(f'\tLoaded: {config_file}')
     # -------------------------------------------------------------------------
     return params
 

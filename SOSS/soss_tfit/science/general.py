@@ -27,6 +27,8 @@ __authors__ = base.__authors__
 ParamDict = base_classes.ParamDict
 # get FitParam class
 FitParam = base_classes.FitParam
+# printer
+cprint = base_classes.Printer()
 # Define quantities
 QUANTITIES = ['WAVELENGTH', 'FLUX', 'FLUX_ERROR']
 TQUANTITIES = ['WAVELENGTH', 'FLUX', 'FLUX_ERROR', 'TIME']
@@ -63,13 +65,16 @@ class InputData:
         # ---------------------------------------------------------------------
         # print progress
         if verbose:
-            print('Loading JWST datamodel')
+            cprint('Loading JWST datamodel')
         # load data model from jwst
         data = datamodels.open(filename)
+        # print progress
+        if verbose:
+            cprint('\tLoaded {0}'.format(filename))
         # ---------------------------------------------------------------------
         # print progress
         if verbose:
-            print('Stacking multi spec')
+            cprint('Stacking multi spec')
         # set orders
         self.orders = list(params['ORDERS'])
         # convert data into a stack
