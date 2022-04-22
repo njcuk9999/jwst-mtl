@@ -30,6 +30,7 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 # TODO : Get rid of local paths
 # Local path to reference files.
 path = '/Users/michaelradica/Documents/School/Ph.D./Research/SOSS/Extraction/Input_Files/'
+# Just used for the wavelength calibration files: jwst_niriss_soss-256-ord1_trace.fits
 
 
 class EmpiricalProfile:

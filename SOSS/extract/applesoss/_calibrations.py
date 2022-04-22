@@ -19,10 +19,6 @@ import webbpsf
 from SOSS.extract.applesoss import plotting
 from SOSS.extract.applesoss import utils
 
-# Local path to reference files.
-# TODO : remove local path
-path = '/Users/michaelradica/Documents/GitHub/jwst-mtl/SOSS/extract/applesoss/Ref_files/'
-
 
 def calc_interp_coefs(f277w=True, verbose=0):
     """Function to calculate the interpolation coefficients necessary to
@@ -70,10 +66,9 @@ def calc_interp_coefs(f277w=True, verbose=0):
         # Import the PSFs,
         for w in wave_range:
             # If the user already has the PSFs generated, import them.
-            infile = path + '{0:s}SOSS_os10_128x128_{1:.6f}_{2:.0f}.fits' \
-                .format('SOSS_PSFs/', w, i)
+            infile = 'Ref_files/SOSS_PSFs/SOSS_os10_128x128_{0:.6f}_{1:.0f}.fits'.format(w, i)
             try:
-                psf_run.append(fits.open(infile)[0].data)
+                psf_run.append(fits.getdata(infile, 0))
             # Generate missing PSFs if necessary.
             except FileNotFoundError:
                 errmsg = ' No monochromatic PSF found for {0:.2f}µm and WFE '\
@@ -151,8 +146,7 @@ def calc_interp_coefs(f277w=True, verbose=0):
     # Save the coefficients to disk so that they can be accessed by the
     # empirical trace construction module.
     try:
-        # TODO : remove local path
-        df = pd.read_csv(path+'interpolation_coefficients.csv')
+        df = pd.read_csv('Ref_files/interpolation_coefficients.csv')
     except FileNotFoundError:
         # If the interpolation coefficients file does not already exist, create
         # a new dictionary.
@@ -166,8 +160,7 @@ def calc_interp_coefs(f277w=True, verbose=0):
         df['NF_blue'] = pb
     # Write to file.
     df = pd.DataFrame(data=df)
-    # TODO : remove local path
-    df.to_csv(path+'interpolation_coefficients.csv', index=False)
+    df.to_csv('Ref_files/interpolation_coefficients.csv', index=False)
 
     return pb, pr
 
@@ -206,9 +199,7 @@ def derive_width_relations(no_wave=25, wave_start=0.6, wave_end=2.9,
     # Generate PSFs for each wavelength.
     for w in wave_range:
         # If the user already has the PSFs generated, import them.
-        # TODO : remove local path
-        infile = path + '{0:s}SOSS_os10_128x128_{1:.6f}_{2:.0f}.fits' \
-            .format('SOSS_PSFs/', w, 0)
+        infile = 'Ref_files/SOSS_PSFs/SOSS_os10_128x128_{0:.6f}_{1:.0f}.fits'.format(w, 0)
         try:
             psf = fits.getdata(infile, 0)
         # Generate missing PSFs if necessary.
@@ -252,8 +243,7 @@ def derive_width_relations(no_wave=25, wave_start=0.6, wave_end=2.9,
     # repeated.
     df = {'width_coefs': wfit}
     df = pd.DataFrame(data=df)
-    # TODO : remove local path
-    df.to_csv(path + 'width_coefficients.csv', index=False)
+    df.to_csv('Ref_files/width_coefficients.csv', index=False)
 
     return wfit
 
@@ -287,14 +277,6 @@ def loicpsf(wavelist=None, wfe_real=None, save_to_disk=True, oversampling=10,
 
     # Create PSF storage array.
     psf_list = []
-    # PSFs will be saved to a SOSS_PSFs directory. If it does not already
-    # exist, create it.
-    if save_to_disk is True:
-        filepath = path + 'SOSS_PSFs/'
-        if os.path.exists(filepath):
-            pass
-        else:
-            os.mkdir(filepath)
 
     if wavelist is None:
         # List of wavelengths to generate PSFs for
@@ -315,6 +297,7 @@ def loicpsf(wavelist=None, wfe_real=None, save_to_disk=True, oversampling=10,
                            wfe_real)
 
     # Loop through all wavelengths to generate PSFs
+    first_time = True
     for wave in wavelist:
         if verbose is True:
             print('Calculating PSF at wavelength ',
@@ -324,6 +307,15 @@ def loicpsf(wavelist=None, wfe_real=None, save_to_disk=True, oversampling=10,
         psf_list.append(psf)
 
         if save_to_disk is True:
+            filepath = 'Ref_files/SOSS_PSFs/'
+            if first_time is True:
+                # PSFs will be saved to a SOSS_PSFs directory. If it does not
+                # already exist, create it.
+                if os.path.exists(filepath):
+                    pass
+                else:
+                    os.mkdir(filepath)
+                first_time = False
             # Save psf realization to disk
             text = '{0:5f}'.format(wave*1e+6)
             fpars = [oversampling, pixel, text, wfe_real]

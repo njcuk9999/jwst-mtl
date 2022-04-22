@@ -17,10 +17,6 @@ from tqdm import tqdm
 
 from SOSS.extract.applesoss import _calibrations
 
-# Local path to reference files.
-# TODO : remove local path
-path = '/Users/michaelradica/Documents/GitHub/jwst-mtl/SOSS/extract/applesoss/'
-
 
 def _gen_imagehdu_header(hdu, order, pad, oversample):
     """Generate the appropriate fits header for reference file image HDUs.
@@ -148,8 +144,7 @@ def read_interp_coefs(f277w=True, verbose=0):
 
     # Attempt to read interpolation coefficients from reference file.
     try:
-        # TODO : remove local path
-        df = pd.read_csv(path+'Ref_files/interpolation_coefficients.csv')
+        df = pd.read_csv('Ref_files/interpolation_coefficients.csv')
         # If there is an F277W exposure, get the coefficients to 2.45µm.
         if f277w is True:
             coef_b = np.array(df['F_blue'])
@@ -187,7 +182,7 @@ def read_width_coefs(verbose=0):
 
     # First try to read the width calibration file, if it exists.
     try:
-        coef_file = pd.read_csv(path + 'Ref_files/width_coefficients.csv')
+        coef_file = pd.read_csv('Ref_files/width_coefficients.csv')
         wc = np.array(coef_file['width_coefs'])
     # If file does not exist, redo the width calibration.
     except FileNotFoundError:
