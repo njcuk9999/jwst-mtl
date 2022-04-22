@@ -172,7 +172,7 @@ def calc_interp_coefs(f277w=True, verbose=0):
     return pb, pr
 
 
-def derive_width_relations(no_wave=25, wave_start=0.8, wave_end=2.7,
+def derive_width_relations(no_wave=25, wave_start=0.6, wave_end=2.9,
                            verbose=0):
     """Due to the defocusing of the SOSS PSF, its width does not simply evolve
     as it would if diffraction limited. Use the WebbPSF package to simulate
