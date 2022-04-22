@@ -21,7 +21,7 @@ import warnings
 
 from SOSS.dms.soss_centroids import get_soss_centroids
 from SOSS.extract.applesoss import plotting
-from SOSS.extract.applesoss import _calc_interp_coefs
+from SOSS.extract.applesoss import _calibrations
 from SOSS.extract.applesoss import utils
 
 warnings.simplefilter(action='ignore', category=RuntimeWarning)
@@ -339,29 +339,22 @@ def _chromescale(profile, wave_start, wave_end, ycen, poly_coef):
         Rescaled 1D PSF profile.
     """
 
-    xrange = len(profile)
     # Get the starting and ending trace widths.
-    if wave_start < 2.1:
-        poly_coef_s = poly_coef[1]
-    else:
-        poly_coef_s = poly_coef[0]
-    if wave_end < 2.1:
-        poly_coef_e = poly_coef[1]
-    else:
-        poly_coef_e = poly_coef[0]
-    w_start = np.polyval(poly_coef_s, wave_start)
-    w_end = np.polyval(poly_coef_e, wave_end)
-    # Create a rescaled spatial axis.
-    xax = np.linspace(0, round(xrange * (w_end / w_start), 0) - 1, xrange)
-    # Find required offset to ensure the centroid remains at the same location.
-    offset = xax[int(round(ycen, 0))] - ycen
+    w_start = np.polyval(poly_coef, wave_start)
+    w_end = np.polyval(poly_coef, wave_end)
+
+    # Create a rescaled spatial axis. Shift the Y-centroid to zero so
+    # that it does not move during the rescaling.
+    xax = np.arange(len(profile)) - ycen
+    xax_rescale = xax * (w_end / w_start)
     # Rescale the PSF by interpolating onto the new axis.
-    prof_rescale = np.interp(np.arange(xrange), xax - offset, profile)
+    prof_rescale = np.interp(xax, xax_rescale, profile)
+
     # Ensure the total flux remains the same
     # Integrate the profile with a Trapezoidal method.
     flux_i = np.sum(profile[1:-1]) + 0.5 * (profile[0] + profile[-1])
     flux_f = np.sum(prof_rescale[1:-1]) + 0.5 * (
-                prof_rescale[0] + prof_rescale[-1])
+            prof_rescale[0] + prof_rescale[-1])
     # Rescale the new profile so the total encompassed flux remains the same.
     prof_rescale /= (flux_f / flux_i)
 
@@ -423,8 +416,7 @@ def construct_order1(clear, f277w, ycens, subarray, pad=0, verbose=0):
     # Determine how the trace width changes with wavelength.
     if verbose != 0:
         print('   Calibrating trace widths...')
-    # TODO : replace with ref file?
-    wave_polys = _fit_trace_widths(clear, pp_w, verbose=verbose)
+    wave_polys = utils.read_width_coefs(verbose=verbose)
 
     # ========= GET ANCHOR PROFILES =========
     if verbose != 0:
@@ -447,8 +439,7 @@ def construct_order1(clear, f277w, ycens, subarray, pad=0, verbose=0):
                                    contamination=[2, 3], pad=pad,
                                    verbose=verbose, smooth=True,
                                    **{'text': 'Blue anchor'})
-    # Remove the lambda/D scaling.
-    # TODO : do this relative
+    # Remove the chromatic scaling.
     bl_anch = _chromescale(bl_anch, 2.1, 2.5, ydb + pad, wave_polys)
     # Normalize
     bl_anch /= np.nansum(bl_anch)
@@ -556,84 +547,6 @@ def construct_order1(clear, f277w, ycens, subarray, pad=0, verbose=0):
     o1frame /= np.nansum(o1frame, axis=0)
 
     return o1frame
-
-
-# TODO : Consider going with relative widths
-def _fit_trace_widths(clear, wave_coefs, verbose=0):
-    """Due to the defocusing of the SOSS PSF, the width in the spatial
-    direction does not behave as if it is diffraction limited. Calculate the
-    width of the spatial trace profile as a function of wavelength, and fit
-    with a linear relation to allow corrections of chromatic variations.
-
-    Parameters
-    ----------
-    clear : np.array
-        CLEAR exposure dataframe
-    wave_coefs : tuple
-        Polynomial coefficients for the wavelength to spectral pixel
-        calibration.
-    verbose : int
-        Level of verbosity.
-
-    Returns
-    -------
-    wfit_b : tuple
-        Polynomial coefficients for a first order fit to the uncontaminated
-        trace widths.
-    wfit_r : tuple
-        Polynomial coefficients for a first order fit to the contaminated trace
-        widths.
-    """
-
-    # Get subarray dimensions and wavelength to spectral pixel transformation.
-    yax, xax = np.shape(clear)
-    wax = np.polyval(wave_coefs, np.arange(xax))
-
-    # Determine the width of the trace profile by counting the number of pixels
-    # with flux values greater than half of the maximum value in the column.
-    trace_widths = []
-    for i in range(xax):
-        # Oversample by 4 times to get better sub-pixel scale info.
-        prof = np.interp(np.linspace(0, yax - 1, yax * 4), np.arange(yax),
-                         clear[:, i])
-        # Sort the flux values in the profile.
-        prof_sort = np.argsort(prof)
-        # To mitigate the effects of any outliers, use the median of the 5
-        # highest flux values as the maximum.
-        inds = prof_sort[-5:]
-        maxx = np.nanmedian(prof[inds])
-        # Count how many pixels have flux greater than half this value.
-        above_av = np.where(prof >= maxx / 2)[0]
-        trace_widths.append(len(above_av) / 4)
-
-    # TODO : hardcodng of blue anchor wavelength
-    # Only fit the trace widths up to the blue anchor (2.1µm) where
-    # contamination from the second order begins to be a problem.
-    end = np.where(wax < 2.1)[0][0]
-    fit_waves_b = np.array(wax[end:])
-    fit_widths_b = np.array(trace_widths[end:])
-    # Rough sigma clip of huge outliers.
-    fit_waves_b, fit_widths_b = utils.sigma_clip(fit_waves_b, fit_widths_b)
-    # Robustly fit a straight line.
-    pp_b = np.polyfit(fit_waves_b, fit_widths_b, 1)
-    wfit_b = utils.robust_polyfit(fit_waves_b, fit_widths_b, pp_b)
-
-    # TODO : treat these regions differently, or just use uncontam region?
-    # Separate fit to contaminated region.
-    fit_waves_r = np.array(wax[:(end + 10)])
-    fit_widths_r = np.array(trace_widths[:(end + 10)])
-    # Rough sigma clip of huge outliers.
-    fit_waves_r, fit_widths_r = utils.sigma_clip(fit_waves_r, fit_widths_r)
-    # Robustly fit a straight line.
-    pp_r = np.polyfit(fit_waves_r, fit_widths_r, 1)
-    wfit_r = utils.robust_polyfit(fit_waves_r, fit_widths_r, pp_r)
-
-    # Plot the width calibration fit if required.
-    if verbose == 3:
-        plotting.plot_width_cal((fit_widths_b, fit_widths_r),
-                                (fit_waves_b, fit_waves_r), (wfit_b, wfit_r))
-
-    return wfit_r, wfit_b
 
 
 def oversample_frame(frame, oversample=1):
@@ -915,6 +828,79 @@ def reconstruct_wings256(profile, ycens=None, contamination=[2, 3], pad=0,
     return newprof
 
 
+def rescale_f277(f277_prof, clear_prof, ycen=71, width=50, max_iter=10, pad=0,
+                 verbose=0):
+    """As the F277W and CLEAR exposures will likely have different flux levels
+    due to different throughputs as well as possibly a different number of
+    integrations. Rescale the F277W profile to the flux level of the CLEAR
+    profile such that both profiles can be used as end points for interplation.
+
+    Parameters
+    ----------
+    f277_prof : np.array
+        Spatial profile in the F277W fiter.
+    clear_prof : np.array
+        Spatial profile in the CLEAR filter.
+    ycen : float
+        Y-Centroid position of the F277W profile.
+    width : int
+        Pixel width on either end of the centroid to consider.
+    max_iter : int
+        Maximum number of iterations.
+    pad : int
+        Amount of padding included in the spatial profiles.
+    verbose : int
+        Level of verbosity
+
+    Returns
+    -------
+    f277_rescale : np.array
+        F277W profile rescaled to the flux level of the CLEAR profile.
+    """
+
+    dimy = len(f277_prof)
+    start, end = int(ycen - width), int(ycen + width)
+    # Iterate over different rescalings + vertical shifts to minimize the
+    # Chi^2 between the F277W and CLEAR exposures.
+    # Calculate starting Chi^2 value.
+    chi2 = np.nansum(((f277_prof[pad:(dimy + pad)] /
+                       np.nansum(f277_prof[pad:(dimy + pad)]))[start:end] -
+                      (clear_prof / np.nansum(clear_prof))[start:end]) ** 2)
+    # Append Chi^2 and normalize F277W profile to arrays.
+    chi2_arr = [chi2]
+    anchor_arr = [f277_prof / np.nansum(f277_prof)]
+
+    niter = 0
+    while niter < max_iter:
+        # Subtract an offset so the floors of the two profilels match.
+        offset = np.nanpercentile(clear_prof / np.nansum(clear_prof), 1) - \
+                 np.nanpercentile(f277_prof / np.nansum(f277_prof), 1)
+
+        # Normalize offset F277W.
+        f277_prof = f277_prof / np.nansum(f277_prof) + offset
+
+        # Calculate new Chi^2.
+        chi2 = np.nansum(((f277_prof[pad:(dimy + pad)] /
+                           np.nansum(f277_prof[pad:(dimy + pad)]))[start:end] -
+                          (clear_prof / np.nansum(clear_prof))[
+                          start:end]) ** 2)
+        chi2_arr.append(chi2)
+        anchor_arr.append(f277_prof / np.nansum(f277_prof))
+
+        niter += 1
+
+    # Keep the best fitting F277W profile.
+    min_chi2 = np.argmin(chi2_arr)
+    f277_rescale = anchor_arr[min_chi2]
+
+    if verbose == 3:
+        plotting.plot_f277_rescale(anchor_arr[0][pad:(dimy + pad)],
+                                   f277_rescale[pad:(dimy + pad)],
+                                   clear_prof)
+
+    return f277_rescale
+
+
 def rescale_model(data, model, centroids, pad=0, verbose=0):
     """Rescale a column normalized trace model to the flux level of an actual
     observation. A multiplicative coefficient is determined via Chi^2
@@ -963,47 +949,10 @@ def rescale_model(data, model, centroids, pad=0, verbose=0):
     return model_rescale
 
 
-def rescale_f277(f277_prof, clear_prof, ycen=71, width=50, max_iter=10, pad=0,
-                 verbose=0):
-    dimy = len(f277_prof)
-    start, end = int(ycen - width), int(ycen + width)
-    chi2 = np.nansum(((f277_prof[pad:(dimy + pad)] /
-                       np.nansum(f277_prof[pad:(dimy + pad)]))[start:end] -
-                      (clear_prof / np.nansum(clear_prof))[start:end]) ** 2)
-    chi2_arr = [chi2]
-    anchor_arr = [f277_prof / np.nansum(f277_prof)]
-
-    niter = 0
-    while niter < max_iter:
-        offset = np.nanpercentile(clear_prof / np.nansum(clear_prof), 1) - \
-                 np.nanpercentile(f277_prof / np.nansum(f277_prof), 1)
-
-        f277_prof = f277_prof / np.nansum(f277_prof) + offset
-
-        chi2 = np.nansum(((f277_prof[pad:(dimy + pad)] /
-                           np.nansum(f277_prof[pad:(dimy + pad)]))[start:end] -
-                          (clear_prof / np.nansum(clear_prof))[
-                          start:end]) ** 2)
-        chi2_arr.append(chi2)
-        anchor_arr.append(f277_prof / np.nansum(f277_prof))
-
-        niter += 1
-
-    min_chi2 = np.argmin(chi2_arr)
-    f277_rescale = anchor_arr[min_chi2]
-
-    if verbose == 3:
-        plotting.plot_f277_rescale(anchor_arr[0][pad:(dimy + pad)],
-                                   f277_rescale[pad:(dimy + pad)],
-                                   clear_prof)
-
-    return f277_rescale
-
-
 def simulate_wings(halfwidth=12, verbose=0):
-    stand = _calc_interp_coefs.loicpsf([1.0 * 1e-6], save_to_disk=False,
-                                       oversampling=1, pixel=256,
-                                       verbose=False)[0][0].data
+    stand = _calibrations.loicpsf([1.0 * 1e-6], save_to_disk=False,
+                                  oversampling=1, pixel=256,
+                                  verbose=False)[0][0].data
     stand = np.sum(stand[124:132, :], axis=0)
 
     maxx = np.nanmax(stand)

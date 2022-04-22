@@ -5,8 +5,7 @@ Created on Fri Jan 22 12:03 2021
 
 @author: MCR
 
-File containing all diagnostic plotting functions for the empirical trace
-construction and centroiding.
+File containing all diagnostic plotting functions for the APPLESOSS.
 """
 
 import matplotlib.gridspec as gridspec
@@ -86,24 +85,19 @@ def plot_interpmodel(waves, nw1, nw2, p1, p2):
     plt.show()
 
 
-def plot_width_cal(fit_widths, fit_waves, width_poly):
-    """Do the diagnostic plot for the trace width calibration relation.
+def plot_width_relation(wave_range, widths, wfit, ii):
+    """Do diagnostic plot for trace width calibrations.
     """
 
+    ax = np.linspace(wave_range[0], wave_range[-1], 100)
     plt.figure(figsize=(8, 5))
-    plt.scatter(fit_waves[0][::10], fit_widths[0][::10], label='trace widths',
-                c='blue', s=12,
-                alpha=0.75)
-    plt.scatter(fit_waves[1][::10], fit_widths[1][::10], c='blue', s=12,
-                alpha=0.75)
-    plt.plot(fit_waves[0], np.polyval(width_poly[0], fit_waves[0]), c='red',
-             ls='--', label='width relation')
-    plt.plot(fit_waves[1], np.polyval(width_poly[1], fit_waves[1]), c='red',
-             ls='--')
+    plt.scatter(wave_range[ii], widths[ii], c='black', alpha=0.5,
+                label='Measured Widths')
+    plt.plot(ax, np.polyval(wfit, ax), label='Width Fit', c='red')
 
-    plt.xlabel('Wavelength [µm]', fontsize=14)
-    plt.ylabel('Trace Spatial Width [pixels]', fontsize=14)
-    plt.legend(fontsize=12)
+    plt.xlabel('Spectral Pixel', fontsize=14)
+    plt.ylabel('Relative Spatial Profile Width', fontsize=14)
+    plt.legend()
     plt.show()
 
 

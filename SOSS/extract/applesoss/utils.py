@@ -15,7 +15,7 @@ import pandas as pd
 from scipy.optimize import least_squares
 from tqdm import tqdm
 
-from SOSS.extract.applesoss import _calc_interp_coefs
+from SOSS.extract.applesoss import _calibrations
 
 # Local path to reference files.
 # TODO : remove local path
@@ -163,10 +163,38 @@ def read_interp_coefs(f277w=True, verbose=0):
     #  calculate them.
     except (FileNotFoundError, KeyError):
         print('No interpolation coefficients found. They will be calculated now.')
-        coef_b, coef_r = _calc_interp_coefs.calc_interp_coefs(f277w=f277w,
-                                                              verbose=verbose)
+        coef_b, coef_r = _calibrations.calc_interp_coefs(f277w=f277w,
+                                                         verbose=verbose)
 
     return coef_b, coef_r
+
+
+def read_width_coefs(verbose=0):
+    """Read the width coefficients from the appropriate reference file.
+    If the reference file does not exist, the coefficients will be
+    recalculated.
+
+    Parameters
+    ----------
+    verbose : int
+        Level of verbosity.
+
+    Returns
+    -------
+    wc : np.array
+        Width calbration polynomial coefficients.
+    """
+
+    # First try to read the width calibration file, if it exists.
+    try:
+        coef_file = pd.read_csv(path + 'Ref_files/width_coefficients.csv')
+        wc = np.array(coef_file['width_coefs'])
+    # If file does not exist, redo the width calibration.
+    except FileNotFoundError:
+        print('No width coefficients found. They will be calculated now.')
+        wc = _calibrations.derive_width_relations(verbose=verbose)
+
+    return wc
 
 
 def replace_badpix(clear, badpix_mask, fill_negatives=True, verbose=0):
