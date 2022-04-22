@@ -37,6 +37,8 @@ global_params:
   inspectrum: /data/jwst-soss/data/jwst-mtl-user/wasp52b/substrip256_extract1d_extract1dstep.fits
   # output directory for results (created if doesn't exist)
   outdir: /data/jwst-soss/data/jwst-mtl-user/wasp52b/outputs
+  # output results filename (without extension)
+  outname: results_wasp52b
   # model file path - absolute path (set None to not plot model)
   modelpath: /data/jwst-soss/data/jwst-mtl-user/wasp52b/WASP_52_b_HR_Metallicity100_CtoO0.54_pQuench1e-99_TpNonGrayTint75.0f0.25A0.1_pCloud100000.0mbar_Spectrum_FullRes.csv
   # ---------------------------------------------------------------------------

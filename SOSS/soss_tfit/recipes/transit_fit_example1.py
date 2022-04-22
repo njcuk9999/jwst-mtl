@@ -188,20 +188,52 @@ if __name__ == "__main__":
     sampler2.posterior_print()
     # plot a specific chain
     plot.plot_chain(sampler2.chain, chain_num=-1)
+    # -------------------------------------------------------------------------
     # update tfit
-    tfit_final = mcmc.update_x0_p0_from_chain(tfit, sampler2.chain[0], -1)
+    tfit_final = mcmc.update_x0_p0_from_chain(tfit, sampler2.wchains[0], -1)
+    # -------------------------------------------------------------------------
     # plot transit
-    plot.plot_transit_fit(tfit, 5)
+    plot.plot_transit_fit(tfit_final)
     # plot the chains
-    plot.plot_chains(sampler2.chain, 0, tfit.xnames)
+    plot.plot_chains(sampler2.chain, 0, tfit_final.xnames)
+    # quick check of posterior
+    plot.plot_hist(tfit_final, sampler2.chain[::10], param_num=None)
 
     # -------------------------------------------------------------------------
-    # Step 6: save results
+    # Step 6: generate statistics
     # -------------------------------------------------------------------------
+    # compile results
+    cprint('Compiling results [mode, percentiles]')
+    result_table = sampler2.results(start_chain=10)
+
+    # print modes
+    cprint('Result [mode]:')
+    sampler2.print_results(result_table, 'mode')
+
+    cprint('Results [percentile]:')
+    sampler2.print_results(result_table, 'percentile')
+
+    # print modes for parameter RD1
+    cprint('Result for RD [mode]:')
+    sampler2.print_results(result_table, 'mode', key='RD1')
+
+    # print modes for parameter RD1
+    cprint('Results for RD [percentile]:')
+    sampler2.print_results(result_table, 'percentile', key='RD1')
 
     # -------------------------------------------------------------------------
-    # Step 7: plot spectrum
+    # Step 7: save results
     # -------------------------------------------------------------------------
+    cprint('Saving results to file')
+    sampler2.save_results(result_table)
+
+    # -------------------------------------------------------------------------
+    # Step 8: plot spectrum
+    # -------------------------------------------------------------------------
+    # load model (and bin it) if available
+    binmodel, fullmodel = general.load_model(params, data)
+    # plot the spectrum
+    plot.plot_spectrum(data, result_table, model=binmodel, fullmodel=fullmodel)
 
 
 # =============================================================================

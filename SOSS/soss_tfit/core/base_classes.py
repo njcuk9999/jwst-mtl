@@ -9,7 +9,7 @@ Created on 2022-04-06
 
 @author: cook
 """
-from astropy.time import Time
+from astropy.table import Table
 from collections import UserDict
 from copy import deepcopy
 import numpy as np
@@ -25,8 +25,6 @@ __NAME__ = 'core.base_classes.py'
 __version__ = base.__version__
 __date__ = base.__date__
 __authors__ = base.__authors__
-# start the time once (can take extra time to load the first time)
-t0 = Time.now()
 
 
 # =============================================================================
@@ -382,6 +380,43 @@ class ParamDict(UserDict):
         """
         return self.__str__()
 
+    def param_table(self) -> Table:
+        """
+        Create a parameter table as a snapshot of the current parameters
+        being used
+        :return: a astropy.table table of the parameters currently being used
+        """
+        func_name = __NAME__ + '.ParamDict.param_table()'
+        # storage
+        keys, values, descriptions, sources, dtypes = [], [], [], [], []
+        # ---------------------------------------------------------------------
+        # get all values from params
+        for key in list(self.data.keys()):
+            # add the parameters one-by-one dealing with nested ParamDicts
+            #    and FitParam classes
+            aout = add_param(key, self.data[key], self.instances,
+                             keys, descriptions, values, sources, dtypes)
+            # update output values
+            keys, descriptions, values, sources, dtypes = aout
+        # ---------------------------------------------------------------------
+        # add some from base
+        keys += ['VERSION', 'DATE', 'AUTHORS', 'TIMENOW']
+        values += [base.__version__, base.__date__, base.__authors__,
+                   base.time.now().iso]
+        descriptions += ['Current version', 'Current date of code',
+                        'authors', 'Time of parameter snapshot']
+        sources += [func_name] * 4
+        dtypes += ['str', 'str', 'str', 'str']
+        # push into a table
+        ptable = Table()
+        ptable['NAME'] = keys
+        ptable['VALUE'] = values
+        ptable['DESCRIPTION'] = descriptions
+        ptable['SOURCE'] = sources
+        ptable['DATATYPE'] = dtypes
+        # return ptable
+        return ptable
+
 
 class Printer:
     """
@@ -434,7 +469,7 @@ class Printer:
         """
         # get timestamp
         if timestamp:
-            tstamp = Time.now().fits + '| '
+            tstamp = base.time.now().fits + '| '
         else:
             tstamp = ''
         # deal with colour
@@ -443,17 +478,25 @@ class Printer:
         print(self.fmt.format(c0, tstamp, message, c1))
 
 
-
 class FitParam:
     """
     Fit parameter class, for parameters that can be fit (or fixed)
     """
     name: str
+    # The value
     value: Any
+    # The wavelength dependence
     wfit: str
+    # Whether parameter is fixed or fitted
     ftype: str
+    # The prior criteria
     prior: Dict[str, Any]
+    # The label
     label: str
+    # core values/description definitions
+    core_values = ['value', 'wfit', 'ftype', 'prior', 'label']
+    core_descs = ['value', 'wavelength dependence', 'fixed or fitted',
+                  'prior criteria', 'label']
 
     def __init__(self, name: str, value: Any, wfit: str, ftype: str,
                  prior: Dict[str, Any], label: Optional[str] = None):
@@ -562,6 +605,92 @@ class FitParam:
         name = self.label
         # return values
         return p0, fitted, chromatic, prior, name
+
+
+# =============================================================================
+# Start of code
+# =============================================================================
+AddParamOutput = Tuple[List[str], List[str], List[str], List[str], List[str]]
+
+
+def add_param(key: str, rawvalue: Any, instances: Dict[str, Const],
+              keys: List[str], descriptions: List[str], values: List[str],
+              sources: List[str], dtypes: List[str],
+              ikey: Optional[str] = None) -> AddParamOutput:
+    """
+    Deal with adding a parameter
+
+    :param key: str, the key we are adding
+    :param rawvalue: Any, the value of data[key]
+    :param instances: The dictionary of Const instances
+    :param keys: List[str], the storage for output keys
+    :param descriptions: List[str], the storage for output descriptions
+    :param values: List[str], the storage for output values (as strings)
+    :param sources: List[str], the storage for output sources
+    :param dtypes: List[str], the output for data type (as strings)
+    :param ikey: str, the key to use in the instances (if different from key)
+
+    :return: updated keys, descriptions, values, sources, dtypes
+    """
+    # deal with no instance key (internal if given)
+    if ikey is None:
+        ikey = str(key)
+    # -------------------------------------------------------------------------
+    # deal with nested parameter dictionary
+    if isinstance(rawvalue, ParamDict):
+        # loop around inner ParamDict
+        for key_inner in rawvalue:
+            # new key is outer key + inner key
+            newkey = f'{key}.{key_inner}'
+            # get params for inner dict
+            aout = add_param(newkey, rawvalue[key_inner], rawvalue.instances,
+                             keys, descriptions, values, sources, dtypes,
+                             ikey=key_inner)
+            # update keys for next loop
+            keys, descriptions, values, sources, dtypes = aout
+    # -------------------------------------------------------------------------
+    # deal with fit parameters
+    elif isinstance(rawvalue, FitParam):
+        # get FitParam core values and descriptions
+        core_values = rawvalue.core_values
+        core_desc = rawvalue.core_descs
+        # loop around required attributes and add the values
+        for k_it, key_inner in enumerate(core_values):
+            # new key is outer key + inner key
+            newkey = f'{key}.{key_inner}'
+            # get key and value
+            keys.append(newkey)
+            values.append(str(getattr(rawvalue, key_inner)))
+            # deal with parameters that require an instance (parameters.py)
+            if ikey in instances:
+                # update description
+                desc = f'{instances[ikey].description} ({core_desc[k_it]})'
+                descriptions.append(desc)
+                sources.append(str(instances[ikey].source))
+                dtypes.append(str(instances[ikey].dtype))
+            else:
+                descriptions.append('None')
+                sources.append('Unknown')
+                dtypes.append('Unknown')
+    # -------------------------------------------------------------------------
+    # deal with normal stuff --> str
+    else:
+        # get key and value
+        keys.append(key)
+        values.append(str(rawvalue))
+        # deal with parameters that require an instance (parameters.py)
+        if ikey in instances:
+            descriptions.append(str(instances[ikey].description))
+            sources.append(str(instances[ikey].source))
+            dtypes.append(str(instances[ikey].dtype))
+        else:
+            descriptions.append('None')
+            sources.append('Unknown')
+            dtypes.append('Unknown')
+    # -------------------------------------------------------------------------
+    # after loop return here
+    return keys, descriptions, values, sources, dtypes
+
 
 
 # =============================================================================

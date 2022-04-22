@@ -1506,9 +1506,9 @@ if __name__ == "__main__":
 
     # TODO: remove Neil's values
     nwalkers = 3  # Number of walkers for MCMC
-    nsteps1 = 100  # Total length of chain will be nwalkers*nsteps
-    nsteps2 = 2000  # nstep1 is to check that MCMC is okay, nstep2 is the real work.
-    nsteps_inc = 1000
+    nsteps1 = 1000  # Total length of chain will be nwalkers*nsteps
+    nsteps2 = 5000  # nstep1 is to check that MCMC is okay, nstep2 is the real work.
+    nsteps_inc = 5000
     burninf = 0.5  # burn-in for evalulating convergence
     niter_cor = 5000
     burnin_cor = 1000

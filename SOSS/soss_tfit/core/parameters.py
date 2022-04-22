@@ -70,6 +70,11 @@ params.set(key='OUTDIR', value='./output', source=__NAME__,
            desc='output directory for results (created if doesnt exist)',
            dtype=str, path='global_params.outdir')
 
+# output results filename (without extension)
+params.set(key='OUTNAME', value='results', source=__NAME__,
+           desc='output results filename (without extension)',
+           dtype=str, path='global_params.outname')
+
 # model file path - absolute path (set None to not plot model)
 params.set(key='MODELPATH', value=None, source=__NAME__,
            desc='model file path - absolute path (set None to not plot model)',

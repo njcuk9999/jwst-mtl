@@ -72,7 +72,7 @@ def load_params(config_file: str) -> ParamDict:
             FitParam.check(name=key, **value)
             value = FitParam(key, label=instance.label, **value)
         # now update params
-        params.set(key=key, value=value, source=func_name)
+        params.set(key=key, value=value, source=config_file)
     # -------------------------------------------------------------------------
     # Deal with planets
     for nplanet in range(params['NPLANETS']):
@@ -107,9 +107,9 @@ def load_params(config_file: str) -> ParamDict:
                 FitParam.check(name=name, **value)
                 value = FitParam(key, label=instance.label, **value)
             # now update params
-            planet_dict.set(key=key, value=value, source=func_name)
+            planet_dict.set(key=key, value=value, source=config_file)
         # push back to main parameters
-        params.set(key=pkey, value=planet_dict, source=func_name)
+        params.set(key=pkey, value=planet_dict, source=config_file)
     # -------------------------------------------------------------------------
     # remove planet keys from params
     for key in planet_keys:

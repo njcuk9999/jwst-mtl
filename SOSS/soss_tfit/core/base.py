@@ -9,6 +9,7 @@ Created on 2022-04-11
 
 @author: cook
 """
+from astropy.time import Time
 
 # =============================================================================
 # Define variables
@@ -21,6 +22,9 @@ __package__: str = 'soss_tfit'
 
 # global variables
 COLORLOG = True
+# start the time once (can take extra time to load the first time)
+t0 = Time.now()
+time = Time
 
 # =============================================================================
 # End of code

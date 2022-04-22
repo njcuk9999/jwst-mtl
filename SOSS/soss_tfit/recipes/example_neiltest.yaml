@@ -94,12 +94,12 @@ mcmc_params:
   nwalkers: 3
   # Total length of chain will be nwalkers*nsteps
   nsteps:
-    trial: 100
-    full: 2000
+    trial: 1000
+    full: 5000
   # the number of steps we add on next loop (if convergence not met)
   nsteps_inc:
-    trial: 100
-    full: 1000
+    trial: 1000
+    full: 5000
 # burn-in fraction for evaluating convergence
   burninf:
     trial: 0.5

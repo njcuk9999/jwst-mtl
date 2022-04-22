@@ -9,9 +9,12 @@ Created on 2022-04-12
 
 @author: cook
 """
+from astropy.table import Table
 from jwst import datamodels
 import numpy as np
-from typing import Dict, List
+import os
+from scipy.special import erf
+from typing import Dict, List, Optional, Tuple
 
 from soss_tfit.core import base
 from soss_tfit.core import base_classes
@@ -388,6 +391,87 @@ def stack_multi_spec(multi_spec, use_orders: List[int],
     # -------------------------------------------------------------------------
     # return the all spectrum dictionary
     return all_spec
+
+
+def sigma_percentiles(sigma: int = 1):
+    """
+    Produce the percentiles for: 50 - sigma, 50, sigma + 50
+    """
+    # get the sigma value (using the error function)
+    sig1 = erf(sigma / np.sqrt(2.0))
+    # get the upper bound 1 sigma as a percentile
+    p1 = (1 - (1-sig1)/2) * 100
+    # get thelower bound 1 sigma as a percentile
+    p0 = 100 - p1
+    # return 50 - sigma, 50, sigma + 50
+    return p0, 50, p1
+
+
+def load_model(params: ParamDict, data: InputData,
+               keys: Optional[List[str]] = None,
+               ) -> Tuple[Optional[Dict[int, Table]], Optional[Table]]:
+    """
+    Load the model and apply binning for each order
+
+    :param params: ParamDict, paramter dictionary of constants
+    :param data: InputData class
+    :param keys: List[str], the list of keys to get from model for yaxis
+
+    :return: tuple, 1. the binned model for each order dict[order][Table],
+                    2. the unbinned model Table
+
+                    each Table has columns "wave" and "keys"
+    """
+    # get model file
+    model_file = params['MODELPATH']
+    # deal with no keys defined
+    if keys is None:
+        keys = ['RPRS']
+    # -------------------------------------------------------------------------
+    # deal with a null value for model file
+    if model_file in [None, 'None', 'Null', '']:
+        return None, None
+    # deal with model file not existing
+    if not os.path.exists(model_file):
+        cprint(f'Model Warning: {model_file} does not exist')
+        return None, None
+    # -------------------------------------------------------------------------
+    # load the model
+    fullmodel = Table.read(model_file, format='csv', comment='#')
+    # -------------------------------------------------------------------------
+    # bin the model to match retrieved spectrum
+    models = dict()
+    # Make a table for each order
+    for order in data.orders:
+        models[order] = Table()
+    # loop around keys
+    for key in keys:
+        # ---------------------------------------------------------------------
+        # get the RP/RS for this model
+        if key == 'RPRS':
+            fullmodel[key] = np.sqrt(fullmodel['dppm'] / 1.0e6)
+        # ---------------------------------------------------------------------
+        # loop over orders
+        for order in data.orders:
+            # set up arrays for this order
+            wave = np.zeros(data.n_wav[order])
+            yvalue = np.zeros(data.n_wav[order])
+            # loop around band pass
+            for phot_it in range(data.n_wav[order]):
+                # get limits of wave bin for this bandpass
+                lam2, lam1 = data.spec[order]['BIN_LIMITS'][:, phot_it]
+                # find the index at which these thresholds are crossed
+                ilam1 = np.searchsorted(fullmodel['wave'], lam1)
+                ilam2 = np.searchsorted(fullmodel['wave'], lam2)
+                # work out the mean RPRS value and wavevalue for this new bin
+                wave[phot_it] = fullmodel['wave'][ilam1: ilam2].mean()
+                yvalue[phot_it] = fullmodel[key][ilam1: ilam2].mean()
+            # push these into output models
+            models[order]['wave'] = wave
+            models[order][key] = yvalue
+    # -------------------------------------------------------------------------
+    # return model
+    return models, fullmodel
 
 
 # =============================================================================

@@ -9,9 +9,13 @@ Created on 2022-04-06
 
 @author: cook
 """
+from astropy.io import fits
+from astropy.table import Table
 import numpy as np
+import os
 from tqdm import tqdm
 from typing import Any, Dict, List, Optional, Tuple
+import warnings
 
 import transitfit5 as transit_fit
 
@@ -1367,6 +1371,163 @@ class Sampler:
             # print argument
             pargs = [x_it, self.tfit.xnames[x_it], medians[x_it]]
             cprint('\t{0} {1:3s}: {2:.5f}'.format(*pargs))
+
+    def results(self, start_chain: int = 0) -> Table:
+        """
+        Get the results using all sampler.chain
+
+        :param start: int, start the chain at a different point
+
+        :return: astropy table of the results
+        """
+        # get length
+        n_x = self.tfit.n_x
+        # get the names
+        xnames = self.tfit.xnames
+        # -----------------------------------------------------------------
+        # get the p50, p16 and p84
+        pvalues = general.sigma_percentiles()
+        # get the percentile labels for the table
+        label_p16 = 'P{0:3f}'.format(pvalues[0]).replace('.', '_')
+        label_p84 = 'P{0:3f}'.format(pvalues[2]).replace('.', '_')
+        # -----------------------------------------------------------------
+        # create table
+        table = Table()
+        # add columns
+        table['NAME'] = xnames
+        table['MODE'] = np.zeros(n_x, dtype=float)
+        table['MODE_UPPER'] = np.zeros(n_x, dtype=float)
+        table['MODE_LOWER'] = np.zeros(n_x, dtype=float)
+        # P50, P16, P84
+        table['P50'] = np.zeros(n_x, dtype=float)
+        table[label_p16] = np.zeros(n_x, dtype=float)
+        table[label_p84] = np.zeros(n_x, dtype=float)
+        table['P50_UPPER'] = np.zeros(n_x, dtype=float)
+        table['P50_LOWER'] = np.zeros(n_x, dtype=float)
+
+        # -----------------------------------------------------------------
+        # loop around fitted parameters
+        for x_it in range(n_x):
+            cprint(f'\t Calculating results for {xnames[x_it]}')
+            # get the parameter chain
+            pchain = self.chain[::start_chain, x_it]
+            # -----------------------------------------------------------------
+            # get the mode
+            mode, x_eval, kde1 = transit_fit.modekdestimate(pchain, 0)
+            # calculate the mode percentile value
+            perc1 = transit_fit.intperc(mode, x_eval, kde1)
+            # get the mode low and mode high values
+            mode_upper = np.abs(perc1[1] - mode)
+            mode_lower = np.abs(mode - perc1[0])
+            # -----------------------------------------------------------------
+            # calculate the percentile values
+            percentiles = np.percentile(pchain, pvalues)
+            # -----------------------------------------------------------------
+            # push into table
+            table['MODE'][x_it] = mode
+            table['MODE_LOWER'][x_it] = mode_lower
+            table['MODE_UPPER'][x_it] = mode_upper
+            table['P50'][x_it] = percentiles[1]
+            table[label_p16][x_it] = percentiles[0]
+            table[label_p84][x_it] = percentiles[2]
+        # ---------------------------------------------------------------------
+        # tabulate P50 lower and upper bounds
+        table['P50_UPPER'] = table[label_p84] - table['P50']
+        table['P50_LOWER'] = table['P50'] - table[label_p16]
+        # ---------------------------------------------------------------------
+        # return the results
+        return table
+
+    def print_results(self, results: Table, pkind: str = 'mode',
+                      key: Optional[str] = None):
+        """
+        Print the results to screen for pkind = "mode" or "percentile"
+
+        :param results: astropy table, the results Table (from self.results)
+        :param pkind: str, either "mode" or "percentile"
+        :param key: str or None, if set filters the printout by this key
+
+        :return: None, prints to standard output
+        """
+        # check key is valid
+        if (key is not None) and (key not in self.tfit.xnames):
+            emsg = 'Sampler Results Error: key = {key} is not valid.'
+            emsg += '\tMust be: {0}'.format(','.join(set(self.tfit.xnames)))
+            raise base_classes.TransitFitExcept(emsg)
+        # loop around rows of the table
+        for row in range(len(results)):
+            # deal with a parameter filter
+            if key is not None:
+                if results['NAME'][row] != key:
+                    continue
+            # get print arguments
+            if pkind == 'mode':
+                pargs = [results['NAME'][row], results['MODE'][row],
+                         results['MODE_UPPER'][row], results['MODE_LOWER'][row]]
+            else:
+                pargs = [results['NAME'][row], results['P50'][row],
+                         results['P50_UPPER'][row], results['P50_LOWER'][row]]
+            # print values
+            cprint('\t{0:3s}={1:.8f}+{2:.8f}-{3:.8f}'.format(*pargs))
+
+    def save_results(self, results: Table):
+        # get output path
+        outpath = self.params['OUTDIR']
+        outname = self.params['OUTNAME']
+        # deal with no output dir
+        if not os.path.exists(outpath):
+            os.makedirs(outpath)
+        # ---------------------------------------------------------------------
+        # write fits file
+        # ---------------------------------------------------------------------
+        # construct fits filename
+        fitspath = os.path.join(outpath, outname + '.fits')
+        # generate a basic fits header
+        header0 = fits.Header()
+        header0['VERSION'] = base.__version__
+        header0['PDATE'] = base.time.now().fits
+        header0['VDATE'] = base.__date__
+        # generate the primary hdu (no data here)
+        hdu0 = fits.PrimaryHDU(header=header0)
+        # ---------------------------------------------------------------------
+        # add the results
+        header1 = fits.Header()
+        header1['EXTNAME'] = ('RESULTS', 'Name of the extension')
+        hdu1 = fits.BinTableHDU(results, header=header1)
+        # ---------------------------------------------------------------------
+        # add the param table - so we always know the parameters used
+        header2 = fits.Header()
+        header2['EXTNAME'] = ('PARAMTABLE', 'Name of the extension')
+        hdu2 = fits.BinTableHDU(self.params.param_table(), header=header2)
+        # ---------------------------------------------------------------------
+        # try to write to disk
+        with warnings.catch_warnings(record=True) as _:
+            try:
+                hdulist = fits.HDUList([hdu0, hdu1, hdu2])
+                hdulist.writeto(fitspath, overwrite=True)
+                hdulist.close()
+            except Exception as e:
+                emsg = 'Save Results Error {0}\n\t{1}: {2}'
+                eargs = [fitspath, type(e), str(e)]
+                raise base_classes.TransitFitExcept(emsg.format(*eargs))
+        # print progress
+        cprint(f'\tSaved {fitspath}')
+        # ---------------------------------------------------------------------
+        # write ascii file
+        # ---------------------------------------------------------------------
+        # construct fits filename
+        asciipath = os.path.join(outpath, outname + '.txt')
+        # ---------------------------------------------------------------------
+        # try to write to disk
+        with warnings.catch_warnings(record=True) as _:
+            try:
+                results.write(asciipath, format='ascii', overwrite=True)
+            except Exception as e:
+                emsg = 'Save Results Error {0}\n\t{1}: {2}'
+                eargs = [asciipath, type(e), str(e)]
+                raise base_classes.TransitFitExcept(emsg.format(*eargs))
+        # print progress
+        cprint(f'\tSaved {asciipath}')
 
 
 def merge_chains(chain1: np.ndarray, chain2: np.ndarray) -> np.ndarray:
