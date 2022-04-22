@@ -404,7 +404,7 @@ class ParamDict(UserDict):
         values += [base.__version__, base.__date__, base.__authors__,
                    base.time.now().iso]
         descriptions += ['Current version', 'Current date of code',
-                        'authors', 'Time of parameter snapshot']
+                         'authors', 'Time of parameter snapshot']
         sources += [func_name] * 4
         dtypes += ['str', 'str', 'str', 'str']
         # push into a table
@@ -432,7 +432,8 @@ class Printer:
         else:
             self.fmt = '{1}{2}'
 
-    def color_level(self, level: str = 'general') -> Tuple[str, str]:
+    @staticmethod
+    def color_level(level: str = 'general') -> Tuple[str, str]:
         """
         Get the color level
 
@@ -454,7 +455,7 @@ class Printer:
         # return the start and end string
         return c0, c1
 
-    def __call__(self, message: str, timestamp: bool=True,
+    def __call__(self, message: str, timestamp: bool = True,
                  level: str = 'general'):
         """
         Main functionality, act like print function
@@ -690,7 +691,6 @@ def add_param(key: str, rawvalue: Any, instances: Dict[str, Const],
     # -------------------------------------------------------------------------
     # after loop return here
     return keys, descriptions, values, sources, dtypes
-
 
 
 # =============================================================================

@@ -1205,6 +1205,9 @@ def gelman_rubin_convergence(chains: Dict[int, np.ndarray],
 # MCMC Sampler
 # =============================================================================
 class Sampler:
+    """
+    The MCMC Sampler - this should look like the emcmc sampler
+    """
     wchains: Dict[int, np.ndarray]
     wrejects: Dict[int, np.ndarray]
     chains: np.ndarray
@@ -1376,7 +1379,7 @@ class Sampler:
         """
         Get the results using all sampler.chain
 
-        :param start: int, start the chain at a different point
+        :param start_chain: int, start the chain at a different point
 
         :return: astropy table of the results
         """

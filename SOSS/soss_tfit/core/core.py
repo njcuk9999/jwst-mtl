@@ -30,8 +30,6 @@ cprint = base_classes.Printer()
 # Define functions
 # =============================================================================
 def load_params(config_file: str) -> ParamDict:
-    # set function name
-    func_name = __NAME__ + '.load_params()'
     # copy the parameters
     params = parameters.params.copy()
     # -------------------------------------------------------------------------

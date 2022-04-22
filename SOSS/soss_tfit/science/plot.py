@@ -196,15 +196,19 @@ def plot_hist(tfit: TransitFit, chain: np.ndarray,
     #   then grid is NxM where NxM >= tfit.n_x
     if param_num is None:
         xnames = tfit.xnames
+        # get the number of rows and columns (try to make it a square grid)
         nrows = int(np.sqrt(tfit.n_x))
         ncols = (tfit.n_x // nrows) + 1
+        # set up figure
         fig, frames = plt.subplots(ncols=ncols, nrows=nrows)
-
-        ijarr = [(i, j)  for i in range(nrows) for j in range(ncols)]
+        # get all positions within the grid
+        ijarr = [(i, j) for i in range(nrows) for j in range(ncols)]
     # else we have one plot - the grid is (1x1) and the plotting is easy
     else:
         xnames = tfit.xnames[param_num]
+        # set up figure
         fig, frame = plt.subplots(ncols=1, nrows=1)
+        # we only have one frame but want to use a 1x1 grid
         frames = np.array([[frame]])
         ijarr = [(0, 0)]
     # loop around rows and add hist
@@ -247,24 +251,29 @@ def plot_spectrum(data: InputData, results: Table, key: str = 'RD1',
     """
     # set up figure
     fig, frame = plt.subplots(ncols=1, nrows=1, figsize=(12, 8))
+    # -------------------------------------------------------------------------
     # get the results for binkey
     rmask = results['NAME'] == key
     # get the arrays
     wave = data.phot['WAVELENGTH'][:, 0]
-    # get results
+    # -------------------------------------------------------------------------
+    # get results for mode / percentile
     if pkind == 'mode':
         yvalue = results['MODE'][rmask]
         yupper = results['MODE_UPPER'][rmask]
         ylower = results['MODE_LOWER'][rmask]
+        title = 'Mode'
     else:
         yvalue = results['P50'][rmask]
         yupper = results['P50_UPPER'][rmask]
         ylower = results['P50_LOWER'][rmask]
-
+        title = 'Percentile'
+    # -------------------------------------------------------------------------
+    # plot the full model
     if fullmodel is not None:
         frame.plot(fullmodel['wave'], fullmodel[binkey], color='0.5',
-                   alpha=0.2)
-
+                   alpha=0.2, label='Full model')
+    # -------------------------------------------------------------------------
     # loop around orders and plot
     for order in data.orders:
         # get the order colour
@@ -281,9 +290,10 @@ def plot_spectrum(data: InputData, results: Table, key: str = 'RD1',
         frame.errorbar(wave[ordermask], yvalue[ordermask], yerr=yerrord,
                        fmt='o', lw=1, color=ordercolor, mec='k', zorder=2,
                        label=f'Fit Order {order}')
+    # -------------------------------------------------------------------------
     # set labels and limits
     frame.set(xlabel=r'Wavelength ($\mu$m)', ylabel=r'$R_{p}/R_{\star}$',
-              xlim=[0.6, 3.0])
+              xlim=[0.6, 3.0], title=title)
     frame.legend(loc=0)
     # show and close
     plt.show()

@@ -233,7 +233,10 @@ if __name__ == "__main__":
     # load model (and bin it) if available
     binmodel, fullmodel = general.load_model(params, data)
     # plot the spectrum
-    plot.plot_spectrum(data, result_table, model=binmodel, fullmodel=fullmodel)
+    plot.plot_spectrum(data, result_table, model=binmodel, fullmodel=fullmodel,
+                       pkind='mode')
+    plot.plot_spectrum(data, result_table, model=binmodel, fullmodel=fullmodel,
+                       pkind='percentile')
 
 
 # =============================================================================
