@@ -96,6 +96,43 @@ def _gen_primaryhdu_header(hdu, subarray, filename):
     return hdu
 
 
+def get_wave_solution(order):
+    """Extract wavelength calibration information from the wavelength solution
+    reference file.
+
+    Parameters
+    ----------
+    order : int
+        Diffraction order.
+
+    Returns
+    -------
+    wavecal_x : np.array
+        X pixel coordinate.
+    wavecal_w : np.array
+        Wavelength value.
+    """
+
+    # Get wavelength calibration reference file.
+    wave_soln = 'Ref_files/jwst_niriss_wavemap_0013.fits'
+    wavemap = fits.getdata(wave_soln, order)
+    header = fits.getheader(wave_soln, order)
+    ovs = header['OVERSAMP']
+    pad = header['PADDING']
+
+    # Bin the map down to native resolution and remove padding.
+    nrows, ncols = wavemap.shape
+    trans_map = wavemap.reshape((nrows // ovs), ovs, (ncols // ovs), ovs)
+    trans_map = trans_map.mean(1).mean(-1)
+    trans_map = trans_map[pad:-pad, pad:-pad]
+    dimy, dimx = np.shape(trans_map)
+    # Collapse over the spatial dimension.
+    wavecal_w = np.nanmean(trans_map, axis=0)
+    wavecal_x = np.arange(dimx)
+
+    return wavecal_x, wavecal_w
+
+
 def lik(k, data, model):
     """Utility likelihood function for flux rescaling. Essentially a Chi^2
     multiplied by the data such that wing values don't carry too much weight.
@@ -323,11 +360,8 @@ def validate_inputs(etrace):
         dataframe.
     """
 
-    # Ensure F277 exposure is provided and has same shapse as CLEAR.
-    if etrace.f277w is None:
-        msg = 'A F277W exposure must be passed.'
-        raise NotImplementedError(msg)
-    else:
+    # Ensure F277 exposure has same shapse as CLEAR.
+    if etrace.f277w is not None:
         if np.shape(etrace.f277w) != np.shape(etrace.clear):
             msg = 'F277W and CLEAR frames must be the same shape.'
             raise ValueError(msg)
