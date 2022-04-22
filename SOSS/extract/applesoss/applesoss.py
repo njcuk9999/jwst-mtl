@@ -5,7 +5,7 @@ Created on Fri Mar 19 11:46 2021
 
 @author: MCR
 
-Definitions of the main functions for the APPLESOSS (A Poducer of ProfiLEs for
+Definitions of the main functions for the APPLESOSS (A Producer of ProfiLEs for
 SOSS) module. This class will be initialized and called by the user to create
 models of the spatial profiles for both the first and second order SOSS traces,
 for use as the spatprofile reference file required by the ATOCA algorithm.
@@ -26,11 +26,6 @@ from SOSS.extract.applesoss import utils
 
 warnings.simplefilter(action='ignore', category=RuntimeWarning)
 warnings.simplefilter(action='ignore', category=FutureWarning)
-
-# TODO : Get rid of local paths
-# Local path to reference files.
-path = '/Users/michaelradica/Documents/School/Ph.D./Research/SOSS/Extraction/Input_Files/'
-# Just used for the wavelength calibration files: jwst_niriss_soss-256-ord1_trace.fits
 
 
 class EmpiricalProfile:
@@ -405,15 +400,8 @@ def construct_order1(clear, f277w, ycens, subarray, pad=0, verbose=0):
         dimy = 2048
 
     # ========= INITIAL SETUP =========
-    # Open wavelength calibration file.
-    # TODO : remove local paths
-    # TODO: USe wavelength solution?
-    wavecal = fits.getdata(path + 'jwst_niriss_soss-256-ord1_trace.fits', 1)
-    # Get wavelength and detector pixel calibration info.
-    pp_w = np.polyfit(wavecal['Detector_Pixels'],
-                      wavecal['WAVELENGTH'][::-1], 1)
-    wavecal_x = np.arange(dimx)
-    wavecal_w = np.polyval(pp_w, wavecal_x)
+    # Get wavelengh calibration.
+    wavecal_x, wavecal_w = utils.get_wave_solution(order=1)
     # Determine how the trace width changes with wavelength.
     if verbose != 0:
         print('   Calibrating trace widths...')
@@ -574,13 +562,8 @@ def construct_order2(o1sub, cen, mini=600, halfwidth=12, verbose=0):
     dimy, dimx = np.shape(o1sub)
     new_2 = np.zeros_like(o1sub)
 
-    # TODO: use wavelength solution?
-    # Get the wavelength calibration for the second order.
-    wavecal = fits.getdata(path + 'jwst_niriss_soss-256-ord2_trace.fits', 1)
-    # Get wavelength and detector pixel calibration info.
-    pp_w = np.polyfit(wavecal['Detector_Pixels'],
-                      wavecal['WAVELENGTH'][::-1], 1)
-    wavecal_w = np.polyval(pp_w, np.arange(dimx))
+    # Get wavelength calibration.
+    wavecal_x, wavecal_w = utils.get_wave_solution(order=2)
     # Get width polynomial coefficients.
     width_polys = utils.read_width_coefs(verbose=verbose)
 
