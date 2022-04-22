@@ -360,11 +360,8 @@ def validate_inputs(etrace):
         dataframe.
     """
 
-    # Ensure F277 exposure is provided and has same shapse as CLEAR.
-    if etrace.f277w is None:
-        msg = 'A F277W exposure must be passed.'
-        raise NotImplementedError(msg)
-    else:
+    # Ensure F277 exposure has same shapse as CLEAR.
+    if etrace.f277w is not None:
         if np.shape(etrace.f277w) != np.shape(etrace.clear):
             msg = 'F277W and CLEAR frames must be the same shape.'
             raise ValueError(msg)
