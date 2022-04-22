@@ -1119,13 +1119,14 @@ def simulate_wings(wavelength, width_coefs, halfwidth=12, verbose=0):
     """
 
     # Open a simulated PSF from which to steal some wings.
+    ref_profile = 'Ref_files/SOSS_PSFs/SOSS_os1_256x256_1.000000_0.fits'
     try:
-        psf = fits.getdata('Ref_files/SOSS_PSFs/SOSS_os1_256x256_1.000000_0.fits', 0)
+        psf = fits.getdata(ref_profile, 0)
     except FileNotFoundError:
         # If the profile doesn't exist, create it and save it to disk.
         _calibrations.loicpsf([1.0 * 1e-6], save_to_disk=True, oversampling=1,
                               pixel=256, verbose=False, wfe_real=0)
-        psf = fits.getdata('Ref_files/SOSS_PSFs/SOSS_os1_256x256_1.000000_0.fits', 0)
+        psf = fits.getdata(ref_profile, 0)
     stand = np.sum(psf, axis=0)
     # Normalize the profile by its maximum.
     max_val = np.nanmax(stand)
