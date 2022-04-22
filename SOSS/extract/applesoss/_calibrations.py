@@ -13,9 +13,11 @@ from astropy.io import fits
 import numpy as np
 import os
 import pandas as pd
+from scipy.optimize import curve_fit
 import webbpsf
 
 from SOSS.extract.applesoss import plotting
+from SOSS.extract.applesoss import utils
 
 # Local path to reference files.
 # TODO : remove local path
@@ -168,6 +170,92 @@ def calc_interp_coefs(f277w=True, verbose=0):
     df.to_csv(path+'interpolation_coefficients.csv', index=False)
 
     return pb, pr
+
+
+def derive_width_relations(no_wave=25, wave_start=0.8, wave_end=2.7,
+                           verbose=0):
+    """Due to the defocusing of the SOSS PSF, its width does not simply evolve
+    as it would if diffraction limited. Use the WebbPSF package to simulate
+    SOSS PSFs at different wavelengths, and fit a Gaussian profile o each PSF
+    to estimate the evolution in the widths.
+    When called, 2D monochromatic PSF profiles will be generated and saved
+    to disk if the user does not already have them available.
+    This should not need to be called by the end user except in rare cases.
+
+    Parameters
+    ----------
+    no_wave : int
+        Number of wavelengths to include.
+    wave_start : float
+        Smallest wavelength to consider in microns.
+    wave_end : float
+       vLargest wavelength to consider in microns.
+    verbose : int
+        Level of verbosity
+
+    Returns
+    -------
+    wfit : np.array
+        Polynomial coefficients describing how the spatial profile width
+        changes with wavelength.
+    """
+
+    # Get wavelength range to consider
+    wave_range = np.linspace(wave_start, wave_end, no_wave)
+    psfs = []
+    # Generate PSFs for each wavelength.
+    for w in wave_range:
+        # If the user already has the PSFs generated, import them.
+        # TODO : remove local path
+        infile = path + '{0:s}SOSS_os10_128x128_{1:.6f}_{2:.0f}.fits' \
+            .format('SOSS_PSFs/', w, 0)
+        try:
+            psf = fits.getdata(infile, 0)
+        # Generate missing PSFs if necessary.
+        except FileNotFoundError:
+            errmsg = ' No monochromatic PSF found for {0:.2f}µm and WFE ' \
+                     'realization {1:.0f}. Creating it now.'.format(w, 0)
+            print(errmsg)
+            loicpsf(wavelist=[w * 1e-6], wfe_real=0, verbose=False)
+            psf = fits.getdata(infile, 0)
+        psfs.append(np.sum(psf[600:700, :], axis=0))
+    psfs = np.array(psfs)
+
+    # Define the gaussian model.
+    def gauss(x, *p):
+        amp, mu, sigma = p
+        return amp * np.exp(-(x - mu) ** 2 / (2. * sigma ** 2))
+    # Initial guess parameters
+    p0 = [0.01, 600., 200.]
+
+    # Fit the Gaussian to the PSF at each wavelength and save the width.
+    widths = []
+    for i in range(len(wave_range)):
+        coeff, var_matrix = curve_fit(gauss, np.arange(1280), psfs[i], p0=p0)
+        widths.append(np.abs(coeff[2]))
+    widths = np.array(widths)
+
+    # Normalize widths to their max value, and remove spurious smalll-valued
+    # outliers.
+    widths /= np.nanmax(widths)
+    ii = np.where(widths > 0.9)
+
+    # Fit a polynomial to the widths.
+    pp_init = np.polyfit(wave_range[ii], widths[ii], 5)
+    wfit = utils.robust_polyfit(wave_range[ii], widths[ii], pp_init)
+
+    # Do debugging plot.
+    if verbose == 3:
+        plotting.plot_width_relation(wave_range, widths, wfit, ii)
+
+    # Save the polynomial ceofficients to file so that this doesn't need to be
+    # repeated.
+    df = {'width_coefs': wfit}
+    df = pd.DataFrame(data=df)
+    # TODO : remove local path
+    df.to_csv(path + 'width_coefficients.csv', index=False)
+
+    return wfit
 
 
 def loicpsf(wavelist=None, wfe_real=None, save_to_disk=True, oversampling=10,

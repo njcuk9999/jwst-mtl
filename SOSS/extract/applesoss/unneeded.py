@@ -596,3 +596,99 @@ def plot_scaling_coefs(pixels, k_coefs, pp_k):
     plt.ylabel('O1-to-O2 Scaling', fontsize=14)
     plt.legend(fontsize=12)
     plt.show()
+
+
+def _fit_trace_widths(clear, wave_coefs, verbose=0):
+    """Due to the defocusing of the SOSS PSF, the width in the spatial
+    direction does not behave as if it is diffraction limited. Calculate the
+    width of the spatial trace profile as a function of wavelength, and fit
+    with a linear relation to allow corrections of chromatic variations.
+
+    Parameters
+    ----------
+    clear : np.array
+        CLEAR exposure dataframe
+    wave_coefs : tuple
+        Polynomial coefficients for the wavelength to spectral pixel
+        calibration.
+    verbose : int
+        Level of verbosity.
+
+    Returns
+    -------
+    wfit_b : tuple
+        Polynomial coefficients for a first order fit to the uncontaminated
+        trace widths.
+    wfit_r : tuple
+        Polynomial coefficients for a first order fit to the contaminated trace
+        widths.
+    """
+
+    # Get subarray dimensions and wavelength to spectral pixel transformation.
+    yax, xax = np.shape(clear)
+    wax = np.polyval(wave_coefs, np.arange(xax))
+
+    # Determine the width of the trace profile by counting the number of pixels
+    # with flux values greater than half of the maximum value in the column.
+    trace_widths = []
+    for i in range(xax):
+        # Oversample by 4 times to get better sub-pixel scale info.
+        prof = np.interp(np.linspace(0, yax - 1, yax * 4), np.arange(yax),
+                         clear[:, i])
+        # Sort the flux values in the profile.
+        prof_sort = np.argsort(prof)
+        # To mitigate the effects of any outliers, use the median of the 5
+        # highest flux values as the maximum.
+        inds = prof_sort[-5:]
+        maxx = np.nanmedian(prof[inds])
+        # Count how many pixels have flux greater than half this value.
+        above_av = np.where(prof >= maxx / 2)[0]
+        trace_widths.append(len(above_av) / 4)
+
+    # Only fit the trace widths up to the blue anchor (2.1µm) where
+    # contamination from the second order begins to be a problem.
+    end = np.where(wax < 2.1)[0][0]
+    fit_waves_b = np.array(wax[end:])
+    fit_widths_b = np.array(trace_widths[end:])
+    # Rough sigma clip of huge outliers.
+    fit_waves_b, fit_widths_b = utils.sigma_clip(fit_waves_b, fit_widths_b)
+    # Robustly fit a straight line.
+    pp_b = np.polyfit(fit_waves_b, fit_widths_b, 1)
+    wfit_b = utils.robust_polyfit(fit_waves_b, fit_widths_b, pp_b)
+
+    # Separate fit to contaminated region.
+    fit_waves_r = np.array(wax[:(end + 10)])
+    fit_widths_r = np.array(trace_widths[:(end + 10)])
+    # Rough sigma clip of huge outliers.
+    fit_waves_r, fit_widths_r = utils.sigma_clip(fit_waves_r, fit_widths_r)
+    # Robustly fit a straight line.
+    pp_r = np.polyfit(fit_waves_r, fit_widths_r, 1)
+    wfit_r = utils.robust_polyfit(fit_waves_r, fit_widths_r, pp_r)
+
+    # Plot the width calibration fit if required.
+    if verbose == 3:
+        plotting.plot_width_cal((fit_widths_b, fit_widths_r),
+                                (fit_waves_b, fit_waves_r), (wfit_b, wfit_r))
+
+    return wfit_r, wfit_b
+
+
+def plot_width_cal(fit_widths, fit_waves, width_poly):
+    """Do the diagnostic plot for the trace width calibration relation.
+    """
+
+    plt.figure(figsize=(8, 5))
+    plt.scatter(fit_waves[0][::10], fit_widths[0][::10], label='trace widths',
+                c='blue', s=12,
+                alpha=0.75)
+    plt.scatter(fit_waves[1][::10], fit_widths[1][::10], c='blue', s=12,
+                alpha=0.75)
+    plt.plot(fit_waves[0], np.polyval(width_poly[0], fit_waves[0]), c='red',
+             ls='--', label='width relation')
+    plt.plot(fit_waves[1], np.polyval(width_poly[1], fit_waves[1]), c='red',
+             ls='--')
+
+    plt.xlabel('Wavelength [µm]', fontsize=14)
+    plt.ylabel('Trace Spatial Width [pixels]', fontsize=14)
+    plt.legend(fontsize=12)
+    plt.show()
