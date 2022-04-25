@@ -59,7 +59,7 @@ def transform_coords(angle, xshift, yshift, xpix, ypix, cenx=1024, ceny=50):
     return xrot, yrot
 
 
-def _chi_squared(transform, xref, yref, xdat, ydat):
+def chi_squared(transform, xref, yref, xdat, ydat):
     """"Compute the chi-squared statistic for fitting the reference positions
     to the true positions.
 
@@ -136,7 +136,7 @@ def solve_transform(scidata, scimask, xref, yref, subarray, verbose=False):
     min_args = (xref, yref, xdat, ydat)
 
     # Find the best-fit transformation.
-    result = minimize(_chi_squared, guess_transform, args=min_args)
+    result = minimize(chi_squared, guess_transform, args=min_args)
     simple_transform = result.x
 
     return simple_transform
