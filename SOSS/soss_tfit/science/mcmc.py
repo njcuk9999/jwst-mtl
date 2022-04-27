@@ -1179,9 +1179,9 @@ def gelman_rubin_convergence(chains: Dict[int, np.ndarray],
     wvar = wvar / n_walkers
     # -------------------------------------------------------------------------
     # Calculate the pooled variance
-    part1 = (wvar / n_chain)
+    part1 = (n_chain - 1) * (wvar / n_chain)
     part2 = bvar * (n_walkers + 1) / (n_walkers * n_chain)
-    vvar = (n_chain - 1) * part1 * part2
+    vvar = part1 + part2
     # -------------------------------------------------------------------------
     # degrees of freedom
     dof = npt - 1
@@ -1271,15 +1271,15 @@ class Sampler:
         # ---------------------------------------------------------------------
         # start loop counter
         nloop = 0
-        # set the constant genchain parameters
-        gkwargs = dict(niter=nsteps, beta=self.tfit.beta * corscale,
-                       loglikelihood=loglikelihood, mcmcfunc=mcmcfunc,
-                       corbeta=corbeta, progress=True)
         # ---------------------------------------------------------------------
         # Loop around iterations until we break (convergence met) or max
         #     number of loops exceeded
         # ---------------------------------------------------------------------
         while nloop < nloopsmax:
+            # set the constant genchain parameters
+            gkwargs = dict(niter=nsteps, beta=self.tfit.beta * corscale,
+                           loglikelihood=loglikelihood, mcmcfunc=mcmcfunc,
+                           corbeta=corbeta, progress=True)
             # print progress
             cprint(f'MCMC Loop {nloop+1} [{self.mode}]', level='info')
             # -----------------------------------------------------------------
