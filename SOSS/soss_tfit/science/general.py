@@ -285,6 +285,51 @@ class InputData:
             self.spec[onum]['FLUX'] /= out_flux[None, :]
             self.spec[onum]['FLUX_ERROR'] /= out_flux[None, :]
 
+    def remove_bins(self, params: ParamDict):
+        """
+        Remove bin indices from data
+
+        :param params: ParamDict, parameter dictionary of constants
+        :return:
+        """
+        # get remove bins
+        remove_bins = params['REMOVE_BINS']
+        # loop around each order
+        for order in self.orders:
+            # if order is not in remove bins then skip
+            if order not in remove_bins:
+                continue
+            # just skip anything that isn't a int or list
+            if not isinstance(remove_bins[order], (int, list)):
+                continue
+            # just in case we have a single value, and it isn't in list format
+            if isinstance(remove_bins[order], int):
+                remove_bins[order] = [remove_bins[order]]
+            # get remove bins for this order
+            try:
+                remove_bins_order = np.array(remove_bins[order], dtype=int)
+            except Exception as e:
+                emsg = ('global_params.remove_bins[order] must be a list of'
+                        ' integers or None')
+                raise base_classes.TransitFitExcept(emsg)
+            # get the removed bins in string list form
+            rb_map = map(lambda x: str(x), remove_bins[order])
+            list_remove_bins_order = ','.join(list(rb_map))
+            # print which bins we are removing
+            cprint(f'\tOrder {order} removing bins: {list_remove_bins_order}')
+            # create list of bins
+            bins = np.arange(self.n_wav[order])
+            # create mask of remove bins
+            remove_mask = np.in1d(bins, remove_bins_order)
+            # loop around each quantity
+            for quantity in self.spec[order]:
+                # keep non removed bins
+                masked_quantity = self.spec[order][quantity][:, ~remove_mask]
+                # udpate spec quantity
+                self.spec[order][quantity] = masked_quantity
+            # update nwave
+            self.n_wav[order] = self.spec[order]['WAVELENGTH'].shape[1]
+
     def photospectra(self):
         """
         Move the spec data into a photospectra list (self.phot)

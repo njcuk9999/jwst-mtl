@@ -28,9 +28,10 @@ Otherwise, use:
 You must add the following to your bash
 
     export PYTHONPATH="{COMPILED FORTRAN PATH}":$PYTHONPATH
-    export PYTHONPATH="{INTROOT}/SOSS/:":$PYTHONPATH
-    export PYTHONPATH="{INTROOT}/SOSS/soss_tfit:":$PYTHONPATH
-    export PATH="{INTROOT}/SOSS/soss_tfit/recipe:":$PATH
+    export PYTHONPATH="{INTROOT}/SOSS/":$PYTHONPATH
+    export PYTHONPATH="{INTROOT}/SOSS/soss_tfit":$PYTHONPATH
+    export PYTHONPATH="{INTROOT}/SOSS/transitfit":$PYTHONPATH
+    export PATH="{INTROOT}/SOSS/soss_tfit/recipe":$PATH
 
 
 ### 1.1 Install using conda

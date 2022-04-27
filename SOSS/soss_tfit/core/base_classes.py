@@ -494,13 +494,16 @@ class FitParam:
     prior: Dict[str, Any]
     # The label
     label: str
+    # pre-set beta value
+    beta: Any = None
     # core values/description definitions
     core_values = ['value', 'wfit', 'ftype', 'prior', 'label']
     core_descs = ['value', 'wavelength dependence', 'fixed or fitted',
                   'prior criteria', 'label']
 
     def __init__(self, name: str, value: Any, wfit: str, ftype: str,
-                 prior: Dict[str, Any], label: Optional[str] = None):
+                 prior: Dict[str, Any], label: Optional[str] = None,
+                 beta: Optional[Any] = None):
         # set the name
         self.name = name
         # set the value of
@@ -526,6 +529,8 @@ class FitParam:
             self.label = str(self.name)
         else:
             self.label = label
+        # set beta
+        self.beta = beta
 
     def print(self):
         """
@@ -539,6 +544,8 @@ class FitParam:
         string += f'\n\tftype: {self.ftype}'
         string += f'\n\tprior: {self.prior}'
         string += f'\n\tlabel: {self.label}'
+        if self.beta is not None:
+            string += f'\n\tbeta: {self.beta}'
         print(string)
 
     def __str__(self) -> str:
@@ -574,7 +581,7 @@ class FitParam:
                 raise TransitFitExcept(emsg.format(**ekwargs))
 
     def get_value(self, n_phot: int
-                  ) -> Tuple[np.ndarray, bool, bool, Dict[str, Any], str]:
+                  ) -> Tuple[np.ndarray, bool, bool, Dict[str, Any], str, Any]:
         """
         Get the properties for the transit fitting
 
@@ -604,8 +611,10 @@ class FitParam:
         prior = self.prior
         # get name
         name = self.label
+        # get preset beta value
+        beta = self.beta
         # return values
-        return p0, fitted, chromatic, prior, name
+        return p0, fitted, chromatic, prior, name, beta
 
 
 # =============================================================================

@@ -13,6 +13,7 @@ from astropy.io import fits
 from astropy.table import Table
 import numpy as np
 import os
+import pickle
 from tqdm import tqdm
 from typing import Any, Dict, List, Optional, Tuple
 import warnings
@@ -78,13 +79,15 @@ class TransitFit:
     # numpy array [n_param] whether chromatic fit used for each parameter [Bool]
     wmask: np.ndarray
     # priors [n_param]
-    prior: Dict[str, Any]
-    # name of each parameter
+    prior: List[Dict[str, Any]]
+    # name of each parameter [n_param]
     pnames: List[str]
     # additional arguments passed to mcmc
     pkwargs: Dict[str, Any]
     # the position in the flattened x array [n_param, n_phot]
     p0pos: np.ndarray
+    # the pre-set value of beta (if forced otherwise None) [n_param]
+    pbetas: np.ndarray
     # -------------------------------------------------------------------------
     # the data:
     # -------------------------------------------------------------------------
@@ -116,6 +119,9 @@ class TransitFit:
     # the mapping from x0 onto p0 [n_x, 2] each element
     #   is the tuple position in p0
     x0pos: np.ndarray
+    # the pre-set value of beta (if forced otherwise None) for fitted params
+    #    [n_x]
+    xbeta: np.ndarray
     # -------------------------------------------------------------------------
     # will be filled out by the mcmc
     # -------------------------------------------------------------------------
@@ -128,7 +134,70 @@ class TransitFit:
     ac: List[int]
 
     def __init__(self):
-        pass
+        # the number of integrations we have
+        self.n_int = 0
+        # the number of parameters we have
+        self.n_param = 0
+        # the number of photometric bandpasses we have
+        self.n_phot = 0
+        # numpy array [n_param, n_phot] the initial value of each parameter
+        self.p0 = np.array([])
+        # numpy array [n_param] whether we are fitting each parameter [Bool]
+        self.fmask = np.array([])
+        # numpy array [n_param] whether chromatic fit used for each parameter [Bool]
+        self.wmask = np.array([])
+        # priors [n_param]
+        self.prior = []
+        # name of each parameter
+        self.pnames = []
+        # additional arguments passed to mcmc
+        self.pkwargs = dict()
+        # the position in the flattened x array [n_param, n_phot]
+        self.p0pos = np.array([])
+        # -------------------------------------------------------------------------
+        # the data:
+        # -------------------------------------------------------------------------
+        #     [0][WAVELENGTH][n_phot, n_int]
+        self.phot = []
+        # the wavelength array [n_phot, n_int]
+        self.wavelength = np.array([])
+        # the time array [n_phot, n_int]
+        self.time = np.array([])
+        # the integration time array [n_phot, n_int]
+        self.itime = np.array([])
+        # the flux array [n_phot, n_int]
+        self.flux = np.array([])
+        # the flux error array [n_phot, n_int]
+        self.fluxerr = np.array([])
+        # the order array [n_phot, n_int]
+        self.orders = np.array([])
+        # -------------------------------------------------------------------------
+        # parameters that must have shape [n_x]
+        # -------------------------------------------------------------------------
+        # the initial fitted parameters
+        self.x0 = np.array([])
+        # name of the fitted params flattened [n_x]
+        self.xnames = np.array([])
+        # length of fitted params flattened [n_x]
+        self.n_x = 0
+        # numpy array [n_param]
+        self.beta = np.array([])
+        # the mapping from x0 onto p0 [n_x, 2] each element
+        #   is the tuple position in p0
+        self.x0pos = np.array([])
+        # the pre-set value of beta (if forced otherwise None) for fitted params
+        #    [n_x]
+        self.xbeta = np.array([])
+        # -------------------------------------------------------------------------
+        # will be filled out by the mcmc
+        # -------------------------------------------------------------------------
+        # the current position chosen by the sampler
+        self.n_tmp = 0
+        # the previous loglikelihood value
+        self.llx = BADLPR
+        # the rejection [rejected, parameter number]   where rejected = 0 for
+        #   accepted and rejected = 1 for rejected
+        self.ac = []
 
     def __getstate__(self) -> dict:
         """
@@ -235,6 +304,7 @@ class TransitFit:
         # position of x in p
         p0pos = np.zeros_like(self.p0)
         x0pos = []
+        xbetas = []
         # counter for x0 position
         count_x = 0
         # loop around all parameters
@@ -248,6 +318,7 @@ class TransitFit:
             if self.wmask[it]:
                 x0 += list(self.p0[it])
                 xnames += [self.pnames[it]] * self.n_phot
+                xbetas += [self.pbetas[it]] * self.n_phot
                 # add to the positions so we can recover p0 from x0
                 p0pos[it] = np.arange(count_x, count_x + self.n_phot)
                 # update the x positions
@@ -259,6 +330,7 @@ class TransitFit:
             else:
                 x0 += [self.p0[it][0]]
                 xnames += [self.pnames[it]]
+                xbetas += [self.pbetas[it]]
                 # add to the positions so we can recover p0 from x0
                 p0pos[it] = np.full(self.n_phot, count_x)
                 # update x0 position
@@ -271,6 +343,7 @@ class TransitFit:
         self.n_x = len(x0)
         self.p0pos = np.array(p0pos, dtype=int)
         self.x0pos = np.array(x0pos)
+        self.xbeta = np.array(xbetas)
 
     def update_p0_from_x0(self):
         """
@@ -384,7 +457,7 @@ class TransitFit:
 
         return attribute
 
-    def assign_beta(self, beta_kwargs: Dict[str, Any]):
+    def assign_beta(self, beta_kwargs: Optional[Dict[str, Any]] = None):
         """
         Assign beta from either beta_kwargs[key] = value
         or as a random number: np.random.rand(size) * 1.0e-5
@@ -396,18 +469,23 @@ class TransitFit:
                             for a specific parameter
         :return:
         """
+        # deal with no beta_kwargs
+        if beta_kwargs is None:
+            beta_kwargs = dict()
         # beta factor
         bfactor = 1.0e-5
         # start of with all values at zero (all fixed parameters have beta=0)
         self.beta = np.zeros(self.n_x)
         # loop through and find fitted parameters
         for it in range(self.n_x):
-            # override beta values
+            # override beta values set in beta_kwargs
             if self.xnames[it] in beta_kwargs:
                 # set beta value
                 self.beta[it] = beta_kwargs[self.xnames[it]]
-                # skip step
-                continue
+            # override beta value with those set in parameters
+            elif self.xbeta[it] is not None:
+                # set beta value
+                self.beta[it] = self.xbeta[it]
             # else set beta as a random number (multiplied by the beta factor)
             else:
                 self.beta[it] = np.random.rand() * bfactor
@@ -463,20 +541,22 @@ def setup_params_mcmc(params: ParamDict, data: InputData) -> TransitFit:
     transit_wmask = np.zeros(n_param, dtype=bool)
     transit_prior = []
     transit_pnames = []
+    transit_pbetas = []
     # -------------------------------------------------------------------------
     # get the transit fit stellar params
     # -------------------------------------------------------------------------
     pnum = 0
     # loop around stellar parameters
     for key in TPS_ORDERED:
-        p0, fmask, wmask, prior, pname = __assign_pvalue(key, params, n_phot,
-                                                         func_name)
+        pout = __assign_pvalue(key, params, n_phot, func_name)
+        p0, fmask, wmask, prior, pname, pbeta = pout
         # add values to storage
         transit_p0[pnum] = p0
         transit_fmask[pnum] = fmask
         transit_wmask[pnum] = wmask
         transit_prior.append(prior)
         transit_pnames.append(pname)
+        transit_pbetas.append(pbeta)
         # add to the parameter number
         pnum += 1
     # -------------------------------------------------------------------------
@@ -495,14 +575,15 @@ def setup_params_mcmc(params: ParamDict, data: InputData) -> TransitFit:
         planetdict = params[pkey]
         # loop around planetN parameters
         for key in TPP_ORDERED:
-            p0, fmask, wmask, prior, pname = __assign_pvalue(key, planetdict,
-                                                             n_phot, func_name)
+            pout = __assign_pvalue(key, planetdict, n_phot, func_name)
+            p0, fmask, wmask, prior, pname, pbeta = pout
             # add values to storage
             transit_p0[pnum] = p0
             transit_fmask[pnum] = fmask
             transit_wmask[pnum] = wmask
             transit_prior.append(prior)
             transit_pnames.append(f'{pname}{nplanet}')
+            transit_pbetas.append(pbeta)
             # add to the parameter number
             pnum += 1
     # -------------------------------------------------------------------------
@@ -510,8 +591,8 @@ def setup_params_mcmc(params: ParamDict, data: InputData) -> TransitFit:
     # -------------------------------------------------------------------------
     # loop around hyper parameters
     for key in TPH_ORDERED:
-        p0, fmask, wmask, prior, pname = __assign_pvalue(key, params, n_phot,
-                                                         func_name)
+        pout = __assign_pvalue(key, params, n_phot, func_name)
+        p0, fmask, wmask, prior, pname, pbeta = pout
         # hyper parameters are set to zero if not in fit mode
         if not fmask:
             transit_p0[pnum] = np.zeros(n_phot)
@@ -522,6 +603,7 @@ def setup_params_mcmc(params: ParamDict, data: InputData) -> TransitFit:
         transit_wmask[pnum] = wmask
         transit_prior.append(prior)
         transit_pnames.append(pname)
+        transit_pbetas.append(pbeta)
         # add to the parameter number
         pnum += 1
     # -------------------------------------------------------------------------
@@ -541,6 +623,7 @@ def setup_params_mcmc(params: ParamDict, data: InputData) -> TransitFit:
     tfit.wmask = transit_wmask
     tfit.prior = transit_prior
     tfit.pnames = np.array(transit_pnames)
+    tfit.pbetas = np.array(transit_pbetas)
     # set the number of params
     tfit.n_param = len(transit_p0)
     # set the number of photometric bandpasses
@@ -865,7 +948,7 @@ def beta_rescale(params: ParamDict, tfit: TransitFit,
     # burn-in for the beta rescale
     burnin_cor = params['BURNIN_COR']
     # maximum number of iterations for the beta rescale
-    nloopmax = params['BETA_NLOOPMAX']
+    nloopsmax = params['BETA_NLOOPMAX']
     # number of fitted parameters
     n_x = tfit.n_x
     # copy tfit (for beta rescale only)
@@ -911,13 +994,13 @@ def beta_rescale(params: ParamDict, tfit: TransitFit,
     #   we hit the maximum number of iterations permitted
     # -------------------------------------------------------------------------
     # start counter to track number of iterations
-    count = 0
+    nloop = 1
     # condition based on all parameters being False (in a_fix)
     while np.sum(a_fix) > 0:
         # ---------------------------------------------------------------------
         # if we have a previous count on the number of proposal copy it
         #   over the total count
-        if count > 0:
+        if nloop > 1:
             nprop_p = np.array(nprop_psub)
             nacor = np.array(nacor_sub)
         # reset the sub counts for this loop
@@ -929,7 +1012,7 @@ def beta_rescale(params: ParamDict, tfit: TransitFit,
         beta_in = tfitb.beta * corscale
         # ---------------------------------------------------------------------
         # print progress
-        cprint(f'Beta Rescale: Gen Chain loop {count + 1}')
+        cprint(f'Beta Rescale: Gen Chain loop {nloop}')
         # initial run of gen chain
         hchain, hrejects = genchain(tfit, nsteps, beta_in, mcmcfunc,
                                     loglikelihood, progress=True)
@@ -961,7 +1044,7 @@ def beta_rescale(params: ParamDict, tfit: TransitFit,
         corscale[a_fix] = np.abs(corscale[a_fix] * (part1/part2)**0.25)
         # ---------------------------------------------------------------------
         # print current acceptance
-        cprint(f'Beta Rescale: Loop {count + 1}, Current Acceptance: ')
+        cprint(f'Beta Rescale: Loop {nloop}, Current Acceptance: ')
         for x_it in range(n_x):
             cprint(f'\t{tfitb.xnames[x_it]:3s}:{ac_rate[x_it]}')
         # ---------------------------------------------------------------------
@@ -969,11 +1052,11 @@ def beta_rescale(params: ParamDict, tfit: TransitFit,
         a_fix = (ac_rate < a_high) & (ac_rate < a_low)
         # ---------------------------------------------------------------------
         # if too many iterations, then we give up and exit
-        if count > nloopmax:
+        if nloop >= nloopsmax:
             break
         # else update the count
         else:
-            count += 1
+            nloop += 1
     # -------------------------------------------------------------------------
     # print the final acceptance
     # print current acceptance
@@ -1223,6 +1306,8 @@ class Sampler:
         self.chain = np.array([])
         self.reject = np.array([])
         self.acc_dict = dict()
+        # added manually if required
+        self.data = None
         # set up storage of chainns
         for nwalker in range(self.params['WALKERS']):
             self.wchains[nwalker] = np.array([])
@@ -1270,7 +1355,7 @@ class Sampler:
         # loop around
         # ---------------------------------------------------------------------
         # start loop counter
-        nloop = 0
+        nloop = 1
         # ---------------------------------------------------------------------
         # Loop around iterations until we break (convergence met) or max
         #     number of loops exceeded
@@ -1281,7 +1366,7 @@ class Sampler:
                            loglikelihood=loglikelihood, mcmcfunc=mcmcfunc,
                            corbeta=corbeta, progress=True)
             # print progress
-            cprint(f'MCMC Loop {nloop+1} [{self.mode}]', level='info')
+            cprint(f'MCMC Loop {nloop} [{self.mode}]', level='info')
             # -----------------------------------------------------------------
             # loop around walkers
             # -----------------------------------------------------------------
@@ -1438,10 +1523,10 @@ class Sampler:
         table['P50_UPPER'] = table[label_p84] - table['P50']
         table['P50_LOWER'] = table['P50'] - table[label_p16]
         # ---------------------------------------------------------------------
-        # return the results
-        return table
+        # save the results table
+        self.results_table = table
 
-    def print_results(self, results: Table, pkind: str = 'mode',
+    def print_results(self, pkind: str = 'mode',
                       key: Optional[str] = None):
         """
         Print the results to screen for pkind = "mode" or "percentile"
@@ -1452,6 +1537,8 @@ class Sampler:
 
         :return: None, prints to standard output
         """
+        # get results table
+        results = self.results_table
         # check key is valid
         if (key is not None) and (key not in self.tfit.xnames):
             emsg = 'Sampler Results Error: key = {key} is not valid.'
@@ -1473,10 +1560,12 @@ class Sampler:
             # print values
             cprint('\t{0:3s}={1:.8f}+{2:.8f}-{3:.8f}'.format(*pargs))
 
-    def save_results(self, results: Table):
+    def save_results(self):
+        # get results table
+        results = self.results_table
         # get output path
         outpath = self.params['OUTDIR']
-        outname = self.params['OUTNAME']
+        outname = self.params['OUTNAME'] + '_results'
         # deal with no output dir
         if not os.path.exists(outpath):
             os.makedirs(outpath)
@@ -1531,6 +1620,102 @@ class Sampler:
                 raise base_classes.TransitFitExcept(emsg.format(*eargs))
         # print progress
         cprint(f'\tSaved {asciipath}')
+
+    def save_chains(self):
+        # get output path
+        outpath = self.params['OUTDIR']
+        outname = self.params['OUTNAME'] + '_chains'
+        # deal with no output dir
+        if not os.path.exists(outpath):
+            os.makedirs(outpath)
+        # ---------------------------------------------------------------------
+        # write fits file
+        # ---------------------------------------------------------------------
+        # construct fits filename
+        fitspath = os.path.join(outpath, outname + '.fits')
+        # generate a basic fits header
+        header0 = fits.Header()
+        header0['VERSION'] = base.__version__
+        header0['PDATE'] = base.time.now().fits
+        header0['VDATE'] = base.__date__
+        # generate the primary hdu (no data here)
+        hdu0 = fits.PrimaryHDU(header=header0)
+        # ---------------------------------------------------------------------
+        # add the chains
+        header1 = fits.Header()
+        header1['EXTNAME'] = ('RESULTS', 'Name of the extension')
+        hdu1 = fits.ImageHDU(header=header1)
+        hdu1.data = self.chain
+        # add the rejects
+        header2 = fits.Header()
+        header1['EXTNAME'] = ('RESULTS', 'Name of the extension')
+        hdu2 = fits.ImageHDU(header=header2)
+        hdu2.data = self.reject
+        # ---------------------------------------------------------------------
+        # add the param table - so we always know the parameters used
+        header3 = fits.Header()
+        header3['EXTNAME'] = ('PARAMTABLE', 'Name of the extension')
+        hdu3 = fits.BinTableHDU(self.params.param_table(), header=header3)
+        # ---------------------------------------------------------------------
+        # try to write to disk
+        with warnings.catch_warnings(record=True) as _:
+            try:
+                hdulist = fits.HDUList([hdu0, hdu1, hdu2, hdu3])
+                hdulist.writeto(fitspath, overwrite=True)
+                hdulist.close()
+            except Exception as e:
+                emsg = 'Save Results Error {0}\n\t{1}: {2}'
+                eargs = [fitspath, type(e), str(e)]
+                raise base_classes.TransitFitExcept(emsg.format(*eargs))
+        # print progress
+        cprint(f'\tSaved {fitspath}')
+
+    def load_chains(self) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Load the chains (and rejects) from fits file
+
+        :return:
+        """
+        # get output path
+        outpath = self.params['OUTDIR']
+        outname = self.params['OUTNAME'] + '_chains'
+        # construct fits filename
+        fitspath = os.path.join(outpath, outname + '.fits')
+        # load the chains and rejects from fits file
+        chains = fits.getdata(fitspath, ext=1)
+        rejects = fits.getdata(fitspath, ext=2)
+        # return chains and rejects
+        return chains, rejects
+
+    def dump(self, **kwargs):
+        """
+        Dump the sampler to a pickle file
+        :param kwargs:
+        :return:
+        """
+        # add additional data to the pickle
+        for kwarg in kwargs:
+            setattr(self, kwarg, kwargs[kwarg])
+        # get output path
+        outpath = self.params['OUTDIR']
+        outname = self.params['OUTNAME'] + '_sampler.pickle'
+        # deal with no output dir
+        if not os.path.exists(outpath):
+            os.makedirs(outpath)
+
+        with open(os.path.join(outpath, outname), 'wb') as pfile:
+            pickle.dump(self, pfile)
+
+    @staticmethod
+    def load(filename) -> 'Sampler':
+        """
+        Load the sampler class from the pickle file
+
+        :return:
+        """
+        # load the class and return
+        with open(os.path.join(filename), 'rb') as pfile:
+            return pickle.load(pfile)
 
 
 def merge_chains(chain1: np.ndarray, chain2: np.ndarray) -> np.ndarray:
@@ -1641,7 +1826,8 @@ def __assign_pvalue(key, pdict, n_phot, func_name):
         wmask = False
         prior = None
         pnames = 'Undefined'
-        return p0, fmask, wmask, prior, pnames
+        pbeta = None
+        return p0, fmask, wmask, prior, pnames, pbeta
     # deal with key not in params (bad)
     if key not in pdict:
         emsg = f'ParamError: key {key} must be set. func={func_name}'
@@ -1655,9 +1841,9 @@ def __assign_pvalue(key, pdict, n_phot, func_name):
                 f'\n\tfunc={func_name}')
         raise base_classes.TransitFitExcept(emsg)
     # get the properties from the fit param class
-    p0, fmask, wmask, prior, pnames = fitparam.get_value(n_phot)
+    p0, fmask, wmask, prior, pnames, pbeta = fitparam.get_value(n_phot)
 
-    return p0, fmask, wmask, prior, pnames
+    return p0, fmask, wmask, prior, pnames, pbeta
 
 
 # =============================================================================

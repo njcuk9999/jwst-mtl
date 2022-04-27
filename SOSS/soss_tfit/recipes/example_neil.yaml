@@ -16,7 +16,8 @@
 global_params:
   # Plot mode, 0: no plots, 1: to file, 2: to screen
   plotmode:
-    - 0
+    - 1
+    - 2
   # Number of planets (use for N planets) [INT]
   nplanets: 1
   # Orders to use (list of orders)
@@ -38,7 +39,8 @@ global_params:
   #   list per order or set to None to skip removal
   remove_bins:
     1: None
-    2: None
+    2:
+      - 0
 
   # ---------------------------------------------------------------------------
   # Input/Output parameters
@@ -62,6 +64,7 @@ global_params:
     prior:
       minimum: 0
       maximum: 2
+    beta: 0.002
   # GP Kernel Amplitude (default is Matern 3/2) [PARAM]
   amplitude_scale:
     value: 1.0
@@ -87,9 +90,9 @@ mcmc_params:
   # beta parameters
   beta:
     # Number of steps in the beta rescale
-    niter_cor: 5000
+    niter_cor: 500
     # burn-in for the beta rescale
-    burnin_cor: 1000
+    burnin_cor: 100
     # maximum number of iterations for the beta rescale
     nloopmax: 2
     # beta acceptance rate low value
@@ -106,12 +109,12 @@ mcmc_params:
   nwalkers: 3
   # Total length of chain will be nwalkers*nsteps
   nsteps:
-    trial: 10000
-    full: 200000
+    trial: 1000
+    full: 1000
   # the number of steps we add on next loop (if convergence not met)
   nsteps_inc:
-    trial: 10000
-    full: 100000
+    trial: 1000
+    full: 1000
 # burn-in fraction for evaluating convergence
   burninf:
     trial: 0.5
@@ -119,7 +122,7 @@ mcmc_params:
   # Maximum number of times to try the MCMC (if convergence not met on a loop)
   nloopmaximum:
     trial: 3
-    full: 5
+    full: 3
   # Convergence criteria
   converge_crit: 1.02
   # Convergence criteria for buffer
@@ -155,12 +158,13 @@ mcmc_params:
 star:
   # Mean stellar density [g/cm3] [PARAM]
   rhostar:
-    value: 1.0
+    value: 2.48
     wfit: bolometric
     ftype: fit
     prior:
-      minimum: 1.0e-4
-      maximum: 1000
+      minimum: 2.0
+      maximum: 3.0
+    beta: 0.03
   # Limb-darkening param 1. Set ld1=ld2=0 and ld3=q1 and ld4=q2 [PARAM]
   ld1:
       value: 0.0
@@ -179,20 +183,22 @@ star:
         maximum: 1.0
   # Limb-darkening param 3. Set ld1=ld2=0 and ld3=q1 and ld4=q2 [PARAM]
   ld3:
-      value: 0.5
+      value: 0.2
       wfit: chromatic
       ftype: fit
       prior:
         minimum: 0.0
         maximum: 1.0
+      beta: 0.2
   # Limb-darkening param 4. Set ld1=ld2=0 and ld3=q1 and ld4=q2 [PARAM]
   ld4:
-      value: 0.5
+      value: 0.15
       wfit: chromatic
       ftype: fit
       prior:
         minimum: 0.0
         maximum: 1.0
+      beta: 0.2
   # Stellar dilution 0=none, 0.99 means 99% of light from other source [PARAM]
   dilution:
       value: 0.0
@@ -203,15 +209,16 @@ star:
         maximum: 1.0
   # Out of transit baseline (set in code) [PARAM]
   zeropoint:
-      value: None
+      value: 0.0
       wfit: chromatic
       ftype: fit
       prior:
-        minimum: 0.0
-        maximum: 1.0e9
+        minimum: -0.005
+        maximum: 0.005
+      beta: 1.0e-3
 
   # update zeropoint from data
-  update_zeropoint: true
+  update_zeropoint: false
 
 # =============================================================================
 # Planet Parameters
@@ -230,36 +237,39 @@ star:
 planet1:
   # Center of transit time [PARAM]
   t0:
-      value: 1.0
+      value: 0.093
       wfit: bolometric
       ftype: fit
       prior:
-        minimum: 0.0
-        maximum: 2.0
+        minimum: 0.090
+        maximum: 0.096
+      beta: 2.0e-4
   # Orbital period [PARAM]
   period:
-      value: 1.0
+      value: 1.7497798
       wfit: bolometric
-      ftype: fit
+      ftype: fixed
       prior:
         minimum: 0.0
         maximum: 2.0
   # Impact parameter [PARAM]
   b:
-      value: 0.5
+      value: 0.6
       wfit: bolometric
       ftype: fit
       prior:
-        minimum: 0.0
-        maximum: 2.0
+        minimum: 0.4
+        maximum: 0.8
+      beta: 2.0e-3
   # Scale planet radius [PARAM]
   rprs:
-      value: 0.01
+      value: 0.1645
       wfit: chromatic
       ftype: fit
       prior:
-        minimum: 0.0
-        maximum: 1.0
+        minimum: 0.1
+        maximum: 0.2
+      beta: 3.0e-3
   # sqrt(e)cos(w) [PARAM]
   sqrt_e_cosw:
     value: 0.0
@@ -300,79 +310,5 @@ planet1:
     prior:
       minimum: 0
       maximum: 1.0e4
-
-#planet2:
-#  # Center of transit time [PARAM]
-#  t0:
-#      value: 1.0
-#      wfit: bolometric
-#      ftype: fit
-#      prior:
-#        minimum: 0.0
-#        maximum: 2.0
-#  # Orbital period [PARAM]
-#  period:
-#      value: 1.0
-#      wfit: bolometric
-#      ftype: fit
-#      prior:
-#        minimum: 0.0
-#        maximum: 2.0
-#  # Impact parameter [PARAM]
-#  b:
-#      value: 0.5
-#      wfit: bolometric
-#      ftype: fit
-#      prior:
-#        minimum: 0.0
-#        maximum: 2.0
-#  # Scale planet radius [PARAM]
-#  rprs:
-#      value: 0.01
-#      wfit: chromatic
-#      ftype: fit
-#      prior:
-#        minimum: 0.0
-#        maximum: 1.0
-#  # sqrt(e)cos(w) [PARAM]
-#  sqrt_e_cosw:
-#    value: 0.0
-#    wfit: bolometric
-#    ftype: fixed
-#    prior:
-#      minimum: -1.0
-#      maximum: 1.0
-#  # sqrt(e)sin(w) [PARAM]
-#  sqrt_e_sinw:
-#    value: 0.0
-#    wfit: bolometric
-#    ftype: fixed
-#    prior:
-#      minimum: -1.0
-#      maximum: 1.0
-#  # Secondary eclipse depth (ppm) [PARAM]
-#  eclipse_depth:
-#    value: 0.0
-#    wfit: chromatic
-#    ftype: fixed
-#    prior:
-#      minimum: 0
-#      maximum: 1.0e4
-#  # Amplitude of ellipsoidal variations (ppm) [PARAM]
-#  ellipsoidal:
-#    value: 0.0
-#    wfit: chromatic
-#    ftype: fixed
-#    prior:
-#      minimum: 0
-#      maximum: 1.0e4
-#  # Amplitude of reflected/emission phase curve (ppm) - Lambertian [PARAM]
-#  phasecurve:
-#    value: 0.0
-#    wfit: chromatic
-#    ftype: fixed
-#    prior:
-#      minimum: 0
-#      maximum: 1.0e4
 
 # =============================================================================

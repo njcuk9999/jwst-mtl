@@ -9,6 +9,8 @@ Created on 2022-04-11
 
 @author: cook
 """
+import argparse
+from typing import Any
 import yaml
 
 from soss_tfit.core import base_classes
@@ -29,6 +31,23 @@ cprint = base_classes.Printer()
 # =============================================================================
 # Define functions
 # =============================================================================
+def get_args():
+    """
+    Get command line arguments
+    :return:
+    """
+    # define the parser
+    parser = argparse.ArgumentParser(description='Transit fit code')
+    # add arguments here
+    parser.add_argument(dest='config',
+                        help='[STRING] The configuration yaml file',
+                        type=str)
+    # get the arguments
+    args = parser.parse_args()
+    # return the config file
+    return str(args.config)
+
+
 def load_params(config_file: str) -> ParamDict:
     # copy the parameters
     params = parameters.params.copy()
@@ -69,6 +88,8 @@ def load_params(config_file: str) -> ParamDict:
         if issubclass(instance.dtype, FitParam):
             FitParam.check(name=key, **value)
             value = FitParam(key, label=instance.label, **value)
+        elif instance.dtype is not None:
+            value = _get_value(value, key, instance.path, instance.dtype)
         # now update params
         params.set(key=key, value=value, source=config_file)
     # -------------------------------------------------------------------------
@@ -147,6 +168,50 @@ def get_yaml_from_path(ydict: dict, path: str):
         ydict_tmp = value
     # return the bottom level key described by path
     return ydict_tmp
+
+
+def _get_value(value: Any, key: str, path: str, dtype: Any):
+    """
+    Get a value and check data type
+
+    :param value:  Any, the value to test
+    :param key: str, the name of the parameter we are testing
+    :param path: str, the path in the yaml file
+    :param dtype: List[type] or Any, the type to test
+
+    :return:
+    """
+    # make dtype a list of dtypes
+    if not isinstance(dtype, list):
+        dtypes = [dtype]
+    else:
+        dtypes = list(dtype)
+    # start a counter
+    it = 0
+    # loop around dtypes
+    while it < len(dtypes):
+        # try to get value
+        try:
+            # if we have a int or float try to convert it
+            if dtype in [int, float, bool]:
+                # if we have a string evaluate value
+                if isinstance(value, str):
+                    value = eval(value)
+                # cast value
+                return dtype(value)
+            # any other type we don't try to cast
+            else:
+                return value
+        # deal with exceptions (continue to next dtype or raise error)
+        except Exception as _:
+            # try next type
+            if it < len(dtypes) - 1:
+                it += 1
+                continue
+            # raise error once all dtypes have been tried
+            emsg = (f'ParamError: Parameter "{key}" ({path} '
+                    f'must be type {dtype}')
+            raise base_classes.TransitFitExcept(emsg)
 
 
 # =============================================================================

@@ -10,8 +10,9 @@ Created on 2022-04-13
 @author: cook
 """
 from astropy.table import Table
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
+import os
 from typing import Dict, Optional
 
 import transitfit5 as transit_fit
@@ -31,19 +32,79 @@ TransitFit = mcmc.TransitFit
 ParamDict = base_classes.ParamDict
 # must be a dict equal to the expected number of order
 ORDER_COLORS = {0: 'black', 1: 'blue', 2: 'orange', 3: 'green'}
+# printer
+cprint = base_classes.Printer()
 
 
 # =============================================================================
-# Define functions
+# Define worker functions
 # =============================================================================
-def plot_flux(data: InputData):
+def start_plot(params: ParamDict, name: str) -> bool:
+    """
+    For now just a switch to avoid plotting
+
+    :param params: ParamDict, parameter dictionary of constants
+
+    :return: bool, True if we want to exit (not plot)
+    """
+    if 0 in params['PLOTMODE']:
+        return True
+    else:
+        # print that we are plotting
+        cprint(f'PLOTTING: {name}')
+        # return False
+        return False
+
+
+def end_plot(params: ParamDict, name: str):
+    """
+    End plotting (save or show)
+
+    :param params: ParamDict, parameter dictionary of constants
+    :param name: str, the short name for the filename
+
+    :return: None, writes file to disk or shows on screen
+    """
+    # deal with saving to disk
+    if 1 in params['PLOTMODE']:
+        # get output path
+        outpath = params['OUTDIR']
+        outname = params['OUTNAME'] + name
+        # deal with no output dir
+        if not os.path.exists(outpath):
+            os.makedirs(outpath)
+        # get full paths
+        plot_file1 = os.path.join(outpath, outname + '.jpg')
+        plot_file2 = os.path.join(outpath, outname + '.pdf')
+        # save figures
+        plt.savefig(plot_file1)
+        plt.savefig(plot_file2)
+    # else we show (PLOTMODE == 2)
+    if 2 in params['PLOTMODE']:
+        # show and close
+        plt.show()
+    # close plots (if not interactive)
+    if not plt.isinteractive():
+        plt.close()
+
+
+# =============================================================================
+# Define plot functions
+# =============================================================================
+def plot_flux(params: ParamDict, data: InputData):
     """
     Plot the flux data for each wavelength
 
+    :param params: ParamDict, parameter dictionary of constants
     :param data: InputData instance
 
     :return: None, plots graph
     """
+    # set plot name
+    plot_name = 'plot_flux'
+    # start plot
+    if start_plot(params, name=plot_name):
+        return
     # Show a plot of the data. Each colour is a different wavelength.
     fig, frame = plt.subplots(ncols=1, nrows=1)
     frame.set(xlabel='Time (days)', ylabel='Flux')
@@ -58,21 +119,26 @@ def plot_flux(data: InputData):
     # adjust limits
     plt.subplots_adjust(hspace=0, left=0.05, right=0.975, top=0.975,
                         bottom=0.05)
-    # show and close
-    plt.show()
-    if not plt.isinteractive():
-        plt.close()
+    # end plot
+    end_plot(params, name=plot_name)
 
 
-def plot_transit_fit(tfit: TransitFit, bandpass: Optional[int] = None):
+def plot_transit_fit(params: ParamDict, tfit: TransitFit,
+                     bandpass: Optional[int] = None):
     """
     Plot the current parameter transit model fit along with the data
 
+    :param params: ParamDict, parameter dictionary of constants
     :param tfit: TransFit data class, storage of transit params and data
     :param bandpass:
 
     :return: None, plots graph
     """
+    # set plot name
+    plot_name = 'plot_transit_fit'
+    # start plot
+    if start_plot(params, name=plot_name):
+        return
     # if we have a single bandpass sort out only using this bandpass
     if bandpass is not None:
         # check bandpass
@@ -124,39 +190,49 @@ def plot_transit_fit(tfit: TransitFit, bandpass: Optional[int] = None):
     # adjust limits
     plt.subplots_adjust(hspace=0, left=0.05, right=0.975, top=0.975,
                         bottom=0.05)
-    # show and close
-    plt.show()
-    if not plt.isinteractive():
-        plt.close()
+    # end plot
+    end_plot(params, name='plot_flux')
 
 
-def plot_chain(chain: np.ndarray, chain_num: int):
+def plot_chain(params: ParamDict, chain: np.ndarray, chain_num: int):
     """
     Plot a single chain
 
+    :param params: ParamDict, parameter dictionary of constants
     :param chain: np.ndarray, the chain [n_steps, x_n]
     :param chain_num: int, the position in chain to get (positive to count
                       from start, negative to count from end)
 
     :return: None, plots graph
     """
+    # set plot name
+    plot_name = 'plot_chain'
+    # start plot
+    if start_plot(params, name=plot_name):
+        return
+    # plot chain
     plt.plot(chain[:, chain_num])
-    # show and close
-    plt.show()
-    if not plt.isinteractive():
-        plt.close()
+    # end plot
+    end_plot(params, name='plot_flux')
 
 
-def plot_chains(chain: np.ndarray, burnin: int, labels: np.ndarray):
+def plot_chains(params: ParamDict, chain: np.ndarray, burnin: int,
+                labels: np.ndarray):
     """
     Plot the full set of chains
 
+    :param params: ParamDict, parameter dictionary of constants
     :param chain: np.ndarray, the chain [n_steps, x_n]
     :param burnin: int, the number of chains to burn (ignore) at start
     :param labels: np.ndarray, the array of names of fitted params [x_n]
 
     :return: None, plots graph
     """
+    # set plot name
+    plot_name = 'plot_chains'
+    # start plot
+    if start_plot(params, name=plot_name):
+        return
     # get the number of parameters
     n_param = chain.shape[1]
     # setup figure and frames
@@ -173,18 +249,17 @@ def plot_chains(chain: np.ndarray, burnin: int, labels: np.ndarray):
         # turn off the xtick labels for all but the last frame
         if param_it + 1 < n_param:
             frames[param_it].set_xticklabels([])
-    # show and close
-    plt.show()
-    if not plt.isinteractive():
-        plt.close()
+    # end plot
+    end_plot(params, name='plot_flux')
 
 
-def plot_hist(tfit: TransitFit, chain: np.ndarray,
+def plot_hist(params: ParamDict, tfit: TransitFit, chain: np.ndarray,
               param_num: Optional[int] = None):
     """
     Plot the histogram for chains for one parameter or all parameters
     (if param_num is unset)
 
+    :param params: ParamDict, parameter dictionary of constants
     :param tfit: Transit fit class
     :param chain: np.ndarray the chains [n_steps, n_param]
     :param param_num: int, either 0 to n_param or None - if set only plots
@@ -192,6 +267,11 @@ def plot_hist(tfit: TransitFit, chain: np.ndarray,
 
     :return: None, plots graph
     """
+    # set plot name
+    plot_name = 'plot_hist'
+    # start plot
+    if start_plot(params, name=plot_name):
+        return
     # deal with one parameter vs all parameters
     #   then grid is NxM where NxM >= tfit.n_x
     if param_num is None:
@@ -224,19 +304,18 @@ def plot_hist(tfit: TransitFit, chain: np.ndarray,
             frame.set_title(xnames[kt], y=1.0, pad=-14)
         else:
             frame.axis('off')
-    # show and close
-    plt.show()
-    if not plt.isinteractive():
-        plt.close()
+    # end plot
+    end_plot(params, name='plot_flux')
 
 
-def plot_spectrum(data: InputData, results: Table, key: str = 'RD1',
-                  model: Optional[Dict[int, Table]] = None,
+def plot_spectrum(params: ParamDict, data: InputData, results: Table,
+                  key: str = 'RD1', model: Optional[Dict[int, Table]] = None,
                   binkey: str = 'RPRS', pkind: str = 'mode',
                   fullmodel: Optional[Table] = None):
     """
     Plots the parameter against wavelength
 
+    :param params: ParamDict, parameter dictionary of constants
     :param data: InputData array, containing the wavelengths
     :param results: Table, the results table from Sampler.results()
     :param key: str, the y axis label (defaults to RD1)
@@ -249,6 +328,11 @@ def plot_spectrum(data: InputData, results: Table, key: str = 'RD1',
 
     :return: None, plots graph
     """
+    # set plot name
+    plot_name = 'plot_spectrum'
+    # start plot
+    if start_plot(params, name=plot_name):
+        return
     # set up figure
     fig, frame = plt.subplots(ncols=1, nrows=1, figsize=(12, 8))
     # -------------------------------------------------------------------------
@@ -295,10 +379,8 @@ def plot_spectrum(data: InputData, results: Table, key: str = 'RD1',
     frame.set(xlabel=r'Wavelength ($\mu$m)', ylabel=r'$R_{p}/R_{\star}$',
               xlim=[0.6, 3.0], title=title)
     frame.legend(loc=0)
-    # show and close
-    plt.show()
-    if not plt.isinteractive():
-        plt.close()
+    # end plot
+    end_plot(params, name='plot_flux')
 
 
 # =============================================================================

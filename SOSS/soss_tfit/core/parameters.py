@@ -37,14 +37,18 @@ params.set(key='ORDERS', value=[1, 2], source=__NAME__,
            desc='Orders to use ',
            dtype=list, path='global_params.orders')
 
-# Number of bins used for each order for spectral binning
-#       (set to None for no binning)
+# Plot mode, 0: no plots, 1: to file, 2: to screen
+params.set(key='PLOTMODE', value=2, source=__NAME__,
+           desc='Plot mode, 0: no plots, 1: to file, 2: to screen',
+           dtype=list, path='global_params.plotmode')
 
-# default value depends on params['ORDERS']
+# some default values depends on params['ORDERS']
 order_bins = dict()
 for onum in params['ORDERS']:
     order_bins[onum] = None
 
+# Number of bins used for each order for spectral binning
+#       (set to None for no binning)
 params.set(key='ORDER_BINS', value=order_bins, source=__NAME__,
            desc='Number of bins used for each order for spectral binning '
                 '(set to None for no binning)',
@@ -59,6 +63,13 @@ params.set(key='TNORM', value=dict(before=None, after=None), source=__NAME__,
                 'or after does not normalize by this region \n\t setting both '
                 'to None does not normalize',
            dtype=dict, path='global_params.tnorm')
+
+# remove bins from orders (list bin indices to remove)
+#   list per order or set to None to skip removal
+params.set(key='REMOVE_BINS', value=order_bins, source=__NAME__,
+           desc='remove bins from orders (list bin indices to remove) '
+                'list per order or set to None to skip removal',
+           dtype=dict, path='global_params.remove_bins')
 
 # input extracted spctrum - aboslute path (must be set)
 params.set(key='INSPECTRUM', value=None, source=__NAME__,
@@ -174,9 +185,9 @@ params.set(key='BUFFER_COVERGE_CRIT', value=1.2, source=__NAME__,
            dtype=float, path='mcmc_params.buf_converge_crit')
 
 # correction to beta term for deMCMC vector jump
-params.set(key='CORBETA', value=0.3, source=__NAME__,
+params.set(key='CORBETA', value=dict(trail=1, full=0.3), source=__NAME__,
            desc='correction to beta term for deMCMC vector jump',
-           dtype=float, path='mcmc_params.corbeta')
+           dtype=dict, path='mcmc_params.corbeta')
 
 # Number of walker threads
 #      Must be equal to 1 or a multiple of the number of walkers
@@ -248,6 +259,11 @@ params.set(key='DILUTION', value=None, source=__NAME__,
 params.set(key='ZEROPOINT', value=None, source=__NAME__,
            desc='Out of transit baseline (set in code)',
            dtype=FitParam, path='star.zeropoint', label='ZPT')
+
+# Whether to update zeropoint using data
+params.set(key='UPDATE_ZEROPOINT', value=False, source=__NAME__,
+           desc='Whether to update zeropoint using data',
+           dtype=bool, path='star.update_zeropoint')
 
 # =============================================================================
 # Define planet parameters
