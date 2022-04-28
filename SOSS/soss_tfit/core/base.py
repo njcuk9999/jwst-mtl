@@ -15,8 +15,8 @@ from astropy.time import Time
 # Define variables
 # =============================================================================
 __NAME__: str = 'base.py'
-__version__: str = '0.0.8'
-__date__: str = '2022-04-22'
+__version__: str = '0.0.11'
+__date__: str = '2022-04-28'
 __authors__: str = 'Neil Cook, Jason Rowe, David Lafreniere, Loic Albert'
 __package__: str = 'soss_tfit'
 
