@@ -17,7 +17,7 @@ from soss_tfit.science import plot
 # Define variables
 # =============================================================================
 SAMPLER_PICKLE = ('/data/jwst-soss/data/jwst-mtl-user/wasp52b/outputs/'
-                  'results_sampler.pickle')
+                  'wasp52b_sampler.pickle')
 
 # =============================================================================
 # Start of code

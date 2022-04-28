@@ -14,6 +14,7 @@ from astropy.table import Table
 import numpy as np
 import os
 import pickle
+import time
 from tqdm import tqdm
 from typing import Any, Dict, List, Optional, Tuple
 import warnings
@@ -834,7 +835,9 @@ def mhg_mcmc(tfit: TransitFit, loglikelihood: Any, beta: np.ndarray,
     # -------------------------------------------------------------------------
     # Step 3 Compute the acceptance probability
     # -------------------------------------------------------------------------
-    alpha = min(np.exp(llxt - tfit.llx), 1.0)
+    # llxt can be -np.inf --> therefore we suppress overflow warning here
+    with warnings.catch_warnings(record=True) as _:
+        alpha = min(np.exp(llxt - tfit.llx), 1.0)
     # -------------------------------------------------------------------------
     # Step 4 Accept or reject trial
     # -------------------------------------------------------------------------
@@ -966,7 +969,7 @@ def beta_rescale(params: ParamDict, tfit: TransitFit,
     corscale = np.ones(n_x)
     # -------------------------------------------------------------------------
     # print progress
-    cprint('Beta Rescale: Gen Chain 1', level='info')
+    cprint('Beta Rescale: Initial Gen Chain', level='info')
     # initial run of gen chain
     hchain, hrejects = genchain(tfit, nsteps, tfit.beta, mcmcfunc,
                                 loglikelihood, progress=True)
@@ -1071,7 +1074,9 @@ def beta_rescale(params: ParamDict, tfit: TransitFit,
 def genchain(tfit: TransitFit, niter: int, beta: np.ndarray,
              mcmcfunc, loglikelihood,
              buffer: Optional = None, corbeta: float = 1.0,
-             progress: bool = False) -> Tuple[np.ndarray, np.ndarray]:
+             progress: bool = False,
+             nwalker: Optional[int] = None,
+             ngroup: Optional[int] = None) -> Tuple[np.ndarray, np.ndarray]:
     """
     Generate Markov Chain
 
@@ -1111,23 +1116,48 @@ def genchain(tfit: TransitFit, niter: int, beta: np.ndarray,
     # pre-compute the first log-likelihood
     tfit.llx = loglikelihood(tfit)
     # -------------------------------------------------------------------------
+    # inner loop to save repeating code
+    def inner_loop_code(tfitloop: TransitFit):
+        # run the mcmc function
+        tfitloop = mcmcfunc(tfitloop, loglikelihood, beta, buffer, corbeta)
+        # append results to chains and rejections lists
+        chains.append(np.array(tfitloop.x0))
+        rejections.append(np.array(tfitloop.ac))
+        return tfitloop
+
+    # -------------------------------------------------------------------------
     # now to the full loop of niterations
-    if progress:
+    # -------------------------------------------------------------------------
+    # deal with parallel process
+    if nwalker is not None and ngroup is not None:
+        # store timings
+        timings = [0.0]
+        # loop around iterations
+        for n_it in range(0, niter):
+            # print every 10%
+            if n_it % (0.1 * niter) == 0:
+                cprint(f'\tGroup={ngroup} walker={nwalker} '
+                       f'iteration={n_it}/{niter}'
+                       f' ({np.mean(timings):.3f} s/it)')
+            # start time
+            start = time.time()
+            tfit = inner_loop_code(tfit)
+            # add to timings
+            timings.append(time.time() - start)
+        # print timing
+        cprint(f'\tGroup={ngroup} walker={nwalker} {niter} in '
+               f'{np.sum(timings):.3f} s', level='warning')
+    # deal with wanting to display process (linear run)
+    elif progress:
         # loop around iterations
         for _ in tqdm(range(0, niter)):
-            # run the mcmc function
-            tfit = mcmcfunc(tfit, loglikelihood, beta, buffer, corbeta)
-            # append results to chains and rejections lists
-            chains.append(np.array(tfit.x0))
-            rejections.append(np.array(tfit.ac))
+            tfit = inner_loop_code(tfit)
+    # otherwise display nothing
     else:
         # loop around iterations
         for _ in range(0, niter):
-            # run the mcmc function
-            tfit = mcmcfunc(tfit, loglikelihood, beta, buffer, corbeta)
-            # append results to chains and rejections lists
-            chains.append(np.array(tfit.x0))
-            rejections.append(np.array(tfit.ac))
+            tfit = inner_loop_code(tfit)
+
     # -------------------------------------------------------------------------
     # convert lists to arrays
     chains = np.array(chains)
@@ -1350,7 +1380,7 @@ class Sampler:
         corbeta = self.params['CORBETA'][self.mode]
         # ---------------------------------------------------------------------
         # deal with having a trial sampler
-        sampler = trial
+        in_sampler = trial
         # ---------------------------------------------------------------------
         # loop around
         # ---------------------------------------------------------------------
@@ -1364,7 +1394,7 @@ class Sampler:
             # set the constant genchain parameters
             gkwargs = dict(niter=nsteps, beta=self.tfit.beta * corscale,
                            loglikelihood=loglikelihood, mcmcfunc=mcmcfunc,
-                           corbeta=corbeta, progress=True)
+                           corbeta=corbeta)
             # print progress
             cprint(f'MCMC Loop {nloop} [{self.mode}]', level='info')
             # -----------------------------------------------------------------
@@ -1372,25 +1402,12 @@ class Sampler:
             # -----------------------------------------------------------------
             # print progress
             cprint(f'\tGetting chains for {nwalkers} walkers', level='info')
-            # get the chains
-            # TODO: parallize this
-            for nwalker in range(nwalkers):
-                # copy tfit
-                htfit = self.tfit.copy()
-                # get the buffer from previous chain and update tfit from
-                #   previous chain.
-                # Previous chain can be from another sampler or from a
-                #   previous iteration of the NLOOP while loop
-                # Also updates the starting x0 and p0 for htfit
-                buffer, htfit = start_from_previous_chains(self, htfit, sampler)
-                # get chains and rejects for this walker
-                hchains, hrejects = genchain(htfit, buffer=buffer, **gkwargs)
-                # push chains into walker storage
-                self.wchains[nwalker] = merge_chains(self.wchains[nwalker],
-                                                     hchains)
-                # push rejects into walker storage
-                self.wrejects[nwalker] = merge_chains(self.wrejects[nwalker],
-                                                      hrejects)
+            # get the chains in a parallel way
+            wchains, wrejects = _multi_process_pool(self, in_sampler,
+                                                    nwalkers, gkwargs)
+            # push chains/rejects into Sampler
+            self.wchains = wchains
+            self.wrejects = wrejects
 
             # -----------------------------------------------------------------
             # Calculate the Gelman-Rubin Convergence
@@ -1404,9 +1421,9 @@ class Sampler:
                                               npt=self.tfit.n_phot)
             # print the factors
             cprint('\tRc param:')
-            for param_it in range(self.tfit.n_param):
+            for param_it in range(self.tfit.n_x):
                 # print Rc parameter
-                pargs = [param_it, self.tfit.pnames[param_it],
+                pargs = [param_it, self.tfit.xnames[param_it],
                          grtest[param_it]]
                 cprint('\t\t{0:3d} {1:3s}: {2:.4f}'.format(*pargs))
             # update the full chains
@@ -1446,7 +1463,7 @@ class Sampler:
                 nloop += 1
                 # deal with chain update for next loop
                 if self.mode == 'full':
-                    sampler = self
+                    in_sampler = self
 
     def posterior_print(self):
 
@@ -1460,7 +1477,7 @@ class Sampler:
             pargs = [x_it, self.tfit.xnames[x_it], medians[x_it]]
             cprint('\t{0} {1:3s}: {2:.5f}'.format(*pargs))
 
-    def results(self, start_chain: int = 0) -> Table:
+    def results(self, start_chain: int = 0):
         """
         Get the results using all sampler.chain
 
@@ -1818,7 +1835,24 @@ def update_x0_p0_from_chain(tfit: TransitFit, chain: np.ndarray,
 # =============================================================================
 # Define worker functions
 # =============================================================================
-def __assign_pvalue(key, pdict, n_phot, func_name):
+PvalueReturn = Tuple[np.ndarray, bool, bool, Optional[Dict[str, Any]],
+                     str, Optional[Any]]
+
+
+def __assign_pvalue(key: str, pdict: ParamDict, n_phot: int, func_name: str):
+    """
+    Get the pvalue from params (pdict)
+
+    :param key: str, the key to get
+    :param pdict: ParamDict, the parameter dictionary to get value from
+    :param n_phot: int, the number of photometric band passes
+    :param func_name: str, the function name (for source)
+
+    :return: tuple, 1. the solution (p0), 2. whether value is to be fitted
+                    3. whether the parameter is wavelength dependent
+                    4. the prior dictionary, 5. the name of the parameter
+                    6. the forced beta value (None if not forced)
+    """
     # deal with key = None
     if key is None:
         p0 = np.zeros(n_phot)
@@ -1844,6 +1878,97 @@ def __assign_pvalue(key, pdict, n_phot, func_name):
     p0, fmask, wmask, prior, pnames, pbeta = fitparam.get_value(n_phot)
 
     return p0, fmask, wmask, prior, pnames, pbeta
+
+
+MultiReturn = Tuple[Dict[int, np.ndarray], Dict[int, np.ndarray]]
+
+
+def _multi_process_pool(sampler: Sampler, in_sampler: Sampler, nwalkers: int,
+                        gkwargs: dict) -> MultiReturn:
+    """
+    Multiprocessing using multiprocessing.Process
+
+    split into groups based on the max number of N_WALKER_THREADS requested
+
+    :param sampler: Sampler class
+    :param nwalkers: int, the total number of walkers
+    :param gkwargs: dictionary, constant args to pass to the linear process
+
+    :return: tuple, 1. dictionary the chains for each walker
+                    2. dictionary the rejects for each walker
+    """
+    # deal with Pool specific imports
+    from multiprocessing import get_context
+    from multiprocessing import set_start_method
+    try:
+        set_start_method("spawn")
+    except RuntimeError:
+        pass
+    # start process manager
+    wchains = dict()
+    wrejects = dict()
+    # get the number of threads (N_WALKER_THREADS)
+    n_walker_threads = sampler.params['N_WALKER_THREADS']
+    # --------------------------------------------------------------------------
+    # populate the return dictionary
+    for nwalker in range(nwalkers):
+        wchains[nwalker] = np.array([])
+        wrejects[nwalker] = np.array([])
+    # --------------------------------------------------------------------------
+    # list of params for each entry
+    params_per_process = []
+    # populate params for each sub group
+    for nwalker in range(nwalkers):
+        args = (sampler, in_sampler, nwalker, gkwargs, 0)
+        params_per_process.append(args)
+    # start parallel jobs
+    with get_context('spawn').Pool(n_walker_threads, maxtasksperchild=1) as pool:
+        results = pool.starmap(_linear_process, params_per_process)
+    # --------------------------------------------------------------------------
+    # fudge back into return dictionary
+    for row in range(len(results)):
+        wchains[row] = results[row][0]
+        wrejects[row] = results[row][1]
+    # --------------------------------------------------------------------------
+    # return these
+    return wchains, wrejects
+
+
+def _linear_process(sampler: Sampler, in_sampler: Sampler,
+                    nwalker: int, gkwargs: dict,
+                    ngroup: int) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    The linear process to run in parallel
+
+    :param sampler: Sampler class
+    :param in_sampler: Sampler class, used for buffer if provided
+    :param nwalker: int, the walker number
+    :param gkwargs: dictionary, constant args to pass to the linear process
+    :param ngroup: int, the group number
+    :param return_dict: the multiprocessing return dictionary (acts like
+                        normal dictionary)
+    :param loglikelihood: function: loglikelihood function
+    :param mcmcfunc: function: mcmcfunc function
+
+    :return: tuple, 1. the chains, 2. the rejects
+    """
+    # copy tfit
+    htfit = sampler.tfit.copy()
+    # get the buffer from previous chain and update tfit from
+    #   previous chain.
+    # Previous chain can be from another sampler or from a
+    #   previous iteration of the NLOOP while loop
+    # Also updates the starting x0 and p0 for htfit
+    buffer, htfit = start_from_previous_chains(sampler, htfit, in_sampler)
+    # get chains and rejects for this walker
+    hchains, hrejects = genchain(htfit, buffer=buffer, nwalker=nwalker,
+                                 ngroup=ngroup, **gkwargs)
+    # push chains into walker storage
+    wchains = merge_chains(sampler.wchains[nwalker], hchains)
+    # push rejects into walker storage
+    wrejects = merge_chains(sampler.wrejects[nwalker], hrejects)
+    # return the return_dict
+    return wchains, wrejects
 
 
 # =============================================================================

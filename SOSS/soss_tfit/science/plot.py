@@ -69,7 +69,7 @@ def end_plot(params: ParamDict, name: str):
     if 1 in params['PLOTMODE']:
         # get output path
         outpath = params['OUTDIR']
-        outname = params['OUTNAME'] + name
+        outname = params['OUTNAME'] + '_' + name
         # deal with no output dir
         if not os.path.exists(outpath):
             os.makedirs(outpath)
@@ -191,7 +191,7 @@ def plot_transit_fit(params: ParamDict, tfit: TransitFit,
     plt.subplots_adjust(hspace=0, left=0.05, right=0.975, top=0.975,
                         bottom=0.05)
     # end plot
-    end_plot(params, name='plot_flux')
+    end_plot(params, name=plot_name)
 
 
 def plot_chain(params: ParamDict, chain: np.ndarray, chain_num: int):
@@ -213,7 +213,7 @@ def plot_chain(params: ParamDict, chain: np.ndarray, chain_num: int):
     # plot chain
     plt.plot(chain[:, chain_num])
     # end plot
-    end_plot(params, name='plot_flux')
+    end_plot(params, name=plot_name)
 
 
 def plot_chains(params: ParamDict, chain: np.ndarray, burnin: int,
@@ -250,7 +250,7 @@ def plot_chains(params: ParamDict, chain: np.ndarray, burnin: int,
         if param_it + 1 < n_param:
             frames[param_it].set_xticklabels([])
     # end plot
-    end_plot(params, name='plot_flux')
+    end_plot(params, name=plot_name)
 
 
 def plot_hist(params: ParamDict, tfit: TransitFit, chain: np.ndarray,
@@ -305,7 +305,7 @@ def plot_hist(params: ParamDict, tfit: TransitFit, chain: np.ndarray,
         else:
             frame.axis('off')
     # end plot
-    end_plot(params, name='plot_flux')
+    end_plot(params, name=plot_name)
 
 
 def plot_spectrum(params: ParamDict, data: InputData, results: Table,
@@ -329,7 +329,7 @@ def plot_spectrum(params: ParamDict, data: InputData, results: Table,
     :return: None, plots graph
     """
     # set plot name
-    plot_name = 'plot_spectrum'
+    plot_name = f'plot_spectrum_{pkind}'
     # start plot
     if start_plot(params, name=plot_name):
         return
@@ -380,7 +380,7 @@ def plot_spectrum(params: ParamDict, data: InputData, results: Table,
               xlim=[0.6, 3.0], title=title)
     frame.legend(loc=0)
     # end plot
-    end_plot(params, name='plot_flux')
+    end_plot(params, name=plot_name)
 
 
 # =============================================================================
