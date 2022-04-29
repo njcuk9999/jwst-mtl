@@ -136,6 +136,8 @@ mcmc_params:
     #      Must be equal to 1 or a multiple of the number of walkers
     N_walker_threads: 3
     # Number of fit threads per chain
+    #    Currently this does not work, use export OMP_NUM_THREADS=N
+    #    before running! OMP_NUM_THREADS=N_fit_threads
     N_fit_threads: 8
 
 

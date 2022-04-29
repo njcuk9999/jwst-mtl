@@ -33,6 +33,17 @@ You must add the following to your bash
     export PYTHONPATH="{INTROOT}/SOSS/transitfit":$PYTHONPATH
     export PATH="{INTROOT}/SOSS/soss_tfit/recipe":$PATH
 
+Currently you have to set the number of threads to use for each fit using the following
+Note this is NOT the total number of threads.
+
+    export OMP_NUM_THREADS=N
+
+This value should match "N_fit_threads" in the yaml file.
+
+The total number of threads = N_walker_threads * N_fit_threads
+
+i.e. if N_walker_threads = 3 and N_fit_threads = 8 you need at least 24 threads available.
+
 
 ### 1.1 Install using conda
 

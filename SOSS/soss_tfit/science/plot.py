@@ -106,7 +106,7 @@ def plot_flux(params: ParamDict, data: InputData):
     if start_plot(params, name=plot_name):
         return
     # Show a plot of the data. Each colour is a different wavelength.
-    fig, frame = plt.subplots(ncols=1, nrows=1)
+    fig, frame = plt.subplots(ncols=1, nrows=1, figsize=(16, 12))
     frame.set(xlabel='Time (days)', ylabel='Flux')
     # get photometric data dictionary
     phot = data.phot
@@ -155,11 +155,11 @@ def plot_transit_fit(params: ParamDict, tfit: TransitFit,
         bandpasses = np.arange(0, tfit.n_phot)
     # plot
     if len(bandpasses) == 1:
-        fig, frame = plt.subplots(ncols=1, nrows=1, figsize=(12, 8))
+        fig, frame = plt.subplots(ncols=1, nrows=1, figsize=(16, 12))
         frames = [frame]
     else:
         fig, frames = plt.subplots(ncols=1, nrows=len(bandpasses), sharex='all',
-                                   figsize=(12, 6*len(bandpasses)))
+                                   figsize=(16, 10*len(bandpasses)))
 
     # loop around bandpasses
     for b_it in range(len(bandpasses)):
@@ -210,8 +210,10 @@ def plot_chain(params: ParamDict, chain: np.ndarray, chain_num: int):
     # start plot
     if start_plot(params, name=plot_name):
         return
+    # setup plot
+    fig, frame = plt.subplots(ncols=1, nrows=1, figsize=(16, 12))
     # plot chain
-    plt.plot(chain[:, chain_num])
+    frame.plot(chain[:, chain_num])
     # end plot
     end_plot(params, name=plot_name)
 
@@ -237,7 +239,7 @@ def plot_chains(params: ParamDict, chain: np.ndarray, burnin: int,
     n_param = chain.shape[1]
     # setup figure and frames
     fig, frames = plt.subplots(nrows=n_param, ncols=1,
-                               figsize=(12, 1.5 * n_param))
+                               figsize=(20, 6 * n_param))
     # loop around parameters
     for param_it in range(n_param):
         # fig[i].subplot(npars, 1, i+1)
@@ -280,14 +282,15 @@ def plot_hist(params: ParamDict, tfit: TransitFit, chain: np.ndarray,
         nrows = int(np.sqrt(tfit.n_x))
         ncols = (tfit.n_x // nrows) + 1
         # set up figure
-        fig, frames = plt.subplots(ncols=ncols, nrows=nrows)
+        fig, frames = plt.subplots(ncols=ncols, nrows=nrows,
+                                   figsize=(10*ncols, 10*nrows))
         # get all positions within the grid
         ijarr = [(i, j) for i in range(nrows) for j in range(ncols)]
     # else we have one plot - the grid is (1x1) and the plotting is easy
     else:
         xnames = tfit.xnames[param_num]
         # set up figure
-        fig, frame = plt.subplots(ncols=1, nrows=1)
+        fig, frame = plt.subplots(ncols=1, nrows=1, figsize=(10, 10))
         # we only have one frame but want to use a 1x1 grid
         frames = np.array([[frame]])
         ijarr = [(0, 0)]
@@ -334,7 +337,7 @@ def plot_spectrum(params: ParamDict, data: InputData, results: Table,
     if start_plot(params, name=plot_name):
         return
     # set up figure
-    fig, frame = plt.subplots(ncols=1, nrows=1, figsize=(12, 8))
+    fig, frame = plt.subplots(ncols=1, nrows=1, figsize=(16, 12))
     # -------------------------------------------------------------------------
     # get the results for binkey
     rmask = results['NAME'] == key
