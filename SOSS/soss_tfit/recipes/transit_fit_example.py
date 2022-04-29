@@ -167,8 +167,9 @@ if __name__ == "__main__":
     sampler2.save_chains()
 
     # dump the sampler class to disk so it can be loaded later
+    #   we add data and tfit_final (as tfit)
     cprint('Dumping sampler to pickle file')
-    sampler2.dump(data=data)
+    sampler2.dump(tfit=tfit_final, data=data)
 
     # -------------------------------------------------------------------------
     # Step 8: plot spectrum - using sampler only so we can load from file

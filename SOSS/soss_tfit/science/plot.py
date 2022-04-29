@@ -159,7 +159,7 @@ def plot_transit_fit(params: ParamDict, tfit: TransitFit,
         frames = [frame]
     else:
         fig, frames = plt.subplots(ncols=1, nrows=len(bandpasses), sharex='all',
-                                   figsize=(16, 10*len(bandpasses)))
+                                   figsize=(16, 2*len(bandpasses)))
 
     # loop around bandpasses
     for b_it in range(len(bandpasses)):
@@ -239,7 +239,7 @@ def plot_chains(params: ParamDict, chain: np.ndarray, burnin: int,
     n_param = chain.shape[1]
     # setup figure and frames
     fig, frames = plt.subplots(nrows=n_param, ncols=1,
-                               figsize=(20, 6 * n_param))
+                               figsize=(16, 1 * n_param))
     # loop around parameters
     for param_it in range(n_param):
         # fig[i].subplot(npars, 1, i+1)
@@ -283,7 +283,7 @@ def plot_hist(params: ParamDict, tfit: TransitFit, chain: np.ndarray,
         ncols = (tfit.n_x // nrows) + 1
         # set up figure
         fig, frames = plt.subplots(ncols=ncols, nrows=nrows,
-                                   figsize=(10*ncols, 10*nrows))
+                                   figsize=(2*ncols, 2*nrows))
         # get all positions within the grid
         ijarr = [(i, j) for i in range(nrows) for j in range(ncols)]
     # else we have one plot - the grid is (1x1) and the plotting is easy
