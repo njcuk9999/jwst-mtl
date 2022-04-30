@@ -380,6 +380,13 @@ class ParamDict(UserDict):
         """
         return self.__str__()
 
+    def view(self):
+        # get string representation
+        string = self.__str__()
+        # loop around to print full dictionary
+        for _str in string.split('\n'):
+            print(_str)
+
     def param_table(self) -> Table:
         """
         Create a parameter table as a snapshot of the current parameters

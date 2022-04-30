@@ -18,9 +18,6 @@ from soss_tfit.science import plot
 # =============================================================================
 # Define variables
 # =============================================================================
-# config file (could be an argument)
-CONFIG_FILE = ('/data/jwst-soss/bin/jwst-mtl-soss/SOSS/soss_tfit/recipes/'
-               'example_neiltest.yaml')
 # printer
 cprint = core.base_classes.Printer()
 
