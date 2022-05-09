@@ -693,6 +693,8 @@ def lnpriors(tfit) -> float:
         prior = tfit.get(names[param_it], 'prior')
         # loop around band passes
         for phot_it in range(n_phot):
+            # TODO: change to allow different function
+            #       this may not be True/False
             # get prior function - default prior is a tophat function
             func = prior.get('func', tophat_prior)
             # function returns True if pass prior condition
