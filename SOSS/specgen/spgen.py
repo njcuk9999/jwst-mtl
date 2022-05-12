@@ -58,6 +58,7 @@ class ModelPars:
         self.xpadding = 0  # padding in native pixels on left and right of actual image
         self.ypadding = 0  # padding above and below
         self.noversample = 1  # oversampling
+        self.wfrealization = 0 # Wave front realization (0 to 9)
         self.gain = 1.6  # electronic gain [e-/adu]
         self.saturation = 65536.0  # saturation
         self.ngroup = 1  # samples up ramp
@@ -263,6 +264,8 @@ class ModelPars:
                             self.xcen = np.float(columns[1])
                         elif command == 'oversample':
                             self.noversample = int(np.float(columns[1]))
+                        elif command == 'wfrealization':
+                            self.wfrealization = int(np.float(columns[1]))
                         elif command == 'orderlist':
                             # Complicated because user may enter, for examples:
                             # 0,1,2   or    [1,2]     or   [-1,3]  or    1
@@ -544,8 +547,11 @@ def read_response(throughput_file, verbose=True, f277w=False, path_filter_transm
     response.response_order.append(3)
 
     if set_response_to_unity:
-        for i in range(-1,3):
-            response.response[i] = response.response[i] * 0 + 1
+        response.response[-1] = response.response[-1] * 0 + 1
+        response.response[0] = response.response[0] * 0 + 1
+        response.response[1] = response.response[1] * 0 + 1
+        response.response[2] = response.response[2] * 0 + 1
+        response.response[3] = response.response[3] * 0 + 1
 
     # Close FITS file
     a.close()
@@ -1171,7 +1177,7 @@ def resample_models_old(dw, starmodel_wv, starmodel_flux, ld_coeff,
     return bin_starmodel_wv, bin_starmodel_flux, bin_ld_coeff, bin_planetmodel_wv, bin_planetmodel_rprs
 
 
-def readkernels(psfdir, wls=0.5, wle=5.2, dwl=0.05, os=1):
+def readkernels(psfdir, wls=0.5, wle=5.2, dwl=0.05, os=1, wfe=0):
     """ kernels=readkernels(wls=0.5,wle=5.2,dwl=0.05,Kerneldir='Kernel',os=1)
     Inputs
      psfdir    : psf FITS files directory
@@ -1179,14 +1185,22 @@ def readkernels(psfdir, wls=0.5, wle=5.2, dwl=0.05, os=1):
      wle       : wavelength end for Kernels, inclusive (um)
      dwl       : wavelength spacing for Kernels (uw)
      os        : amount of oversampling.  Much be an integer >=1.
+     wfe       : WF map realization (integer between 0 and 9)
     """
     
     kernels=[]
     kernels_wv=[]
     
-    kdir='Kernels'+str(int(os+0.01))+'/'
+    #kdir='Kernels'+str(int(os+0.01))+'/' not used anymore
     prename='SOSS_os10_128x128_'
-    extname='_wfe0.fits'
+    # Select which Wavefront realization to use
+    if (wfe >=0) & (wfe < 10):
+        # Make sure realization is a string between 0 and 9
+        wfe_nbr = str(int(wfe))
+        extname='_wfe'+wfe_nbr+'.fits'
+    else:
+        print('Warning. Wavefront Error Realization different from an integer between 0 and 9 was passed. Defaulting to 0.')
+        extname='_wfe0.fits'
     wl=np.copy(wls)
     while wl<=wle:
         

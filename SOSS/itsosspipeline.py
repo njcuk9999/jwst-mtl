@@ -1057,6 +1057,62 @@ def add_wings(convolved_slice, noversample):
     return convolved_slice
 
 
+def readmonochromatickernels(psfdir, wls=0.5, wle=5.2, dwl=0.05, os=4, wfe=0):
+    """
+    Inputs
+     psfdir    : psf FITS files directory
+     wls       : wavelength start for Kernels, inclusive (um)
+     wle       : wavelength end for Kernels, inclusive (um)
+     dwl       : wavelength spacing for Kernels (uw)
+     os        : amount of oversampling.  Much be an integer >=1.
+     wfe       : WF map realization (integer between 0 and 9)
+    """
+
+    kernels = []
+    kernels_wv = []
+
+    # Handle the pixel oversampling
+    if (os >=1) & (os<=10):
+        os_string = str(int(os))
+    else:
+        print('Warning. Monochromatic PSF kernels oversampled by os outside 1-10 integer was requested. Assume os=4.')
+        os_string = '4'
+    prename = 'SOSS_os'+os_string+'_128x128_'
+
+    # Select which Wavefront realization to use
+    if (wfe >= 0) & (wfe < 10):
+        # Make sure realization is a string between 0 and 9
+        wfe_nbr = str(int(wfe))
+        extname = '_wfe' + wfe_nbr + '.fits'
+    else:
+        print(
+            'Warning. Wavefront Error Realization different from an integer between 0 and 9 was passed. Defaulting to 0.')
+        extname = '_wfe0.fits'
+
+    wl = np.copy(wls)
+    while wl <= wle:
+        wname = '{0:.6f}'.format(int(wl * 100 + 0.1) / 100)
+        # fname=workdir+kerneldir+kdir+prename+wname+extname
+        # (2020/09/02) New path in order to harmonize with rest of code
+        fname = psfdir + prename + wname + extname
+        # print(fname)
+        hdulist = fits.open(fname)
+        # Extract data and rotate (ds9 to sim coordinates). Deprecated.
+        # kernel_1=hdulist[0].data.T
+        # Extract data (of PSFs generated in the DMS coordinates)
+        kernel_1 = hdulist[0].data
+        # Normalize PSF flux to 1
+        kernel_1 = kernel_1 / np.sum(kernel_1)
+        # Stack up each wavelength's PSF
+        kernels.append(np.copy(kernel_1))
+        kernels_wv.append(np.float(wl))
+
+        hdulist.close()
+
+        wl += dwl
+
+    return np.array(kernels), np.array(kernels_wv)
+
 
 def generate_traces(savingprefix, pathPars, simuPars, tracePars, throughput,
                     star_angstrom, star_flux, ld_coeff,
@@ -1094,15 +1150,15 @@ def generate_traces(savingprefix, pathPars, simuPars, tracePars, throughput,
     #    star_angstrom_bin, star_flux_bin, ld_coeff_bin, planet_angstrom_bin, planet_rprs_bin = \
     #        spgen.resample_models(dw, star_angstrom, star_flux, ld_coeff, planet_angstrom, planet_rprs, simuPars,
     #        tracePars)
-    # New rewritten function for resampling
-#    star_angstrom_bin, star_flux_bin, ld_coeff_bin, planet_angstrom_bin, planet_rprs_bin = resample_models(
-#        star_angstrom, star_flux, ld_coeff, planet_angstrom, planet_rprs, simuPars,
-#        tracePars, gridtype='constant_dispersion', dispersion = 0.1, wavelength_start=5000, wavelength_end=55000)
-    # April 4 2022 - playing with the binning to see if it explains the 400 ppm offset in the extracted
-    # transit spectrum extracted by Michael Radica.
+    # New rewritten function for resampling - dispersion in angstrom/pixel (0.1 was used for most sims)
     star_angstrom_bin, star_flux_bin, ld_coeff_bin, planet_angstrom_bin, planet_rprs_bin = resample_models(
         star_angstrom, star_flux, ld_coeff, planet_angstrom, planet_rprs, simuPars,
-        tracePars, gridtype='constant_dispersion', dispersion = 0.001, wavelength_start=5000, wavelength_end=55000)
+        tracePars, gridtype='constant_dispersion', dispersion = 0.1, wavelength_start=5000, wavelength_end=55000)
+    # April 4 2022 - playing with the binning to see if it explains the 400 ppm offset in the extracted
+    # transit spectrum extracted by Michael Radica.
+    #star_angstrom_bin, star_flux_bin, ld_coeff_bin, planet_angstrom_bin, planet_rprs_bin = resample_models(
+    #    star_angstrom, star_flux, ld_coeff, planet_angstrom, planet_rprs, simuPars,
+    #    tracePars, gridtype='constant_dispersion', dispersion = 0.01, wavelength_start=5000, wavelength_end=55000)
 
     # Checked and this is absolutely flat, as expected for constant F_lambda
     # plt.figure()
@@ -1141,16 +1197,22 @@ def generate_traces(savingprefix, pathPars, simuPars, tracePars, throughput,
 
     # Read in Kernels
     print('Reading in and resampling PSF Kernel')
-    kernels, kernels_wv = spgen.readkernels(pathPars.path_monochromaticpsfs)
-    # resize Kernels
-    # limit oversampling to be: 1<10
-    kernel_resize = []
-    for k in kernels:
-        resized = resize(k, (128 * simuPars.noversample, 128 * simuPars.noversample))
-        thesum = np.sum(resized)
-        kernel_resize.append(resized / thesum)
-    # Convert to numpy array (no flux scaling conservation from resize is required)
-    kernel_resize = np.array(kernel_resize) #* (10 / simuPars.noversample)**2
+    #kernels, kernels_wv = spgen.readkernels(pathPars.path_monochromaticpsfs)
+    # New code to read the monochromatic PSF kernels
+    kernels, kernels_wv = readmonochromatickernels(pathPars.path_monochromaticpsfs,
+                                                   os=simuPars.noversample,
+                                                   wfe=simuPars.wfrealization)
+    kernel_resize = kernels
+    if False:
+        # resize Kernels
+        # limit oversampling to be: 1<10
+        kernel_resize = []
+        for k in kernels:
+            resized = resize(k, (128 * simuPars.noversample, 128 * simuPars.noversample))
+            thesum = np.sum(resized)
+            kernel_resize.append(resized / thesum)
+        # Convert to numpy array (no flux scaling conservation from resize is required)
+        kernel_resize = np.array(kernel_resize) #* (10 / simuPars.noversample)**2
 
     #The number of images (slices) that will be simulated is equal the number of orders
     # Don't worry, that 'cube' will be merged down later after flux normalization.
@@ -2138,3 +2200,65 @@ def decontaminate_exposure(file_rateints, file_model):
 
     print('Retrun the cleaned integrations...')
     return clean1, clean2
+
+def extract_seeded_trace(tmp_path, extract1d_file):
+
+
+
+    clear_trace_000175.fits
+
+
+    from jwst import datamodels
+
+    # Read the extracted spectra created by the extract1d step
+    extract1d = datamodels.open(extract1d_file)
+
+    # List all clear_trace_??????.fits files typically found in the tmp/ directory of every simulation run
+    imagelist = glob.glob(tmp_path + 'clear_trace_??????.fits')
+
+
+    # Initialize the output model and output references (model of the detector and box aperture weights).
+    trace = datamodels.MultiSpecModel()
+    trace.update(extract1d)  # Copy meta data from input to output.
+
+    # spectra are stored at indice 1 (order 1), then 2 (order2) then 3 (order 3) then 4 (order 1, 2nd time step), ...
+    nint = trace[0].header['NINTS']
+    norder = 3
+
+    wavelength = np.zeros((nint, norder, 2048))
+    flux = np.zeros((nint, norder, 2048))
+    order = np.zeros((nint, norder, 2048))
+    integ = np.zeros((nint, norder, 2048))
+
+    for ext in range(np.size(data) - 2):
+        m = data[ext + 1].header['SPORDER']
+        i = data[ext + 1].header['INT_NUM']
+        wavelength[i - 1, m - 1, :] = data[ext + 1].data['WAVELENGTH']
+        flux[i - 1, m - 1, :] = data[ext + 1].data['FLUX']
+
+
+
+    # bla bla
+
+    # Copy spectral data for each order into the output model.
+    for order in wavelengths.keys():
+
+        table_size = len(wavelengths[order])
+
+        out_table = np.zeros(table_size, dtype=datamodels.SpecModel().spec_table.dtype)
+        out_table['WAVELENGTH'] = wavelengths[order]
+        out_table['FLUX'] = fluxes[order]
+        out_table['FLUX_ERROR'] = fluxerrs[order]
+        out_table['DQ'] = np.zeros(table_size)
+        out_table['BACKGROUND'] = col_bkg
+        out_table['NPIXELS'] = npixels[order]
+
+        spec = datamodels.SpecModel(spec_table=out_table)
+
+        # Add integration number and spectral order
+        spec.spectral_order = order_str_2_int[order]
+        spec.int_num = i + 1  # integration number starts at 1, not 0 like python
+
+        output_model.spec.append(spec)
+
+    result.write(spectrum_file)

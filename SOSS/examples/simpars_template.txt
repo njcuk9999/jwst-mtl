@@ -39,6 +39,7 @@ MAGNITUDE    10.588        # Magnitude to anchor in absolute flux (AB or Vega de
 FILTER       J             # Filter band name
 F277WCAL     True          # Generate F277W calibration integrations at the end of the timeseries?
 NINTF277     10            # number of integrations during the F277W calibration
+WFREALIZATION 0            # Wave front realization
 
 #####################
 # Planet Parameters #

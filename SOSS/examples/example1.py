@@ -120,6 +120,23 @@ soss.readpaths(config_paths_filename, pathPars)
 #pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_bd601753.txt'
 #pathPars.path_userland = os.path.join(pathPars.path_userland, 'CAP_rehearsal/bd601753/')
 
+# Series of TWA33 at various Teff for Arpita
+#pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_twa33_2600k.txt'
+#pathPars.path_userland = os.path.join(pathPars.path_userland, 'CAP_rehearsal/twa33_varyteff/2600k/')
+#pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_twa33_2800k.txt'
+#pathPars.path_userland = os.path.join(pathPars.path_userland, 'CAP_rehearsal/twa33_varyteff/2800k/')
+#pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_twa33_3000k.txt'
+#pathPars.path_userland = os.path.join(pathPars.path_userland, 'CAP_rehearsal/twa33_varyteff/3000k/')
+#pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_twa33_3200k.txt'
+#pathPars.path_userland = os.path.join(pathPars.path_userland, 'CAP_rehearsal/twa33_varyteff/3200k/')
+#pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_twa33_3400k.txt'
+#pathPars.path_userland = os.path.join(pathPars.path_userland, 'CAP_rehearsal/twa33_varyteff/3400k/')
+
+# Series of a featureless hot star with all 10 wavefront realizations
+pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_wfe9.txt'
+pathPars.path_userland = os.path.join(pathPars.path_userland, 'WFE/realization9/')
+
+
 #pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_demo.txt'
 #pathPars.path_userland = os.path.join(pathPars.path_userland, 'demo/')
 
@@ -142,8 +159,8 @@ soss.readpaths(config_paths_filename, pathPars)
 #pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_gj357b_ng5.txt'
 #pathPars.path_userland = os.path.join(pathPars.path_userland, 'GTO/gj357b_ngroups/ng5/')
 
-pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_wasp52b.txt'
-pathPars.path_userland = os.path.join(pathPars.path_userland, 'GTO/wasp52b_depth_1pct_disp0.01/')
+#pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_wasp52b.txt'
+#pathPars.path_userland = os.path.join(pathPars.path_userland, 'GTO/wasp52b_depth_1pct_disp0.01/')
 
 #pathPars.simulationparamfile = '/genesis/jwst/jwst-user-soss/loic_review/simpars_hatp14b.txt'
 
@@ -203,7 +220,7 @@ if skip_sim is False:
             os.path.join(pathPars.path_planetmodelatm, simuPars.pmodelfile[0]))
 
     # create a flat 1% transit depth
-    if True:
+    if False:
         planetmodel_rprs = planetmodel_rprs * 0.0 + 0.1
 
     if True:
