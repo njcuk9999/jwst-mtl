@@ -22,11 +22,19 @@ if False:
     outdir = '/genesis/jwst/jwst-user-soss/loic_review/CAP_rehearsal/bd601753/'
     model_file = '/genesis/jwst/jwst-user-soss/loic_review/CAP_rehearsal/bd601753/modeloutput.fits'
 
-if True:
+if False:
     rateints_file = '/genesis/jwst/jwst-user-soss/loic_review/CAP_rehearsal/bd601753/IDTSOSS_clear_noisy_rateints.fits'
     spectrum_file = '/genesis/jwst/jwst-user-soss/loic_review/CAP_rehearsal/bd601753/IDTSOSS_clear_extracted_spectra.fits'
     outdir = '/genesis/jwst/jwst-user-soss/loic_review/CAP_rehearsal/bd601753/'
     model_file = '/genesis/jwst/jwst-user-soss/loic_review/CAP_rehearsal/bd601753/modeloutput.fits'
+
+if True:
+    rateints_file = '/genesis/jwst/jwst-user-soss/loic_review/Commissioning/substrip256_dms.fits'
+    spectrum_file = '/genesis/jwst/jwst-user-soss/loic_review/Commissioning/extracted_spectra.fits'
+    outdir = '/genesis/jwst/jwst-user-soss/loic_review/Commissioning/'
+    model_file = '/genesis/jwst/jwst-user-soss/loic_review/Commissioning/modeloutput.fits'
+
+
 
 bypass_stage2 = True
 bypass_extract1d = True
@@ -87,7 +95,8 @@ if os.path.isfile(spectrum_file) is False:
 
 data = fits.open(spectrum_file)
 # spectra are stored at indice 1 (order 1), then 2 (order2) then 3 (order 3) then 4 (order 1, 2nd time step), ...
-nint = data[0].header['NINTS']
+#nint = data[0].header['NINTS']
+nint = 2
 norder = 3
 
 wavelength = np.zeros((nint, norder, 2048))
@@ -100,7 +109,7 @@ for ext in range(np.size(data)-2):
     i = data[ext+1].header['INT_NUM']
     wavelength[i-1, m-1, :] = data[ext+1].data['WAVELENGTH']
     flux[i-1, m-1, :] = data[ext+1].data['FLUX']
-    #print(m, i, np.size(w))
+    print(m, i, np.size(w))
 
 # Normalize each wavelength
 flux = flux / np.nanmedian(flux, axis=0)
