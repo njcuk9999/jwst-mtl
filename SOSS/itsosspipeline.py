@@ -90,7 +90,7 @@ def readpaths(config_paths_filename, pars):
     pars.simulationparamfile = str(value[param =='SIMULATION_PARAM'][0])
     pars.tracefile = str(value[param =='TRACE_FILE'][0])
     pars.throughputfile = str(value[param =='THROUGHPUT_FILE'][0])
-    pars.path_filtertransmission = str(value[param =='FILTERTRANSMISSION'][0])
+    pars.path_filtertransmission = str(value[param =='FILTER_TRANSMISSION'][0])
 
 def read_simu_cfg():
     with open('table_simulations.csv', newline='') as csvfile:
