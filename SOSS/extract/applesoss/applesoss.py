@@ -115,7 +115,7 @@ class EmpiricalProfile:
         ----------
         filename : str (optional)
             Path to file to which to save the spatial profiles. Defaults to
-            'SOSS_2D_profile_{subarray}.fits'.
+            'APPLESOSS_2D_profile_{subarray}.fits'.
         """
 
         # Get default filename if none provided.
@@ -123,7 +123,7 @@ class EmpiricalProfile:
             pad = self.pad[0]
             ovsmp = self.oversample
             sub = self.subarray
-            filename = 'SOSS_2D_profile_{0}_os={1}_pad={2}.fits'.format(sub, ovsmp, pad)
+            filename = 'APPLESOSS_2D_profile_{0}_os={1}_pad={2}.fits'.format(sub, ovsmp, pad)
         if self.verbose != 0:
             print('Saving trace profiles to file {}...'.format(filename))
 
