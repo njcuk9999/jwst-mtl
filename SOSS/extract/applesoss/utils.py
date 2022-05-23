@@ -16,6 +16,7 @@ from scipy.optimize import least_squares
 from tqdm import tqdm
 
 from SOSS.extract.applesoss import _calibrations
+from SOSS.extract.applesoss import plotting
 
 
 def _gen_imagehdu_header(hdu, order, pad, oversample):
@@ -229,61 +230,56 @@ def read_width_coefs(verbose=0):
     return wc
 
 
-def replace_badpix(clear, badpix_mask, fill_negatives=True, verbose=0):
-    """Replace all bad pixels with the median of the pixels values of a 5x5 box
+def replace_badpix(clear, thresh=5, box_size=10, verbose=0):
+    """Replace bad pixels with the median of the pixels values of a box
     centered on the bad pixel.
 
     Parameters
     ----------
     clear : np.array
-        Dataframe with bad pixels.
-    badpix_mask : np.array
-        Boolean array with the same dimensions as clear. Values of True
-        indicate a bad pixel.
-    fill_negatives : bool
-        If True, also interpolates all negatives values in the frame.
+        Data frame.
+    thresh : int
+        Threshold in standard deviations to flag a bad pixel.
+    box_size : int
+        Box side half-length to use.
     verbose : int
-        Level of verbosity.
+        level of verbosity.
 
     Returns
     -------
     clear_r : np.array
-        Input clear frame with bad pixels interpolated.
+        Data frame with bad pixels interpolated.
     """
 
-    # Get frame dimensions
+    # Initial setup of arrays and variables
+    disable = verbose_to_bool(verbose)
+    clear_r = clear.copy()
+    counts = 0
     dimy, dimx = np.shape(clear)
 
-    # Include all negative and zero pixels in the mask if necessary.
-    if fill_negatives is True:
-        mask = badpix_mask | (clear <= 0)
-    else:
-        mask = badpix_mask
+    # Loop over all pixels and interpolate those that deviate by more than the
+    # threshold from the surrounding median.
+    for i in tqdm(range(dimx), disable=disable):
+        for j in range(dimy):
+            low_x = np.max([i - box_size, 0])
+            up_x = np.min([i + box_size, dimx - 1])
+            low_y = np.max([j - box_size, 0])
+            up_y = np.min([j + box_size, dimy - 1])
 
-    # Loop over all bad pixels.
-    clear_r = clear*1
-    ys, xs = np.where(mask)
+            # Calculate median and std deviation of box.
+            med = np.nanmedian(clear_r[low_y:up_y, low_x:up_x])
+            std = np.nanstd(clear_r[low_y:up_y, low_x:up_x])
 
-    disable = verbose_to_bool(verbose)
-    for y, x in tqdm(zip(ys, xs), total=len(ys), disable=disable):
-        # Get coordinates of pixels in the 5x5 box.
-        starty = np.max([(y-2), 0])
-        endy = np.min([(y+3), dimy])
-        startx = np.max([0, (x-2)])
-        endx = np.min([dimx, (x+3)])
-        # calculate replacement value to be median of surround pixels.
-        rep_val = np.nanmedian(clear[starty:endy, startx:endx])
-        i = 1
-        # if the median value is still bad, widen the surrounding region
-        while np.isnan(rep_val) or rep_val <= 0:
-            starty = np.max([(y-2-i), 0])
-            endy = np.min([(y+3+i), dimy])
-            startx = np.max([0, (x-2-i)])
-            endx = np.min([dimx, (x+3-i)])
-            rep_val = np.nanmedian(clear[starty:endy, startx:endx])
-            i += 1
-        # Replace bad pixel with the new value.
-        clear_r[y, x] = rep_val
+            # If central pixel is too deviant, replace it.
+            if np.abs(clear_r[j, i] - med) > thresh*std or np.isnan(clear_r[j, i]):
+                clear_r[j, i] = med
+                counts += 1
+
+    # Print statistics and show debugging plot if necessary.
+    if verbose != 0:
+        print('{:.2f}% of pixels interpolated.'.format(counts/dimx/dimy*100))
+        if verbose == 3:
+            plotting.plot_badpix(clear, clear_r)
 
     return clear_r
 
