@@ -992,8 +992,9 @@ def beta_rescale(params: ParamDict, tfit: TransitFit,
     # calculate the initial acceptance rate
     ac_rate = nacor / nprop_p
     # afix is an integer flag to indicate which beta entries need ot be
-    #   updated
-    a_fix = (ac_rate < a_high) & (ac_rate < a_low)
+    #   updated - those within the limits of a_high and a_low do not need
+    #   to be updated
+    a_fix = ~((ac_rate < a_high) & (ac_rate > a_low))
     # -------------------------------------------------------------------------
     # Iterate around until all parameters are accepted (a_fix = False) or
     #   we hit the maximum number of iterations permitted
@@ -1054,7 +1055,9 @@ def beta_rescale(params: ParamDict, tfit: TransitFit,
             cprint(f'\t{tfitb.xnames[x_it]:3s}:{ac_rate[x_it]}')
         # ---------------------------------------------------------------------
         # check which parameters have achieved required acceptance rate
-        a_fix = (ac_rate < a_high) & (ac_rate < a_low)
+        #  - those within the limits of a_high and a_low do not need
+        #    to be updated
+        a_fix = ~((ac_rate < a_high) & (ac_rate > a_low))
         # ---------------------------------------------------------------------
         # if too many iterations, then we give up and exit
         if nloop >= nloopsmax:
