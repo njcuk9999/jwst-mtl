@@ -14,8 +14,8 @@ import pandas as pd
 from scipy.optimize import least_squares
 from tqdm import tqdm
 
-from SOSS.extract.applesoss import _calibrations
-from SOSS.extract.applesoss import plotting
+from SOSS.APPLESOSS import _calibrations
+from SOSS.APPLESOSS import plotting
 
 
 def get_wave_solution(order):

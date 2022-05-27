@@ -20,9 +20,9 @@ from tqdm import tqdm
 import warnings
 
 from SOSS.dms.soss_centroids import get_soss_centroids
-from SOSS.extract.applesoss import plotting
-from SOSS.extract.applesoss import _calibrations
-from SOSS.extract.applesoss import utils
+from SOSS.APPLESOSS import plotting
+from SOSS.APPLESOSS import _calibrations
+from SOSS.APPLESOSS import utils
 from SOSS.dms import soss_ref_files
 
 warnings.simplefilter(action='ignore', category=RuntimeWarning)
