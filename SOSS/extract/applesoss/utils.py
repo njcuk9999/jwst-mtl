@@ -9,7 +9,6 @@ Miscellaneous utility functions for APPLESOSS.
 """
 
 from astropy.io import fits
-from datetime import datetime
 import numpy as np
 import pandas as pd
 from scipy.optimize import least_squares
@@ -17,84 +16,6 @@ from tqdm import tqdm
 
 from SOSS.extract.applesoss import _calibrations
 from SOSS.extract.applesoss import plotting
-
-
-def _gen_imagehdu_header(hdu, order, pad, oversample):
-    """Generate the appropriate fits header for reference file image HDUs.
-
-    Parameters
-    ----------
-    hdu : HDU object
-        Image HDU object.
-    order : int
-        Diffraction order.
-    pad : int
-        Amount of padding in native pixels.
-    oversample : int
-        Oversampling factor.
-
-    Returns
-    -------
-    hdu : HDU object
-        Image HDU object with appropriate header added.
-    """
-
-    hdu.header['ORDER'] = order
-    hdu.header.comments['ORDER'] = 'Spectral order'
-    hdu.header['OVERSAMP'] = oversample
-    hdu.header.comments['OVERSAMP'] = 'Pixel oversampling'
-    hdu.header['PADDING'] = pad
-    hdu.header.comments['PADDING'] = 'Native pixel-size padding around the image'
-    hdu.header['EXTNAME'] = 'ORDER   '
-    hdu.header['EXTVER'] = order
-
-    return hdu
-
-
-def _gen_primaryhdu_header(hdu, subarray, filename):
-    """Generate the appropriate header for the reference file primary HDU.
-
-    Parameters
-    ----------
-    hdu : HDU object
-        Primary HDU object.
-    subarray : str
-        Subarray identifier.
-    filename : str
-        Output filename.
-
-    Returns
-    -------
-    hdu : HDU object
-        Primary HDU object with appropriate header added.
-    """
-
-    hdu.header['DATE'] = str(datetime.utcnow())
-    hdu.header.comments['DATE'] = 'Date this file was created (UTC)'
-    hdu.header['ORIGIN'] = 'SOSS Team MTL'
-    hdu.header.comments['ORIGIN'] = 'Organization responsible for creating file'
-    hdu.header['TELESCOP'] = 'JWST    '
-    hdu.header.comments['TELESCOP'] = 'Telescope used to acquire the data'
-    hdu.header['INSTRUME'] = 'NIRISS  '
-    hdu.header.comments['INSTRUME'] = 'Instrument used to acquire the data'
-    hdu.header['SUBARRAY'] = subarray
-    hdu.header.comments['SUBARRAY'] = 'Subarray used'
-    hdu.header['FILENAME'] = filename
-    hdu.header.comments['FILENAME'] = 'Name of the file'
-    hdu.header['REFTYPE'] = 'SPECPROFILE'
-    hdu.header.comments['REFTYPE'] = 'Reference file type'
-    hdu.header['PEDIGREE'] = 'GROUND  '
-    hdu.header.comments['PEDIGREE'] = 'The pedigree of the reference file'
-    hdu.header['DESCRIP'] = '2D trace profile'
-    hdu.header.comments['DESCRIP'] = 'Description of the reference file'
-    hdu.header['AUTHOR'] = 'Michael Radica'
-    hdu.header.comments['AUTHOR'] = 'Author of the reference file'
-    hdu.header['USEAFTER'] = '2000-01-01T00:00:00'
-    hdu.header.comments['USEAFTER'] = 'Use after date of the reference file'
-    hdu.header['EXP_TYPE'] = 'NIS_SOSS'
-    hdu.header.comments['EXP_TYPE'] = 'Type of data in the exposure'
-
-    return hdu
 
 
 def get_wave_solution(order):
@@ -378,14 +299,14 @@ def validate_inputs(etrace):
         dataframe.
     """
 
-    # Ensure F277 exposure has same shapse as CLEAR.
+    # Ensure F277W exposure has same shapse as CLEAR.
     if etrace.f277w is not None:
         if np.shape(etrace.f277w) != np.shape(etrace.clear):
             msg = 'F277W and CLEAR frames must be the same shape.'
             raise ValueError(msg)
     # Ensure padding and oversampling are integers.
-    if type(etrace.pad) != tuple and len(etrace.pad) != 2:
-        raise ValueError('Padding must be a length 2 tuple.')
+    if type(etrace.pad) != int:
+        raise ValueError('Padding must be an integer.')
     if type(etrace.oversample) != int:
         raise ValueError('Oversampling factor must be an integer.')
     # Ensure verbose is the correct format.
@@ -418,43 +339,3 @@ def verbose_to_bool(verbose):
         verbose_bool = True
 
     return verbose_bool
-
-
-def write_to_file(order1, order2, subarray, filename, pad, oversample):
-    """Utility function to write the 2D trace profile to disk. Data will be
-    saved as a multi-extension fits file.
-
-    Parameters
-    ----------
-    order1 : np.array (2D)
-        Uncontaminated first order data frame.
-    order2 : np.array (2D)
-        Uncontaminated first order data frame. Pass None to only write the
-        first order profile to file.
-    subarray : str
-        Subarray used.
-    filename : str
-        Name of the file to which to write the data.
-    pad : int
-        Amount of padding in native pixels.
-    oversample : int
-        Oversampling factor.
-    """
-
-    # Generate the primary HDU with appropriate header keywords.
-    hdu_p = fits.PrimaryHDU()
-    hdu_p = _gen_primaryhdu_header(hdu_p, subarray, filename)
-    hdulist = [hdu_p]
-    # Generate an ImageHDU for the first order profile.
-    hdu_1 = fits.ImageHDU(data=order1)
-    hdu_1 = _gen_imagehdu_header(hdu_1, 1, pad, oversample)
-    hdulist.append(hdu_1)
-    # Generate an ImageHDU for the second order profile.
-    if order2 is not None:
-        hdu_2 = fits.ImageHDU(data=order2)
-        hdu_2 = _gen_imagehdu_header(hdu_2, 2, pad, oversample)
-        hdulist.append(hdu_2)
-
-    # Write the file to disk.
-    hdu = fits.HDUList(hdulist)
-    hdu.writeto(filename, overwrite=True)

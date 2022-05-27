@@ -40,9 +40,9 @@ class EmpiricalProfile:
         SOSS exposure data frame using the F277W filter.
     subarray : str
         NIRISS SOSS subarray identifier. One of 'SUBSTRIP256', or 'FULL'.
-    pad : tuple
+    pad : int
         Amount of padding to include (in native pixels) in the spatial and
-        spectral directions respectively.
+        spectral directions.
     oversample : int
         Oversampling factor. Oversampling will be equal in the spectral and
         spatial directions.
@@ -61,12 +61,11 @@ class EmpiricalProfile:
     -------
     build_empirical_profile
         Construct the empirical spatial profiles.
-    save_to_file
-        Save spatial profile models to file
+    write_specprofile_reference
+        Save spatial profile models to reference file
     """
 
-    def __init__(self, clear, f277w, pad=(0, 0), oversample=1,
-                 verbose=0):
+    def __init__(self, clear, f277w=None, pad=0, oversample=1, verbose=0):
         """Initializer for EmpiricalProfile.
         """
 
@@ -82,63 +81,64 @@ class EmpiricalProfile:
         self.order1 = None
         self.order2 = None
 
-    def build_empirical_profile(self, normalize=True, lazy=False):
+    def build_empirical_profile(self, lazy=True):
         """Run the empirical spatial profile construction module.
 
         Parameters
         ----------
-        normalize : bool
-            if True, column normalize the final spatial profiles such that the
-            flux in each column sums to one.
         lazy : bool
             If True, activate lazy mode (this might actually be better...).
         """
 
-        # Force lazy mode if no F277W exposure is provided.
-        if self.f277w is None:
-            lazy = True
+        # Ensure F277W exposure is provided if user does not want lazy method,
+        # But warn that its probably better.
+        if lazy is False:
+            if self.f277w is None:
+                msg = 'An F277W exposure must be provided for this method.'
+                raise ValueError(msg)
+            else:
+                msg = 'This method is now depreciated.'
+                warnings.warn(msg, DeprecationWarning, stacklevel=2)
         # Run the empirical spatial profile construction.
         o1, o2 = build_empirical_profile(self.clear, self.f277w,
                                          self.subarray,
-                                         self.pad, self.oversample, normalize,
+                                         self.pad, self.oversample,
                                          self.verbose, lazy)
+        # Set any niggling negatives to zero (mostly for the bluest end of the
+        # second order where things get skrewy).
+        for o in [o1, o2]:
+            ii = np.where(o < 0)
+            o[ii] = 0
         # Store the spatial profiles as attributes.
         self.order1, self.order2 = o1, o2
 
-
-    # def write_specprofile_reference(self, filename=None):
-    #     out = np.concatenate()
-    #     soss_ref_files.init_spec_profile()
-
-
-    def save_to_file(self, filename=None):
-        """Write the uncontaminated 2D trace profiles to a fits file.
+    def write_specprofile_reference(self, subarray, filename=None):
+        """Write the spatial profiles to a reference file to be injested by
+        ATOCA.
 
         Parameters
         ----------
-        filename : str (optional)
-            Path to file to which to save the spatial profiles. Defaults to
-            'APPLESOSS_2D_profile_{subarray}.fits'.
+        subarray : str
+            SOSS subarray, either FULL, SUBSTRIP256 or SUBSTRIP96
+        filename : str
+            Name of reference file.
         """
 
-        # Get default filename if none provided.
+        # Create stacked array with all orders.
+        stack_full = np.zeros(((2048+2*self.pad)*self.oversample,
+                               (2048+2*self.pad)*self.oversample, 3))
+        stack_full[(-256-2*self.pad)*self.oversample:, :, 0] = np.copy(self.order1)
+        stack_full[(-256-2*self.pad)*self.oversample:, :, 1] = np.copy(self.order2)
+        # Pass to reference file creation.
+        hdulist = soss_ref_files.init_spec_profile(stack_full, self.oversample,
+                                                   self.pad, subarray,
+                                                   filename)
+        hdu = fits.HDUList(hdulist)
         if filename is None:
-            pad = self.pad[0]
-            ovsmp = self.oversample
-            sub = self.subarray
-            filename = 'APPLESOSS_2D_profile_{0}_os={1}_pad={2}.fits'.format(sub, ovsmp, pad)
-        if self.verbose != 0:
-            print('Saving trace profiles to file {}...'.format(filename))
-
-        # Print overwrite warning if output file already exists.
-        if os.path.exists(filename):
-            msg = 'Output file {} already exists.'\
-                  ' It will be overwritten'.format(filename)
-            warnings.warn(msg)
-
-        # Write trace profiles to disk.
-        utils.write_to_file(self.order1, self.order2, self.subarray, filename,
-                            self.pad, self.oversample)
+            filepattern = 'SOSS_ref_2D_profile_{}.fits'
+            filename = filepattern.format(subarray)
+        print('Saving to file '+filename)
+        hdu.writeto(filename, overwrite=True)
 
     def validate_inputs(self):
         """Validate the input parameters.
@@ -147,7 +147,7 @@ class EmpiricalProfile:
 
 
 def build_empirical_profile(clear, f277w, subarray, pad,
-                            oversample, normalize, verbose, lazy=False):
+                            oversample, verbose, lazy=False):
     """Main procedural function for the empirical spatial profile construction
     module. Calling this function will initialize and run all the required
     subroutines to produce a spatial profile for the first and second orders.
@@ -162,15 +162,12 @@ def build_empirical_profile(clear, f277w, subarray, pad,
         SOSS exposure data frame using the F277W filter.
     subarray : str
         NIRISS SOSS subarray identifier. One of SUBSTRIP256', or 'FULL'.
-    pad : tuple
+    pad : int
         Amount of padding to include (in native pixels) in the spatial and
-        spectral directions, respectively.
+        spectral directions.
     oversample : int
         Oversampling factor. Oversampling will be equal in the spectral and
         spatial directions.
-    normalize : bool
-        if True, column normalize the final spatial profiles such that the
-        flux in each column sums to one.
     verbose : int
         Level of verbosity: either 3, 2, 1, or 0.
          3 - show all of progress prints, progress bars, and diagnostic plots.
@@ -200,19 +197,14 @@ def build_empirical_profile(clear, f277w, subarray, pad,
     # ========= INITIAL SETUP =========
     # Determine correct subarray dimensions.
     dimy, dimx = np.shape(clear)
-    # Initialize trim variable to False unless the subarray is FULL.
-    trim = False
+    # If subarray is FULL - trim down to SUBSTRIP256 and work with that.
     if subarray == 'FULL':
-        # If subarray is FULL - trim down to SUBSTRIP256 and work with that.
-        # The rest if the frame is zeros anyways.
         clear = clear[-256:, :]
         if f277w is not None:
             f277w = f277w[-256:, :]
         # Reset all variable to appropriate SUBSTRIP256 values.
         subarray = 'SUBSTRIP256'
         dimy, dimx = np.shape(clear)
-        # Note that the detector was trimmed.
-        trim = True
 
     # Add a floor level such that all pixel values are positive and interpolate
     # bad pixels
@@ -253,14 +245,14 @@ def build_empirical_profile(clear, f277w, subarray, pad,
     # Build a first estimate of the first and second order spatial profiles.
     # Construct the first order profile.
     if verbose != 0:
-        print('  Starting the first order model...')
+        print('  Starting the first order model...', flush=True)
     # Lazy method: no interpolation, no F277W. Just fit the wing of the first
     # order for each wavelength. Relies on some fine tuning and the second
     # order to be very low level when it physically overlaps the first order.
     if lazy is True:
         if verbose != 0:
-            print('  Lazy method selected...')
-        o1_native = np.zeros((dimy + 2 * pad[0], dimx))
+            print('  Lazy method selected...', flush=True)
+        o1_native = np.zeros((dimy + 2 * pad, dimx))
         first_time = True
         for i in tqdm(range(dimx)):
             profile = np.copy(clear_floorsub[:, i])
@@ -270,12 +262,12 @@ def build_empirical_profile(clear, f277w, subarray, pad,
             if first_time is False:
                 newprof = reconstruct_wings256(profile, ycens=cens,
                                                contamination=[2, 3],
-                                               pad=pad[0], verbose=0,
+                                               pad=pad, verbose=0,
                                                smooth=True)
             else:
                 newprof = reconstruct_wings256(profile, ycens=cens,
                                                contamination=[2, 3],
-                                               pad=pad[0],
+                                               pad=pad,
                                                verbose=verbose, smooth=True)
                 first_time = False
             o1_native[:, i] = newprof
@@ -286,7 +278,7 @@ def build_empirical_profile(clear, f277w, subarray, pad,
     # F277W, interpolation, and CLEAR for the final model.
     else:
         o1_rough = construct_order1(clear_floorsub, f277w_floorsub, centroids,
-                                    subarray=subarray, pad=pad[0],
+                                    subarray=subarray, pad=pad,
                                     verbose=verbose)
 
         # Rescale the first order profile to the native flux level.
@@ -294,38 +286,37 @@ def build_empirical_profile(clear, f277w, subarray, pad,
             print('   Rescaling first order to native flux level...',
                   flush=True)
         o1_native = rescale_model(clear_floorsub, o1_rough, centroids,
-                                  pad=pad[0], verbose=verbose)
+                                  pad=pad, verbose=verbose)
     # Add back the floor.
     o1_uncontam = o1_native + floor
 
     # Construct the second order profile.
     if verbose != 0:
         print('  Starting the second order trace model...')
-    o2_uncontam = construct_order2(clear - o1_native[pad[0]:dimy + pad[0], :],
+    o2_uncontam = construct_order2(clear - o1_native[pad:dimy + pad, :],
                                    centroids, verbose=verbose)
     # Add padding to the second order if necessary
-    if pad[0] != 0:
-        o2_uncontam = pad_order2(o2_uncontam, centroids, pad[0])
+    if pad != 0:
+        o2_uncontam = pad_order2(o2_uncontam, centroids, pad)
 
     # ========= FINAL TUNING =========
     # Pad the spectral axis.
-    if pad[1] != 0:
+    if pad != 0:
         if verbose != 0:
             print(' Adding padding to the spectral axis...')
         o1_uncontam = pad_spectral_axis(o1_uncontam,
                                         centroids['order 1']['X centroid'],
                                         centroids['order 1']['Y centroid'],
-                                        pad=pad[1])
+                                        pad=pad)
         o2_uncontam = pad_spectral_axis(o2_uncontam,
                                         centroids['order 2']['X centroid'],
                                         centroids['order 2']['Y centroid'],
-                                        pad=pad[1])
+                                        pad=pad)
 
     # Column normalize. Only want the original detector to sum to 1, not the
     # additional padding + oversampling.
-    if normalize is True:
-        o1_uncontam /= np.nansum(o1_uncontam[pad[0]:dimy + pad[0]], axis=0)
-        o2_uncontam /= np.nansum(o2_uncontam[pad[0]:dimy + pad[0]], axis=0)
+    o1_uncontam /= np.nansum(o1_uncontam[pad:dimy + pad], axis=0)
+    o2_uncontam /= np.nansum(o2_uncontam[pad:dimy + pad], axis=0)
 
     # Add oversampling.
     if oversample != 1:
@@ -333,20 +324,6 @@ def build_empirical_profile(clear, f277w, subarray, pad,
             print(' Oversampling...')
         o1_uncontam = oversample_frame(o1_uncontam, oversample=oversample)
         o2_uncontam = oversample_frame(o2_uncontam, oversample=oversample)
-
-    # If the original subarray was FULL - add back the rest of the frame
-    if trim is True:
-        # Create the FULL frame including oversampling and padding.
-        o1_full = np.zeros(((2048 + 2 * pad[0]) * oversample,
-                            (2048 + 2 * pad[1]) * oversample))
-        o2_full = np.zeros(((2048 + 2 * pad[0]) * oversample,
-                            (2048 + 2 * pad[1]) * oversample))
-        # Put the uncontaminated SUBSTRIP256 frames on the FULL detector.
-        dimy = np.shape(o1_uncontam)[0]
-        o1_full[-dimy:, :] = o1_uncontam
-        o2_full[-dimy:, :] = o2_uncontam
-        o1_uncontam = o1_full
-        o2_uncontam = o2_full
 
     if verbose != 0:
         print('\nDone.')
@@ -1184,4 +1161,4 @@ if __name__ == '__main__':
 
     bad_pix = np.isnan(clear_sim)
     spat_prof = EmpiricalProfile(clear_sim, f277_sim, bad_pix, verbose=3)
-    spat_prof.build_empirical_profile(normalize=False)
+    spat_prof.build_empirical_profile()
