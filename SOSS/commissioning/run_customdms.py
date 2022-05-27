@@ -31,6 +31,10 @@ SUPERBIAS = 'jwst_niriss_superbias_0181.fits'
 DARK = 'jwst_niriss_dark_0171.fits'
 BADPIX = 'jwst_niriss_mask_0015.fits'
 BACKGROUND = 'jwst_niriss_background_custom.fits'
+ATOCAREF_DIR = '/Users/albert/NIRISS/Commissioning/analysis/SOSSwavecal/ref_files/'
+SPECTRACE = 'SOSS_ref_trace_table_SUBSTRIP256.fits'
+WAVEMAP = 'SOSS_ref_2D_wave_SUBSTRIP256.fits'
+SPECPROFILE = 'SOSS_ref_2D_profile_SUBSTRIP256.fits'
 
 
 def run_stage1(exposurename, outputname):
@@ -81,11 +85,18 @@ def run_stage2(rateints):
     # Custom - Check that no NaNs in in the rateints data
     result = commutils.remove_nans(result)
 
-    if False:
+    if True:
         # spectrum extraction - forcing no dx=0, dy=0, dtheta=0
         result = calwebb_spec2.extract_1d_step.Extract1dStep.call(result, output_dir=outdir, save_results=True,
-                                                              #soss_transform=[0, 0, 0],
-                                                              soss_modelname=outdir+'/'+basename+'_atoca_model.fits')
+                                                                  soss_transform=[0, 0, 0],
+                                                                  soss_bad_pix='model',
+                                                                  soss_modelname=outdir+'/'+basename+'_atoca_model.fits',
+                                                                  override_spectrace=ATOCAREF_DIR+SPECTRACE,
+                                                                  override_wavemap=ATOCAREF_DIR+WAVEMAP,
+                                                                  override_specprofile=ATOCAREF_DIR+SPECPROFILE)
+
+
+
 
         # Conversion to SI units
         result = calwebb_spec2.photom_step.PhotomStep.call(result, output_dir=outdir, save_results=True)
@@ -139,7 +150,6 @@ def run_differentialextraction(rateints):
 
 
 
-
 if __name__ == "__main__":
     ################ MAIN ###############
     dir = '/Users/albert/NIRISS/Commissioning/analysis/pipelineprep/'
@@ -155,6 +165,8 @@ if __name__ == "__main__":
     #dataset = 'jw01092001001_03102_00001_nis_uncal' # ss96
     #dataset = 'jw01092001001_03103_00001_nis_uncal' # ss96 ng=1 160 ints
     #dataset = 'jw01092001001_03104_00001_nis_uncal' # ss256 F277 nint=20 ng=5
+    #dataset = 'jw01081001001_0210d_00001_nis_uncal' # ss256 dark
+    #dataset = 'jw01093011001_03103_00002_nis_uncal' # ami kpi 232 ints 80x80
 
     run_stage1(dir+dataset+'.fits', dir+dataset+'_custom_stage1.fits')
     run_stage2(dir+dataset+'_custom_stage1.fits')
