@@ -23,6 +23,7 @@ from SOSS.dms.soss_centroids import get_soss_centroids
 from SOSS.extract.applesoss import plotting
 from SOSS.extract.applesoss import _calibrations
 from SOSS.extract.applesoss import utils
+from SOSS.dms import soss_ref_files
 
 warnings.simplefilter(action='ignore', category=RuntimeWarning)
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -107,6 +108,12 @@ class EmpiricalProfile:
                                          self.verbose, lazy)
         # Store the spatial profiles as attributes.
         self.order1, self.order2 = o1, o2
+
+
+    def write_specprofile_reference(self, filename=None):
+        out = np.concatenate()
+        soss_ref_files.init_spec_profile()
+
 
     def save_to_file(self, filename=None):
         """Write the uncontaminated 2D trace profiles to a fits file.

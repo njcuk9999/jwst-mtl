@@ -257,21 +257,43 @@ def replace_badpix(clear, thresh=5, box_size=10, verbose=0):
     counts = 0
     dimy, dimx = np.shape(clear)
 
+    def get_interp_box(data, box_size, i, j, dimx, dimy):
+        """ Get median and standard deviation of a box centered on a specified
+        pixel.
+        """
+
+        # Get the box limits.
+        low_x = np.max([i - box_size, 0])
+        up_x = np.min([i + box_size, dimx - 1])
+        low_y = np.max([j - box_size, 0])
+        up_y = np.min([j + box_size, dimy - 1])
+
+        # Calculate median and std deviation of box.
+        median = np.nanmedian(data[low_y:up_y, low_x:up_x])
+        stddev = np.nanstd(data[low_y:up_y, low_x:up_x])
+
+        # Pack into array.
+        box_properties = np.array([median, stddev])
+
+        return box_properties
+
     # Loop over all pixels and interpolate those that deviate by more than the
     # threshold from the surrounding median.
     for i in tqdm(range(dimx), disable=disable):
         for j in range(dimy):
-            low_x = np.max([i - box_size, 0])
-            up_x = np.min([i + box_size, dimx - 1])
-            low_y = np.max([j - box_size, 0])
-            up_y = np.min([j + box_size, dimy - 1])
+            box_size_i = box_size
+            box_prop = get_interp_box(clear_r, box_size_i, i, j, dimx, dimy)
 
-            # Calculate median and std deviation of box.
-            med = np.nanmedian(clear_r[low_y:up_y, low_x:up_x])
-            std = np.nanstd(clear_r[low_y:up_y, low_x:up_x])
+            # Ensure that the median and std dev we extract are good.
+            # If not, increase the box size until they are.
+            while np.any(np.isnan(box_prop)) or np.any(box_prop < 0):
+                box_size_i += 1
+                box_prop = get_interp_box(clear_r, box_size_i, i, j, dimx,
+                                          dimy)
+            med, std = box_prop[0], box_prop[1]
 
-            # If central pixel is too deviant, replace it.
-            if np.abs(clear_r[j, i] - med) > thresh*std or np.isnan(clear_r[j, i]):
+            # If central pixel is too deviant (or nan, or negative) replace it.
+            if np.abs(clear_r[j, i] - med) > thresh*std or np.isnan(clear_r[j, i]) or clear_r[j, i] < 0:
                 clear_r[j, i] = med
                 counts += 1
 
