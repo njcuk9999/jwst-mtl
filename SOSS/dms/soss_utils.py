@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import numpy as np
+from scipy.optimize import least_squares
 
 
 def zero_roll(a, shift):
@@ -46,6 +47,11 @@ def robust_polyfit(x, y, order, maxiter=5, nstd=3.):
     :rtype: array[float]
     """
 
+    def _poly_res(p, x, y):
+        """Residuals from a polynomial.
+        """
+        return np.polyval(p, x) - y
+
     mask = np.ones_like(x, dtype='bool')
     for niter in range(maxiter):
 
@@ -58,7 +64,10 @@ def robust_polyfit(x, y, order, maxiter=5, nstd=3.):
         stddev = np.std(res)
         mask = np.abs(res) <= nstd*stddev
 
-    return param
+    res = least_squares(_poly_res, param, loss='huber', f_scale=0.1,
+                        args=(x[mask], y[mask]))
+
+    return res.x
 
 
 def get_image_dim(image, header=None, verbose=False):

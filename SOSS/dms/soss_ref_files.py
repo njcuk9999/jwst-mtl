@@ -11,6 +11,8 @@ from datetime import datetime
 import numpy as np
 from astropy.io import fits
 
+import matplotlib.pyplot as plt
+
 
 # ==============================================================================
 # Code for generating the spectral trace reference file.
@@ -383,6 +385,108 @@ def init_spec_kernel(wavelengths, kernels, specos, halfwidth,
     hdul = fits.HDUList(hdul)
 
     return hdul
+
+def check_spec_trace(tracetable_fitsname):
+    '''
+    Check what was created.
+    1- plot the x, y for each order
+    2- plot the x, w for each order
+    3- plot the tilt vs x
+    4- plot the throughput vs x
+    '''
+
+    a = fits.open(tracetable_fitsname)
+    w_o1 = a[1].data['WAVELENGTH']
+    x_o1 = a[1].data['X']
+    y_o1 = a[1].data['Y']
+    tr_o1 = a[1].data['THROUGHPUT']
+    ti_o1 = a[1].data['TILT']
+    w_o2 = a[2].data['WAVELENGTH']
+    x_o2 = a[2].data['X']
+    y_o2 = a[2].data['Y']
+    tr_o2 = a[2].data['THROUGHPUT']
+    ti_o2 = a[2].data['TILT']
+    w_o3 = a[3].data['WAVELENGTH']
+    x_o3 = a[3].data['X']
+    y_o3 = a[3].data['Y']
+    tr_o3 = a[3].data['THROUGHPUT']
+    ti_o3 = a[3].data['TILT']
+
+    fig = plt.figure()
+    plt.scatter(x_o1, y_o1, marker='.', color='black', label ='Order 1')
+    plt.scatter(x_o2, y_o2, marker='.', color='blue', label ='Order 2')
+    plt.scatter(x_o3, y_o3, marker='.', color='orange', label ='Order 3')
+    plt.xlabel('X')
+    plt.ylabel('Y')
+    plt.legend()
+    plt.show()
+
+    fig = plt.figure()
+    plt.scatter(x_o1, w_o1, marker='.', color='black', label ='Order 1')
+    plt.scatter(x_o2, w_o2, marker='.', color='blue', label ='Order 2')
+    plt.scatter(x_o3, w_o3, marker='.', color='orange', label ='Order 3')
+    plt.xlabel('X')
+    plt.ylabel('Wavelength (microns)')
+    plt.legend()
+    plt.show()
+
+    fig = plt.figure()
+    plt.scatter(x_o1, ti_o1, marker='.', color='black', label ='Order 1')
+    plt.scatter(x_o2, ti_o2, marker='.', color='blue', label ='Order 2')
+    plt.scatter(x_o3, ti_o3, marker='.', color='orange', label ='Order 3')
+    plt.xlabel('X')
+    plt.ylabel('Tilt (degree)')
+    plt.legend()
+    plt.show()
+
+    fig = plt.figure()
+    plt.scatter(x_o1, tr_o1, marker='.', color='black', label ='Order 1')
+    plt.scatter(x_o2, tr_o2, marker='.', color='blue', label ='Order 2')
+    plt.scatter(x_o3, tr_o3, marker='.', color='orange', label ='Order 3')
+    plt.xlabel('X')
+    plt.ylabel('Throughput')
+    plt.legend()
+    plt.show()
+
+
+
+
+def check_2dwave_map(wavemap2d):
+    '''
+    Display the maps for the 3 orders
+    '''
+    hdu = fits.open(wavemap2d)
+    o1 = hdu[1].data
+    o2 = hdu[2].data
+    o3 = hdu[3].data
+
+    fig, ax = plt.subplots(3,1)
+    ax[0].imshow(o1, origin='lower')
+    ax[1].imshow(o2, origin='lower')
+    ax[2].imshow(o3, origin='lower')
+    plt.show()
+
+    return
+
+
+def check_profile_map(profilemap):
+    '''
+    Display trace profiles maps
+    '''
+    hdu = fits.open(profilemap)
+    o1 = hdu[1].data
+    o2 = hdu[2].data
+    o3 = hdu[3].data
+
+    fig, ax = plt.subplots(3, 1)
+    ax[0].imshow(o1, vmin=0.0, vmax=0.1, origin='lower')
+    ax[1].imshow(o2, vmin=0.0, vmax=0.1, origin='lower')
+    ax[2].imshow(o3, vmin=0.0, vmax=0.1, origin='lower')
+    plt.show()
+
+    return
+
+
 
 
 def main():
