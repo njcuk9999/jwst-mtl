@@ -300,9 +300,9 @@ def build_empirical_profile(clear, f277w, subarray, pad,
     # Construct the second order profile.
     if verbose != 0:
         print('  Starting the second order trace...')
-    o2_uncontam = construct_order23(clear - o1_native[pad:dimy + pad, :],
-                                    centroids, order='2', verbose=verbose)
-    o2_uncontam += floor
+    o2_out = construct_order23(clear - o1_native[pad:dimy + pad, :],
+                               centroids, order='2', verbose=verbose)
+    o2_uncontam, o2_native = o2_out[0], o2_out[1]
     # Add padding to the second order if necessary
     if pad != 0:
         o2_uncontam = pad_order23(o2_uncontam, centroids, pad, order='2')
@@ -310,10 +310,10 @@ def build_empirical_profile(clear, f277w, subarray, pad,
     # Construct the third order profile.
     if verbose != 0:
         print('  Starting the third order trace...')
-    o3_uncontam = construct_order23(clear - o1_native[pad:dimy + pad, :] - (
-                o2_uncontam[pad:dimy + pad, :] - floor), centroids, order='3',
-                                    pivot=850, verbose=verbose)
-    o3_uncontam += floor
+    o3_out = construct_order23(clear - o1_native[pad:dimy + pad, :] - o2_native,
+                               centroids, order='3', pivot=850,
+                               verbose=verbose)
+    o3_uncontam = o3_out[0]
     # Add padding to the third order if necessary
     if pad != 0:
         o3_uncontam = pad_order23(o3_uncontam, centroids, pad, order='3')
@@ -341,6 +341,10 @@ def build_empirical_profile(clear, f277w, subarray, pad,
     o1_uncontam /= np.nansum(o1_uncontam[pad:dimy + pad], axis=0)
     o2_uncontam /= np.nansum(o2_uncontam[pad:dimy + pad], axis=0)
     o3_uncontam /= np.nansum(o3_uncontam[pad:dimy + pad], axis=0)
+    # Replace NaNs resulting from all zero columns with zeros
+    for o in [o2_uncontam, o3_uncontam]:
+        ii = np.where(np.isnan(o))
+        o[ii] = 0
 
     # Add oversampling.
     if oversample != 1:
@@ -608,11 +612,14 @@ def construct_order23(residual, cen, order, pivot=750, halfwidth=12,
     -------
     new_frame : np.array
         Model of the second order spatial profile with wings reconstructed.
+    new_frame_native : np.array
+        New frame, but at the native counts level.
     """
 
     # Initalize new data frame and get subarray dimensions.
     dimy, dimx = np.shape(residual)
     new_frame = np.zeros_like(residual)
+    new_frame_native = np.zeros_like(residual)
 
     # Get wavelength calibration.
     wavecal_x, wavecal_w = utils.get_wave_solution(order=2)
@@ -620,7 +627,11 @@ def construct_order23(residual, cen, order, pivot=750, halfwidth=12,
     width_polys = utils.read_width_coefs(verbose=verbose)
 
     first_time = True
-    maxi = dimx
+    if order == '3':
+        maxi = pivot
+    else:
+        maxi = dimx
+    stop = np.where(cen['order ' + order]['Y centroid'] >= dimy)[0][0] + halfwidth
     for i in range(dimx):
         wave = wavecal_w[i]
         # Skip over columns where the throughput is too low to get a good core
@@ -652,11 +663,15 @@ def construct_order23(residual, cen, order, pivot=750, halfwidth=12,
         start = int(round((cen_o - 1 * halfwidth), 0))
         stitch = np.concatenate([wing2, working_prof[start:end], wing])
         # Rescale to native flux level.
-        stitch *= max_val
+        stitch_native = stitch * max_val
         # Shift the profile back to its correct centroid position
         stitch = np.interp(np.arange(dimy), np.arange(dimy) - dimy//2 + cen_o,
                            stitch)
+        stitch_native = np.interp(np.arange(dimy),
+                                  np.arange(dimy) - dimy // 2 + cen_o,
+                                  stitch_native)
         new_frame[:, i] = stitch
+        new_frame_native[:, i] = stitch_native
 
     # For columns where the order 2 core is not distinguishable (due to the
     # throughput dropping near 0, or it being buried in order 1) reuse the
@@ -664,33 +679,33 @@ def construct_order23(residual, cen, order, pivot=750, halfwidth=12,
     if order == '2':
         for i in range(pivot):
             anchor_prof = new_frame[:, pivot]
+            anchor_prof_native = new_frame_native[:, pivot]
             sc = cen['order '+order]['Y centroid'][pivot]
             ec = cen['order '+order]['Y centroid'][i]
             working_prof = np.interp(np.arange(dimy), np.arange(dimy) - sc + ec,
                                      anchor_prof)
             new_frame[:, i] = working_prof
-    # Similar idea, but for order 3, the throughput drops at bluer, and not
-    # redder wavelengths.
-    if order == '3':
-        for i in range(pivot, dimx-1):
-            anchor_prof = new_frame[:, pivot]
-            sc = cen['order '+order]['Y centroid'][pivot]
-            ec = cen['order '+order]['Y centroid'][i]
-            working_prof = np.interp(np.arange(dimy), np.arange(dimy) - sc + ec,
-                                     anchor_prof)
-            new_frame[:, i] = working_prof
+            working_prof_native = np.interp(np.arange(dimy),
+                                            np.arange(dimy) - sc + ec,
+                                            anchor_prof_native)
+            new_frame_native[:, i] = working_prof_native
 
     # For columns where the centroid is off the detector, reuse the bluest
     # reconstructed profile.
-    for i in range(maxi, dimx):
+    for i in range(maxi, stop):
         anchor_prof = new_frame[:, maxi - 1]
+        anchor_prof_native = new_frame_native[:, maxi - 1]
         sc = cen['order '+order]['Y centroid'][maxi - 1]
         ec = cen['order '+order]['Y centroid'][i]
         working_prof = np.interp(np.arange(dimy), np.arange(dimy) - sc + ec,
                                  anchor_prof)
         new_frame[:, i] = working_prof
+        working_prof_native = np.interp(np.arange(dimy),
+                                        np.arange(dimy) - sc + ec,
+                                        anchor_prof_native)
+        new_frame_native[:, i] = working_prof_native
 
-    return new_frame
+    return new_frame, new_frame_native
 
 
 def oversample_frame(frame, oversample=1):
