@@ -1,27 +1,11 @@
 import numpy as np
+from astropy.io import fits
+from scipy import ndimage
 from numpy.lib.stride_tricks import sliding_window_view
 from jwst.datamodels.dqflags import pixel
+import os
 
-if False:
-    import matplotlib
 
-    matplotlib.use('agg')
-    import matplotlib.pyplot as plt
-    from matplotlib.colors import LogNorm
-
-    from astropy.io import fits
-
-    import sys
-    import pdb
-    import time
-
-    # from jwst.pipeline import Detector1Pipeline
-    from jwst.pipeline import calwebb_detector1
-    from jwst.pipeline import calwebb_spec2
-
-    from jwst import datamodels
-
-    from astropy.nddata.bitmask import bitfield_to_boolean_mask
 
 
 def unfold_frame(image, window_size):
@@ -118,7 +102,8 @@ def find_outliers(image, window_size, n_sig=5):
     return outliers
 
 
-def flag_outliers(result, nn=2, window_size=(1, 33), n_sig=5, verbose=False):
+def flag_outliers(result, nn=2, window_size=(1, 33), n_sig=5, verbose=False, outdir=None, save_diagnostic=False,
+                  kernel_enlarge=True):
     '''
     Function that takes a timeseries of integrations and for each, finds the
     outlier pixels and flags them as such in the data quality (dq) object
@@ -134,6 +119,7 @@ def flag_outliers(result, nn=2, window_size=(1, 33), n_sig=5, verbose=False):
                             scanning for outliers (rows, cols), should keep odd so there is a clear center pixel
     n_sig       : (int) Number of standard deviations away from the median to be called outlier
     verbose     : (bool) If True, activates print statements
+    kernel_enlarge : (bool) If True, convolve the outlier map with a kernel to enlarge the flagginf into wings
 
     Returns:
     ========
@@ -141,7 +127,7 @@ def flag_outliers(result, nn=2, window_size=(1, 33), n_sig=5, verbose=False):
     '''
 
     # load shape of the data set
-    nb_int, h, w = result.data.shape
+    nb_int, dimy, dimx = result.data.shape
 
     if nb_int < (nn*2+1):
         print('Warning: Outlier flagging was skipped - not enough integrations.')
@@ -219,11 +205,46 @@ def flag_outliers(result, nn=2, window_size=(1, 33), n_sig=5, verbose=False):
         # From here, we identify the outliers in the medianCombined image
         outliers = find_outliers(medianCombined, window_size, n_sig)
 
+        # Add option to "enlarge" a pixel flagged as outlier with a kernel in the hope
+        # of catching the wings of cosmic rays
+        if kernel_enlarge:
+            kernel = [[0,1,0],[1,1,1],[0,1,0]] # cross
+            pad = np.max(np.shape(kernel)) # roughly
+            im = np.zeros((dimy, dimx))
+            im[outliers] = 1
+            impadded = np.zeros((dimy+2*pad, dimx+2*pad))
+            impadded[pad:-pad,pad:-pad] = np.copy(im)
+            imconvolved = ndimage.convolve(impadded, kernel, mode='constant', cval=0.0)
+            im = imconvolved[pad:-pad,pad:-pad]
+            outliers = im > 0
+
+
         # update the dq map with the new outliers
         result.dq[i][outliers] = pixel['OUTLIER']
 
         if verbose: print(
             'Processing integration {} : Identified {} outlier pixels\n'.format(i, np.count_nonzero(outliers)))
+
+    if save_diagnostic == True:
+        # Save fits file of all integrations where the cosmic ray detections are set to NaN whihc
+        # will allow to use ds9 to flash through and inspect that all went fine
+        cube = np.copy(result.data)
+        ind = result.dq == pixel['OUTLIER']
+        cube[ind] = np.nan
+
+        basename = os.path.splitext(result.meta.filename)[0]
+        if outdir == None:
+            outdir = './'
+            outliersdir = './outliers_' + basename + '/'
+        else:
+            outliersdir = outdir + '/outliers_' + basename + '/'
+        if not os.path.exists(outdir):
+            os.makedirs(outdir)
+        if not os.path.exists(outliersdir):
+            os.makedirs(outliersdir)
+
+        hdu = fits.PrimaryHDU(cube)
+        hdu.writeto(outliersdir+'flagged_outliers.fits', overwrite=True)
 
     return result
 

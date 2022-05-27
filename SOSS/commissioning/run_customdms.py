@@ -76,10 +76,10 @@ def run_stage2(rateints):
                                                               #override_flat=CALIBRATION_DIR+FLAT)
 
     # Custom - Outlier flagging
-    result = soss_outliers.flag_outliers(result, verbose=True)
+    result = soss_outliers.flag_outliers(result, window_size=(3,11), n_sig=6, verbose=True, outdir=outdir, save_diagnostic=True)
 
     # Custom - Background subtraction step
-    result = commutils.background_subtraction(result, aphalfwidth=[30,20,20], outdir=outdir, verbose=True,
+    result = commutils.background_subtraction(result, aphalfwidth=[30,20,20], outdir=outdir, verbose=False,
                                               override_background=CALIBRATION_DIR+BACKGROUND, applyonintegrations=False)
 
     # Custom - Check that no NaNs in in the rateints data
@@ -168,10 +168,12 @@ if __name__ == "__main__":
     #dataset = 'jw01081001001_0210d_00001_nis_uncal' # ss256 dark
     #dataset = 'jw01093011001_03103_00002_nis_uncal' # ami kpi 232 ints 80x80
 
-    run_stage1(dir+dataset+'.fits', dir+dataset+'_custom_stage1.fits')
-    run_stage2(dir+dataset+'_custom_stage1.fits')
+    #run_stage1(dir+dataset+'.fits', dir+dataset+'_custom_stage1.fits')
+    #run_stage2(dir+dataset+'_custom_stage1.fits')
 
     # Additional diagnostics
+    commutils.check_atoca(dir+dataset+'_custom_stage1_flatfieldstep_backsubtracted.fits',
+                           dir+dataset+'_custom_stage1_atoca_model_SossExtractModel.fits')
     spectrum_file = dir+dataset+'_custom_stage1_flatfieldstep_backsubtracted_extract1dstep.fits'
     a = commutils.plot_timeseries(spectrum_file, outdir=None, norder=3)
 

@@ -336,3 +336,36 @@ def plot_timeseries(spectrum_file, outdir=None, norder=3):
     plt.show()
 
     return
+
+
+def check_atoca(fedto_atoca_filename, atoca_model_filename, outdir=None):
+    '''
+    Check that the ATOCA modelling went well by looking at residual maps for each order.
+    '''
+
+    obser = datamodels.open(fedto_atoca_filename)
+    #<CubeModel(20, 256, 2048)>
+    nints = obser.meta.exposure.nints
+    if obser.meta.subarray.name == 'SUBSTRIP96':
+        norders = 2
+    else:
+        norders = 3
+
+    model = datamodels.open(atoca_model_filename)
+    #<SossExtractModel>
+
+    # Residual map after subtracting both orders' model
+    cube = obser.data - model.order1 - model.order2
+
+    # Forge output directory where plots will be written
+    if outdir == None:
+        basename = os.path.basename(os.path.splitext(fedto_atoca_filename)[0])
+        outdir = os.path.dirname(fedto_atoca_filename)+'/atoca_'+basename+'/'
+    # Create the output directory if it does not exist
+    if not os.path.exists(outdir):
+        os.makedirs(outdir)
+
+    hdu = fits.PrimaryHDU(cube)
+    hdu.writeto(outdir+'residualmap.fits', overwrite=True)
+
+    return

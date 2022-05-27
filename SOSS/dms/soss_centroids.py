@@ -1253,41 +1253,41 @@ def get_soss_centroids(image, mask=None, subarray='SUBSTRIP256', halfwidth=2,
         par_o2 = robust_polyfit(x_o2[mask_fit], y_o2[mask_fit], default_orders['order 2'])
         y_o2 = np.polyval(par_o2, x_o2)
 
-    if verbose:
+    #if verbose:
 
-        # Determine an appropriate figure size.
-        nrows, ncols = image.shape
+    # Determine an appropriate figure size.
+    nrows, ncols = image.shape
 
-        if subarray == 'FULL':
-            aspect = 1
-            figsize = ncols/64, nrows/64
-        else:
-            aspect = 2
-            figsize = ncols/64, nrows/32
+    if subarray == 'FULL':
+        aspect = 1
+        figsize = ncols/64, nrows/64
+    else:
+        aspect = 2
+        figsize = ncols/64, nrows/32
 
-        # Make a figure showing how the order 2 trace was built from segments A and B.
-        plt.figure(figsize=figsize)
+    # Make a figure showing how the order 2 trace was built from segments A and B.
+    plt.figure(figsize=figsize)
 
-        plt.title('Order 2 Trace Positions')
+    plt.title('Order 2 Trace Positions')
 
-        plt.imshow(image, origin='lower', cmap='inferno', norm=colors.LogNorm(), aspect=aspect)
+    plt.imshow(image, origin='lower', cmap='inferno', norm=colors.LogNorm(), aspect=aspect)
 
-        plt.plot(x_o2_cont, y_o2_cont, color='red', label='Contaminated')
-        plt.plot(x_o2_uncont, y_o2_uncont, color='navy', label='Uncontaminated')
-        plt.plot(x_o2, y_o2, color='black', label='Polynomial Fit')
+    plt.plot(x_o2_cont, y_o2_cont, color='red', label='Contaminated')
+    plt.plot(x_o2_uncont, y_o2_uncont, color='navy', label='Uncontaminated')
+    plt.plot(x_o2, y_o2, color='black', label='Polynomial Fit')
 
-        plt.xlabel('Spectral Pixel', fontsize=14)
-        plt.ylabel('Spatial Pixel', fontsize=14)
-        plt.legend(fontsize=12)
+    plt.xlabel('Spectral Pixel', fontsize=14)
+    plt.ylabel('Spatial Pixel', fontsize=14)
+    plt.legend(fontsize=12)
 
-        plt.xlim(-0.5, ncols - 0.5)
-        plt.ylim(-0.5, nrows - 0.5)
+    plt.xlim(-0.5, ncols - 0.5)
+    plt.ylim(-0.5, nrows - 0.5)
 
-        plt.tight_layout()
+    plt.tight_layout()
 
-        if outdir is not None: plt.savefig(outdir+'/soss_centroid_order2tracepositions.png')
-        plt.show()
-        plt.close()
+    if outdir is not None: plt.savefig(outdir+'/soss_centroid_order2tracepositions.png')
+    if verbose: plt.show()
+    plt.close()
 
     # Add parameters to output dictionary.
     o2_dict = dict()
