@@ -7,8 +7,9 @@ Created on Fri Mar 19 11:46 2021
 
 Definitions of the main functions for the APPLESOSS (A Producer of ProfiLEs for
 SOSS) module. This class will be initialized and called by the user to create
-models of the spatial profiles for both the first and second order SOSS traces,
-for use as the spatprofile reference file required by the ATOCA algorithm.
+models of the spatial profiles for the first, second and third order SOSS
+traces, for use as the spatprofile reference file required by the ATOCA
+algorithm.
 """
 
 
@@ -56,6 +57,8 @@ class EmpiricalProfile:
         First order spatial profile.
     order2 : np.array
         Second order spatial profile.
+    order3 : np.array
+        Third order spatial profile.
 
     Methods
     -------
@@ -80,6 +83,7 @@ class EmpiricalProfile:
         self.subarray = self.validate_inputs()
         self.order1 = None
         self.order2 = None
+        self.order3 = None
 
     def build_empirical_profile(self, lazy=True):
         """Run the empirical spatial profile construction module.
@@ -100,17 +104,17 @@ class EmpiricalProfile:
                 msg = 'This method is now depreciated.'
                 warnings.warn(msg, DeprecationWarning, stacklevel=2)
         # Run the empirical spatial profile construction.
-        o1, o2 = build_empirical_profile(self.clear, self.f277w,
-                                         self.subarray,
-                                         self.pad, self.oversample,
-                                         self.verbose, lazy)
+        o1, o2, o3 = build_empirical_profile(self.clear, self.f277w,
+                                             self.subarray,
+                                             self.pad, self.oversample,
+                                             self.verbose, lazy)
         # Set any niggling negatives to zero (mostly for the bluest end of the
         # second order where things get skrewy).
-        for o in [o1, o2]:
+        for o in [o1, o2, o3]:
             ii = np.where(o < 0)
             o[ii] = 0
         # Store the spatial profiles as attributes.
-        self.order1, self.order2 = o1, o2
+        self.order1, self.order2, self.order3 = o1, o2, o3
 
     def write_specprofile_reference(self, subarray, filename=None):
         """Write the spatial profiles to a reference file to be injested by
@@ -129,6 +133,7 @@ class EmpiricalProfile:
                                (2048+2*self.pad)*self.oversample, 3))
         stack_full[(-256-2*self.pad)*self.oversample:, :, 0] = np.copy(self.order1)
         stack_full[(-256-2*self.pad)*self.oversample:, :, 1] = np.copy(self.order2)
+        stack_full[(-256-2*self.pad)*self.oversample:, :, 2] = np.copy(self.order3)
         # Pass to reference file creation.
         hdulist = soss_ref_files.init_spec_profile(stack_full, self.oversample,
                                                    self.pad, subarray,
@@ -150,9 +155,9 @@ def build_empirical_profile(clear, f277w, subarray, pad,
                             oversample, verbose, lazy=False):
     """Main procedural function for the empirical spatial profile construction
     module. Calling this function will initialize and run all the required
-    subroutines to produce a spatial profile for the first and second orders.
-    The spatial profiles generated can include oversampling as well as padding
-    in both the spatial and spectral directions.
+    subroutines to produce a spatial profile for the first, second and third
+    orders.= The spatial profiles generated can include oversampling as well
+    as padding in both the spatial and spectral directions.
 
     Parameters
     ----------
@@ -183,6 +188,8 @@ def build_empirical_profile(clear, f277w, subarray, pad,
         Uncontaminated spatial profile for the first order.
     o2_uncontam : np.array
         Uncontaminated spatial profile for the second order.
+    o3_uncontam : np.array
+        Uncontaminated spatial profile for the third order.
 
     Raises
     ------
@@ -211,10 +218,10 @@ def build_empirical_profile(clear, f277w, subarray, pad,
     if verbose != 0:
         print(' Initial processing...')
         print('  Interpolating bad pixels...', flush=True)
-
     floor = np.nanpercentile(clear, 0.1)
     clear_floorsub = clear - floor
-    clear_floorsub = utils.replace_badpix(clear_floorsub, verbose=verbose)
+    # TODO : ADD BACK
+    #clear_floorsub = utils.replace_badpix(clear_floorsub, verbose=verbose)
     if f277w is not None:
         floor_f277w = np.nanpercentile(f277w, 0.1)
         f277w_floorsub = f277w - floor_f277w
@@ -248,11 +255,11 @@ def build_empirical_profile(clear, f277w, subarray, pad,
         print('  Starting the first order model...', flush=True)
     # Lazy method: no interpolation, no F277W. Just fit the wing of the first
     # order for each wavelength. Relies on some fine tuning and the second
-    # order to be very low level when it physically overlaps the first order.
+    # order to be low level when it physically overlaps the first order.
     if lazy is True:
         if verbose != 0:
             print('  Lazy method selected...', flush=True)
-        o1_native = np.zeros((dimy + 2 * pad, dimx))
+        o1_native = np.zeros((dimy + 2*pad, dimx))
         first_time = True
         for i in tqdm(range(dimx)):
             profile = np.copy(clear_floorsub[:, i])
@@ -292,12 +299,24 @@ def build_empirical_profile(clear, f277w, subarray, pad,
 
     # Construct the second order profile.
     if verbose != 0:
-        print('  Starting the second order trace model...')
-    o2_uncontam = construct_order2(clear - o1_native[pad:dimy + pad, :],
-                                   centroids, verbose=verbose)
+        print('  Starting the second order trace...')
+    o2_uncontam = construct_order23(clear - o1_native[pad:dimy + pad, :],
+                                    centroids, order='2', verbose=verbose)
+    o2_uncontam += floor
     # Add padding to the second order if necessary
     if pad != 0:
-        o2_uncontam = pad_order2(o2_uncontam, centroids, pad)
+        o2_uncontam = pad_order23(o2_uncontam, centroids, pad, order='2')
+
+    # Construct the third order profile.
+    if verbose != 0:
+        print('  Starting the third order trace...')
+    o3_uncontam = construct_order23(clear - o1_native[pad:dimy + pad, :] - (
+                o2_uncontam[pad:dimy + pad, :] - floor), centroids, order='3',
+                                    pivot=850, verbose=verbose)
+    o3_uncontam += floor
+    # Add padding to the third order if necessary
+    if pad != 0:
+        o3_uncontam = pad_order23(o3_uncontam, centroids, pad, order='3')
 
     # ========= FINAL TUNING =========
     # Pad the spectral axis.
@@ -312,11 +331,16 @@ def build_empirical_profile(clear, f277w, subarray, pad,
                                         centroids['order 2']['X centroid'],
                                         centroids['order 2']['Y centroid'],
                                         pad=pad)
+        o3_uncontam = pad_spectral_axis(o3_uncontam,
+                                        centroids['order 3']['X centroid'],
+                                        centroids['order 3']['Y centroid'],
+                                        pad=pad)
 
     # Column normalize. Only want the original detector to sum to 1, not the
     # additional padding + oversampling.
     o1_uncontam /= np.nansum(o1_uncontam[pad:dimy + pad], axis=0)
     o2_uncontam /= np.nansum(o2_uncontam[pad:dimy + pad], axis=0)
+    o3_uncontam /= np.nansum(o3_uncontam[pad:dimy + pad], axis=0)
 
     # Add oversampling.
     if oversample != 1:
@@ -324,11 +348,12 @@ def build_empirical_profile(clear, f277w, subarray, pad,
             print(' Oversampling...')
         o1_uncontam = oversample_frame(o1_uncontam, oversample=oversample)
         o2_uncontam = oversample_frame(o2_uncontam, oversample=oversample)
+        o3_uncontam = oversample_frame(o3_uncontam, oversample=oversample)
 
     if verbose != 0:
         print('\nDone.')
 
-    return o1_uncontam, o2_uncontam
+    return o1_uncontam, o2_uncontam, o3_uncontam
 
 
 def _chromescale(profile, wave_start, wave_end, ycen, poly_coef):
@@ -555,19 +580,25 @@ def construct_order1(clear, f277w, ycens, subarray, pad=0, verbose=0):
     return o1frame
 
 
-def construct_order2(o1sub, cen, mini=750, halfwidth=12, verbose=0):
-    """Reconstruct the wings of the second order after the first order spatial
-    profile has been modelled and subtracted off.
+def construct_order23(residual, cen, order, pivot=750, halfwidth=12,
+                      verbose=0):
+    """Reconstruct the wings of the second or third orders after the first
+    order spatial profile has been modeled and subtracted off.
 
     Parameters
     ----------
-    o1sub : np.array
-        NIRISS/SOSS data frame with the first order subtracted off.
+    residual : np.array
+        NIRISS/SOSS data frame residual map - either with o1, or both o1 and
+        o2 removed.
     cen : dict
         Centroids dictionary.
-    mini : int
-        Minimum spectral pixel value for which a wing reconstruction will be
-        attempted. For Spectral pixels <mini, the profile at mini will be used.
+    order : str
+        The order to reconstruct.
+    pivot : int
+        For order 2, minimum spectral pixel value for which a wing
+        reconstruction will be attempted. For order 3, the maximum pixel value.
+        For spectral pixels < or >pivot respectively, the profile at pivot will
+        be used.
     halfwidth : int
         Half width in pixels of the spatial profile core.
     verbose : int
@@ -575,13 +606,13 @@ def construct_order2(o1sub, cen, mini=750, halfwidth=12, verbose=0):
 
     Returns
     -------
-    new_2 : np.array
+    new_frame : np.array
         Model of the second order spatial profile with wings reconstructed.
     """
 
     # Initalize new data frame and get subarray dimensions.
-    dimy, dimx = np.shape(o1sub)
-    new_2 = np.zeros_like(o1sub)
+    dimy, dimx = np.shape(residual)
+    new_frame = np.zeros_like(residual)
 
     # Get wavelength calibration.
     wavecal_x, wavecal_w = utils.get_wave_solution(order=2)
@@ -592,19 +623,22 @@ def construct_order2(o1sub, cen, mini=750, halfwidth=12, verbose=0):
     maxi = dimx
     for i in range(dimx):
         wave = wavecal_w[i]
-        # Skip over columns where the second order is buried in the first.
-        if i < mini:
+        # Skip over columns where the throughput is too low to get a good core
+        # and/or the order is buried within another.
+        if order == '2' and i < pivot:
             continue
-            # If the centroid is too close to the detector edge, make note of
-            # the column and deal with it later
-        cen2 = int(round(cen['order 2']['Y centroid'][i], 0))
-        if cen2 + halfwidth > dimy:
+        if order == '3' and i > pivot:
+            continue
+        # If the centroid is too close to the detector edge, make note of
+        # the column and deal with it later
+        cen_o = int(round(cen['order ' + order]['Y centroid'][i], 0))
+        if cen_o + halfwidth > dimy:
             if i < maxi:
                 maxi = i
             continue
 
         # Get a copy of the spatial profile, and normalize it by its max value.
-        working_prof = np.copy(o1sub[:, i])
+        working_prof = np.copy(residual[:, i])
         max_val = np.nanmax(working_prof)
         working_prof /= max_val
 
@@ -614,38 +648,49 @@ def construct_order2(o1sub, cen, mini=750, halfwidth=12, verbose=0):
         wing, wing2 = simulate_wings(wave, width_polys, verbose=verbose)
         first_time = False
         # Concatenate the wings onto the profile core.
-        end = int(round((cen2 + 1 * halfwidth), 0))
-        start = int(round((cen2 - 1 * halfwidth), 0))
+        end = int(round((cen_o + 1 * halfwidth), 0))
+        start = int(round((cen_o - 1 * halfwidth), 0))
         stitch = np.concatenate([wing2, working_prof[start:end], wing])
         # Rescale to native flux level.
         stitch *= max_val
         # Shift the profile back to its correct centroid position
-        stitch = np.interp(np.arange(dimy), np.arange(dimy) - dimy//2 + cen2,
+        stitch = np.interp(np.arange(dimy), np.arange(dimy) - dimy//2 + cen_o,
                            stitch)
-        new_2[:, i] = stitch
+        new_frame[:, i] = stitch
 
     # For columns where the order 2 core is not distinguishable (due to the
     # throughput dropping near 0, or it being buried in order 1) reuse the
     # reddest reconstructed profile.
-    for i in range(mini):
-        anchor_prof = new_2[:, mini]
-        sc = cen['order 2']['Y centroid'][mini]
-        ec = cen['order 2']['Y centroid'][i]
-        working_prof = np.interp(np.arange(dimy), np.arange(dimy) - sc + ec,
-                                 anchor_prof)
-        new_2[:, i] = working_prof
+    if order == '2':
+        for i in range(pivot):
+            anchor_prof = new_frame[:, pivot]
+            sc = cen['order '+order]['Y centroid'][pivot]
+            ec = cen['order '+order]['Y centroid'][i]
+            working_prof = np.interp(np.arange(dimy), np.arange(dimy) - sc + ec,
+                                     anchor_prof)
+            new_frame[:, i] = working_prof
+    # Similar idea, but for order 3, the throughput drops at bluer, and not
+    # redder wavelengths.
+    if order == '3':
+        for i in range(pivot, dimx-1):
+            anchor_prof = new_frame[:, pivot]
+            sc = cen['order '+order]['Y centroid'][pivot]
+            ec = cen['order '+order]['Y centroid'][i]
+            working_prof = np.interp(np.arange(dimy), np.arange(dimy) - sc + ec,
+                                     anchor_prof)
+            new_frame[:, i] = working_prof
 
     # For columns where the centroid is off the detector, reuse the bluest
     # reconstructed profile.
     for i in range(maxi, dimx):
-        anchor_prof = new_2[:, maxi - 1]
-        sc = cen['order 2']['Y centroid'][maxi - 1]
-        ec = cen['order 2']['Y centroid'][i]
+        anchor_prof = new_frame[:, maxi - 1]
+        sc = cen['order '+order]['Y centroid'][maxi - 1]
+        ec = cen['order '+order]['Y centroid'][i]
         working_prof = np.interp(np.arange(dimy), np.arange(dimy) - sc + ec,
                                  anchor_prof)
-        new_2[:, i] = working_prof
+        new_frame[:, i] = working_prof
 
-    return new_2
+    return new_frame
 
 
 def oversample_frame(frame, oversample=1):
@@ -687,51 +732,53 @@ def oversample_frame(frame, oversample=1):
     return osframe
 
 
-def pad_order2(order2, cen, pad):
-    """Add padding to the spatial axis of an order 2 dataframe. Since order 2
-    curves almost vertically at short wavelengths, we must take special care to
-    properly extend the spatial profile
+def pad_order23(dataframe, cen, pad, order):
+    """Add padding to the spatial axis of an order 2 or 3 dataframe. Since
+    these orders curve almost vertically at short wavelengths, we must take
+    special care to properly extend the spatial profile
 
     Parameters
     ----------
-    order2 : np.array
-        A dataframe of order 2.
+    dataframe : np.array
+        A dataframe of order 2 or 3.
     cen : dict
         Centroids dictionary.
     pad : int
         Amount of padding to add to the spatial axis.
+    order : str
+        Order to pad.
 
     Returns
     -------
-    o2_padded : np.array
-        The order 2 dataframe with the appropriate amount of padding added to
+    frame_padded : np.array
+        The dataframe with the appropriate amount of padding added to
         the spatial axis.
     """
 
     # Initalize padded array.
-    dimy, dimx = np.shape(order2)
-    o2_padded = np.zeros((dimy + pad, dimx))
-    o2_padded[:-pad] = order2
+    dimy, dimx = np.shape(dataframe)
+    frame_padded = np.zeros((dimy + pad, dimx))
+    frame_padded[:-pad] = dataframe
 
     # Use the shortest wavelength slice along the spatial axis as a reference
     # profile.
-    anchor_prof = order2[-1]
-    ii = np.where(cen['order 2']['Y centroid'] >= dimy - 1)[0][0]
-    xcen_anchor = cen['order 2']['X centroid'][ii]
+    anchor_prof = dataframe[-1]
+    ii = np.where(cen['order '+order]['Y centroid'] >= dimy - 1)[0][0]
+    xcen_anchor = cen['order '+order]['X centroid'][ii]
 
     # To pad the upper edge of the spatial axis, shift the reference profile
     # according to extrapolated centroids.
     for i in range(pad):
         i += 1
-        shift = cen['order 2']['X centroid'][ii + i] - xcen_anchor
+        shift = cen['order '+order]['X centroid'][ii + i] - xcen_anchor
         working_prof = np.interp(np.arange(dimx),
                                  np.arange(dimx) + shift, anchor_prof)
-        o2_padded[dimy + i - 1] = working_prof
+        frame_padded[dimy + i - 1] = working_prof
 
     # Pad the lower edge with zeros.
-    o2_padded = np.pad(o2_padded, ((pad, 0), (0, 0)), mode='edge')
+    frame_padded = np.pad(frame_padded, ((pad, 0), (0, 0)), mode='edge')
 
-    return o2_padded
+    return frame_padded
 
 
 def pad_spectral_axis(frame, xcens, ycens, pad=0, ref_cols=None):
