@@ -38,9 +38,6 @@ class EmpiricalProfile:
         SOSS CLEAR exposure data frame.
     f277w : np.array
         SOSS exposure data frame using the F277W filter.
-    badpix_mask : np.array
-        Bad pixel mask, values of True represent bad pixels. Must be the same
-        shape as the CLEAR dataframe.
     subarray : str
         NIRISS SOSS subarray identifier. One of 'SUBSTRIP256', or 'FULL'.
     pad : tuple
@@ -68,7 +65,7 @@ class EmpiricalProfile:
         Save spatial profile models to file
     """
 
-    def __init__(self, clear, f277w, badpix_mask, pad=(0, 0), oversample=1,
+    def __init__(self, clear, f277w, pad=(0, 0), oversample=1,
                  verbose=0):
         """Initializer for EmpiricalProfile.
         """
@@ -76,7 +73,6 @@ class EmpiricalProfile:
         # Initialize input attributes.
         self.clear = clear
         self.f277w = f277w
-        self.badpix_mask = badpix_mask
         self.pad = pad
         self.oversample = oversample
         self.verbose = verbose
@@ -103,16 +99,16 @@ class EmpiricalProfile:
             lazy = True
         # Run the empirical spatial profile construction.
         o1, o2 = build_empirical_profile(self.clear, self.f277w,
-                                         self.badpix_mask, self.subarray,
+                                         self.subarray,
                                          self.pad, self.oversample, normalize,
                                          self.verbose, lazy)
         # Store the spatial profiles as attributes.
         self.order1, self.order2 = o1, o2
 
 
-    def write_specprofile_reference(self, filename=None):
-        out = np.concatenate()
-        soss_ref_files.init_spec_profile()
+    # def write_specprofile_reference(self, filename=None):
+    #     out = np.concatenate()
+    #     soss_ref_files.init_spec_profile()
 
 
     def save_to_file(self, filename=None):
@@ -150,7 +146,7 @@ class EmpiricalProfile:
         return utils.validate_inputs(self)
 
 
-def build_empirical_profile(clear, f277w, badpix_mask, subarray, pad,
+def build_empirical_profile(clear, f277w, subarray, pad,
                             oversample, normalize, verbose, lazy=False):
     """Main procedural function for the empirical spatial profile construction
     module. Calling this function will initialize and run all the required
@@ -164,9 +160,6 @@ def build_empirical_profile(clear, f277w, badpix_mask, subarray, pad,
         SOSS CLEAR exposure data frame.
     f277w : np.array, None
         SOSS exposure data frame using the F277W filter.
-    badpix_mask : np.array
-        Bad pixel mask, values of True represent bad pixels. Must be the same
-        shape as the CLEAR dataframe.
     subarray : str
         NIRISS SOSS subarray identifier. One of SUBSTRIP256', or 'FULL'.
     pad : tuple
@@ -215,27 +208,31 @@ def build_empirical_profile(clear, f277w, badpix_mask, subarray, pad,
         clear = clear[-256:, :]
         if f277w is not None:
             f277w = f277w[-256:, :]
-        badpix_mask = badpix_mask[-256:, :]
         # Reset all variable to appropriate SUBSTRIP256 values.
         subarray = 'SUBSTRIP256'
         dimy, dimx = np.shape(clear)
         # Note that the detector was trimmed.
         trim = True
 
-    # Add a floor level such that all pixel values are positive
+    # Add a floor level such that all pixel values are positive and interpolate
+    # bad pixels
+    if verbose != 0:
+        print(' Initial processing...')
+        print('  Interpolating bad pixels...', flush=True)
+
     floor = np.nanpercentile(clear, 0.1)
     clear_floorsub = clear - floor
+    clear_floorsub = utils.replace_badpix(clear_floorsub, verbose=verbose)
     if f277w is not None:
         floor_f277w = np.nanpercentile(f277w, 0.1)
         f277w_floorsub = f277w - floor_f277w
+        f277w_floorsub = utils.replace_badpix(f277w_floorsub, verbose=verbose)
 
     # Get the centroid positions for both orders from the data using the
     # edgetrig method.
     if verbose != 0:
-        print(' Initial processing...')
         print('  Getting trace centroids...')
-    centroids = get_soss_centroids(clear_floorsub, mask=badpix_mask,
-                                   subarray=subarray)
+    centroids = get_soss_centroids(clear_floorsub, subarray=subarray)
     if verbose == 3:
         plotting.plot_centroid(clear_floorsub, centroids)
 
