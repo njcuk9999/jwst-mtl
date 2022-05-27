@@ -95,8 +95,8 @@ if os.path.isfile(spectrum_file) is False:
 
 data = fits.open(spectrum_file)
 # spectra are stored at indice 1 (order 1), then 2 (order2) then 3 (order 3) then 4 (order 1, 2nd time step), ...
-#nint = data[0].header['NINTS']
-nint = 2
+nint = data[0].header['NINTS']
+#nint = 2
 norder = 3
 
 wavelength = np.zeros((nint, norder, 2048))

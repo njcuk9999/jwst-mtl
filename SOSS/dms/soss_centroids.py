@@ -254,7 +254,7 @@ def get_centroids_com(image, header=None, mask=None, poly_order=11, verbose=Fals
     return xtrace, ytrace, param
 
 
-def edge_trigger(image, halfwidth=5, yos=1, verbose=False):
+def edge_trigger(image, halfwidth=5, yos=1, verbose=False, outdir=None):
     """Detect the edges and center of the trace based on the minima and maxima of the derivate
      of the columns, which is computed in a running window along the columns of the detector image
 
@@ -358,6 +358,7 @@ def edge_trigger(image, halfwidth=5, yos=1, verbose=False):
 
         plt.tight_layout()
 
+        if outdir is not None: plt.savefig(outdir+'/edge_trigger_ymedian{:4.0f}.png'.format(np.nanmedian(ytrace_best)))
         plt.show()
         plt.close()
 
@@ -365,7 +366,7 @@ def edge_trigger(image, halfwidth=5, yos=1, verbose=False):
 
 
 def get_centroids_edgetrigger(image, header=None, mask=None, poly_order=11,
-                              halfwidth=5, mode='combined', verbose=False):
+                              halfwidth=5, mode='combined', verbose=False, outdir=None):
     """Determine the x, y coordinates of the trace using the derivatives along the y-axis.
     Works for either order if there is no contamination.
 
@@ -402,7 +403,7 @@ def get_centroids_edgetrigger(image, header=None, mask=None, poly_order=11,
     image_masked = np.where(mask | ~refpix_mask, np.nan, image)
 
     # Use edge trigger to compute the edges and center of the trace.
-    fkwargs = dict(halfwidth=halfwidth, yos=yos, verbose=verbose)
+    fkwargs = dict(halfwidth=halfwidth, yos=yos, verbose=verbose, outdir=outdir)
     ytrace_max, ytrace_min, ytrace_best, widths_best = edge_trigger(image_masked, **fkwargs)
 
     # Use different y-positions depending on the mode parameter.
@@ -940,21 +941,35 @@ def wavelength_calibration(xpos, order=1, subarray='SUBSTRIP256'):
     :rtype: array[float]
     """
 
-    # Read the wavelength vs x-position relation from the reference file.
-    ref = soss_read_refs.RefTraceTable()
-    ref_wavelengths, ref_xpos = ref('X', subarray=subarray, order=order)
+    try:
+        # USE THE REFERENCE FILE IF IT CAN BE FOUND
+        # Read the wavelength vs x-position relation from the reference file.
+        ref = soss_read_refs.RefTraceTable()
+        ref_wavelengths, ref_xpos = ref('X', subarray=subarray, order=order)
 
-    # Sort so the reference positions are in ascending order.
-    args = np.argsort(ref_xpos)
-    ref_xpos, ref_wavelengths = ref_xpos[args], ref_wavelengths[args]
+        # Sort so the reference positions are in ascending order.
+        args = np.argsort(ref_xpos)
+        ref_xpos, ref_wavelengths = ref_xpos[args], ref_wavelengths[args]
 
-    # Find the wavelengths corresponding to the input array by interpolating.
-    wavelengths = np.interp(xpos, ref_xpos, ref_wavelengths)
+        # Find the wavelengths corresponding to the input array by interpolating.
+        wavelengths = np.interp(xpos, ref_xpos, ref_wavelengths)
+    except:
+        # USE AN APPROXIMATE WAVELENGTH CALIBRATION OTHERWISE
+        if order == 1:
+            dispersion = -0.9718 #nm/pixel
+            w0 = 2.833
+        if order == 2:
+            dispersion = -0.467
+            w0 = 1.423
+        if order == 3:
+            dispersion = -0.310
+            w0 = 0.956
+        wavelengths = w0 + xpos * (dispersion / 1000)
 
     return wavelengths
 
 
-def calibrate_widths(width_o1, width_o2=None, width_o3=None, subarray='SUBSTRIP256', verbose=False):
+def calibrate_widths(width_o1, width_o2=None, width_o3=None, subarray='SUBSTRIP256', verbose=False, outdir=None):
     """Fit an exponential function to the wavelength-width relation, for use obtaining the
     contaminated order 2 trace positions.
 
@@ -1040,6 +1055,7 @@ def calibrate_widths(width_o1, width_o2=None, width_o3=None, subarray='SUBSTRIP2
 
         plt.tight_layout()
 
+        if outdir is not None: plt.savefig(outdir+'/soss_centroids_calibrate_width.png')
         plt.show()
         plt.close()
 
@@ -1048,7 +1064,7 @@ def calibrate_widths(width_o1, width_o2=None, width_o3=None, subarray='SUBSTRIP2
 
 def get_soss_centroids(image, mask=None, subarray='SUBSTRIP256', halfwidth=2,
                        poly_orders=None, apex_order1=None,
-                       calibrate=True, verbose=False):
+                       calibrate=True, verbose=False, outdir=None):
     """Determine the traces positions on a real image (native size) with as few
     assumptions as possible using the 'edge trigger' method.
 
@@ -1100,16 +1116,16 @@ def get_soss_centroids(image, mask=None, subarray='SUBSTRIP256', halfwidth=2,
     if mask is not None:
         mask_256 = mask_256 | mask
 
-    if verbose:
+    if verbose & (outdir is not None):
         hdu = fits.PrimaryHDU()
         hdu.data = np.where(mask_256, np.nan, image)
-        hdu.writeto('mask_256.fits', overwrite=True)
+        hdu.writeto(outdir+'/mask_256.fits', overwrite=True)
 
     # Get the order 1 trace position.
     result = get_centroids_edgetrigger(image, mask=mask_256,
                                        poly_order=default_orders['order 1'],
                                        halfwidth=halfwidth, mode='combined',
-                                       verbose=verbose)
+                                       verbose=verbose, outdir=outdir)
 
     x_o1, y_o1, w_o1, par_o1 = result
 
@@ -1140,16 +1156,16 @@ def get_soss_centroids(image, mask=None, subarray='SUBSTRIP256', halfwidth=2,
     if mask is not None:
         mask_o3 = mask_o3 | mask
 
-    if verbose:
+    if verbose & (outdir is not None):
         hdu = fits.PrimaryHDU()
         hdu.data = np.where(mask_o3, np.nan, image)
-        hdu.writeto('mask_o3.fits', overwrite=True)
+        hdu.writeto(outdir+'/mask_o3.fits', overwrite=True)
 
     # Get the order 3 trace position.
     result = get_centroids_edgetrigger(image, mask=mask_o3,
                                        poly_order=default_orders['order 3'],
                                        halfwidth=halfwidth, mode='combined',
-                                       verbose=verbose)
+                                       verbose=verbose, outdir=outdir)
 
     x_o3, y_o3, w_o3, par_o3 = result
 
@@ -1172,21 +1188,21 @@ def get_soss_centroids(image, mask=None, subarray='SUBSTRIP256', halfwidth=2,
     if mask is not None:
         mask_o2_uncont = mask_o2_uncont | mask
 
-    if verbose:
+    if verbose & (outdir is not None):
         hdu = fits.PrimaryHDU()
         hdu.data = np.where(mask_o2_uncont, np.nan, image)
-        hdu.writeto('mask_o2_uncont.fits', overwrite=True)
+        hdu.writeto(outdir+'/mask_o2_uncont.fits', overwrite=True)
 
     # Get the raw trace positions for the uncontaminated part of the order 2 trace.
     result = get_centroids_edgetrigger(image, mask=mask_o2_uncont,
                                        poly_order=None, halfwidth=halfwidth,
-                                       mode='combined', verbose=verbose)
+                                       mode='combined', verbose=verbose, outdir=outdir)
 
     x_o2_uncont, y_o2_uncont, w_o2_uncont, par_o2_uncont = result
 
     if calibrate:
 
-        pars_width = calibrate_widths(w_o1, w_o2_uncont, subarray=subarray, verbose=verbose)
+        pars_width = calibrate_widths(w_o1, w_o2_uncont, subarray=subarray, verbose=verbose, outdir=outdir)
 
     else:
         # Use pre-computed parameters from the CV3 deepstack.
@@ -1201,15 +1217,15 @@ def get_soss_centroids(image, mask=None, subarray='SUBSTRIP256', halfwidth=2,
     if mask is not None:
         mask_o2_cont = mask_o2_cont | mask
 
-    if verbose:
+    if verbose & (outdir is not None):
         hdu = fits.PrimaryHDU()
         hdu.data = np.where(mask_o2_cont, np.nan, image)
-        hdu.writeto('mask_o2_cont.fits', overwrite=True)
+        hdu.writeto(outdir+'/mask_o2_cont.fits', overwrite=True)
 
     # Get the raw top-edge poistions of the contaminated order 2 trace.
     result = get_centroids_edgetrigger(image, mask=mask_o2_cont,
                                        poly_order=None, halfwidth=halfwidth,
-                                       mode='topedge', verbose=verbose)
+                                       mode='topedge', verbose=verbose, outdir=outdir)
 
     x_o2_top, y_o2_top, w_o2_top, par_o2_top = result
 
@@ -1269,6 +1285,7 @@ def get_soss_centroids(image, mask=None, subarray='SUBSTRIP256', halfwidth=2,
 
         plt.tight_layout()
 
+        if outdir is not None: plt.savefig(outdir+'/soss_centroid_order2tracepositions.png')
         plt.show()
         plt.close()
 

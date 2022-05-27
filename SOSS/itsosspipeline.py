@@ -90,7 +90,7 @@ def readpaths(config_paths_filename, pars):
     pars.simulationparamfile = str(value[param =='SIMULATION_PARAM'][0])
     pars.tracefile = str(value[param =='TRACE_FILE'][0])
     pars.throughputfile = str(value[param =='THROUGHPUT_FILE'][0])
-    pars.path_filtertransmission = str(value[param =='FILTERTRANSMISSION'][0])
+    pars.path_filtertransmission = str(value[param =='FILTER_TRANSMISSION'][0])
 
 def read_simu_cfg():
     with open('table_simulations.csv', newline='') as csvfile:
@@ -875,11 +875,28 @@ def loictrace(simuPars, response, bin_models_wv, bin_starmodel_flux, bin_ld_coef
     itime_array = np.ones(npt) * itime  # Transit model expects array
     rdr_array = np.ones((1, npt)) * bin_planetmodel_rprs  # r/R* -- can be multi-planet
     tedarray = np.zeros((1, npt))  # secondary eclipse -- can be multi-planet
-    planet_flux_ratio = spgen.transitmodel(solin, time_array, \
+
+    #### replace by your favorite transit model or eclpise model or whatevah
+    transitmodelname = None # default
+    if transitmodelname == None:
+        planet_flux_ratio = spgen.transitmodel(solin, time_array, \
                                      bin_ld_coeff[:, 0], bin_ld_coeff[:, 1], bin_ld_coeff[:, 2], bin_ld_coeff[:, 3], \
                                      rdr_array, tedarray, itime=itime_array)
 
-    bin_models_flux = planet_flux_ratio * bin_starmodel_flux * bin_response * bin_quantum_yield
+        # spectrum to seed on detector = planet Rp/Rs * stellar flux * instrument response * detector Quantum yield
+        bin_models_flux = planet_flux_ratio * bin_starmodel_flux * bin_response * bin_quantum_yield
+    elif transitmodelname == 'KSint':
+        #bin_models_flux has to be generated with your own function
+        #Be reminded that the starmodel_flux passed on to this part of the code uses a 4-param
+        #limb darkening description. You need to either work with those or convert them to 2-param
+        #if that is what your modeling function uses.
+    elif transitmodelname == 'Eclipse'
+        # Louis-Philippe Coulombre could introduce something here to handle eclipses.
+    else:
+        print('ERROR!!!')
+        sys.exit()
+    ####
+
 
     #TODO: return planet_flux_ratio * bin_starmodel_flux to calling program to enable
     # saving this "input spectrum".
