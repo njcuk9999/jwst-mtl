@@ -19,11 +19,10 @@ from tqdm import tqdm
 from typing import Any, Dict, List, Optional, Tuple
 import warnings
 
-import transitfit5 as transit_fit
-
 from soss_tfit.core import base
 from soss_tfit.core import base_classes
 from soss_tfit.science import general
+from soss_tfit.utils import transitfit5 as transit_fit
 
 # =============================================================================
 # Define variables
@@ -740,6 +739,7 @@ def lnprob(tfit: TransitFit) -> float:
     ntt = tfit.pkwargs['NTT']
     tobs = tfit.pkwargs['T_OBS']
     omc = tfit.pkwargs['OMC']
+    nintg = tfit.pkwargs['NINTG']
     # trial solution
     sol = np.array(tfit.p0)
     # -------------------------------------------------------------------------
@@ -783,7 +783,8 @@ def lnprob(tfit: TransitFit) -> float:
             return BADLPR
         # get transit for current parameters
         tkwargs = dict(sol=sol[:, phot_it], time=time[phot_it],
-                       itime=itime[phot_it], ntt=ntt, tobs=tobs, omc=omc)
+                       itime=itime[phot_it], ntt=ntt, tobs=tobs, omc=omc,
+                       nintg=nintg)
         # get and plot the model
         model = transit_fit.transitmodel(**tkwargs)
         # check for NaNs -- we don't want these.

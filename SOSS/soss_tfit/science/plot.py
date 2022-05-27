@@ -15,11 +15,11 @@ import numpy as np
 import os
 from typing import Dict, Optional
 
-import transitfit5 as transit_fit
-
 from soss_tfit.core import base_classes
 from soss_tfit.science import general
 from soss_tfit.science import mcmc
+from soss_tfit.utils import transitfit5 as transit_fit
+
 
 # =============================================================================
 # Define variables
@@ -171,7 +171,8 @@ def plot_transit_fit(params: ParamDict, tfit: TransitFit,
         tkwargs = dict(sol=tfit.p0, time=tfit.time[bpass],
                        itime=tfit.itime[bpass],
                        ntt=tfit.pkwargs['NTT'], tobs=tfit.pkwargs['T_OBS'],
-                       omc=tfit.pkwargs['OMC'])
+                       omc=tfit.pkwargs['OMC'],
+                       nintg=tfit.pkwargs['NINTG'])
         # set colour based on order
         order = int(np.mean(tfit.orders[bpass]))
         color = ORDER_COLORS[order]

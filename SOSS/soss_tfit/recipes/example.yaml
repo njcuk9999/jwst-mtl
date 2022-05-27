@@ -40,6 +40,10 @@ global_params:
     1: None
     2: None
 
+  # Define the number of subdivisions when solving the long-integration problems
+  # Must be between 1 and 41 and odd
+  nintg: 1
+
   # ---------------------------------------------------------------------------
   # Input/Output parameters
   # ---------------------------------------------------------------------------

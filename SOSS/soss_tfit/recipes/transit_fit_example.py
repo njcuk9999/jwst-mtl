@@ -115,6 +115,8 @@ if __name__ == "__main__":
     sampler2 = mcmc.Sampler(params, tfit, mode='full')
     sampler2.run_mcmc(corscale, mcmc.lnprob, mcmc.mhg_mcmc,
                       trial=sampler1)
+    # add data to sampler2 (for dump and plotting)
+    sampler2.data = data
     # print result
     sampler2.posterior_print()
     # plot a specific chain
@@ -122,6 +124,8 @@ if __name__ == "__main__":
     # -------------------------------------------------------------------------
     # update tfit
     tfit_final = mcmc.update_x0_p0_from_chain(tfit, sampler2.wchains[0], -1)
+    # add tfit to sampler
+    sampler2.tfit = tfit_final
     # -------------------------------------------------------------------------
     # plot transit
     plot.plot_transit_fit(params, tfit_final)
@@ -164,9 +168,9 @@ if __name__ == "__main__":
     sampler2.save_chains()
 
     # dump the sampler class to disk so it can be loaded later
-    #   we add data and tfit_final (as tfit)
+    #   this can be BIG - may want to disable for large runs
     cprint('Dumping sampler to pickle file')
-    sampler2.dump(tfit=tfit_final, data=data)
+    sampler2.dump()
 
     # -------------------------------------------------------------------------
     # Step 8: plot spectrum - using sampler only so we can load from file

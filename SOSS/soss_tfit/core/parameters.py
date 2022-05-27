@@ -220,6 +220,13 @@ params.set(key='OMC', value=0.0, source=__NAME__,
            desc='O-C values for each transit',
            dtype=float, path='global_params.omc')
 
+# Define the number of subdivisions when solving the long-integration problems
+# Must be between 1 and 41 and odd
+params.set(key='NINTG', value=1, source=__NAME__,
+           desc='the number of subdivisions when solving the long-integration '
+                'problems. Must be between 1 and 41 and odd',
+           dtype=int, path='global_params.nintg')
+
 # =============================================================================
 # Define star parameters
 #       Note FitParam value = None dtype=FitParam
