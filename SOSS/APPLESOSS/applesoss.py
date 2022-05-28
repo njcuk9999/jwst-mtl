@@ -261,7 +261,8 @@ def build_empirical_profile(clear, f277w, subarray, pad,
             print('  Lazy method selected...', flush=True)
         o1_native = np.zeros((dimy + 2*pad, dimx))
         first_time = True
-        for i in tqdm(range(dimx)):
+        disable = utils.verbose_to_bool(verbose)
+        for i in tqdm(range(dimx), disable=disable):
             profile = np.copy(clear_floorsub[:, i])
             cens = [centroids['order 1']['Y centroid'][i],
                     centroids['order 2']['Y centroid'][i],
