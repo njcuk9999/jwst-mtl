@@ -953,9 +953,7 @@ def simulate_wings(wavelength, width_coefs, halfwidth=12, verbose=0):
 
 
 if __name__ == '__main__':
-    filepath = '/Users/michaelradica/transfer/IDTSOSS_clear_noisy_1_flatfieldstep.fits'
-    clear_sim = fits.getdata(filepath, 1)
-    clear_sim = np.nansum(clear_sim, axis=0)
+    clear = fits.getdata('Ref_files/simulated_data.fits', 0)
 
-    spat_prof = EmpiricalProfile(clear_sim, verbose=1)
+    spat_prof = EmpiricalProfile(clear, verbose=1)
     spat_prof.build_empirical_profile()
