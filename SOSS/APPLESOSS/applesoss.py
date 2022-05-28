@@ -238,15 +238,15 @@ def build_empirical_profile(clear, f277w, subarray, pad,
     # The four columns of pixels on the left and right edge of the SOSS
     # detector are reference pixels. Trim them off and replace them with
     # interpolations of the edge-most profiles.
-    clear_floorsub = pad_spectral_axis(clear_floorsub[:, 4:-4],
+    clear_floorsub = pad_spectral_axis(clear_floorsub[:, 5:-5],
                                        centroids['order 1']['X centroid'],
                                        centroids['order 1']['Y centroid'],
-                                       pad=4)
+                                       pad=5)
     if f277w is not None:
-        f277w_floorsub = pad_spectral_axis(f277w_floorsub[:, 4:-4],
+        f277w_floorsub = pad_spectral_axis(f277w_floorsub[:, 5:-5],
                                            centroids['order 1']['X centroid'],
                                            centroids['order 1']['Y centroid'],
-                                           pad=4)
+                                           pad=5)
 
     # ========= CONSTRUCT SPATIAL PROFILE MODELS =========
     # Build a first estimate of the first and second order spatial profiles.
@@ -338,12 +338,12 @@ def build_empirical_profile(clear, f277w, subarray, pad,
 
     # Column normalize. Only want the original detector to sum to 1, not the
     # additional padding + oversampling.
-    o1_uncontam /= np.nansum(o1_uncontam[pad:dimy + pad], axis=0)
-    o2_uncontam /= np.nansum(o2_uncontam[pad:dimy + pad], axis=0)
-    o3_uncontam /= np.nansum(o3_uncontam[pad:dimy + pad], axis=0)
+    o1_uncontam /= np.nansum(o1_uncontam, axis=0)
+    o2_uncontam /= np.nansum(o2_uncontam, axis=0)
+    o3_uncontam /= np.nansum(o3_uncontam, axis=0)
     # Replace NaNs resulting from all zero columns with zeros
     for o in [o2_uncontam, o3_uncontam]:
-        ii = np.where(np.isnan(o))
+        ii = np.where(~np.isfinite(o))
         o[ii] = 0
 
     # Add oversampling.
@@ -631,6 +631,7 @@ def construct_order23(residual, cen, order, pivot=750, halfwidth=12,
         maxi = pivot
     else:
         maxi = dimx
+    # Hard stop for profile reuse - will handle these via padding.
     stop = np.where(cen['order ' + order]['Y centroid'] >= dimy)[0][0] + halfwidth
     for i in range(dimx):
         wave = wavecal_w[i]
@@ -705,6 +706,10 @@ def construct_order23(residual, cen, order, pivot=750, halfwidth=12,
                                         anchor_prof_native)
         new_frame_native[:, i] = working_prof_native
 
+        # Handle all rows after hard cut.
+        new_frame = pad_order23(new_frame[halfwidth:-halfwidth], cen,
+                                pad=halfwidth, order=order)
+
     return new_frame, new_frame_native
 
 
@@ -777,18 +782,17 @@ def pad_order23(dataframe, cen, pad, order):
 
     # Use the shortest wavelength slice along the spatial axis as a reference
     # profile.
-    anchor_prof = dataframe[-1]
-    ii = np.where(cen['order '+order]['Y centroid'] >= dimy - 1)[0][0]
-    xcen_anchor = cen['order '+order]['X centroid'][ii]
+    anchor_prof = dataframe[-2, :]
+    xcen_anchor = np.where(cen['order '+order]['Y centroid'] >= dimy - 2)[0][0]
 
     # To pad the upper edge of the spatial axis, shift the reference profile
     # according to extrapolated centroids.
-    for i in range(pad):
-        i += 1
-        shift = cen['order '+order]['X centroid'][ii + i] - xcen_anchor
-        working_prof = np.interp(np.arange(dimx),
-                                 np.arange(dimx) + shift, anchor_prof)
-        frame_padded[dimy + i - 1] = working_prof
+    for yval in range(dimy-2, dimy-1+pad):
+        xval = np.where(cen['order '+order]['Y centroid'] >= yval)[0][0]
+        shift = xcen_anchor - xval
+        working_prof = np.interp(np.arange(dimx), np.arange(dimx) - shift,
+                                 anchor_prof)
+        frame_padded[yval] = working_prof
 
     # Pad the lower edge with zeros.
     frame_padded = np.pad(frame_padded, ((pad, 0), (0, 0)), mode='edge')
@@ -822,25 +826,27 @@ def pad_spectral_axis(frame, xcens, ycens, pad=0, ref_cols=None):
 
     # Set default reference columns.
     if ref_cols is None:
-        ref_cols = [5, -5]
+        ref_cols = [6, -6]
 
     dimy, dimx = np.shape(frame)
     pp = np.polyfit(xcens, ycens, 5)
-    xax_pad = np.arange(dimx + 2 * pad) - pad
+    xax_pad = np.arange(dimx + 2*pad) - pad
     ycens_pad = np.polyval(pp, xax_pad)
 
-    newframe = np.zeros((dimy, dimx + 2 * pad))
+    newframe = np.zeros((dimy, dimx + 2*pad))
     newframe[:, pad:(dimx + pad)] = frame
 
     for col in range(pad):
         yax = np.arange(dimy)
-        newframe[:, col] = np.interp(yax + ycens[ref_cols[0]] - ycens_pad[col],
-                                     yax, frame[:, ref_cols[0]])
+        newframe[:, col] = np.interp(yax,
+                                     yax - ycens[ref_cols[0]] + ycens_pad[col],
+                                     frame[:, ref_cols[0]])
 
-    for col in range(dimx + ref_cols[1] + pad, dimx + 2 * pad):
+    for col in range(dimx + ref_cols[1] + pad, dimx + 2*pad):
         yax = np.arange(dimy)
-        newframe[:, col] = np.interp(yax + ycens[ref_cols[1]] - ycens_pad[col],
-                                     yax, frame[:, ref_cols[1]])
+        newframe[:, col] = np.interp(yax,
+                                     yax - ycens[ref_cols[1]] + ycens_pad[col],
+                                     frame[:, ref_cols[1]])
 
     return newframe
 
