@@ -219,34 +219,33 @@ def build_empirical_profile(clear, f277w, subarray, pad,
         print(' Initial processing...')
         print('  Interpolating bad pixels...', flush=True)
     floor = np.nanpercentile(clear, 0.1)
-    clear_floorsub = clear - floor
-    # TODO : ADD BACK
-    #clear_floorsub = utils.replace_badpix(clear_floorsub, verbose=verbose)
+    clear -= floor
+    clear = utils.replace_badpix(clear, verbose=verbose)
     if f277w is not None:
         floor_f277w = np.nanpercentile(f277w, 0.1)
-        f277w_floorsub = f277w - floor_f277w
-        f277w_floorsub = utils.replace_badpix(f277w_floorsub, verbose=verbose)
+        f277w -= floor_f277w
+        f277w = utils.replace_badpix(f277w, verbose=verbose)
 
     # Get the centroid positions for both orders from the data using the
     # edgetrig method.
     if verbose != 0:
         print('  Getting trace centroids...')
-    centroids = get_soss_centroids(clear_floorsub, subarray=subarray)
+    centroids = get_soss_centroids(clear, subarray=subarray)
     if verbose == 3:
-        plotting.plot_centroid(clear_floorsub, centroids)
+        plotting.plot_centroid(clear, centroids)
 
     # The four columns of pixels on the left and right edge of the SOSS
     # detector are reference pixels. Trim them off and replace them with
     # interpolations of the edge-most profiles.
-    clear_floorsub = pad_spectral_axis(clear_floorsub[:, 5:-5],
-                                       centroids['order 1']['X centroid'],
-                                       centroids['order 1']['Y centroid'],
-                                       pad=5)
+    clear = pad_spectral_axis(clear[:, 5:-5],
+                              centroids['order 1']['X centroid'],
+                              centroids['order 1']['Y centroid'],
+                              pad=5)
     if f277w is not None:
-        f277w_floorsub = pad_spectral_axis(f277w_floorsub[:, 5:-5],
-                                           centroids['order 1']['X centroid'],
-                                           centroids['order 1']['Y centroid'],
-                                           pad=5)
+        f277w = pad_spectral_axis(f277w[:, 5:-5],
+                                  centroids['order 1']['X centroid'],
+                                  centroids['order 1']['Y centroid'],
+                                  pad=5)
 
     # ========= CONSTRUCT SPATIAL PROFILE MODELS =========
     # Build a first estimate of the first and second order spatial profiles.
@@ -261,23 +260,20 @@ def build_empirical_profile(clear, f277w, subarray, pad,
             print('  Lazy method selected...', flush=True)
         o1_native = np.zeros((dimy + 2*pad, dimx))
         first_time = True
+        vbs = verbose
         disable = utils.verbose_to_bool(verbose)
         for i in tqdm(range(dimx), disable=disable):
-            profile = np.copy(clear_floorsub[:, i])
+            profile = np.copy(clear[:, i])
             cens = [centroids['order 1']['Y centroid'][i],
                     centroids['order 2']['Y centroid'][i],
                     centroids['order 3']['Y centroid'][i]]
             if first_time is False:
-                newprof = reconstruct_wings256(profile, ycens=cens,
-                                               contamination=[2, 3],
-                                               pad=pad, verbose=0,
-                                               smooth=True)
-            else:
-                newprof = reconstruct_wings256(profile, ycens=cens,
-                                               contamination=[2, 3],
-                                               pad=pad,
-                                               verbose=verbose, smooth=True)
-                first_time = False
+                vbs = 0
+            newprof = reconstruct_wings256(profile, ycens=cens,
+                                           contamination=[2, 3],
+                                           pad=pad, verbose=vbs,
+                                           smooth=True)
+            first_time = False
             o1_native[:, i] = newprof
 
     # The original method. Get anchor profiles from the bluest clean order 1
@@ -285,7 +281,7 @@ def build_empirical_profile(clear, f277w, subarray, pad,
     # anchors to interpolate the contaminated region. Stitch together the
     # F277W, interpolation, and CLEAR for the final model.
     else:
-        o1_rough = construct_order1(clear_floorsub, f277w_floorsub, centroids,
+        o1_rough = construct_order1(clear, f277w, centroids,
                                     subarray=subarray, pad=pad,
                                     verbose=verbose)
 
@@ -293,7 +289,7 @@ def build_empirical_profile(clear, f277w, subarray, pad,
         if verbose != 0:
             print('   Rescaling first order to native flux level...',
                   flush=True)
-        o1_native = rescale_model(clear_floorsub, o1_rough, centroids,
+        o1_native = rescale_model(clear, o1_rough, centroids,
                                   pad=pad, verbose=verbose)
     # Add back the floor.
     o1_uncontam = o1_native + floor
