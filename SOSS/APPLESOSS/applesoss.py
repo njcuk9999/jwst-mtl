@@ -7,8 +7,8 @@ Created on Fri Mar 19 11:46 2021
 
 Definitions of the main functions for the APPLESOSS (A Producer of ProfiLEs for
 SOSS) module. This class will be initialized and called by the user to create
-models of the spatial profiles for the first, second and third order SOSS
-traces, for use as the spatprofile reference file required by the ATOCA
+models of the spatial profiles for the first, second, and third order SOSS
+traces, for use as the specprofile reference file required by the ATOCA
 algorithm.
 """
 
@@ -65,7 +65,7 @@ class EmpiricalProfile:
     build_empirical_profile
         Construct the empirical spatial profiles.
     write_specprofile_reference
-        Save spatial profile models to reference file
+        Save spatial profile models to reference file.
     """
 
     def __init__(self, clear, f277w=None, pad=0, oversample=1, verbose=0):
@@ -953,7 +953,7 @@ def simulate_wings(wavelength, width_coefs, halfwidth=12, verbose=0):
 
 
 if __name__ == '__main__':
-    clear = fits.getdata('Ref_files/simulated_data.fits', 0)
+    clear_data = fits.getdata('Ref_files/simulated_data.fits', 0)
 
-    spat_prof = EmpiricalProfile(clear, verbose=1)
+    spat_prof = EmpiricalProfile(clear_data, verbose=1)
     spat_prof.build_empirical_profile()

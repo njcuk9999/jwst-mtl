@@ -220,7 +220,7 @@ def replace_badpix(clear, thresh=5, box_size=10, verbose=0):
 
     # Print statistics and show debugging plot if necessary.
     if verbose != 0:
-        print('{:.2f}% of pixels interpolated.'.format(counts/dimx/dimy*100))
+        print('   {:.2f}% of pixels interpolated.'.format(counts/dimx/dimy*100))
         if verbose == 3:
             plotting.plot_badpix(clear, clear_r)
 
