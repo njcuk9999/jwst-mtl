@@ -15,6 +15,7 @@ algorithm.
 
 from astropy.io import fits
 import numpy as np
+from scipy.interpolate import interp2d
 from scipy.optimize import minimize
 from tqdm import tqdm
 import warnings
@@ -349,9 +350,9 @@ def build_empirical_profile(clear, f277w, subarray, pad,
     if oversample != 1:
         if verbose != 0:
             print(' Oversampling...')
-        o1_uncontam = oversample_frame(o1_uncontam, oversample=oversample)
-        o2_uncontam = oversample_frame(o2_uncontam, oversample=oversample)
-        o3_uncontam = oversample_frame(o3_uncontam, oversample=oversample)
+        o1_uncontam = oversample_frame(o1_uncontam, os=oversample)
+        o2_uncontam = oversample_frame(o2_uncontam, os=oversample)
+        o3_uncontam = oversample_frame(o3_uncontam, os=oversample)
 
     if verbose != 0:
         print('\nDone.')
@@ -534,43 +535,32 @@ def construct_order23(residual, cen, order, pivot=750, halfwidth=12,
     return new_frame, new_frame_native
 
 
-def oversample_frame(frame, oversample=1):
-    """Oversample a dataframe by a specified amount. Oversampling is currently
-    implemented separately in each dimension, that is, the spatial axis is
-    oversampled first, followed by the spectral direction.
+def oversample_frame(dataframe, os=1):
+    """Oversample a dataframe by a specified amount.
 
     Parameters
     ----------
-    frame : np.array
+    dataframe : np.array
         Dataframe to be oversampled.
-    oversample : int
+    os : int
         Oversampling factor to apply to each axis.
 
     Returns
     -------
-    osframe : np.array
+    data_os : np.array
         Input dataframe with each axis oversampled by the desired amount.
     """
 
-    # Get dataframe dimensions.
-    dimy, dimx = frame.shape
-    newdimy, newdimx = dimy * oversample, dimx * oversample
+    # Generate native and oversampled axes.
+    dimy, dimx = np.shape(dataframe)
+    x, x_os = np.arange(dimx), np.arange(dimx * os) / os
+    y, y_os = np.arange(dimy), np.arange(dimy * os) / os
 
-    # Oversample spatial direction.
-    osframe1 = np.zeros((newdimy, dimx))
-    for i in range(dimx):
-        yax_os = np.linspace(0, dimy, newdimy)
-        prof_os = np.interp(yax_os, np.arange(dimy), frame[:, i])
-        osframe1[:, i] = prof_os
+    # Interpolate onto the oversampled grid.
+    pp = interp2d(x, y, dataframe)
+    data_os = pp(x_os, y_os)
 
-    # Oversample spectral direction.
-    osframe = np.zeros((newdimy, newdimx))
-    for j in range(newdimy):
-        xax_os = np.linspace(0, dimx, newdimx)
-        prof_os = np.interp(xax_os, np.arange(dimx), osframe1[j, :])
-        osframe[j, :] = prof_os
-
-    return osframe
+    return data_os
 
 
 def pad_order23(dataframe, cen, pad, order):
