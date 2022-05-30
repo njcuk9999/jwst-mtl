@@ -52,7 +52,7 @@ TPP_ORDERED = ['T0', 'PERIOD', 'B', 'RPRS', 'SQRT_E_COSW', 'SQRT_E_SINW',
 # transit fit hyper parameters
 TPH_ORDERED = ['ERROR_SCALE', 'AMPLITUDE_SCALE', 'LENGTH_SCALE']
 # transit fit additional arguments
-TP_KWARGS = ['NTT', 'T_OBS', 'OMC']
+TP_KWARGS = ['NTT', 'T_OBS', 'OMC', 'NINTG']
 
 # These are the attributes of TransitFit that have the same length as x0
 X_ATTRIBUTES = ['x0', 'beta', 'x0pos']
@@ -1329,6 +1329,7 @@ class Sampler:
     """
     wchains: Dict[int, np.ndarray]
     wrejects: Dict[int, np.ndarray]
+    grtest: np.ndarray
     chains: np.ndarray
     reject: np.ndarray
     acc_dict: Dict[int, float]
@@ -1339,6 +1340,9 @@ class Sampler:
         self.mode = mode
         self.wchains = dict()
         self.wrejects = dict()
+        # gr test (shape: n_x)
+        self.grtest = np.array([])
+        # final combined chains
         self.chain = np.array([])
         self.reject = np.array([])
         self.acc_dict = dict()
@@ -1423,14 +1427,14 @@ class Sampler:
             # get number of chains to burn (using burn in fraction)
             burnin = int(self.wchains[0].shape[0] * burninf)
             # calculate the rc factor
-            grtest = gelman_rubin_convergence(self.wchains, burnin=burnin,
-                                              npt=self.tfit.n_phot)
+            self.grtest = gelman_rubin_convergence(self.wchains, burnin=burnin,
+                                                   npt=self.tfit.n_phot)
             # print the factors
             cprint('\tRc param:')
             for param_it in range(self.tfit.n_x):
                 # print Rc parameter
                 pargs = [param_it, self.tfit.xnames[param_it],
-                         grtest[param_it]]
+                         self.grtest[param_it]]
                 cprint('\t\t{0:3d} {1:3s}: {2:.4f}'.format(*pargs))
             # update the full chains
             self.chain, self.reject = join_chains(self, burnin)
@@ -1491,6 +1495,8 @@ class Sampler:
 
         :return: astropy table of the results
         """
+        # get which results we want
+        result_mode = self.params['RESULT_MODE']
         # get length
         n_x = self.tfit.n_x
         # get the names
@@ -1523,28 +1529,32 @@ class Sampler:
             # get the parameter chain
             pchain = self.chain[::start_chain, x_it]
             # -----------------------------------------------------------------
-            # get the mode
-            mode, x_eval, kde1 = transit_fit.modekdestimate(pchain, 0)
-            # calculate the mode percentile value
-            perc1 = transit_fit.intperc(mode, x_eval, kde1)
-            # get the mode low and mode high values
-            mode_upper = np.abs(perc1[1] - mode)
-            mode_lower = np.abs(mode - perc1[0])
+            # deal with result mode
+            if result_mode in ['mode', 'all']:
+                # get the mode
+                mode, x_eval, kde1 = transit_fit.modekdestimate(pchain, 0)
+                # calculate the mode percentile value
+                perc1 = transit_fit.intperc(mode, x_eval, kde1)
+                # get the mode low and mode high values
+                mode_upper = np.abs(perc1[1] - mode)
+                mode_lower = np.abs(mode - perc1[0])
+                # push into table
+                table['MODE'][x_it] = mode
+                table['MODE_LOWER'][x_it] = mode_lower
+                table['MODE_UPPER'][x_it] = mode_upper
             # -----------------------------------------------------------------
-            # calculate the percentile values
-            percentiles = np.percentile(pchain, pvalues)
-            # -----------------------------------------------------------------
-            # push into table
-            table['MODE'][x_it] = mode
-            table['MODE_LOWER'][x_it] = mode_lower
-            table['MODE_UPPER'][x_it] = mode_upper
-            table['P50'][x_it] = percentiles[1]
-            table[label_p16][x_it] = percentiles[0]
-            table[label_p84][x_it] = percentiles[2]
-        # ---------------------------------------------------------------------
-        # tabulate P50 lower and upper bounds
-        table['P50_UPPER'] = table[label_p84] - table['P50']
-        table['P50_LOWER'] = table['P50'] - table[label_p16]
+            # deal with result mode
+            if result_mode in ['percentile', 'all']:
+                # calculate the percentile values
+                percentiles = np.percentile(pchain, pvalues)
+                # -------------------------------------------------------------
+                table['P50'][x_it] = percentiles[1]
+                table[label_p16][x_it] = percentiles[0]
+                table[label_p84][x_it] = percentiles[2]
+                # -------------------------------------------------------------
+                # tabulate P50 lower and upper bounds
+                table['P50_UPPER'] = table[label_p84] - table['P50']
+                table['P50_LOWER'] = table['P50'] - table[label_p16]
         # ---------------------------------------------------------------------
         # save the results table
         self.results_table = table
@@ -1560,6 +1570,8 @@ class Sampler:
 
         :return: None, prints to standard output
         """
+        # get which results we want
+        result_mode = self.params['RESULT_MODE']
         # get results table
         results = self.results_table
         # check key is valid
@@ -1574,14 +1586,16 @@ class Sampler:
                 if results['NAME'][row] != key:
                     continue
             # get print arguments
-            if pkind == 'mode':
+            if pkind == 'mode' and result_mode in ['mode', 'all']:
                 pargs = [results['NAME'][row], results['MODE'][row],
                          results['MODE_UPPER'][row], results['MODE_LOWER'][row]]
-            else:
+                # print values
+                cprint('\t{0:3s}={1:.8f}+{2:.8f}-{3:.8f}'.format(*pargs))
+            elif pkind == 'percentile' and result_mode in ['percentile', 'all']:
                 pargs = [results['NAME'][row], results['P50'][row],
                          results['P50_UPPER'][row], results['P50_LOWER'][row]]
-            # print values
-            cprint('\t{0:3s}={1:.8f}+{2:.8f}-{3:.8f}'.format(*pargs))
+                # print values
+                cprint('\t{0:3s}={1:.8f}+{2:.8f}-{3:.8f}'.format(*pargs))
 
     def save_results(self):
         # get results table

@@ -15,14 +15,13 @@ You must compile the fortran modules and copy the .so files to a new directory {
 
 If you have an intel machine this is done as follows:
 
+    cd {INTROOT}/SOSS/soss_tfit/utils/
     f2py3 -c tfit5.pyf transitmodel.f keplerian.f ttcor.f occultquad.f mandelagol.f rqsort.f transitdur.f -lpthread -liomp5 --fcompiler=intelem --f90flags='-parallel -mkl -qopenmp' --f77flags='-parallel -mkl -qopenmp'
-    f2py3 -c binmodels_py.pyf binmodels_py.f90 precision.f90 --fcompiler=intelem 
     f2py3 -c fittransitmodel3.pyf precision.f90 fittermod.f90 fittransitmodel3.f90 getrhosig.f minpack.f transitmodel.f occultquad.f keplerian.f mandelagol.f ttcor.f -lpthread -liomp5 --fcompiler=intelem --f90flags='-parallel -mkl -qopenmp' --f77flags='-parallel -mkl -qopenmp'
 
 Otherwise, use:
 
     f2py3 -c tfit5.pyf transitmodel.f keplerian.f ttcor.f occultquad.f mandelagol.f rqsort.f transitdur.f -lgomp --f90flags='-fopenmp' --f77flags='-fopenmp'
-    f2py3 -c binmodels_py.pyf binmodels_py.f90 precision.f90 
     f2py3 -c fittransitmodel3.pyf precision.f90 fittermod.f90 fittransitmodel3.f90 getrhosig.f minpack.f transitmodel.f occultquad.f keplerian.f mandelagol.f ttcor.f -lpthread -liomp5  --f90flags='-parallel -mkl -qopenmp' --f77flags='-parallel -mkl -qopenmp' -lgomp --f90flags=-fopenmp --f77flags=-fopenmp
 
 You must add the following to your bash

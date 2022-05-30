@@ -332,6 +332,8 @@ def plot_spectrum(params: ParamDict, data: InputData, results: Table,
 
     :return: None, plots graph
     """
+    # get which results we want
+    result_mode = params['RESULT_MODE']
     # set plot name
     plot_name = f'plot_spectrum_{pkind}'
     # start plot
@@ -346,16 +348,18 @@ def plot_spectrum(params: ParamDict, data: InputData, results: Table,
     wave = data.phot['WAVELENGTH'][:, 0]
     # -------------------------------------------------------------------------
     # get results for mode / percentile
-    if pkind == 'mode':
+    if pkind == 'mode' and result_mode in ['mode', 'all']:
         yvalue = results['MODE'][rmask]
         yupper = results['MODE_UPPER'][rmask]
         ylower = results['MODE_LOWER'][rmask]
         title = 'Mode'
-    else:
+    elif pkind == 'percentile' and result_mode in ['percentile', 'all']:
         yvalue = results['P50'][rmask]
         yupper = results['P50_UPPER'][rmask]
         ylower = results['P50_LOWER'][rmask]
         title = 'Percentile'
+    else:
+        return
     # -------------------------------------------------------------------------
     # plot the full model
     if fullmodel is not None:

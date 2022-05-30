@@ -227,6 +227,14 @@ params.set(key='NINTG', value=1, source=__NAME__,
                 'problems. Must be between 1 and 41 and odd',
            dtype=int, path='global_params.nintg')
 
+# Define which way to calculate the results
+#    current options are 'percentile', 'mode', 'all'
+params.set(key='RESULT_MODE', value='percentile', source=__NAME__,
+           options=['percentile', 'mode', 'all'],
+           desc='which way to calculate the results  current options are '
+                '"percentile", "mode", "all"',
+           dtype=str, path='global_params.result-mode')
+
 # =============================================================================
 # Define star parameters
 #       Note FitParam value = None dtype=FitParam

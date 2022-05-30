@@ -19,7 +19,7 @@ C     (c) jasonfrowe@gmail.com
      .  incl,mulimbf(nintgmax),occ(nintgmax),bp(nintgmax),jm1,tdnintg
       integer ntt(nplanetmax)
       double precision tobs(nplanetmax,nmax),omc(nplanetmax,nmax),ttcor
-​
+
       if(nintg.gt.nintgmax)then
          write(0,*) "Critical Error: nintg is greater than nintgmax"
          write(0,*) "nintgmax = ",nintgmax
@@ -55,12 +55,12 @@ c        bs2=abs(sol(10*(ii-1)+8+3))
         b=sqrt(bs2)       !impact parameter
 c        write(0,*) bs2,b
         RpRs=abs(sol(10*(ii-1)+8+4))    !Rp/R*
-​
+
         ecw=sol(10*(ii-1)+8+6)
         esw=sol(10*(ii-1)+8+5)
 c        eccn=sqrt(ecw*ecw+esw*esw) !eccentricity
         eccn=(ecw*ecw+esw*esw)
-​
+
         if(eccn.ge.1.0) eccn=0.99
         if(eccn.eq.0.0d0)then
             w=0.0d0
@@ -82,17 +82,17 @@ c        eccn=sqrt(ecw*ecw+esw*esw) !eccentricity
 c        write(0,*) sol(7),sol(8),w
 c        write(0,*) "w:",acos(sol(7)/eccn),asin(sol(8)/eccn)
 c        read(5,*)
-​
+
 C       a/R*
 c        adrs=sol(5)*per/tpi*sqrt(1-sol(3))*(1+sol(8))/sqrt(1-eccn*eccn)
         adrs=1000.0*sol(1)*G*(Per*86400.0d0)**2/(3.0d0*Pi)
         adrs=adrs**(1.0d0/3.0d0)
 c        write(0,*) "a/R*:",adrs
-​
+
 C       Find inclination !hmm.. this is probably wrong
 c        incl=acos(b/adrs)
-​
-​
+
+
 c        K=abs(sol(10*(ii-1)+8+7))
         K=sol(10*(ii-1)+8+7)
 
@@ -115,7 +115,7 @@ C       added 2019/08/14
         drs=distance(adrs,eccn,Tanom)
         incl=acos(b/drs)
 
-​
+
 !Add parallel commands here
         !write(6,*) 'Number of threads',OMP_GET_NUM_THREADS()
 !$OMP PARALLEL DO PRIVATE(j,jm1,ttcor,tflux,t,phi,Manom,Tanom,drs,
@@ -130,13 +130,13 @@ c            read(5,*)
                 jm1=dble(j-1)
                 tflux(j)=0.0 !initialize model
 C               sample over integration time
-​
+
 c                t=t-ttcor
-​
+
 !              old time-convolution
 c                t=time(i)+itime(i)*(2.0*dble(j)-dnintg-1.0)/dnintgm1-
 c     .              epoch-ttcor
-​
+
 !              new time-convolution (basically gives same results)
                 t=time(i)-itime(i)*(0.5d0-1.0d0/tdnintg-jm1/dnintg)-
      .              epoch-ttcor
@@ -157,11 +157,11 @@ C              Added this (2014/04/23)
 c                incl=acos(b/drs)
                 x2=drs*Sin(Tanom-w)
                 y2=drs*Cos(Tanom-w)*cos(incl)
-​
+
 c                x2=drs*Cos(Tanom+w)
 c                y2=drs*Sin(Tanom+w)*cos(incl)
-​
-​
+
+
 c                bt(j)=sqrt(bs2+(drs*sin(Tanom-w))**2)
                 bt(j)=sqrt(x2*x2+y2*y2)
 c                write(0,*) t,x2,y2
@@ -181,11 +181,11 @@ c                drs=distance(adrs,eccn,Tanom)
 c                bt(j)=sqrt(bs2+(drs*sin(Tanom-phi0))**2)
 c            endif
 c                vt(j)=K*(cos(Pid2+Tanom-phi0)+eccn*cos(w))
-​
+
                 vt(j)=K*(cos(Tanom-w+pid2)+eccn*cos(-w+pid2))
 c                write(6,*) "DB:",fDB*vt(j)/Cs,vt(j)
 c                vt(j)=-K*(cos(Tanom+w)+ecw)
-​
+
                 tide(j)=ell*(drs/adrs)**(1.0d0/3.0d0)*
      .              cos(2.0d0*(Pid2+Tanom-w))
 c                tide(j)=ell*(drs/adrs)**(1.0d0/3.0d0)*
@@ -202,9 +202,9 @@ c                    write(6,*) time(i),x2/adrs,y2/adrs/cos(incl)
 c                    write(6,*) time(i),vt(j),w
 c                     write(6,*) time(i),vt(j),w
 c                endif
-​
+
 c               write(6,*) t,x2,y2
-​
+
  11         continue
             if(dtype(i).eq.0)then
 c                if(abs(phase).lt.Pid2)then
@@ -264,7 +264,7 @@ C       We have an eclipse
                     call occultuniform(bp,1.0/RpRs,occ,nintg)
                     do 14 j=1,nintg
                         ratio=1.0d0-occ(j)
-​
+
 C                      Old estimate, replaced by analytic function
 c                        ratio=1.0d0
 c                        ab=dabs(bt(j))
@@ -321,11 +321,11 @@ CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
 CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
       implicit none
       double precision Pi,phi,alpha,phase,ag
-​
+
       phi=phi+Pi
       if(phi.gt.2.0*Pi) phi=phi-2.0*Pi
-​
-​
+
+
       alpha=abs(phi)
 c      alpha=2.0*Pi*t/Per+phi
       alpha=alpha-2.0*Pi*int(alpha/(2.0*Pi))

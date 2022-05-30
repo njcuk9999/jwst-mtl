@@ -46,6 +46,10 @@ global_params:
   # Must be between 1 and 41 and odd
   nintg: 1
 
+  # Define which way to calculate the results
+  #    current options are 'percentile', 'mode', 'all'
+  result-mode: percentile
+
   # ---------------------------------------------------------------------------
   # Input/Output parameters
   # ---------------------------------------------------------------------------
@@ -124,7 +128,7 @@ mcmc_params:
     trial: 0.5
     full: 0.5
   # Maximum number of times to try the MCMC (if convergence not met on a loop)
-  nloopmaximum:
+  nloopmax:
     trial: 3
     full: 3
   # Convergence criteria
