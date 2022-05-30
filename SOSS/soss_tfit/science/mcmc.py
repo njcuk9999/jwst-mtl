@@ -1464,7 +1464,7 @@ class Sampler:
             #   buf_converge_crit
             # Question: Is this the same thing?
             #  previously sum(grtest[accept_mask] / grtest[accept_mask])
-            if np.sum(grtest < buf_converge_crit) == len(grtest):
+            if np.sum(self.grtest < buf_converge_crit) == len(self.grtest):
                 break
             else:
                 # add to the number of steps (for next loop)
@@ -1474,6 +1474,10 @@ class Sampler:
                 # deal with chain update for next loop
                 if self.mode == 'full':
                     in_sampler = self
+
+    def single_loop(self):
+
+
 
     def posterior_print(self):
 
