@@ -129,20 +129,23 @@ class EmpiricalProfile:
             Name of reference file.
         """
 
+        # Just make sure that everything is the same shape
+        assert self.order1.shape == self.order2.shape == self.order3.shape
+        dimy, dimx = self.order1.shape
         # Create stacked array with all orders.
         stack_full = np.zeros(((2048+2*self.pad)*self.oversample,
                                (2048+2*self.pad)*self.oversample, 3))
-        stack_full[(-256-2*self.pad)*self.oversample:, :, 0] = np.copy(self.order1)
-        stack_full[(-256-2*self.pad)*self.oversample:, :, 1] = np.copy(self.order2)
-        stack_full[(-256-2*self.pad)*self.oversample:, :, 2] = np.copy(self.order3)
+        stack_full[-dimy:, :, 0] = np.copy(self.order1)
+        stack_full[-dimy:, :, 1] = np.copy(self.order2)
+        stack_full[-dimy:, :, 2] = np.copy(self.order3)
         # Pass to reference file creation.
         hdulist = soss_ref_files.init_spec_profile(stack_full, self.oversample,
                                                    self.pad, subarray,
                                                    filename)
         hdu = fits.HDUList(hdulist)
         if filename is None:
-            filepattern = 'SOSS_ref_2D_profile_{}.fits'
-            filename = filepattern.format(subarray)
+            filepattern = 'APPLESOSS_ref_2D_profile_{0}_os{1}_pad{2}.fits'
+            filename = filepattern.format(subarray, self.oversample, self.pad)
         print('Saving to file '+filename)
         hdu.writeto(filename, overwrite=True)
 
@@ -239,14 +242,14 @@ def build_empirical_profile(clear, f277w, subarray, pad,
     # detector are reference pixels. Trim them off and replace them with
     # interpolations of the edge-most profiles.
     clear = pad_spectral_axis(clear[:, 5:-5],
-                              centroids['order 1']['X centroid'],
-                              centroids['order 1']['Y centroid'],
-                              pad=5)
+                              centroids['order 1']['X centroid'][5:-5],
+                              centroids['order 1']['Y centroid'][5:-5],
+                              pad=5, ref_cols=[0, -1], replace=True)
     if f277w is not None:
         f277w = pad_spectral_axis(f277w[:, 5:-5],
-                                  centroids['order 1']['X centroid'],
-                                  centroids['order 1']['Y centroid'],
-                                  pad=5)
+                                  centroids['order 1']['X centroid'][5:-5],
+                                  centroids['order 1']['Y centroid'][5:-5],
+                                  pad=5, ref_cols=[0, -1], replace=True)
 
     # ========= CONSTRUCT SPATIAL PROFILE MODELS =========
     # Build a first estimate of the first and second order spatial profiles.
@@ -611,7 +614,8 @@ def pad_order23(dataframe, cen, pad, order):
     return frame_padded
 
 
-def pad_spectral_axis(frame, xcens, ycens, pad=0, ref_cols=None):
+def pad_spectral_axis(frame, xcens, ycens, pad=0, ref_cols=None,
+                      replace=False):
     """Add padding to the spectral axis by interpolating the corresponding
     edge profile onto a set of extrapolated centroids.
 
@@ -628,6 +632,8 @@ def pad_spectral_axis(frame, xcens, ycens, pad=0, ref_cols=None):
         pixels).
     ref_cols : list, np.array, None
         Which columns to use as the reference profiles for the padding.
+    replace : bool
+        Toggle for functionality to replace reference pixel columns.
 
     Returns
     -------
@@ -640,20 +646,24 @@ def pad_spectral_axis(frame, xcens, ycens, pad=0, ref_cols=None):
         ref_cols = [6, -6]
 
     dimy, dimx = np.shape(frame)
+    # Get centroids and extended centroids.
     pp = np.polyfit(xcens, ycens, 5)
-    xax_pad = np.arange(dimx + 2*pad) - pad
+    if replace:
+        xax_pad = np.arange(dimx + 2 * pad)
+    else:
+        xax_pad = np.arange(dimx + 2*pad) - pad
     ycens_pad = np.polyval(pp, xax_pad)
-
+    # Construct padded dataframe and paste in orignal data.
     newframe = np.zeros((dimy, dimx + 2*pad))
     newframe[:, pad:(dimx + pad)] = frame
 
+    # Loop over columns to pad and stitch on the shifted reference column.
     for col in range(pad):
         yax = np.arange(dimy)
         newframe[:, col] = np.interp(yax,
                                      yax - ycens[ref_cols[0]] + ycens_pad[col],
                                      frame[:, ref_cols[0]])
-
-    for col in range(dimx + ref_cols[1] + pad, dimx + 2*pad):
+    for col in range(dimx + ref_cols[1] + pad+1, dimx + 2*pad):
         yax = np.arange(dimy)
         newframe[:, col] = np.interp(yax,
                                      yax - ycens[ref_cols[1]] + ycens_pad[col],
@@ -804,6 +814,7 @@ def reconstruct_wings256(profile, ycens=None, contamination=[2, 3], pad=0,
             newprof = np.concatenate([newprof[:start],
                                       10**np.polyval(pp_r, axis)[start:end],
                                       newprof[end:]])
+
     # Interpolate nans and negatives with median of surrounding pixels.
     for pixel in np.where(np.isnan(newprof))[0]:
         minp = np.max([pixel-5, 0])
