@@ -1476,8 +1476,7 @@ class Sampler:
                     in_sampler = self
 
     def single_loop(self):
-
-
+        pass
 
     def posterior_print(self):
 
