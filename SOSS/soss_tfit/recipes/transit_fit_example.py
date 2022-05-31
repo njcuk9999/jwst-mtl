@@ -121,6 +121,14 @@ if __name__ == "__main__":
     sampler2.posterior_print()
     # plot a specific chain
     plot.plot_chain(params, sampler2.chain, chain_num=-1)
+
+    # example to run a single loop after the fact
+    #   Note nsteps and nloop should be set based on the finishing
+    #   state of run_mcmc
+    # sampler2.single_loop(corscale, mcmc.lnprob, mcmc.mhg_mcmc,
+    #                      in_sampler=sampler2, nsteps=len(sampler2.chain),
+    #                      nloop=4)
+
     # -------------------------------------------------------------------------
     # update tfit
     tfit_final = mcmc.update_x0_p0_from_chain(tfit, sampler2.wchains[0], -1)

@@ -14,7 +14,7 @@ from astropy.table import Table
 import numpy as np
 import os
 import pickle
-import time
+import time as timemod
 from tqdm import tqdm
 from typing import Any, Dict, List, Optional, Tuple
 import warnings
@@ -1103,6 +1103,12 @@ def genchain(tfit: TransitFit, niter: int, beta: np.ndarray,
                     as a buffer (mcmcfunc=deMCMC only)
     :param progress: bool, if True uses tqdm to print progress of the
                      MCMC chain
+    :param nwalker: int, the number of walkers for printout (if not set assumes
+                    we are running in single mode - not in parallel)
+                    just modifies printout
+    :param ngroup: int, the number of groups for printout (if not set assumes
+                    we are running in single mode - not in paralell)
+                    just modifies printout
 
     :return: tuple, 1. chains (numpy array [n_iter, n_x])
                     2. rejects (numpy array [n_iter, 2]
@@ -1117,10 +1123,11 @@ def genchain(tfit: TransitFit, niter: int, beta: np.ndarray,
     chains = [np.array(tfit.x0)]
     # Track our acceptance rate - and set the first one to (0, 0)
     #    note reject=(rejected 1 or 0, parameter changed)
-    rejections = [(0, 0)]
+    rejections = [np.array([0, 0])]
     # -------------------------------------------------------------------------
     # pre-compute the first log-likelihood
     tfit.llx = loglikelihood(tfit)
+
     # -------------------------------------------------------------------------
     # inner loop to save repeating code
     def inner_loop_code(tfitloop: TransitFit):
@@ -1146,10 +1153,10 @@ def genchain(tfit: TransitFit, niter: int, beta: np.ndarray,
                        f'iteration={n_it}/{niter}'
                        f' ({np.mean(timings):.3f} s/it)')
             # start time
-            start = time.time()
+            start = timemod.time()
             tfit = inner_loop_code(tfit)
             # add to timings
-            timings.append(time.time() - start)
+            timings.append(timemod.time() - start)
         # print timing
         cprint(f'\tGroup={ngroup} walker={nwalker} {niter} in '
                f'{np.sum(timings):.3f} s', level='warning')
@@ -1348,6 +1355,7 @@ class Sampler:
         self.acc_dict = dict()
         # added manually if required
         self.data = None
+        self.results_table = Table()
         # set up storage of chainns
         for nwalker in range(self.params['WALKERS']):
             self.wchains[nwalker] = np.array([])
@@ -1359,7 +1367,8 @@ class Sampler:
         Run the MCMC using a correction scale of beta previously
         calculated by betarescale)
 
-        :param corscale: numpy array [n_param]
+        :param corscale: numpy array [n_param] - the beta scale modifier for
+                         each parameter
         :param loglikelihood: log likelihood function
                 - arguments: tfit: TransitFit
         :param mcmcfunc: MCMC function
@@ -1378,16 +1387,6 @@ class Sampler:
         nloopsmax = self.params['NLOOPMAX'][self.mode]
         # get the number of steps for the MCMC for this mode
         nsteps = self.params['NSTEPS'][self.mode]
-        # set number of walkers
-        nwalkers = self.params['WALKERS']
-        # set the burnin parameter
-        burninf = self.params['BURNINF'][self.mode]
-        # convergence criteria for buffer
-        buf_converge_crit = self.params['BUFFER_COVERGE_CRIT']
-        # the number of steps we add on next loop (if convergence not met)
-        nsteps_inc = self.params['NSTEPS_INC'][self.mode]
-        # correction to beta term for deMCMC
-        corbeta = self.params['CORBETA'][self.mode]
         # ---------------------------------------------------------------------
         # deal with having a trial sampler
         in_sampler = trial
@@ -1401,82 +1400,154 @@ class Sampler:
         #     number of loops exceeded
         # ---------------------------------------------------------------------
         while nloop < nloopsmax:
-            # set the constant genchain parameters
-            gkwargs = dict(niter=nsteps, beta=self.tfit.beta * corscale,
-                           loglikelihood=loglikelihood, mcmcfunc=mcmcfunc,
-                           corbeta=corbeta)
-            # print progress
-            cprint(f'MCMC Loop {nloop} [{self.mode}]', level='info')
-            # -----------------------------------------------------------------
-            # loop around walkers
-            # -----------------------------------------------------------------
-            # print progress
-            cprint(f'\tGetting chains for {nwalkers} walkers', level='info')
-            # get the chains in a parallel way
-            wchains, wrejects = _multi_process_pool(self, in_sampler,
-                                                    nwalkers, gkwargs)
-            # push chains/rejects into Sampler
-            self.wchains = wchains
-            self.wrejects = wrejects
-
-            # -----------------------------------------------------------------
-            # Calculate the Gelman-Rubin Convergence
-            # -----------------------------------------------------------------
-            # print progress
-            cprint('\tGelman-Rubin Convergence.', level='info')
-            # get number of chains to burn (using burn in fraction)
-            burnin = int(self.wchains[0].shape[0] * burninf)
-            # calculate the rc factor
-            self.grtest = gelman_rubin_convergence(self.wchains, burnin=burnin,
-                                                   npt=self.tfit.n_phot)
-            # print the factors
-            cprint('\tRc param:')
-            for param_it in range(self.tfit.n_x):
-                # print Rc parameter
-                pargs = [param_it, self.tfit.xnames[param_it],
-                         self.grtest[param_it]]
-                cprint('\t\t{0:3d} {1:3s}: {2:.4f}'.format(*pargs))
-            # update the full chains
-            self.chain, self.reject = join_chains(self, burnin)
-
-            # -----------------------------------------------------------------
-            # Calculate acceptance rate
-            # -----------------------------------------------------------------
-            # print progress
-            cprint('\tCalculate acceptance rate', level='info')
-            # deal with differences between trial and full run
-            if self.mode == 'trial':
-                rejects = self.wrejects[0]
-                burnin_full = int(self.wchains[0].shape[0] * burninf)
-            else:
-                rejects = self.reject
-                burnin_full = int(self.chain.shape[0] * burninf)
-
-            # calculate acceptance for chain1
-            self.acc_dict = calculate_acceptance_rates(rejects,
-                                                       burnin=burnin_full)
-
-            # -----------------------------------------------------------------
-            # Test criteria for success
-            # -----------------------------------------------------------------
-            # criteria for accepting mcmc chains
-            #   all parameters grtest greater than or equal to
-            #   buf_converge_crit
-            # Question: Is this the same thing?
-            #  previously sum(grtest[accept_mask] / grtest[accept_mask])
-            if np.sum(self.grtest < buf_converge_crit) == len(self.grtest):
+            # set up the args that go into single loop
+            sargs = [corscale, loglikelihood, mcmcfunc, in_sampler, nsteps,
+                     nloop]
+            # run a single loop
+            cond, in_sampler, nsteps, nloop = self.single_loop(*sargs)
+            # deal with condition met
+            if cond:
                 break
-            else:
-                # add to the number of steps (for next loop)
-                nsteps += nsteps_inc
-                # add to the loop iteration
-                nloop += 1
-                # deal with chain update for next loop
-                if self.mode == 'full':
-                    in_sampler = self
 
-    def single_loop(self):
-        pass
+    SingleLoopReturn = Tuple[bool, 'Sampler', int, int]
+
+    def single_loop(self, corscale: np.ndarray, loglikelihood, mcmcfunc,
+                    in_sampler: Optional['Sampler']  = None,
+                    nsteps: Optional[int] = None,
+                    nloop: Optional[int] = None) -> SingleLoopReturn:
+        """
+        Run a single instance of the while loop
+
+        :param corscale: numpy array [n_param] - the beta scale modifier for
+                         each parameter
+        :param loglikelihood: log likelihood function
+                - arguments: tfit: TransitFit
+        :param mcmcfunc: MCMC function
+                - arguments: tfit: TransitFit,
+                             loglikelihood: Any,
+                             beta: np.ndarray,
+                             buffer: np.ndarray, corbeta: float
+        :param in_sampler: Previous sampler (if given) for a "trial" run this
+                           can be None, if a "full" run, the first time this
+                           is run it should be the "trial" otherwise it should
+                           be the sampler from the previous loop
+        :param nsteps: int, can be None, the number of steps to run,
+                       the first time this should be None
+                       (and thus taken from the parameters file) after this,
+                       this should be taken from the outputs of the previous
+                       "single_loop" call
+        :param nloop: int, can be None, the loop number (mostly for print out)
+                       the first time this should be None (and is thus set to
+                       1) after this, the should be taken from the outputs of
+                       the previous "single_loop" call
+
+        :return: tuple,
+                 1. cond: bool, True if single loop converged and we should
+                    not to any more loops, False otherwise.
+                 2. sampler: Sampler, the end state of the sampler, for
+                    passing to the next call of "single_loop" - in trial mode
+                    this will be None, in full mode this will be "self"
+                 3. nsteps: int, the number of steps to use for next call of
+                    "single_loop"
+                 4. nloop: int, the loop number to use for the next call of
+                    "single_loop"
+        """
+        # ---------------------------------------------------------------------
+        # get parameters from params
+        # ---------------------------------------------------------------------
+        # get the number of steps for the MCMC for this mode
+        if nsteps is None:
+            nsteps = self.params['NSTEPS'][self.mode]
+        # set number of walkers
+        nwalkers = self.params['WALKERS']
+        # set the burnin parameter
+        burninf = self.params['BURNINF'][self.mode]
+        # convergence criteria for buffer
+        buf_converge_crit = self.params['BUFFER_COVERGE_CRIT']
+        # the number of steps we add on next loop (if convergence not met)
+        nsteps_inc = self.params['NSTEPS_INC'][self.mode]
+        # correction to beta term for deMCMC
+        corbeta = self.params['CORBETA'][self.mode]
+        # ---------------------------------------------------------------------
+        # start loop counter
+        if nloop is None:
+            nloop = 1
+        # ---------------------------------------------------------------------
+        # set the constant genchain parameters
+        gkwargs = dict(niter=nsteps, beta=self.tfit.beta * corscale,
+                       loglikelihood=loglikelihood, mcmcfunc=mcmcfunc,
+                       corbeta=corbeta)
+        # print progress
+        cprint(f'MCMC Loop {nloop} [{self.mode}]', level='info')
+        # -----------------------------------------------------------------
+        # loop around walkers
+        # -----------------------------------------------------------------
+        # print progress
+        cprint(f'\tGetting chains for {nwalkers} walkers', level='info')
+        # get the chains in a parallel way
+        wchains, wrejects = _multi_process_pool(self, in_sampler,
+                                                nwalkers, gkwargs)
+        # push chains/rejects into Sampler
+        self.wchains = wchains
+        self.wrejects = wrejects
+
+        # -----------------------------------------------------------------
+        # Calculate the Gelman-Rubin Convergence
+        # -----------------------------------------------------------------
+        # print progress
+        cprint('\tGelman-Rubin Convergence.', level='info')
+        # get number of chains to burn (using burn in fraction)
+        burnin = int(self.wchains[0].shape[0] * burninf)
+        # calculate the rc factor
+        self.grtest = gelman_rubin_convergence(self.wchains, burnin=burnin,
+                                               npt=self.tfit.n_phot)
+        # print the factors
+        cprint('\tRc param:')
+        for param_it in range(self.tfit.n_x):
+            # print Rc parameter
+            pargs = [param_it, self.tfit.xnames[param_it],
+                     self.grtest[param_it]]
+            cprint('\t\t{0:3d} {1:3s}: {2:.4f}'.format(*pargs))
+        # update the full chains
+        self.chain, self.reject = join_chains(self, burnin)
+
+        # -----------------------------------------------------------------
+        # Calculate acceptance rate
+        # -----------------------------------------------------------------
+        # print progress
+        cprint('\tCalculate acceptance rate', level='info')
+        # deal with differences between trial and full run
+        if self.mode == 'trial':
+            rejects = self.wrejects[0]
+            burnin_full = int(self.wchains[0].shape[0] * burninf)
+        else:
+            rejects = self.reject
+            burnin_full = int(self.chain.shape[0] * burninf)
+
+        # calculate acceptance for chain1
+        self.acc_dict = calculate_acceptance_rates(rejects,
+                                                   burnin=burnin_full)
+
+        # -----------------------------------------------------------------
+        # Test criteria for success
+        # -----------------------------------------------------------------
+        # criteria for accepting mcmc chains
+        #   all parameters grtest greater than or equal to
+        #   buf_converge_crit
+        # Question: Is this the same thing?
+        #  previously sum(grtest[accept_mask] / grtest[accept_mask])
+        if np.sum(self.grtest < buf_converge_crit) == len(self.grtest):
+            return True, in_sampler, nsteps, nloop
+        else:
+            # add to the number of steps (for next loop)
+            nsteps += nsteps_inc
+            # add to the loop iteration
+            nloop += 1
+            # deal with chain update for next loop
+            if self.mode == 'full':
+                in_sampler = self
+
+            return False, in_sampler, nsteps, nloop
 
     def posterior_print(self):
 
@@ -1567,7 +1638,6 @@ class Sampler:
         """
         Print the results to screen for pkind = "mode" or "percentile"
 
-        :param results: astropy table, the results Table (from self.results)
         :param pkind: str, either "mode" or "percentile"
         :param key: str or None, if set filters the printout by this key
 
@@ -1968,10 +2038,6 @@ def _linear_process(sampler: Sampler, in_sampler: Sampler,
     :param nwalker: int, the walker number
     :param gkwargs: dictionary, constant args to pass to the linear process
     :param ngroup: int, the group number
-    :param return_dict: the multiprocessing return dictionary (acts like
-                        normal dictionary)
-    :param loglikelihood: function: loglikelihood function
-    :param mcmcfunc: function: mcmcfunc function
 
     :return: tuple, 1. the chains, 2. the rejects
     """
