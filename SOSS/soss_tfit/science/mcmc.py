@@ -796,7 +796,7 @@ def lnprob(tfit: TransitFit) -> float:
                 log1 = np.log(fluxerr[phot_it] ** 2 * dscale[phot_it] ** 2)
                 sum1 = np.sum(log1)
                 sqrdiff = (flux[phot_it] - model)**2
-                sum2 = np.sum(sqrdiff / (fluxerr**2 * dscale[phot_it]**2))
+                sum2 = np.sum(sqrdiff / (fluxerr[phot_it]**2 * dscale[phot_it]**2))
                 logl += -0.5 * (sum1 + sum2)
         # else we return our bad log likelihood
         else:
