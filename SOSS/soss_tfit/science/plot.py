@@ -168,7 +168,7 @@ def plot_transit_fit(params: ParamDict, tfit: TransitFit,
         # get the frame for this bandpass
         frame = frames[b_it]
         # get transit for current parameters
-        tkwargs = dict(sol=tfit.p0, time=tfit.time[bpass],
+        tkwargs = dict(sol=tfit.p0[:, bpass], time=tfit.time[bpass],
                        itime=tfit.itime[bpass],
                        ntt=tfit.pkwargs['NTT'], tobs=tfit.pkwargs['T_OBS'],
                        omc=tfit.pkwargs['OMC'],
