@@ -13,6 +13,19 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
+def plot_badpix(clear, mask):
+    """Plot the difference between the originanl dataframe, and the frame with
+     bad pixels interpolated.
+     """
+
+    plt.imshow(clear - mask, origin='lower', aspect='auto',
+               vmin=-1, vmax=1)
+    plt.colorbar()
+    plt.xlabel('Spectral Pixel', fontsize=14)
+    plt.ylabel('Spatial Pixel', fontsize=14)
+    plt.show()
+
+
 def plot_centroid(clear, centroid_dict):
     """Overplot the trace centroids extracted from the data over the data
     itself to verify accuracy.
