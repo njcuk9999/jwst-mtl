@@ -306,6 +306,30 @@ def plot_timeseries(spectrum_file, outdir=None, norder=3):
     hdu = fits.PrimaryHDU(flux.transpose(1, 0, 2))
     hdu.writeto(outdir+'timeseries_greyscale_rawflux.fits', overwrite=True)
 
+    # Produce a wavelength calibrated spectrum time-series
+    for m in range(norder):
+        if m == 0:
+            dy = 0.05
+        elif m == 1:
+            dy = 0.1
+        else:
+            dy = 0.2
+        vmin, vmax = 0, np.nanpercentile(flux[:,m,:], 95)
+        yamp = vmax - vmin
+        vmaxall = vmax+nint*dy*yamp
+        print(vmin, vmax, yamp, vmaxall)
+
+        fig = plt.figure(figsize=(6,6*0.5*(1+nint*dy)))
+        for i in range(nint):
+            plt.plot(wavelength[i, m, :], flux[i, m, :]+i*dy*yamp, color='black')
+        plt.ylim((vmin, vmaxall))
+        plt.title('Extracted Order {:}'.format(m+1))
+        plt.xlabel('Wavelength (microns)')
+        plt.ylabel('extracted Flux (DN/sec)')
+        plt.show()
+
+
+
     # Produce that Raw extracted flux greyscale
     for i in range(norder):
         fig = plt.figure(figsize=(8,8))
@@ -338,24 +362,10 @@ def plot_timeseries(spectrum_file, outdir=None, norder=3):
     return
 
 
-def check_atoca(fedto_atoca_filename, atoca_model_filename, outdir=None):
+def check_atoca_residuals(fedto_atoca_filename, atoca_model_filename, outdir=None):
     '''
     Check that the ATOCA modelling went well by looking at residual maps for each order.
     '''
-
-    obser = datamodels.open(fedto_atoca_filename)
-    #<CubeModel(20, 256, 2048)>
-    nints = obser.meta.exposure.nints
-    if obser.meta.subarray.name == 'SUBSTRIP96':
-        norders = 2
-    else:
-        norders = 3
-
-    model = datamodels.open(atoca_model_filename)
-    #<SossExtractModel>
-
-    # Residual map after subtracting both orders' model
-    cube = obser.data - model.order1 - model.order2
 
     # Forge output directory where plots will be written
     if outdir == None:
@@ -365,7 +375,32 @@ def check_atoca(fedto_atoca_filename, atoca_model_filename, outdir=None):
     if not os.path.exists(outdir):
         os.makedirs(outdir)
 
+    # Read the file fed to ATOCA
+    obser = datamodels.open(fedto_atoca_filename)
+    #<CubeModel(20, 256, 2048)>
+    nints = obser.meta.exposure.nints
+    if obser.meta.subarray.name == 'SUBSTRIP96':
+        norders = 2
+    else:
+        norders = 3
+
+    # Read the traces modelled by ATOCA
+    model = datamodels.open(atoca_model_filename)
+    #<SossExtractModel>
+
+    # Residual map after subtracting both orders' model
+    cube = obser.data - model.order1 - model.order2
     hdu = fits.PrimaryHDU(cube)
-    hdu.writeto(outdir+'residualmap.fits', overwrite=True)
+    hdu.writeto(outdir+'residualmap_bothorders.fits', overwrite=True)
+
+    # Residual map after subtracting order 1 model
+    cube = obser.data - model.order1
+    hdu = fits.PrimaryHDU(cube)
+    hdu.writeto(outdir+'residualmap_order2.fits', overwrite=True)
+
+    # Residual map after subtracting order 2 model
+    cube = obser.data - model.order2
+    hdu = fits.PrimaryHDU(cube)
+    hdu.writeto(outdir+'residualmap_order1.fits', overwrite=True)
 
     return

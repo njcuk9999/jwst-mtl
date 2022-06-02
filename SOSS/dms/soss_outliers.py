@@ -218,9 +218,9 @@ def flag_outliers(result, nn=2, window_size=(1, 33), n_sig=5, verbose=False, out
             im = imconvolved[pad:-pad,pad:-pad]
             outliers = im > 0
 
-
         # update the dq map with the new outliers
-        result.dq[i][outliers] = pixel['OUTLIER']
+        result.dq[i][outliers] += pixel['OUTLIER']
+        result.dq[i][outliers] += pixel['DO_NOT_USE']
 
         if verbose: print(
             'Processing integration {} : Identified {} outlier pixels\n'.format(i, np.count_nonzero(outliers)))
