@@ -16,8 +16,8 @@ import pandas as pd
 from scipy.optimize import curve_fit
 import webbpsf
 
-from SOSS.extract.applesoss import plotting
-from SOSS.extract.applesoss import utils
+from SOSS.APPLESOSS import plotting
+from SOSS.APPLESOSS import utils
 
 
 def calc_interp_coefs(f277w=True, verbose=0):
