@@ -1586,6 +1586,7 @@ class Sampler:
         table = Table()
         # add columns
         table['NAME'] = xnames
+        table['WAVE_CENT'] = np.full(n_x, np.nan)
         table['MODE'] = np.zeros(n_x, dtype=float)
         table['MODE_UPPER'] = np.zeros(n_x, dtype=float)
         table['MODE_LOWER'] = np.zeros(n_x, dtype=float)
@@ -1595,11 +1596,23 @@ class Sampler:
         table[label_p84] = np.zeros(n_x, dtype=float)
         table['P50_UPPER'] = np.zeros(n_x, dtype=float)
         table['P50_LOWER'] = np.zeros(n_x, dtype=float)
-
+        # -----------------------------------------------------------------
+        # get the average wave center of all integrations for each bandpass
+        wave_cent = np.mean(self.tfit.wavelength, axis=1)
         # -----------------------------------------------------------------
         # loop around fitted parameters
         for x_it in range(n_x):
-            cprint(f'\t Calculating results for {xnames[x_it]}')
+            # if it is a fitted parameter
+            if self.tfit.get(xnames[x_it], 'wmask'):
+                # get the wave center value for this x0 parameter
+                wave_cent_it = wave_cent[self.tfit.x0pos[x_it, 1]]
+                table['WAVE_CENT'][x_it] = wave_cent_it
+                # print
+                cprint(f'\t Calculating results for {xnames[x_it]} '
+                       f'{wave_cent_it:.3f} um')
+            else:
+                # print
+                cprint(f'\t Calculating results for {xnames[x_it]}')
             # get the parameter chain
             pchain = self.chain[::start_chain, x_it]
             # -----------------------------------------------------------------
