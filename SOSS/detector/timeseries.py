@@ -5,6 +5,7 @@ Created on Sun Jan 26 16:39:05 2020
 
 TimeSeries objects for simulations of SOSS observations
 """
+import sys
 
 # General imports.
 from copy import deepcopy
@@ -17,10 +18,16 @@ import numpy.random as rdm
 
 # Astronomy imports.
 from astropy.io import fits
+import astropy.io.fits as pyfits
+
 
 # Home-brew and intra module imports.
 from . import hxrg
 #import hxrg
+
+#Cosmic rays import
+import addCRs2Exposure
+
 
 # Plotting.
 import matplotlib.pyplot as plt
@@ -174,10 +181,10 @@ class TimeSeries(object):
 
         # Select the appropriate subarray.
         if self.subarray == 'SUBSTRIP96':
-            ls = subprocess.getoutput('ls -1 '+self.darkdir_ss96+' *.fits')
+            ls = self.subprocess.getoutput('ls -1 '+self.darkdir_ss96+' *.fits')
             darklist = np.array(ls.split('\n'))
         elif self.subarray == 'SUBSTRIP256':
-            ls = subprocess.getoutput('ls -1 ' + self.darkdir_ss256 + ' *.fits')
+            ls = self.subprocess.getoutput('ls -1 ' + self.darkdir_ss256 + ' *.fits')
             darklist = np.array(ls.split('\n'))
         elif self.subarray == 'FULL':
             #TODO: copy CV3 full frame darks to the genesis darks directory
@@ -677,6 +684,23 @@ class TimeSeries(object):
             self.data[i] = self.data[i] + noisecube
 
         self.modif_str = self.modif_str + '_detector'
+
+    def add_cosmic_rays(self, sun_activity = 'SUNMIN'):
+
+        if((sun_activity  != 'SUNMIN') and (sun_activity != 'SUNMAX') and (sun_activity != 'FLARES')):
+
+            print ('sun_activity = ', sun_activity, ' is not supported... exiting')
+            sys.exit()
+
+        filesin = [self.imapath] #The file on which we wanna run the code
+
+        #np.random.seed(13578) #so we have always the same results
+
+        #addCRs2Exposure.run(InputDir+filesin[0], 'SUNMIN', OutputDir)
+
+        for f in filesin:
+            addCRs2Exposure.run(f, sun_activity, self.output_path)
+
 
 
 def main():
