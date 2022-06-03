@@ -25,7 +25,7 @@ import matplotlib.pyplot as plt
 
 import sys
 
-def run_iteration1():
+def run_iteration1(dataset='nis18obs02'):
 
     ######################## spectrace #########################
 
@@ -66,16 +66,16 @@ def run_iteration1():
     ##################
 
     # Read the trace positions
-    o1 = ascii.read('files/centroids_o1_substrip256_nis18obs01.txt')
+    o1 = ascii.read('files/centroids_o1_substrip256_'+dataset+'.txt')
     x_o1, y_o1 = np.array(o1['col2']), np.array(o1['col3'])
-    o2 = ascii.read('files/centroids_o2_substrip256_nis18obs01.txt')
+    o2 = ascii.read('files/centroids_o2_substrip256_'+dataset+'.txt')
     x_o2, y_o2 = np.array(o2['col2']), np.array(o2['col3'])
-    o3 = ascii.read('files/centroids_o3_substrip256_nis18obs01.txt')
+    o3 = ascii.read('files/centroids_o3_substrip256_'+dataset+'.txt')
     x_o3, y_o3 = np.array(o3['col2']), np.array(o3['col3'])
 
     # CUSTOM wavecal order 1
     # Read the wavelength calibration files
-    wcal_o1 = ascii.read('files/wavecal_o1_substrip256_nis18obs01.txt')
+    wcal_o1 = ascii.read('files/wavecal_o1_substrip256_'+dataset+'.txt')
     w_o1 = np.array(wcal_o1['wavelength'])
     # Resample to the desired wavelength sampling
     #ind = np.argsort(w_o1) # needs an increasing w_o1 grid or it fails
@@ -84,12 +84,14 @@ def run_iteration1():
     xtrace_order1 = extrapolate_to_wavegrid(wave_grid, w_o1, x_o1)
     ytrace_order1 = extrapolate_to_wavegrid(wave_grid, w_o1, y_o1)
 
+
+
     #wcal_o2 = ascii.read('files/wavecal_o2_substrip256_nis18obs01.txt')
     #w_o2 = wcal_o2['col1']
 
     # CUSTOM wavecal order 3
     # only 800 columns in wavecal_o3
-    wcal_o3 = ascii.read('files/wavecal_o3_substrip256_nis18obs01.txt')
+    wcal_o3 = ascii.read('files/wavecal_o3_substrip256_'+dataset+'.txt')
     w_o3_tmp = np.array(wcal_o3['wavelength'])
     w_o3 = np.zeros(2048)*np.nan
     w_o3[:800] = w_o3_tmp
@@ -117,11 +119,19 @@ def run_iteration1():
     #ytrace_order3 = np.interp(xtrace_order3, np.arange(2048), y_o3)
     ############################################################
 
-    if False:
-        fig = plt.figure()
-        plt.scatter(xtrace_order1, ytrace_order1, marker='.', color='black')
-        plt.scatter(x_o1[ind], y_o1[ind], marker='.', color='red')
-        plt.show()
+    fig = plt.figure(figsize=(6,4))
+    plt.scatter(x_o1, w_o1, marker='.', color='black', label='Order 1 Measured')
+    plt.plot(xtrace_order1, wave_grid, color='red', label='Order 1 Extrapolated and Resampled')
+    #plt.scatter(x_o2, w_o2, marker='.', color='blue', label='Order 2 Measured')
+    #plt.plot(xtrace_order2, wave_grid, color='red', label='Order 2 Extrapolated and Resampled')
+    plt.scatter(x_o3, w_o3, marker='.', color='green', label='Order 3 Measured')
+    plt.plot(xtrace_order3, wave_grid, color='red', label='Order 3 Extrapolated and Resampled')
+    plt.legend()
+    plt.xlabel('X Position')
+    plt.ylabel('Wavelength')
+    plt.show()
+
+
 
     xtrace = np.zeros((nwave, 3))
     xtrace[:, 0] = xtrace_order1
@@ -149,7 +159,7 @@ def run_iteration1():
     # We will use the following sources for this reference file. These can be modified as needed.
     #trace_file = 'SOSS_ref_trace_table_FULL.fits'
 
-    padding = 20
+    padding = 0
     oversample = 1
 
     dimx = oversample * (2048 + 2 * padding)
@@ -190,7 +200,10 @@ def run_iteration1():
     ######################## 2d trace profile #########################
 
     # We will use the following sources for this reference file. These can be modified as needed.
-    profile_file = '/Users/albert/NIRISS/Commissioning/analysis/SOSSwavecal/michael_trace/SOSS_2D_profile_SUBSTRIP256_os=1_pad=20.fits'
+    if dataset == 'nis18obs01':
+        profile_file = '/Users/albert/NIRISS/Commissioning/analysis/SOSSwavecal/michael_trace/SOSS_2D_profile_SUBSTRIP256_os=1_pad=20.fits'
+    if dataset == 'nis18obs02':
+        profile_file = '/Users/albert/NIRISS/Commissioning/analysis/SOSSwavecal/michael_trace/APPLESOSS_ref_2D_profile_SUBSTRIP256_os1_pad0.fits'
 
     # Read the profile file provided by Loïc.
     #profile_2d = fits.getdata(profile_file, ext=0)
@@ -200,7 +213,10 @@ def run_iteration1():
     # set to zero x> 1780 order 2 (bad negative stuff there)
     prof2 = aaa[2].data
     prof2[:, 1760:] = 0.0
-    profile_2d = np.array([aaa[1].data, prof2, aaa[2].data*0.0])
+    if dataset == 'nis18obs01':
+        profile_2d = np.array([aaa[1].data, prof2, aaa[2].data*0.0])
+    else:
+        profile_2d = np.array([aaa[1].data, prof2, aaa[3].data])
     profile_2d = np.moveaxis(profile_2d, 0, -1)
 
     # The padding and oversamspling used to generate the 2D profile.
@@ -268,7 +284,7 @@ if __name__ == "__main__":
     #check_profile_map(refdir+'jwst_niriss_specprofile_0017.fits')
     #sys.exit()
     refdir = '/Users/albert/NIRISS/Commissioning/analysis/SOSSwavecal/ref_files/'
-    run_iteration1()
-    check_spec_trace(refdir+'SOSS_ref_trace_table_SUBSTRIP256.fits')
+    run_iteration1(dataset='nis18obs02')
+    #check_spec_trace(refdir+'SOSS_ref_trace_table_SUBSTRIP256.fits')
     check_2dwave_map(refdir+'SOSS_ref_2D_wave_SUBSTRIP256.fits')
     check_profile_map(refdir+'SOSS_ref_2D_profile_SUBSTRIP256.fits')

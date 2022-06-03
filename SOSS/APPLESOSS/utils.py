@@ -17,6 +17,8 @@ from tqdm import tqdm
 from SOSS.APPLESOSS import _calibrations
 from SOSS.APPLESOSS import plotting
 
+PATH_WAVEMAP_REF_FILE = 'Ref_files'
+PATH_WAVEMAP_REF_FILE = '/Users/albert/NIRISS/CRDS_CACHE/references/jwst/niriss/'
 
 def get_wave_solution(order):
     """Extract wavelength calibration information from the wavelength solution
@@ -36,7 +38,7 @@ def get_wave_solution(order):
     """
 
     # Get wavelength calibration reference file.
-    wave_soln = 'Ref_files/jwst_niriss_wavemap_0013.fits'
+    wave_soln = PATH_WAVEMAP_REF_FILE+'/jwst_niriss_wavemap_0013.fits'
     wavemap = fits.getdata(wave_soln, order)
     header = fits.getheader(wave_soln, order)
     ovs = header['OVERSAMP']
