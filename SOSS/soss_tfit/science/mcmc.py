@@ -1587,15 +1587,18 @@ class Sampler:
         # add columns
         table['NAME'] = xnames
         table['WAVE_CENT'] = np.full(n_x, np.nan)
-        table['MODE'] = np.zeros(n_x, dtype=float)
-        table['MODE_UPPER'] = np.zeros(n_x, dtype=float)
-        table['MODE_LOWER'] = np.zeros(n_x, dtype=float)
+        # if it is a fitted parameter
+        if result_mode in ['mode', 'all']:
+            table['MODE'] = np.zeros(n_x, dtype=float)
+            table['MODE_UPPER'] = np.zeros(n_x, dtype=float)
+            table['MODE_LOWER'] = np.zeros(n_x, dtype=float)
         # P50, P16, P84
-        table['P50'] = np.zeros(n_x, dtype=float)
-        table[label_p16] = np.zeros(n_x, dtype=float)
-        table[label_p84] = np.zeros(n_x, dtype=float)
-        table['P50_UPPER'] = np.zeros(n_x, dtype=float)
-        table['P50_LOWER'] = np.zeros(n_x, dtype=float)
+        if result_mode in ['percentile', 'all']:
+            table['P50'] = np.zeros(n_x, dtype=float)
+            table[label_p16] = np.zeros(n_x, dtype=float)
+            table[label_p84] = np.zeros(n_x, dtype=float)
+            table['P50_UPPER'] = np.zeros(n_x, dtype=float)
+            table['P50_LOWER'] = np.zeros(n_x, dtype=float)
         # -----------------------------------------------------------------
         # get the average wave center of all integrations for each bandpass
         wave_cent = np.mean(self.tfit.wavelength, axis=1)
