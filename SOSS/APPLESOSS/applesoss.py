@@ -314,7 +314,7 @@ def build_empirical_profile(clear, f277w, subarray, pad,
     if verbose != 0:
         print('  Starting the third order trace...')
     o3_out = construct_order23(clear - o1_native[pad:dimy + pad, :] - o2_native,
-                               centroids, order='3', pivot=850,
+                               centroids, order='3', pivot=700,
                                verbose=verbose)
     o3_uncontam = o3_out[0]
     # Add padding to the third order if necessary
