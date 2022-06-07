@@ -198,27 +198,33 @@ def run_stage2(rateints):
 
 if __name__ == "__main__":
     ################ MAIN ###############
-    dir = '/Users/albert/NIRISS/Commissioning/analysis/pipelineprep/'
-    dataset = 'demo4ints_clear_noisy'
-    dataset = 'twa33_substrip256_clear_noisy'
-
-    dir = '/Users/albert/NIRISS/Commissioning/analysis/SOSSwavecal/'
-    dataset = 'jw01092001001_02101_00001_nis_uncal' # TA
-    dataset = 'jw01092001001_02101_00002_nis_uncal' # TA
-    dataset = 'jw01092001001_02101_00003_nis_uncal' # TA
-    dataset = 'jw01092001001_02101_00004_nis_uncal' # TA
+    if hostname == 'iiwi.local':
+        dir = '/Users/albert/NIRISS/Commissioning/analysis/SOSSwavecal/'
+    elif hostname == 'genesis':
+        dir = '/genesis/CommissioningData/mastDownload/JWST/SOSSwavecal/'
+    else:
+        sys.exit()
+    datalist = ['jw01092001001_02101_00001_nis_uncal'] # TA
+    datalist = ['jw01092001001_02101_00002_nis_uncal'] # TA
+    datalist = ['jw01092001001_02101_00003_nis_uncal'] # TA
+    datalist = ['jw01092001001_02101_00004_nis_uncal'] # TA
     datalist = ['jw01092001001_03101_00001_nis_uncal'] # 20 ints ss256 clear
-    #dataset = 'jw01092001001_03102_00001_nis_uncal' # ss96
-    #dataset = 'jw01092001001_03103_00001_nis_uncal' # ss96 ng=1 160 ints
-    #dataset = 'jw01092001001_03104_00001_nis_uncal' # ss256 F277 nint=20 ng=5
-    #dataset = 'jw01081001001_0210d_00001_nis_uncal' # ss256 dark
-    #dataset = 'jw01093011001_03103_00002_nis_uncal' # ami kpi 232 ints 80x80
+    #datalist = ['jw01092001001_03102_00001_nis_uncal'] # ss96
+    #datalist = ['jw01092001001_03103_00001_nis_uncal'] # ss96 ng=1 160 ints
+    #datalist = ['jw01092001001_03104_00001_nis_uncal'] # ss256 F277 nint=20 ng=5
+    #datalist = ['jw01081001001_0210d_00001_nis_uncal'] # ss256 dark
+    #datalist = ['jw01093011001_03103_00002_nis_uncal'] # ami kpi 232 ints 80x80
     # re-observation
     datalist = ['jw01092010001_03101_00001_nis'] # SS256 CLEAR 20 ints
 
     # Flux Calibration
-    if True:
+    if hostname == 'iiwi.local':
         dir = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/'
+    elif hostname == 'genesis':
+        dir = '/genesis/CommissioningData/mastDownload/JWST/SOSSfluxcal/'
+    else:
+        sys.exit()
+    if True:
         datalist = [
             'jw01091002001_03101_00001-seg001_nis',
             'jw01091002001_03101_00001-seg002_nis',
@@ -226,6 +232,8 @@ if __name__ == "__main__":
             'jw01091002001_03101_00001-seg004_nis',
             'jw01091002001_03101_00001-seg005_nis'
         ]
+
+
     #for dataset in datalist:
     #    run_stage1(dir+dataset+'_uncal.fits')
     #for dataset in datalist:
