@@ -201,7 +201,7 @@ if __name__ == "__main__":
     if hostname == 'iiwi.local':
         dir = '/Users/albert/NIRISS/Commissioning/analysis/SOSSwavecal/'
     elif hostname == 'genesis':
-        dir = '/genesis/CommissioningData/mastDownload/JWST/SOSSwavecal/'
+        dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/SOSSwavecal/'
     else:
         sys.exit()
     datalist = ['jw01092001001_02101_00001_nis_uncal'] # TA
@@ -221,7 +221,7 @@ if __name__ == "__main__":
     if hostname == 'iiwi.local':
         dir = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/'
     elif hostname == 'genesis':
-        dir = '/genesis/CommissioningData/mastDownload/JWST/SOSSfluxcal/'
+        dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/SOSSfluxcal/'
     else:
         sys.exit()
     if True:
@@ -234,10 +234,10 @@ if __name__ == "__main__":
         ]
 
 
-    #for dataset in datalist:
-    #    run_stage1(dir+dataset+'_uncal.fits')
-    #for dataset in datalist:
-    #    run_stage2(dir+dataset+'_customrateints.fits')
+    for dataset in datalist:
+        run_stage1(dir+dataset+'_uncal.fits')
+    for dataset in datalist:
+        run_stage2(dir+dataset+'_customrateints.fits')
     for dataset in datalist:
         # Additional diagnostics
         commutils.check_atoca_residuals(dir+dataset+'_customrateints_flatfieldstep_backsubtracted.fits',
