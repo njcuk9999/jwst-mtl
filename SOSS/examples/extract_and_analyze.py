@@ -10,7 +10,7 @@ from jwst.pipeline import calwebb_spec2
 
 import os
 
-if False:
+if True:
     rateints_file = '/genesis/jwst/userland-soss/loic_review/GTO/wasp52b/IDTSOSS_clear_noisy_rateints.fits'
     spectrum_file = '/genesis/jwst/userland-soss/loic_review/GTO/wasp52b/extracted_spectra.fits'
     outdir = '/genesis/jwst/userland-soss/loic_review/GTO/wasp52b/'
@@ -28,7 +28,7 @@ if False:
     outdir = '/genesis/jwst/jwst-user-soss/loic_review/CAP_rehearsal/bd601753/'
     model_file = '/genesis/jwst/jwst-user-soss/loic_review/CAP_rehearsal/bd601753/modeloutput.fits'
 
-if True:
+if False:
     rateints_file = '/genesis/jwst/jwst-user-soss/loic_review/Commissioning/substrip256_dms.fits'
     spectrum_file = '/genesis/jwst/jwst-user-soss/loic_review/Commissioning/extracted_spectra.fits'
     outdir = '/genesis/jwst/jwst-user-soss/loic_review/Commissioning/'
@@ -36,8 +36,8 @@ if True:
 
 
 
-bypass_stage2 = True
-bypass_extract1d = True
+bypass_stage2 = False
+bypass_extract1d = False
 
 if os.path.isfile(spectrum_file) is False:
     if bypass_stage2 is False:
@@ -81,7 +81,7 @@ if os.path.isfile(spectrum_file) is False:
         if bypass_extract1d is False:
             result = calwebb_spec2.extract_1d_step.Extract1dStep.call(result,
                                output_dir=outdir, output_file='stage2', save_results=True,
-                               soss_transform=[0,0,0], soss_atoca=True, soss_modelname=model_file)
+                               soss_transform=[0,0,0], soss_modelname=model_file)
     else:
         result = calwebb_spec2.extract_1d_step.Extract1dStep.call(rateints_file,
                                                                   soss_transform=[0,0,0],
