@@ -14,6 +14,41 @@ import sys
 
 
 
+def stack_rateints(rateints, outdir=None):
+
+    '''
+    Stack the CubeModel into a ImageModel and write to disk
+    '''
+
+    basename = os.path.splitext(rateints.meta.filename)[0]
+    if outdir == None:
+        outdir = './'
+    stackname = outdir+'/'+basename+'_stack.fits'
+
+
+    sci = rateints.data
+    dq = rateints.dq
+    err = rateints.err
+
+    # Initiate output ImageModel stack
+    dimy, dimx = rateints.meta.subarray.ysize, rateints.meta.subarray.xsize
+    rate = datamodels.ImageModel((dimy, dimx))
+    rate.meta = rateints.meta
+
+    # Fill with median, make sure err is added in quadrature
+    rate.data = np.nanmedian(sci, axis=0)
+    mask = (dq > 0)
+    err[mask] = np.nan
+    rate.err = np.sqrt(np.nansum(err**2, axis=0)) / np.nansum(err*0+1, axis=0)
+    bad = np.isfinite(rate.err) == False
+    rate.err[bad] = 0.0
+    rate.dq = np.nanmin(dq, axis=0)
+
+    rate.write(stackname)
+
+    return rate
+
+
 def stack_datamodel(datamodel):
 
 
@@ -122,9 +157,9 @@ def remove_nans(datamodel):
 
     modelout = datamodel.copy()
 
-    ind = (np.isfinite(datamodel.data) == False) | (np.isfinite(datamodel.err) == False)
+    ind = (~np.isfinite(datamodel.data)) | (~np.isfinite(datamodel.err))
     modelout.data[ind] = 0
-    modelout.err[ind] = 1000000
+    modelout.err[ind] = np.nanmedian(datamodel.err)*10
 
     # Check that the exposure type is NIS_SOSS
     modelout.meta.exposure.type = 'NIS_SOSS'
@@ -216,7 +251,8 @@ def background_subtraction(datamodel, aphalfwidth=[30,30,30], outdir=None, verbo
 
     plt.legend()
     plt.title('Background fitting')
-    plt.show()
+    #plt.show()
+    plt.savefig(cntrdir+'background_fitting.png', overwrite=True)
 
     # Construct the backgroud subarray from the reference file
     backtosub = backref[rows, :]
@@ -404,3 +440,9 @@ def check_atoca_residuals(fedto_atoca_filename, atoca_model_filename, outdir=Non
     hdu.writeto(outdir+'residualmap_order1.fits', overwrite=True)
 
     return
+
+
+def combine_segments(prefix):
+    print()
+    return
+

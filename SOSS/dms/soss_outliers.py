@@ -221,6 +221,7 @@ def flag_outliers(result, nn=2, window_size=(1, 33), n_sig=5, verbose=False, out
         # update the dq map with the new outliers
         result.dq[i][outliers] += pixel['OUTLIER']
         result.dq[i][outliers] += pixel['DO_NOT_USE']
+        result.err[i][outliers] = np.nanmedian(result.err[i])*10 # assign high value for error
 
         if verbose: print(
             'Processing integration {} : Identified {} outlier pixels\n'.format(i, np.count_nonzero(outliers)))
