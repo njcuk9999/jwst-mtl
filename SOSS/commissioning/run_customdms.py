@@ -25,13 +25,25 @@ import sys
 
 import os
 
-CALIBRATION_DIR = '/Users/albert/NIRISS/Commissioning/analysis/pipelineprep/calibrations/'
+import socket
+
+
+hostname = socket.gethostname()
+if hostname == 'iiwi.local':
+    CALIBRATION_DIR = '/Users/albert/NIRISS/Commissioning/analysis/pipelineprep/calibrations/'
+    ATOCAREF_DIR = '/Users/albert/NIRISS/Commissioning/analysis/SOSSwavecal/ref_files/'
+elif hostname == 'genesis':
+    CALIBRATION_DIR = '/genesis/jwst/jwst-ref-soss/noise_files/'
+    ATOCAREF_DIR = '/genesis/jwst/userland-soss/loic_review/commissioning/ref_files/'
+else:
+    print('Add your local computer name in the list.')
+    sys.exit()
+
 FLAT = 'jwst_niriss_flat_0190.fits'
 SUPERBIAS = 'jwst_niriss_superbias_0181.fits'
 DARK = 'jwst_niriss_dark_0171.fits'
 BADPIX = 'jwst_niriss_mask_0015.fits'
 BACKGROUND = 'jwst_niriss_background_custom.fits'
-ATOCAREF_DIR = '/Users/albert/NIRISS/Commissioning/analysis/SOSSwavecal/ref_files/'
 SPECTRACE = 'SOSS_ref_trace_table_SUBSTRIP256.fits'
 WAVEMAP = 'SOSS_ref_2D_wave_SUBSTRIP256.fits'
 SPECPROFILE = 'SOSS_ref_2D_profile_SUBSTRIP256.fits'
