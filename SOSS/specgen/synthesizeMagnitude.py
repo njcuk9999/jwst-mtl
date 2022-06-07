@@ -27,7 +27,8 @@ def expected_flux_calibration(filtername, magnitude, model_angstrom, model_flux,
                               trace_file = None,
                               response_file = None,
                               pathfilter = None,
-                              pathvega = None):
+                              pathvega = None,
+                              set_throughput_100pct=False):
     
     # This function establishes what the absolute electron flux (e- per second)
     # is when integrating the flux over the image (each order being treated
@@ -166,6 +167,10 @@ def expected_flux_calibration(filtername, magnitude, model_angstrom, model_flux,
             # Get the throughput (response) and quantum yield
             T_um, Throughput = read_throughput(m, response_file)
             QY_um, QuantumYield = read_quantumyield(response_file)
+            # For debuggin purposes, it is usefull to turn those to 1
+            if set_throughput_100pct:
+                Throughput = Throughput*0+1
+                QuantumYield = QuantumYield*0+1
 
             # In case an F277W filter exposure is needed. Read the F277W transmis-
             # sion curve and resample it on the same grid as the model flux.
@@ -219,7 +224,68 @@ def expected_flux_calibration(filtername, magnitude, model_angstrom, model_flux,
             print('expected_flux_calibration returns e-/sec. Use convert_to_adupersec if you want adu/sec instead.')
         return(output_elec_per_sec)
 
-    
+
+def test_expected_flux_calibration():
+    '''
+    Test that calculations are done properly in the above function: expected_flux_calibration()
+
+    Input a Vega model and see if the output is as expected.
+
+    1 - Run this in the jwst-mtl directory
+    2 - for some reason I had to change the import in this file from this:
+        import trace.tracepol as tp
+        to this:
+        import SOSS.trace.tracepol as tp
+        but removed it after this test to not break other flows
+    3 - ipython
+    4 - import SOSS.specgen.synthesizeMagnitude as smag
+    5 - smag.test_expected_flux_calibration()
+
+    '''
+
+    pathvega = '/Users/albert/NIRISS/SOSSpipeline/jwst-mtl/SOSS/specgen/FilterSVO/'
+    pathfilter = pathvega
+    trace_file = '/Users/albert/NIRISS/SOSSpipeline/jwst-mtl/SOSS/trace/NIRISS_GR700_trace_extended.csv'
+    response_file = '/Users/albert/NIRISS/SOSSpipeline/jwst-mtl/SOSS/dms/files/NIRISS_Throughput_20210318.fits'
+
+
+    wave_grid = np.linspace(0.6, 5.0, 1000)
+    wave, Flambda = readVega(wave_sampling=wave_grid, path_vega_spectrum=pathvega)
+    wave_angstrom = wave * 10000
+
+    epersec = expected_flux_calibration('J', 0.0, wave_angstrom, Flambda, [1,2],
+                                        pathvega=pathvega, pathfilter=pathfilter,
+                                        trace_file=trace_file, response_file=response_file,
+                                        set_throughput_100pct=True)
+
+    # Check #1:
+    print(epersec)
+
+    plt.plot(wave, Flambda)
+    plt.show()
+
+
+
+
+    # Independently integrate Vega
+    h = 6.63e-34 # m2/kg/s
+    c = 3e+8 #m/s
+    Phenergy = h*c/(wave*1e-6)
+
+    ind = (wave >= 0.8429) & (wave <=2.833)
+
+    watt = np.sum(Flambda[ind]*wave[ind])/np.sum(wave[ind]) * (2.833-0.8429) * 25.0
+    phpersec = np.mean(Phenergy[ind])
+
+    nphoton = watt / phpersec
+
+    # Check #2:
+    print('N photon = {:12.3e}'.format(nphoton))
+
+
+    return
+
+
 def measure_actual_flux(imagename, xbounds=[0,2048], ybounds=[0,256],
                         noversample=1):
     '''
@@ -409,6 +475,9 @@ def example_2():
     print('End of example_2')
 
     return(nelectron)
+
+
+
 
 def FlambdaToFnu(wave,Flambda):
     #wave has to be in microns
