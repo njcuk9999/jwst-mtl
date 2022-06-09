@@ -29,7 +29,7 @@ import socket
 
 
 hostname = socket.gethostname()
-if hostname == 'iiwi.local':
+if (hostname == 'iiwi.sf.umontreal.ca') or (hostname == 'iiwi.local'):
     CALIBRATION_DIR = '/Users/albert/NIRISS/Commissioning/analysis/pipelineprep/calibrations/'
     ATOCAREF_DIR = '/Users/albert/NIRISS/Commissioning/analysis/SOSSwavecal/ref_files/'
 elif hostname == 'genesis':
@@ -131,7 +131,7 @@ def run_stage1(exposurename):
     return
 
 
-def run_stage2(rateints):
+def run_stage2(rateints, contamination_mask=None):
 
     calwebb_input = rateints
     outdir = os.path.dirname(rateints)
@@ -148,13 +148,19 @@ def run_stage2(rateints):
 
     # Custom - Background subtraction step
     result = commutils.background_subtraction(result, aphalfwidth=[30,20,20], outdir=outdir, verbose=False,
-                                              override_background=CALIBRATION_DIR+BACKGROUND, applyonintegrations=False)
+                                              override_background=CALIBRATION_DIR+BACKGROUND, applyonintegrations=False,
+                                              contamination_mask=contamination_mask)
 
     # Custom - Check that no NaNs is in the rateints data
     result = commutils.remove_nans(result)
+    print(result.meta.filename)
+    #result.write('/Users/albert/NIRISS/Commissioning/analysis/SOSSwavecal/custom_preextract1d.fits')
+
+    #aaa = result.copy()
+    #aaa.write(outdir+'/toto.fits')
 
     # Custom - Build a rate.fits equivalent (that profits from the outlier knowledge)
-    stackresult = commutils.stack_rateints(result, outdir=outdir)
+    #stackresult = commutils.stack_rateints(result, outdir=outdir)
 
 
     if False:
@@ -162,6 +168,7 @@ def run_stage2(rateints):
         stackresult = calwebb_spec2.extract_1d_step.Extract1dStep.call(stackresult, output_dir=outdir, save_results=True,
                                                                   soss_transform=[0, 0, 0],
                                                                   soss_bad_pix='model',
+                                                                  soss_tikfac=1e-15,
                                                                   soss_modelname=outdir+'/'+stackbasename+'_atoca_model.fits',
                                                                   override_spectrace=ATOCAREF_DIR+SPECTRACE,
                                                                   override_wavemap=ATOCAREF_DIR+WAVEMAP,
@@ -170,14 +177,17 @@ def run_stage2(rateints):
         # Conversion to SI units
         stackresult = calwebb_spec2.photom_step.PhotomStep.call(stackresult, output_dir=outdir, save_results=True)
 
-    # Write results on disk
-    stackresult.close()
+        # Write results on disk
+        stackresult.close()
 
     if True:
         # spectrum extraction - forcing no dx=0, dy=0, dtheta=0
+        print(result.meta.filename)
         result = calwebb_spec2.extract_1d_step.Extract1dStep.call(result, output_dir=outdir, save_results=True,
                                                                   soss_transform=[0, 0, 0],
+                                                                  #soss_transform=[None, 0, 0],
                                                                   soss_bad_pix='model',
+                                                                  soss_tikfac=3.38e-15,
                                                                   soss_modelname=outdir+'/'+basename+'_atoca_model.fits',
                                                                   override_spectrace=ATOCAREF_DIR+SPECTRACE,
                                                                   override_wavemap=ATOCAREF_DIR+WAVEMAP,
@@ -198,7 +208,7 @@ def run_stage2(rateints):
 
 if __name__ == "__main__":
     ################ MAIN ###############
-    if hostname == 'iiwi.local':
+    if (hostname == 'iiwi.sf.umontreal.ca') or (hostname == 'iiwi.local') :
         dir = '/Users/albert/NIRISS/Commissioning/analysis/SOSSwavecal/'
     elif hostname == 'genesis':
         dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/SOSSwavecal/'
@@ -218,13 +228,15 @@ if __name__ == "__main__":
     datalist = ['jw01092010001_03101_00001_nis'] # SS256 CLEAR 20 ints
 
     # Flux Calibration
-    if hostname == 'iiwi.local':
-        dir = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/'
-    elif hostname == 'genesis':
-        dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/SOSSfluxcal/'
-    else:
-        sys.exit()
     if True:
+        if (hostname == 'iiwi.sf.umontreal.ca') or (hostname == 'iiwi.local'):
+            dir = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/'
+            contmask = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/mask_contamination.fits'
+        elif hostname == 'genesis':
+            dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/SOSSfluxcal/'
+        else:
+            sys.exit()
+
         datalist = [
             'jw01091002001_03101_00001-seg001_nis',
             'jw01091002001_03101_00001-seg002_nis',
@@ -232,16 +244,38 @@ if __name__ == "__main__":
             'jw01091002001_03101_00001-seg004_nis',
             'jw01091002001_03101_00001-seg005_nis'
         ]
+        datalist = ['jw01091001001_03101_00001_nis'] # flux SS256 CLEAR short
 
 
+    # HATP14b
+    if True:
+        if (hostname == 'iiwi.sf.umontreal.ca') or (hostname == 'iiwi.local'):
+            dir = '/Users/albert/NIRISS/Commissioning/analysis/HATP14b/'
+            contmask = None
+        elif hostname == 'genesis':
+            dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/HATP14b/'
+        else:
+            sys.exit()
+
+        datalist = [
+            'jw01541001001_04101_00001-seg004_nis',
+            'jw01541001001_04101_00001-seg001_nis',
+            'jw01541001001_04101_00001-seg002_nis',
+            'jw01541001001_04101_00001-seg003_nis'
+        ]
+
+
+
+
+
+    #for dataset in datalist:
+    #    run_stage1(dir+dataset+'_uncal.fits')
     for dataset in datalist:
-        run_stage1(dir+dataset+'_uncal.fits')
-    for dataset in datalist:
-        run_stage2(dir+dataset+'_customrateints.fits')
-    for dataset in datalist:
+        run_stage2(dir+dataset+'_customrateints.fits', contamination_mask=contmask)
+    #for dataset in datalist:
         # Additional diagnostics
         commutils.check_atoca_residuals(dir+dataset+'_customrateints_flatfieldstep_backsubtracted.fits',
                                         dir+dataset+'_atoca_model_SossExtractModel.fits')
-        spectrum_file = dir+dataset+'_atoca_model_AtocaSpectra.fits'
-        a = commutils.plot_timeseries(spectrum_file, outdir=dir, norder=3)
+        spectrum_file = dir+dataset+'_customrateints_flatfieldstep_backsubtracted_extract1dstep.fits'
+        a = commutils.plot_timeseries(spectrum_file, norder=3)
 

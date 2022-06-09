@@ -25,7 +25,7 @@ import matplotlib.pyplot as plt
 
 import sys
 
-def run_iteration1(dataset='nis18obs02'):
+def run_iteration1(dataset='nis18obs02', wavecaldataset=None):
 
     ######################## spectrace #########################
 
@@ -66,17 +66,29 @@ def run_iteration1(dataset='nis18obs02'):
     ##################
 
     # Read the trace positions
-    o1 = ascii.read('files/centroids_o1_substrip256_'+dataset+'.txt')
-    x_o1, y_o1 = np.array(o1['col2']), np.array(o1['col3'])
-    o2 = ascii.read('files/centroids_o2_substrip256_'+dataset+'.txt')
-    x_o2, y_o2 = np.array(o2['col2']), np.array(o2['col3'])
-    o3 = ascii.read('files/centroids_o3_substrip256_'+dataset+'.txt')
-    x_o3, y_o3 = np.array(o3['col2']), np.array(o3['col3'])
+    if wavecaldataset == None:
+        o1 = ascii.read('files/centroids_o1_substrip256_'+dataset+'.txt')
+        x_o1, y_o1 = np.array(o1['col2']), np.array(o1['col3'])
+        o2 = ascii.read('files/centroids_o2_substrip256_'+dataset+'.txt')
+        x_o2, y_o2 = np.array(o2['col2']), np.array(o2['col3'])
+        o3 = ascii.read('files/centroids_o3_substrip256_'+dataset+'.txt')
+        x_o3, y_o3 = np.array(o3['col2']), np.array(o3['col3'])
+    else:
+        o1 = ascii.read('files/centroids_o1_substrip256_'+wavecaldataset+'.txt')
+        x_o1, y_o1 = np.array(o1['col2']), np.array(o1['col3'])
+        o2 = ascii.read('files/centroids_o2_substrip256_'+wavecaldataset+'.txt')
+        x_o2, y_o2 = np.array(o2['col2']), np.array(o2['col3'])
+        o3 = ascii.read('files/centroids_o3_substrip256_'+wavecaldataset+'.txt')
+        x_o3, y_o3 = np.array(o3['col2']), np.array(o3['col3'])
 
     # CUSTOM wavecal order 1
     # Read the wavelength calibration files
-    wcal_o1 = ascii.read('files/wavecal_o1_substrip256_'+dataset+'.txt')
-    w_o1 = np.array(wcal_o1['wavelength'])
+    if wavecaldataset == None:
+        wcal_o1 = ascii.read('files/wavecal_o1_substrip256_'+dataset+'.txt')
+        w_o1 = np.array(wcal_o1['wavelength'])
+    else:
+        wcal_o1 = ascii.read('files/wavecal_o1_substrip256_'+wavecaldataset+'.txt')
+        w_o1 = np.array(wcal_o1['wavelength'])
     # Resample to the desired wavelength sampling
     #ind = np.argsort(w_o1) # needs an increasing w_o1 grid or it fails
     #xtrace_order1 = np.interp(wave_grid, w_o1[ind], x_o1[ind])
@@ -91,7 +103,10 @@ def run_iteration1(dataset='nis18obs02'):
 
     # CUSTOM wavecal order 3
     # only 800 columns in wavecal_o3
-    wcal_o3 = ascii.read('files/wavecal_o3_substrip256_'+dataset+'.txt')
+    if wavecaldataset == None:
+        wcal_o3 = ascii.read('files/wavecal_o3_substrip256_'+dataset+'.txt')
+    else:
+        wcal_o3 = ascii.read('files/wavecal_o3_substrip256_' + wavecaldataset + '.txt')
     w_o3_tmp = np.array(wcal_o3['wavelength'])
     w_o3 = np.zeros(2048)*np.nan
     w_o3[:800] = w_o3_tmp
@@ -149,7 +164,13 @@ def run_iteration1(dataset='nis18obs02'):
 
     # If necessary manual changes and additions can be made here, before saving the file.
     #filename = hdul[0].header['FILENAME']
-    trace_file = '/Users/albert/NIRISS/Commissioning/analysis/SOSSwavecal/ref_files/'+hdul[0].header['FILENAME']
+    if dataset == 'nis18_obs02':
+        trace_file = '/Users/albert/NIRISS/Commissioning/analysis/SOSSwavecal/ref_files/'+hdul[0].header['FILENAME']
+    elif dataset == 'nis17':
+        trace_file = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/ref_files/'+hdul[0].header['FILENAME']
+    elif dataset == 'nis34':
+        trace_file = '/Users/albert/NIRISS/Commissioning/analysis/HATP14b/ref_files/'+hdul[0].header['FILENAME']
+
     hdul.writeto(trace_file, overwrite=True)
     #hdul.writeto(trace_file + '.gz', overwrite=True)
 
@@ -159,7 +180,7 @@ def run_iteration1(dataset='nis18obs02'):
     # We will use the following sources for this reference file. These can be modified as needed.
     #trace_file = 'SOSS_ref_trace_table_FULL.fits'
 
-    padding = 0
+    padding = 20
     oversample = 1
 
     dimx = oversample * (2048 + 2 * padding)
@@ -191,7 +212,13 @@ def run_iteration1(dataset='nis18obs02'):
     hdul = init_wave_map(wave_map_2d, oversample, padding, 'SUBSTRIP256')
 
     # If necessary manual changes and additions can be made here, before saving the file.
-    filename = '/Users/albert/NIRISS/Commissioning/analysis/SOSSwavecal/ref_files/'+hdul[0].header['FILENAME']
+    if dataset == 'nis18_obs02':
+        filename = '/Users/albert/NIRISS/Commissioning/analysis/SOSSwavecal/ref_files/'+hdul[0].header['FILENAME']
+    elif dataset == 'nis17':
+        filename = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/ref_files/'+hdul[0].header['FILENAME']
+    elif dataset == 'nis34':
+        filename = '/Users/albert/NIRISS/Commissioning/analysis/HATP14b/ref_files/'+hdul[0].header['FILENAME']
+
     hdul.writeto(filename, overwrite=True)
     #hdul.writeto(filename + '.gz', overwrite=True)
 
@@ -203,7 +230,11 @@ def run_iteration1(dataset='nis18obs02'):
     if dataset == 'nis18obs01':
         profile_file = '/Users/albert/NIRISS/Commissioning/analysis/SOSSwavecal/michael_trace/SOSS_2D_profile_SUBSTRIP256_os=1_pad=20.fits'
     if dataset == 'nis18obs02':
-        profile_file = '/Users/albert/NIRISS/Commissioning/analysis/SOSSwavecal/michael_trace/APPLESOSS_ref_2D_profile_SUBSTRIP256_os1_pad0.fits'
+        profile_file = '/Users/albert/NIRISS/Commissioning/analysis/SOSSwavecal/michael_trace/applesoss_traceprofile.fits'
+    if dataset == 'nis17':
+        profile_file = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/michael/'
+    if dataset == 'nis34':
+        profile_file = '/Users/albert/NIRISS/Commissioning/analysis/HATP14b/michael_trace/applesoss_traceprofile.fits'
 
     # Read the profile file provided by Loïc.
     #profile_2d = fits.getdata(profile_file, ext=0)
@@ -212,7 +243,7 @@ def run_iteration1(dataset='nis18obs02'):
     aaa = fits.open(profile_file) # contains orders 1 and 2 only, fill order 3 with zeros
     # set to zero x> 1780 order 2 (bad negative stuff there)
     prof2 = aaa[2].data
-    prof2[:, 1760:] = 0.0
+    #prof2[:, 1760:] = 0.0
     if dataset == 'nis18obs01':
         profile_2d = np.array([aaa[1].data, prof2, aaa[2].data*0.0])
     else:
@@ -237,6 +268,13 @@ def run_iteration1(dataset='nis18obs02'):
 
     # If necessary manual changes and additions can be made here, before saving the file.
     filename = '/Users/albert/NIRISS/Commissioning/analysis/SOSSwavecal/ref_files/'+hdul[0].header['FILENAME']
+    if dataset == 'nis18_obs02':
+        filename = '/Users/albert/NIRISS/Commissioning/analysis/SOSSwavecal/ref_files/'+hdul[0].header['FILENAME']
+    elif dataset == 'nis17':
+        filename = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/ref_files/'+hdul[0].header['FILENAME']
+    elif dataset == 'nis34':
+        filename = '/Users/albert/NIRISS/Commissioning/analysis/HATP14b/ref_files/'+hdul[0].header['FILENAME']
+
     hdul.writeto(filename, overwrite=True)
     #hdul.writeto(filename + '.gz', overwrite=True)
 
@@ -282,9 +320,22 @@ if __name__ == "__main__":
     #check_spec_trace(refdir+'jwst_niriss_spectrace_0018.fits')
     #check_2dwave_map(refdir+'jwst_niriss_wavemap_0014.fits')
     #check_profile_map(refdir+'jwst_niriss_specprofile_0017.fits')
-    #sys.exit()
-    refdir = '/Users/albert/NIRISS/Commissioning/analysis/SOSSwavecal/ref_files/'
-    run_iteration1(dataset='nis18obs02')
-    #check_spec_trace(refdir+'SOSS_ref_trace_table_SUBSTRIP256.fits')
-    check_2dwave_map(refdir+'SOSS_ref_2D_wave_SUBSTRIP256.fits')
-    check_profile_map(refdir+'SOSS_ref_2D_profile_SUBSTRIP256.fits')
+
+    if False:
+        refdir = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/ref_files/'
+        run_iteration1(dataset='nis17')
+        check_spec_trace(refdir+'SOSS_ref_trace_table_SUBSTRIP256.fits')
+        check_2dwave_map(refdir+'SOSS_ref_2D_wave_SUBSTRIP256.fits')
+        check_profile_map(refdir+'SOSS_ref_2D_profile_SUBSTRIP256.fits')
+    if False:
+        refdir = '/Users/albert/NIRISS/Commissioning/analysis/SOSSwavecal/ref_files/'
+        run_iteration1(dataset='nis18obs02')
+        check_spec_trace(refdir+'SOSS_ref_trace_table_SUBSTRIP256.fits')
+        check_2dwave_map(refdir+'SOSS_ref_2D_wave_SUBSTRIP256.fits')
+        check_profile_map(refdir+'SOSS_ref_2D_profile_SUBSTRIP256.fits')
+    if True:
+        refdir = '/Users/albert/NIRISS/Commissioning/analysis/HATP14b/ref_files/'
+        run_iteration1(dataset='nis34', wavecaldataset='nis18obs02')
+        check_spec_trace(refdir+'SOSS_ref_trace_table_SUBSTRIP256.fits')
+        check_2dwave_map(refdir+'SOSS_ref_2D_wave_SUBSTRIP256.fits')
+        check_profile_map(refdir+'SOSS_ref_2D_profile_SUBSTRIP256.fits')

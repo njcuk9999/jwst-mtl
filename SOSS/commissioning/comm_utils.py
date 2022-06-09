@@ -3,6 +3,7 @@ import os.path
 import matplotlib.pyplot as plt
 
 import numpy as np
+import scipy.interpolate
 
 from astropy.io import fits
 
@@ -12,7 +13,7 @@ import SOSS.dms.soss_centroids as soss_centroids
 
 import sys
 
-
+import SOSS.trace.tracepol as tracepol
 
 def stack_rateints(rateints, outdir=None):
 
@@ -26,14 +27,15 @@ def stack_rateints(rateints, outdir=None):
     stackname = outdir+'/'+basename+'_stack.fits'
 
 
-    sci = rateints.data
-    dq = rateints.dq
-    err = rateints.err
+    sci = np.copy(rateints.data)
+    dq = np.copy(rateints.dq)
+    err = np.copy(rateints.err)
 
     # Initiate output ImageModel stack
     dimy, dimx = rateints.meta.subarray.ysize, rateints.meta.subarray.xsize
     rate = datamodels.ImageModel((dimy, dimx))
-    rate.meta = rateints.meta
+    rate.update(rateints)
+    rate.meta.exposure.nints = 1
 
     # Fill with median, make sure err is added in quadrature
     rate.data = np.nanmedian(sci, axis=0)
@@ -55,6 +57,81 @@ def stack_datamodel(datamodel):
     deepstack = np.nanmedian(cube, axis=0)
     rms = np.nanstd(cube, axis=0)
     return deepstack, rms
+
+
+def build_mask_contamination(order, x, y, halfwidth=15, subarray='SUBSTRIP256'):
+    """Mask out a contaminating trace from a field contaminant. Based on the
+    order specified, a model of it is moved by x,y for orders 1 to 3.
+    In the case of order 0, x,y is the desired position to mask, not a relative offset from nominal.
+    """
+    # Constrain within subarray
+    if subarray == 'SUBSTRIP256':
+        dimy = 256
+    elif subarray == 'SUBSTRIP96':
+        dimy = 96
+    else:
+        dimy = 2048
+
+    if order >= 1:
+
+        # Use the optics model calibrated on CV3 has the nominal trace positions
+        wave = np.linspace(0.6,5.0,1000)
+        tracepars = tracepol.get_tracepars('/Users/albert/NIRISS/SOSSpipeline/jwst-mtl/SOSS/trace/NIRISS_GR700_trace_extended.csv')
+        x_ref, y_ref, _ = tracepol.wavelength_to_pix(wave, tracepars, m=order, subarray=subarray, oversample=1)
+
+        # on the subarray real estate, the x,y trace is:
+        xtrace = np.arange(2048)
+        funky = scipy.interpolate.interp1d(x_ref + x, y_ref + y)
+        # This is to prevent extrapolating (with a crash to call funky)
+        bound = (xtrace > np.min(x_ref + x)) & (xtrace < np.max(x_ref + x))
+        # ytrace is potentially narrower than 2048 pixels
+        ytrace = funky(xtrace[bound])
+
+        if False:
+            plt.plot(x_ref, y_ref)
+            plt.plot(x_ref+x, y_ref+y)
+            plt.plot(xtrace[bound], ytrace)
+            plt.show()
+
+        # the y limits for the aperture:
+        y_min, y_max = ytrace - halfwidth, ytrace + halfwidth
+
+        # Create a coordinate grid.
+        #xgrid, ygrid = np.meshgrid(np.arange(2048), np.arange(dimy))
+        # This is modified to account for potentially narrower x size
+        xgrid, ygrid = np.meshgrid(np.arange(np.size(ytrace)), np.arange(dimy))
+
+
+        # Mask the pixels within a halfwidth of the trace center.
+        mask_trace = np.abs(ygrid - ytrace) < halfwidth
+        mask_trace = mask_trace.astype('float')
+
+        # This is to put the potentially narrower mask into the full size
+        final_mask_trace = np.zeros((dimy, 2048))
+        final_mask_trace[:, bound] = mask_trace
+        mask_trace = final_mask_trace
+
+    elif order == 0:
+        width = 5
+        mask_trace = np.zeros((dimy, 2048))
+        ymin = (y-halfwidth)
+        if ymin < 0: ymin = 0
+        ymax = (y+halfwidth)
+        if ymax > dimy: ymax = dimy
+        xmin = x - width
+        if xmin < 0: xmin = 0
+        xmax = x + width
+        if xmax > 2048: xmax = 2048
+
+        mask_trace[ymin:ymax, xmin:xmax] = 1
+
+    hdu = fits.PrimaryHDU(mask_trace)
+    hdu.writeto('/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/titi.fits', overwrite=True)
+
+    return mask_trace
+
+
+
 
 def aperture_from_scratch(datamodel, norders=3, aphalfwidth=[30,20,20], outdir=None, datamodel_isfits=False,
                           verbose=False):
@@ -160,6 +237,7 @@ def remove_nans(datamodel):
     ind = (~np.isfinite(datamodel.data)) | (~np.isfinite(datamodel.err))
     modelout.data[ind] = 0
     modelout.err[ind] = np.nanmedian(datamodel.err)*10
+    modelout.dq[ind] += 1
 
     # Check that the exposure type is NIS_SOSS
     modelout.meta.exposure.type = 'NIS_SOSS'
@@ -168,7 +246,7 @@ def remove_nans(datamodel):
 
 
 def background_subtraction(datamodel, aphalfwidth=[30,30,30], outdir=None, verbose=False, override_background=None,
-                           applyonintegrations=False):
+                           applyonintegrations=False, contamination_mask=None):
 
     basename = os.path.splitext(datamodel.meta.filename)[0]
     if outdir == None:
@@ -182,14 +260,29 @@ def background_subtraction(datamodel, aphalfwidth=[30,30,30], outdir=None, verbo
         os.makedirs(cntrdir)
     maskeddata = np.copy(datamodel.data)
 
+    print('Hello')
+
+    if contamination_mask is not None:
+        contmask = fits.getdata(contamination_mask)
+        contmask = np.where(contmask >= 1, 1, 0)
+        print(np.shape(contmask))
+        maskeddata[:, contmask] = np.nan
+        print(np.shape(maskeddata[:, contmask]))
+        # do_not_use (apply to input and return as output)
+        datamodel.dq = datamodel.dq[:, contmask] + 1
+        print('Allo')
+    # Apply bad pixel masking to the input data
+    maskeddata[datamodel.dq != 0] = np.nan
+
+    print('Hi')
     # Make a mask of the traces
     maskcube = aperture_from_scratch(datamodel, aphalfwidth=aphalfwidth, outdir=cntrdir, verbose=verbose)
+
+    print('Ni Hao')
     # Crunch the cube (one order per slice) to a 2D mask
     mask = np.sum(maskcube, axis=0, dtype='bool')
     # Apply aperture masking to the input data
     maskeddata[:, mask] = np.nan
-    # Apply bad pixel masking to the input data
-    maskeddata[datamodel.dq != 0] = np.nan
     hdu = fits.PrimaryHDU(maskeddata)
     hdu.writeto(cntrdir+'background_mask.fits', overwrite=True)
 
@@ -309,7 +402,8 @@ def plot_timeseries(spectrum_file, outdir=None, norder=3):
     # Forge output directory where plots will be written
     if outdir == None:
         basename = os.path.basename(os.path.splitext(spectrum_file)[0])
-        outdir = os.path.dirname(spectrum_file)+'/plots_'+basename+'/'
+        basename = basename.split('_nis')[0] + '_nis'
+        outdir = os.path.dirname(spectrum_file)+'/supplemental_'+basename+'/'
     # Create the output directory if it does not exist
     if not os.path.exists(outdir):
         os.makedirs(outdir)
@@ -318,8 +412,11 @@ def plot_timeseries(spectrum_file, outdir=None, norder=3):
     multispec = datamodels.open(spectrum_file)
 
     # spectra are stored at indice 1 (order 1), then 2 (order2) then 3 (order 3) then 4 (order 1, 2nd time step), ...
-    nint = multispec.meta.exposure.nints
-    norder = int(np.shape(multispec.spec)[0] / nint)
+    # TODO Manage nint and norder better
+    #nint = multispec.meta.exposure.nints
+    norder = 3
+    nint = int(np.shape(multispec.spec)[0] / norder)
+    #norder = int(np.shape(multispec.spec)[0] / nint)
 
     print('nint = {:}, norder= {:}'.format(nint, norder))
 
@@ -362,7 +459,9 @@ def plot_timeseries(spectrum_file, outdir=None, norder=3):
         plt.title('Extracted Order {:}'.format(m+1))
         plt.xlabel('Wavelength (microns)')
         plt.ylabel('extracted Flux (DN/sec)')
-        plt.show()
+        plt.savefig(outdir+'extractedflux{:}.png'.format(i+1))
+        #plt.show()
+        plt.close()
 
 
 
@@ -390,10 +489,10 @@ def plot_timeseries(spectrum_file, outdir=None, norder=3):
         plt.savefig(outdir+'timeseries_greyscale_normalizedflux_order{:}.png'.format(i+1))
         plt.close()
 
-    plt.figure()
-    for i in range(nint):
-        plt.plot(wavelength[i, 0], flux[i, 0] + 0.02 * i)
-    plt.show()
+    #plt.figure()
+    #for i in range(nint):
+    #    plt.plot(wavelength[i, 0], flux[i, 0] + 0.02 * i)
+    #plt.show()
 
     return
 
@@ -402,6 +501,8 @@ def check_atoca_residuals(fedto_atoca_filename, atoca_model_filename, outdir=Non
     '''
     Check that the ATOCA modelling went well by looking at residual maps for each order.
     '''
+
+
 
     # Forge output directory where plots will be written
     if outdir == None:
@@ -441,8 +542,30 @@ def check_atoca_residuals(fedto_atoca_filename, atoca_model_filename, outdir=Non
 
     return
 
+def make_mask_nis17():
+
+    stackname = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/stack_flux.fits'
+    checkname = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/check.fits'
+    maskname = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/mask_contamination.fits'
+    stack = fits.getdata(stackname)
+
+    mask = build_mask_contamination(0, 1376, 111)
+    mask += build_mask_contamination(0, 1867, 75)
+    mask += build_mask_contamination(1, -680, 153)
+
+    hdu = fits.PrimaryHDU([stack, mask])
+    hdu.writeto(checkname, overwrite=True)
+
+    hdu = fits.PrimaryHDU(mask)
+    hdu.writeto(maskname, overwrite=True)
+
+    return
+
 
 def combine_segments(prefix):
     print()
     return
 
+
+if __name__ == "__main__":
+    a = make_mask_nis17()
