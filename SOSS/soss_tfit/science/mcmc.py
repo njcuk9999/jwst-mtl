@@ -368,7 +368,7 @@ class TransitFit:
         """
         for it in range(self.n_x):
             # push the value into x
-            self.x0[it] = self.p0[tuple(self.x0pos)]
+            self.x0[it] = self.p0[tuple(self.x0pos[it])]
 
     def generate_gibbs_sample(self, beta: np.ndarray):
         # choose random parameter to vary
