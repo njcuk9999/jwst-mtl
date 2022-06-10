@@ -145,7 +145,7 @@ def flag_outliers(result, nn=2, window_size=(1, 33), n_sig=5, verbose=False, out
         if i < nn:
             if verbose: print('Processing integration {}'.format(i))
             # define the target integration
-            target = result.data[i]
+            target = np.copy(result.data[i])
 
             # define the list of the indices of the neighbouring frames
             # we need to handle them differently since we are at the start of the timeseries
@@ -166,7 +166,7 @@ def flag_outliers(result, nn=2, window_size=(1, 33), n_sig=5, verbose=False, out
         elif nb_int - i <= nn:
             if verbose: print('Processing integration {}'.format(i))
             # define the target integration
-            target = result.data[i]
+            target = np.copy(result.data[i])
 
             # define the list of the indices of the neighbouring frames
             # we need to handle them differently since we are at the start of the time series
@@ -186,7 +186,7 @@ def flag_outliers(result, nn=2, window_size=(1, 33), n_sig=5, verbose=False, out
         else:
             if verbose: print('Processing integration {}'.format(i))
             # define the target integration
-            target = result.data[i]
+            target = np.copy(result.data[i])
 
             # create an empty list that will hold the difference images
             # differenceImages = Target - neighbouringImages
@@ -221,31 +221,34 @@ def flag_outliers(result, nn=2, window_size=(1, 33), n_sig=5, verbose=False, out
         # update the dq map with the new outliers
         result.dq[i][outliers] += pixel['OUTLIER']
         result.dq[i][outliers] += pixel['DO_NOT_USE']
-        result.err[i][outliers] = np.nanmedian(result.err[i])*10 # assign high value for error
+        result.err[i][outliers] = np.nanmedian(result.err[i])*100 # assign high value for error
+
+
 
         if verbose: print(
             'Processing integration {} : Identified {} outlier pixels\n'.format(i, np.count_nonzero(outliers)))
 
+    toto = result.copy()
+    toto.write('/Users/albert/NIRISS/Commissioning/analysis/HATP14b/result.fits')
+
+
     if save_diagnostic == True:
         # Save fits file of all integrations where the cosmic ray detections are set to NaN whihc
         # will allow to use ds9 to flash through and inspect that all went fine
-        cube = np.copy(result.data)
-        ind = result.dq == pixel['OUTLIER']
-        cube[ind] = np.nan
+        cube = np.copy(result.dq)
+        #ind = np.bitwise_and((result.dq).astype(int), pixel['OUTLIER']).astype(bool)
+        #ind = np.bitwise_and(result.dq, pixel['OUTLIER']).astype(bool)
+        #cube[ind] = np.nan
 
         basename = os.path.splitext(result.meta.filename)[0]
+        basename = basename.split('_nis')[0] + '_nis'
         if outdir == None:
             outdir = './'
-            outliersdir = './outliers_' + basename + '/'
-        else:
-            outliersdir = outdir + '/outliers_' + basename + '/'
         if not os.path.exists(outdir):
             os.makedirs(outdir)
-        if not os.path.exists(outliersdir):
-            os.makedirs(outliersdir)
 
         hdu = fits.PrimaryHDU(cube)
-        hdu.writeto(outliersdir+'flagged_outliers.fits', overwrite=True)
+        hdu.writeto(outdir+'/'+basename+'_outliers.fits', overwrite=True)
 
     return result
 

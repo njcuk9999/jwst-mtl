@@ -567,5 +567,40 @@ def combine_segments(prefix):
     return
 
 
+def combine_multi_spec(multi_spec_list):
+    """
+    Example:
+    #>>> filename_list = ['spec_part1.fits', 'spec_part2.fits', 'etc.fits']
+    #>>> multi_spec_list = [datamodels.open(fname) for fname in filename_list]
+    #>>> combined = combine_multi_spec(multi_spec_list)
+    #>>> combined.save('spec_combined.fits')
+    """
+    # Init output spec
+    combined = datamodels.MultiSpecModel()
+
+    # Update meta data based on first MultiSpecModel in the list
+    combined.update(multi_spec_list[0])
+
+    # Do not take the same filename though
+    combined.meta.filename = None
+
+    # Iterate over all objects in the list
+    for multi_spec_obj in multi_spec_list:
+        # Iterate over all SingleSpecModel
+        for single_spec_obj in multi_spec_obj.spec:
+            # Append single spec to output
+            combined.spec.append(single_spec_obj)
+
+    return combined
+
+
+## Example
+#filename_list = ['spec_part1.fits', 'spec_part2.fits', 'etc.fits']
+#multi_spec_list = [datamodels.open(fname) for fname in filename_list]
+#combined = combine_multi_spec(multi_spec_list)
+#combined.save('spec_combined.fits')
+
+
+
 if __name__ == "__main__":
     a = make_mask_nis17()
