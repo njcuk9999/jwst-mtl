@@ -228,8 +228,8 @@ def flag_outliers(result, nn=2, window_size=(1, 33), n_sig=5, verbose=False, out
         if verbose: print(
             'Processing integration {} : Identified {} outlier pixels\n'.format(i, np.count_nonzero(outliers)))
 
-    toto = result.copy()
-    toto.write('/Users/albert/NIRISS/Commissioning/analysis/HATP14b/result.fits')
+    #toto = result.copy()
+    #toto.write('/Users/albert/NIRISS/Commissioning/analysis/HATP14b/result.fits')
 
 
     if save_diagnostic == True:

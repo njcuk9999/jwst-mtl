@@ -228,6 +228,7 @@ if __name__ == "__main__":
             contmask = None
         elif hostname == 'genesis':
             dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/HATP14b/'
+            contmask = None
         else:
             sys.exit()
 
