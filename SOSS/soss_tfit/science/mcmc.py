@@ -10,7 +10,7 @@ Created on 2022-04-06
 @author: cook
 """
 from astropy.io import fits
-from astropy.table import Table
+from astropy.table import Table, vstack
 import numpy as np
 import os
 import pickle
@@ -1643,8 +1643,79 @@ class Sampler:
                 table['P50_UPPER'] = table[label_p84] - table['P50']
                 table['P50_LOWER'] = table['P50'] - table[label_p16]
         # ---------------------------------------------------------------------
+        # add in transit depth (new table stacked)
+        # ---------------------------------------------------------------------
+        depth_table = Table()
+        depth_table['NAME'] = ['transit_depth']
+        depth_table['WAVE_CENT'] = [np.nan]
+        # -----------------------------------------------------------------
+        # deal with result mode
+        if result_mode in ['mode', 'all']:
+            # push into table
+            depth_table['MODE'] = [np.nan]
+            depth_table['MODE_LOWER'] = [np.nan]
+            depth_table['MODE_UPPER'] = [np.nan]
+        # -----------------------------------------------------------------
+        # deal with result mode
+        if result_mode in ['percentile', 'all']:
+            # get depth
+            dout = self.results_tdepth(n_samples=10000)
+            # push into table
+            depth_table['P50'] = [dout[0]]
+            table[label_p16] = [dout[1]]
+            table[label_p84] = [dout[2]]
+            depth_table['P50_UPPER'] = [dout[3]]
+            depth_table['P50_LOWER'] = [dout[4]]
+        # stack the table to add the depth table
+        out_table = vstack([table, depth_table])
+        # ---------------------------------------------------------------------
         # save the results table
-        self.results_table = table
+        # ---------------------------------------------------------------------
+        self.results_table = out_table
+
+    def results_tdepth(self, n_samples: int = 10000):
+        """
+        Calculate the transit depth parameter by taking random samples
+        of the chains and calculating the transit model
+
+        :param n_samples:
+        :return:
+        """
+        # get the p50, p16 and p84
+        pvalues = general.sigma_percentiles()
+        # randomly pick sample indices in the chain
+        csample = np.arange(self.chain.shape[0])
+        chain_samples_idx = np.random.choice(csample, n_samples, replace=False)
+        # to store the depths at mid-transit
+        depth = np.zeros((n_samples, self.tfit.n_phot))
+        # index of EP1 in p axis 0
+        time_idx_p, _ = (self.tfit.pnames == 'EP1').nonzero()
+        # loop over the samples in the chain
+        for n_it in range(n_samples):
+            # copy tfit
+            tfit_tmp = self.tfit.copy()
+            # get the fitted parameters values for this sample
+            tfit_tmp.x0 = self.chain[chain_samples_idx[n_it], :]
+            # update p with parameters values from that sample
+            tfit_tmp.update_p0_from_x0()
+            ptmp = tfit_tmp.p0
+            # loop over band passes and calculate depth
+            for bp in range(self.tfit.n_phot):
+                # define kwargs for transit_fit
+                tkwargs = dict(sol=ptmp[:, bp], time=ptmp[time_idx_p, bp],
+                               itime=1.e-5,  # put ~1 sec here, in units of days
+                               ntt=self.tfit.pkwargs['NTT'],
+                               tobs=self.tfit.pkwargs['T_OBS'],
+                               omc=self.tfit.pkwargs['OMC'],
+                               nintg=self.tfit.pkwargs['NINTG'])
+                # call transit model and evaluate at time EP1 (middle transit)
+                depth[n_it, bp] = 1.0 - transit_fit.transitmodel(**tkwargs)
+        # get the depths 16th, 50th and 86th
+        d16, d50, d84 = np.percentile(depth, pvalues, axis=0)
+        d_elo = d16 - d50
+        d_ehi = d84 - d50
+        # get depth 50th + and - values
+        return d50, d16, d84, d_elo, d_ehi
 
     def print_results(self, pkind: str = 'mode',
                       key: Optional[str] = None):
