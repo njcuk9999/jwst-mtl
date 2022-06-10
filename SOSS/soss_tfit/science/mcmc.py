@@ -594,10 +594,7 @@ def setup_params_mcmc(params: ParamDict, data: InputData) -> TransitFit:
         pout = __assign_pvalue(key, params, n_phot, func_name)
         p0, fmask, wmask, prior, pname, pbeta = pout
         # hyper parameters are set to zero if not in fit mode
-        if not fmask:
-            transit_p0[pnum] = np.zeros(n_phot)
-        else:
-            transit_p0[pnum] = p0
+        transit_p0[pnum] = p0
         # add other values to storage
         transit_fmask[pnum] = fmask
         transit_wmask[pnum] = wmask
