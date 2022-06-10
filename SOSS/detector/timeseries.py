@@ -22,8 +22,8 @@ import astropy.io.fits as pyfits
 
 
 # Home-brew and intra module imports.
-from . import hxrg
-#import hxrg
+#from . import hxrg
+import hxrg
 
 #Cosmic rays import
 import addCRs2Exposure
@@ -692,7 +692,7 @@ class TimeSeries(object):
             print ('sun_activity = ', sun_activity, ' is not supported... exiting')
             sys.exit()
 
-        filesin = [self.imapath] #The file on which we wanna run the code
+        filesin = [self.ima_path] #The file on which we wanna run the code
 
         #np.random.seed(13578) #so we have always the same results
 

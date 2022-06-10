@@ -1,13 +1,13 @@
 import sys
 import astropy.io.fits as pyfits
 import numpy as np
-sys.path.append('/genesis/jwst/jwst-user-soss/loic_review/cosmicray/')
+sys.path.append('/genesis/jwst/jwst-ref-soss/cosmicray/')
 
 
 #np.random.seed(13578) #so we have always the same results
 #This needs to be taken out in case of MC simulations..
 
-rootname = "CRs_MCD5.5_"
+rootname = "/genesis/jwst/jwst-ref-soss/cosmicray/CRs_MCD5.5_"
 crarraysize = 21
 crarraysize = 21
 
@@ -182,8 +182,8 @@ def invert_ipc_kernel(kern):
     Invert the IPC kernel such that it goes from being used to remove
     IPC effects from data, to being used to add IPC effects to data,
     or vice versa.
-    Parameters
     ----------
+    # Parameters
     kern : obj
         numpy ndarray, either 2D or 4D, containing the kernel
     Returns
@@ -247,7 +247,7 @@ def addCRs(cube, tframe, ptype='SUNMIN', f_ADC=1):
 
     #read in IPC convolution kernel
     #ipcreffile='/mnt/jwstdata/crds_cache/references/jwst/niriss/jwst_niriss_ipc_0008.fits'
-    ipcreffile='jwst_niriss_ipc_0008.fits'
+    ipcreffile='/genesis/jwst/jwst-ref-soss/cosmicray/jwst_niriss_ipc_0008.fits'
     kernel = pyfits.getdata(ipcreffile)
     kernel = invert_ipc_kernel(kernel)
 

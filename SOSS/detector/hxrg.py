@@ -346,7 +346,7 @@ class HXRGNoise:
         """
 
         # Configure depending on mode setting
-        if mode is 'pink':
+        if mode == 'pink':
             nstep = 2 * self.nstep
             nstep2 = 2 * self.nstep2  # JML
             f = self.f2

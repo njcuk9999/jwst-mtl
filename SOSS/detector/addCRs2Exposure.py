@@ -14,6 +14,21 @@ def run(filein, ptype, outDir):
     #frame integration time (in real case will be read from fits header
     tframe = hdr['TFRAME']
 
+    #Fixing the saturation problem for FULL images
+    subarray = hdr['SUBARRAY']
+    
+    if subarray == 'FULL': 
+
+        #Negative pixels
+        ineg = np.where(datain < 0)
+        datain[ineg] = np.abs(datain[ineg]) 
+    
+        #Normalize
+        datain = datain/(np.max(datain))
+    
+         #Gain 
+        datain = datain * 50000
+
     #NIRISS Detector 
     #noise files are in units of ADU so need gain to convert to electrons
     gain=1.62
@@ -44,5 +59,4 @@ if __name__ == '__main__':
         outDir = sys.argv[3]
 
         run(filein, ptype, outDir)
-
 
