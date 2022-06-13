@@ -72,6 +72,9 @@ class TransitFit:
     n_param: int
     # the number of photometric bandpasses we have
     n_phot: int
+    # the total number of valid points (number of photometric bandpasses for
+    #   each integration
+    npt: int
     # numpy array [n_param, n_phot] the initial value of each parameter
     p0: np.ndarray
     # numpy array [n_param] whether we are fitting each parameter [Bool]
@@ -627,6 +630,10 @@ def setup_params_mcmc(params: ParamDict, data: InputData) -> TransitFit:
     tfit.n_phot = int(data.n_phot)
     # set the number of integrations
     tfit.n_int = int(data.n_int)
+    # set the total number of valid points (number of photometric
+    #   bandpasses for each integration)
+    # TODO: if we have a data mask must not count invalid points
+    tfit.npt = tfit.time.size
     # -------------------------------------------------------------------------
     # set additional arguments
     # -------------------------------------------------------------------------
@@ -1495,9 +1502,9 @@ class Sampler:
         cprint('\tGelman-Rubin Convergence.', level='info')
         # get number of chains to burn (using burn in fraction)
         burnin = int(self.wchains[0].shape[0] * burninf)
-        # calculate the rc factor
+        # calculate the rc factor, npt is the number of total points
         self.grtest = gelman_rubin_convergence(self.wchains, burnin=burnin,
-                                               npt=self.tfit.n_phot)
+                                               npt=self.tfit.npt)
         # print the factors
         cprint('\tRc param:')
         for param_it in range(self.tfit.n_x):
