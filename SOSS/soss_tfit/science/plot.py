@@ -347,7 +347,8 @@ def plot_spectrum(params: ParamDict, data: InputData, results: Table,
                   key: str = 'RD1', model: Optional[Dict[int, Table]] = None,
                   binkey: str = 'RPRS', pkind: str = 'mode',
                   fullmodel: Optional[Table] = None,
-                  return_object: bool = False):
+                  return_object: bool = False,
+                  plot_label: str = None):
     """
     Plots the parameter against wavelength
 
@@ -363,6 +364,9 @@ def plot_spectrum(params: ParamDict, data: InputData, results: Table,
                       comparison
     :param return_object: bool, if True does not show/save or close and
                           returns the matplotlib figure and axis
+    :param plot_label: str, if key is not "RD1" you must define this,
+                       this is the y axis label for plotting
+                       (latex is supported) for RD1 this is r'$R_{p}/R_{\star}$'
 
     :return: None, plots graph (unless return_object, then returns tuple,
              [fig, axes] where fig, axes = plt.subplots(...)
@@ -376,6 +380,13 @@ def plot_spectrum(params: ParamDict, data: InputData, results: Table,
         return
     # set up figure
     fig, frame = plt.subplots(ncols=1, nrows=1, figsize=(16, 12))
+
+    # -------------------------------------------------------------------------
+    # deal with key
+    if key == 'RD1' and plot_label is None:
+        plot_label = r'$R_{p}/R_{\star}$'
+    elif plot_label is None:
+        raise ValueError('plotlabel argument is required when key != "RD1"')
     # -------------------------------------------------------------------------
     # get the results for binkey
     rmask = results['NAME'] == key
@@ -419,7 +430,7 @@ def plot_spectrum(params: ParamDict, data: InputData, results: Table,
                        label=f'Fit Order {order}')
     # -------------------------------------------------------------------------
     # set labels and limits
-    frame.set(xlabel=r'Wavelength ($\mu$m)', ylabel=r'$R_{p}/R_{\star}$',
+    frame.set(xlabel=r'Wavelength ($\mu$m)', ylabel=plot_label,
               xlim=[0.6, 3.0], title=title)
     frame.legend(loc=0)
     # end plot
