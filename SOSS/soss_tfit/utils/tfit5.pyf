@@ -3,7 +3,7 @@
 
 python module tfit5 ! in 
     interface  ! in :tfit5
-        subroutine transitmodel(nfit,nplanet,nplanetmax,sol,nmax,npt,time,itime,ntt,tobs,omc,tmodel,dtype) ! in :tfit5:transitmodel.f
+        subroutine transitmodel(nfit,nplanet,nplanetmax,sol,nmax,npt,time,itime,ntt,tobs,omc,tmodel,dtype,nintg) ! in :tfit5:transitmodel.f
             integer, optional,check(len(sol)>=nfit),depend(sol) :: nfit=len(sol)
             integer intent(in) :: nplanet
             integer, optional,check(len(ntt)>=nplanet),depend(ntt) :: nplanetmax=len(ntt)
@@ -17,6 +17,7 @@ python module tfit5 ! in
             double precision dimension(nplanetmax,nmax),intent(in) :: omc
             double precision dimension(npt),intent(inout) :: tmodel
             integer dimension(npt),intent(in) :: dtype
+            integer intent(in) :: nintg
         end subroutine transitmodel
         subroutine rqsort(n,a,p) ! in :tfit5:rqsort.f
             integer, optional,check(len(a)>=n),depend(a) :: n=len(a)
