@@ -236,6 +236,9 @@ class TransitFit:
         new.n_param = self.n_param
         # the number of photometric bandpasses we have
         new.n_phot = self.n_phot
+        # the total number of valid points (number of photometric bandpasses for
+        #   each integration
+        new.npt = self.npt
         # numpy array [n_param, n_phot] the initial value of each parameter
         new.p0 = np.array(self.p0)
         # numpy array [n_param] whether we are fitting each parameter [Bool]
