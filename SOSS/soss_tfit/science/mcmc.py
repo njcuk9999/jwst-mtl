@@ -724,21 +724,21 @@ def lnpriors(tfit) -> float:
             continue
         # get this parameters priors
         prior = dict(tfit.get(names[param_it], 'prior'))
+        # check that prior func condition is valid
+        if 'func' in prior:
+            if prior['func'] not in PRIOR_FUNC:
+                emsg = (f'prior.func is defined for {names[param_it]}, '
+                        f'thus it must be one of the following:')
+                for pfkey in list(PRIOR_FUNC.keys()):
+                    emsg += f'\n\t{pfkey}'
+                raise base_classes.TransitFitExcept(emsg)
+        # priors add in log space
+        func = PRIOR_FUNC[prior.get('func', 'uniform')]
+        # remove 'func' from prior (we don't want it in the function call)
+        if 'func' in prior:
+            del prior['func']
         # loop around band passes
         for phot_it in range(n_phot):
-            # check that prior func condition is valid
-            if 'func' in prior:
-                if prior['func'] not in PRIOR_FUNC:
-                    emsg = (f'prior.func is defined for {names[param_it]}, '
-                            f'thus it must be one of the following:')
-                    for pfkey in list(PRIOR_FUNC.keys()):
-                        emsg += f'\n\t{pfkey}'
-                    raise base_classes.TransitFitExcept(emsg)
-            # priors add in log space
-            func = PRIOR_FUNC[prior.get('func', 'uniform')]
-            # remove 'func' from prior (we don't want it in the function call)
-            if 'func' in prior:
-                del prior['func']
             # add to the lnprior probability
             lnprior += func(sol[param_it, phot_it], **prior)
             # function returns True if pass prior condition
@@ -1737,7 +1737,7 @@ class Sampler:
         # to store the depths at mid-transit
         depth = np.zeros((n_samples, self.tfit.n_phot))
         # index of EP1 in p axis 0
-        time_idx_p, _ = (self.tfit.pnames == 'EP1').nonzero()
+        time_idx_p = (self.tfit.pnames == 'EP1').nonzero()[0]
         # loop over the samples in the chain
         for n_it in range(n_samples):
             # copy tfit
