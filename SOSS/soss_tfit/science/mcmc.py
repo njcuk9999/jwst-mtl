@@ -497,24 +497,51 @@ class TransitFit:
 # =============================================================================
 # Define prior functions
 #     Must have arguments value, **kwargs
-#     Must return True if passed, False otherwise
+#     Must return a float to add to the log prior
+#     Must add prior functions to PRIOR_FUNC (below the function definitions)
 # =============================================================================
-def tophat_prior(value: float, minimum: float, maximum: float) -> bool:
+def uniform_prior(value: float, minimum: float, maximum: float) -> float:
     """
-    Simple tophat proir
-    :param value:
-    :param minimum:
-    :param maximum:
+    Simple uniform prior (return 0 if within bounds and BADLPR -np.inf
+    otherwise)
+
+    :param value: float, parameter value (passed in)
+    :param minimum: float, the minimum allowed value
+                    (below which lnprior is -np.inf)
+    :param maximum: float, the maximum allowed value
+                    (above which lnprior is -np.inf)
     :return:
     """
     # test whether condition is less than the minimum of the prior
     if value < minimum:
-        return False
+        return BADLPR
     # test whether condition is greater than the maximum of the prior
     if value > maximum:
-        return False
-    # if we get to here we have passed this priors conditions
-    return True
+        return BADLPR
+    # if we get to here we have passed this priors conditions -> return 1
+    return 0.0
+
+
+def gaussian_prior(value: float, mu: float, sigma: float) -> float:
+    """
+    Simple gaussian prior (in log space)
+
+    :param value:
+    :param mu:
+    :param sigma:
+    :return:
+    """
+    return -(value - mu)**2 / sigma ** 2
+
+
+# Must add all prior functions to this dictionary for it to work
+#    they key can then be used in the yaml
+#    parameter:
+#       prior:
+#           func: key
+PRIOR_FUNC = dict()
+PRIOR_FUNC['uniform'] = uniform_prior
+PRIOR_FUNC['gaussian'] = gaussian_prior
 
 
 # =============================================================================
@@ -675,7 +702,7 @@ def lnpriors(tfit) -> float:
     :return: float, either 1 (if good) or -np.inf (if bad)
     """
     # set initial value of loglikelihood
-    logl = 1.0
+    lnprior = 1.0
     # the number of band passes
     n_phot = tfit.n_phot
     # the number of parameters
@@ -693,19 +720,30 @@ def lnpriors(tfit) -> float:
         if not fmask[param_it]:
             continue
         # get this parameters priors
-        prior = tfit.get(names[param_it], 'prior')
+        prior = dict(tfit.get(names[param_it], 'prior'))
         # loop around band passes
         for phot_it in range(n_phot):
-            # TODO: change to allow different function
-            #       this may not be True/False
-            # get prior function - default prior is a tophat function
-            func = prior.get('func', tophat_prior)
+            # check that prior func condition is valid
+            if 'func' in prior:
+                if prior['func'] not in PRIOR_FUNC:
+                    emsg = (f'prior.func is defined for {names[param_it]}, '
+                            f'thus it must be one of the following:')
+                    for pfkey in list(PRIOR_FUNC.keys()):
+                        emsg += f'\n\t{pfkey}'
+                    raise base_classes.TransitFitExcept(emsg)
+            # priors add in log space
+            func = PRIOR_FUNC[prior.get('func', 'uniform')]
+            # remove 'func' from prior (we don't want it in the function call)
+            if 'func' in prior:
+                del prior['func']
+            # add to the lnprior probability
+            lnprior += func(sol[param_it, phot_it], **prior)
             # function returns True if pass prior condition
-            if not func(sol[param_it, phot_it], **prior):
+            if not (lnprior > BADLPR):
                 return BADLPR
     # if we have got to here we return the good loglikelihood (all priors have
     #    passed)
-    return logl
+    return lnprior
 
 
 def lnprob(tfit: TransitFit) -> float:
