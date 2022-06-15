@@ -109,12 +109,12 @@ def run_stage2(rateints, contamination_mask=None, skip_atoca=False):
                                                               #override_flat=CALIBRATION_DIR+FLAT)
 
     # Custom - Outlier flagging
-    result = soss_outliers.flag_outliers(result, window_size=(7,7), n_sig=9, verbose=True, outdir=outdir, save_diagnostic=True)
+    #result = soss_outliers.flag_outliers(result, window_size=(7,7), n_sig=9, verbose=True, outdir=outdir, save_diagnostic=True)
 
     # Custom - Background subtraction step
-    result = commutils.background_subtraction(result, aphalfwidth=[30,20,20], outdir=outdir, verbose=False,
-                                              override_background=CALIBRATION_DIR+BACKGROUND, applyonintegrations=False,
-                                              contamination_mask=contamination_mask)
+    #result = commutils.background_subtraction(result, aphalfwidth=[30,20,20], outdir=outdir, verbose=False,
+    #                                          override_background=CALIBRATION_DIR+BACKGROUND, applyonintegrations=False,
+    #                                          contamination_mask=contamination_mask)
 
     # Custom - Check that no NaNs is in the rateints data
     result = commutils.remove_nans(result)
@@ -153,16 +153,33 @@ def run_stage2(rateints, contamination_mask=None, skip_atoca=False):
         if True:
             # spectrum extraction - forcing no dx=0, dy=0, dtheta=0
             print(result.meta.filename)
-            result = calwebb_spec2.extract_1d_step.Extract1dStep.call(result, output_dir=outdir, save_results=True,
-                                                                      soss_transform=[0, 0, 0],
-                                                                      #soss_transform=[None, 0, 0],
-                                                                      subtract_background=False,
-                                                                      soss_bad_pix='model',
-                                                                      #soss_tikfac=3.38e-15,
-                                                                      soss_modelname=outdir+'/'+basename+'_atoca_model.fits',
-                                                                      override_spectrace=ATOCAREF_DIR+SPECTRACE,
-                                                                      override_wavemap=ATOCAREF_DIR+WAVEMAP,
-                                                                      override_specprofile=ATOCAREF_DIR+SPECPROFILE)
+
+            if True:
+                # soss_atoca=False --> box extraction only
+                # carefull to not turn it on. Woul dif soss_bad_pix='model' or soss_modelname=set_to_something
+                result = calwebb_spec2.extract_1d_step.Extract1dStep.call(result, output_dir=outdir, save_results=True,
+                                                                          soss_transform=[0, 0, 0],
+                                                                          soss_atoca=False,
+                                                                          subtract_background=False,
+                                                                          soss_bad_pix='masking',
+                                                                          # soss_tikfac=3.38e-15,
+                                                                          soss_modelname=None,
+                                                                          override_spectrace=ATOCAREF_DIR + SPECTRACE,
+                                                                          override_wavemap=ATOCAREF_DIR + WAVEMAP,
+                                                                          override_specprofile=ATOCAREF_DIR + SPECPROFILE)
+
+            else:
+                result = calwebb_spec2.extract_1d_step.Extract1dStep.call(result, output_dir=outdir, save_results=True,
+                                                                          soss_transform=[0, 0, 0],
+                                                                          soss_atoca = True,
+                                                                          #soss_transform=[None, 0, None],
+                                                                          subtract_background=False,
+                                                                          soss_bad_pix='masking',
+                                                                          #soss_tikfac=3.38e-15,
+                                                                          soss_modelname=outdir+'/'+basename+'_atoca_model.fits',
+                                                                          override_spectrace=ATOCAREF_DIR+SPECTRACE,
+                                                                          override_wavemap=ATOCAREF_DIR+WAVEMAP,
+                                                                          override_specprofile=ATOCAREF_DIR+SPECPROFILE)
 
             # Conversion to SI units
             result = calwebb_spec2.photom_step.PhotomStep.call(result, output_dir=outdir, save_results=True)
@@ -201,7 +218,7 @@ if __name__ == "__main__":
         datalist = ['jw01092010001_03101_00001_nis'] # SS256 CLEAR 20 ints
 
     # Flux Calibration
-    if False:
+    if True:
         if (hostname == 'iiwi.sf.umontreal.ca') or (hostname == 'iiwi.local'):
             dir = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/'
             #contmask = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/mask_contamination.fits'
@@ -218,11 +235,11 @@ if __name__ == "__main__":
             'jw01091002001_03101_00001-seg004_nis',
             'jw01091002001_03101_00001-seg005_nis'
         ]
-        datalist = ['jw01091001001_03101_00001_nis'] # flux SS256 CLEAR short
+        #datalist = ['jw01091001001_03101_00001_nis'] # flux SS256 CLEAR short
 
 
     # HATP14b
-    if True:
+    if False:
         if (hostname == 'iiwi.sf.umontreal.ca') or (hostname == 'iiwi.local'):
             dir = '/Users/albert/NIRISS/Commissioning/analysis/HATP14b/'
             contmask = None
@@ -241,14 +258,30 @@ if __name__ == "__main__":
 
 
     for dataset in datalist:
-        run_stage1(dir+dataset+'_uncal.fits', outlier_map=dir+dataset+'_outliers.fits')
-        run_stage2(dir+dataset+'_customrateints.fits', contamination_mask=contmask, skip_atoca=True)
-        run_stage1(dir+dataset+'_uncal.fits', outlier_map=dir+dataset+'_outliers.fits')
-        run_stage2(dir+dataset+'_customrateints.fits', contamination_mask=contmask)
-    #for dataset in datalist:
+        print()
+        #run_stage1(dir+dataset+'_uncal.fits', outlier_map=dir+dataset+'_outliers.fits')
+        #run_stage2(dir+dataset+'_customrateints.fits', contamination_mask=contmask, skip_atoca=True)
+        #run_stage1(dir+dataset+'_uncal.fits', outlier_map=dir+dataset+'_outliers.fits')
+        #run_stage2(dir+dataset+'_customrateints.fits', contamination_mask=contmask)
+        run_stage2(dir+dataset+'_rateints.fits')
+
+    for dataset in datalist:
         # Additional diagnostics
-        commutils.check_atoca_residuals(dir+dataset+'_customrateints_backsubtracted.fits',
-                                        dir+dataset+'_atoca_model_SossExtractModel.fits')
-        spectrum_file = dir+dataset+'_customrateints_backsubtracted_extract1dstep.fits'
+        #commutils.check_atoca_residuals(dir+dataset+'_customrateints_backsubtracted.fits',
+        #                                dir+dataset+'_atoca_model_SossExtractModel.fits')
+        #spectrum_file = dir+dataset+'_customrateints_backsubtracted_extract1dstep.fits'
+        spectrum_file = dir+dataset+'_extract1dstep.fits'
         a = commutils.plot_timeseries(spectrum_file, norder=3)
 
+    if False:
+        outdir = '/Users/albert/NIRISS/Commissioning/analysis/HATP14b/'
+        wildcard = outdir+'supplemental_jw01541001001_04101_00001-seg00?_nis/timeseries_greyscale_rawflux.fits'
+        a = commutils.combine_timeseries(wildcard, outdir)
+        wildcard = outdir+'jw01541001001_04101_00001-seg00?_nis_extract1dstep.fits'
+        a = commutils.combine_multi_spec(wildcard, outdir)
+    if True:
+        outdir = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/'
+        wildcard = outdir+'supplemental_jw01091002001_03101_00001-seg00?_nis/timeseries_greyscale_rawflux.fits'
+        a = commutils.combine_timeseries(wildcard, outdir)
+        wildcard = outdir+'jw01091002001_03101_00001-seg00?_nis_extract1dstep.fits'
+        a = commutils.combine_multi_spec(wildcard, outdir)

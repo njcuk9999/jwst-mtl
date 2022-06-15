@@ -5,6 +5,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import scipy.interpolate
 
+import glob
+
 from astropy.io import fits
 
 from jwst import datamodels
@@ -567,7 +569,7 @@ def combine_segments(prefix):
     return
 
 
-def combine_multi_spec(multi_spec_list):
+def combine_multi_spec(wildcard, outdir):
     """
     Example:
     #>>> filename_list = ['spec_part1.fits', 'spec_part2.fits', 'etc.fits']
@@ -575,6 +577,13 @@ def combine_multi_spec(multi_spec_list):
     #>>> combined = combine_multi_spec(multi_spec_list)
     #>>> combined.save('spec_combined.fits')
     """
+    filename_list = sorted(glob.glob(wildcard))
+    print('List of extract1d spectra (check here that they are ordered).')
+    print(filename_list)
+    # read the files
+    print('Opening the multispec - takes a while...')
+    multi_spec_list = [datamodels.open(fname) for fname in filename_list]
+
     # Init output spec
     combined = datamodels.MultiSpecModel()
 
@@ -585,13 +594,17 @@ def combine_multi_spec(multi_spec_list):
     combined.meta.filename = None
 
     # Iterate over all objects in the list
+    print('Combining all spectra. Takes a while...')
     for multi_spec_obj in multi_spec_list:
+        print('A segment starts...')
         # Iterate over all SingleSpecModel
         for single_spec_obj in multi_spec_obj.spec:
             # Append single spec to output
             combined.spec.append(single_spec_obj)
 
-    return combined
+    combined.save(outdir+'/extracted_spectra_combined.fits')
+
+    return
 
 
 ## Example
@@ -600,7 +613,47 @@ def combine_multi_spec(multi_spec_list):
 #combined = combine_multi_spec(multi_spec_list)
 #combined.save('spec_combined.fits')
 
+def combine_timeseries(wildcard, outdir):
+
+    nisfiles= sorted(glob.glob(wildcard))
+    print(nisfiles)
+
+    nints = 0
+    for ts_file in nisfiles:
+        im = fits.getdata(ts_file)
+        norder, ninteg, dimx = np.shape(im)
+        nints = nints + ninteg
+
+    ts = np.zeros((3, nints, 2048))
+    current = 0
+    for ts_file in nisfiles:
+        im = fits.getdata(ts_file)
+        norder, ninteg, dimx = np.shape(im)
+        ts[:, current:current+ninteg, :] = np.copy(im)
+        current += ninteg
+
+
+    print(np.shape(ts))
+    # normalize each wavelength
+    ts = ts.transpose(1, 0, 2)
+    ts = ts / np.nanmedian(ts, axis=0)
+    ts = ts.transpose(1, 0, 2)
+
+    hdu = fits.PrimaryHDU(ts)
+    hdu.writeto(outdir+'/timeseries_combined.fits', overwrite=True)
+
+    return
+
+
+
+
+
+
+
 
 
 if __name__ == "__main__":
-    a = make_mask_nis17()
+    #a = make_mask_nis17()
+    outdir = '/Users/albert/NIRISS/Commissioning/analysis/HATP14b/'
+    wildcard = outdir+'supplemental_jw01541001001_04101_00001-seg00?_nis/timeseries_greyscale_rawflux.fits'
+    a = combined_timeseries(wildcard, outdir)
