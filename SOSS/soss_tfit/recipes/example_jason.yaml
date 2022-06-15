@@ -16,29 +16,21 @@
 global_params:
   # Plot mode, 0: no plots, 1: to file, 2: to screen
   plotmode:
-    - 0
+    - 1
+    - 2
   # Number of planets (use for N planets) [INT]
   nplanets: 1
   # Orders to use (list of orders)
   orders:
     - 1
     - 2
-  # Number of bins used for each order for spectral binning (set to None for no binning)
-  order_bins:
-    1: 10
-    2: 5
+
   # The normalization value before and after transit [days from start of observation]
   #    setting None for before or after does not normalize by this region
   #    setting both to None does not normalize
   tnorm:
     before: 0.05
     after: 0.135
-
-  # remove bins from orders (list bin indices to remove)
-  #   list per order or set to None to skip removal
-  remove_bins:
-    1: None
-    2: None
 
   # Define the number of subdivisions when solving the long-integration problems
   # Must be between 1 and 41 and odd
@@ -48,6 +40,40 @@ global_params:
   #    current options are 'percentile', 'mode', 'all'
   result-mode: percentile
 
+  # ---------------------------------------------------------------------------
+  # binning parameters
+  # ---------------------------------------------------------------------------
+  binning:
+    # binning mode should either be 'simple' or 'const_R'
+    mode: simple
+    # parameters for simple binning
+    simple:
+      # Number of bins used for each order for spectral binning (set to None for no binning)
+      order_bins:
+        1: 10
+        2: 5
+      # remove bins from orders (list bin indices to remove)
+      #   list per order or set to None to skip removal
+      remove_bins:
+        1: None
+        2: None
+    # parameters for binning by const R
+    const_R:
+      # Resolution to bin at
+      #   Must define for each value of "global_params.orders"
+      bin_R:
+        1: 10
+        2: 10
+      # minimum wavelength in micron to keep for each order (use None for no limit)
+      #   Must define for each value of "global_params.orders"
+      bin_wave_min:
+        1: None
+        2: 0.6
+      # maximum wavelength in micron to keep for each order (use None for no limit)
+      #   Must define for each value of "global_params.orders"
+      bin_wave_max:
+        1: None
+        2: 0.9
   # ---------------------------------------------------------------------------
   # Input/Output parameters
   # ---------------------------------------------------------------------------
@@ -127,7 +153,7 @@ mcmc_params:
   # Maximum number of times to try the MCMC (if convergence not met on a loop)
   nloopmax:
     trial: 3
-    full: 5
+    full: 3
   # Convergence criteria
   converge_crit: 1.02
   # Convergence criteria for buffer
@@ -221,7 +247,7 @@ star:
         maximum: 1.0e9
 
   # update zeropoint from data
-  update_zeropoint: true
+  update_zeropoint: false
 
 # =============================================================================
 # Planet Parameters
@@ -310,79 +336,5 @@ planet1:
     prior:
       minimum: 0
       maximum: 1.0e4
-
-#planet2:
-#  # Center of transit time [PARAM]
-#  t0:
-#      value: 1.0
-#      wfit: bolometric
-#      ftype: fit
-#      prior:
-#        minimum: 0.0
-#        maximum: 2.0
-#  # Orbital period [PARAM]
-#  period:
-#      value: 1.0
-#      wfit: bolometric
-#      ftype: fit
-#      prior:
-#        minimum: 0.0
-#        maximum: 2.0
-#  # Impact parameter [PARAM]
-#  b:
-#      value: 0.5
-#      wfit: bolometric
-#      ftype: fit
-#      prior:
-#        minimum: 0.0
-#        maximum: 2.0
-#  # Scale planet radius [PARAM]
-#  rprs:
-#      value: 0.01
-#      wfit: chromatic
-#      ftype: fit
-#      prior:
-#        minimum: 0.0
-#        maximum: 1.0
-#  # sqrt(e)cos(w) [PARAM]
-#  sqrt_e_cosw:
-#    value: 0.0
-#    wfit: bolometric
-#    ftype: fixed
-#    prior:
-#      minimum: -1.0
-#      maximum: 1.0
-#  # sqrt(e)sin(w) [PARAM]
-#  sqrt_e_sinw:
-#    value: 0.0
-#    wfit: bolometric
-#    ftype: fixed
-#    prior:
-#      minimum: -1.0
-#      maximum: 1.0
-#  # Secondary eclipse depth (ppm) [PARAM]
-#  eclipse_depth:
-#    value: 0.0
-#    wfit: chromatic
-#    ftype: fixed
-#    prior:
-#      minimum: 0
-#      maximum: 1.0e4
-#  # Amplitude of ellipsoidal variations (ppm) [PARAM]
-#  ellipsoidal:
-#    value: 0.0
-#    wfit: chromatic
-#    ftype: fixed
-#    prior:
-#      minimum: 0
-#      maximum: 1.0e4
-#  # Amplitude of reflected/emission phase curve (ppm) - Lambertian [PARAM]
-#  phasecurve:
-#    value: 0.0
-#    wfit: chromatic
-#    ftype: fixed
-#    prior:
-#      minimum: 0
-#      maximum: 1.0e4
 
 # =============================================================================

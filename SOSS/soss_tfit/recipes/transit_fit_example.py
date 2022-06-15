@@ -56,18 +56,13 @@ if __name__ == "__main__":
 
     # -------------------------------------------------------------------------
     # apply spectral binning
-    cprint('Applying spectral binning')
+    cprint('Applying spectral binning and removing bins')
     data.apply_spectral_binning(params)
 
     # -------------------------------------------------------------------------
     # apply normalization (normalize by mean out-of-transit)
     cprint('Normalizing by out-of-transit flux for each wavelength')
     data.normalize_by_out_of_transit_flux(params)
-
-    # -------------------------------------------------------------------------
-    # remove any bins user wishes to remove
-    cprint('Remove bins from order')
-    data.remove_bins(params)
 
     # -------------------------------------------------------------------------
     # create the photospectra dictionary (data.phot)

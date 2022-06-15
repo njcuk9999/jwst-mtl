@@ -164,6 +164,147 @@ class InputData:
             # update the number of pixels and wavelengths
             self.n_wav[onum] = self.spec[onum]['WAVELENGTH'].shape[1]
 
+    def simple_spectral_binning(self, params: ParamDict, onum: int
+                                ) -> Tuple[int, np.ndarray, np.ndarray]:
+        """
+        Provides the start and end indices for a simple spectral binning,
+        takes params['ORDER_BINS'] and divides the spectrum into that many
+        chunks.
+
+        Removal of orders is NOT done in here and must be done after binning
+        is applied.
+
+        :param params: ParamDict, the parameter dictionary of constants
+        :param onum: int, the order number
+
+        :return: tuple, 1. int: the number of bins, 2. numpy array: the start
+                 indices for each bin, 3. numpy array: the end indices for
+                 each bin
+        """
+        # get the number of bins required per order
+        binning = params['ORDER_BINS']
+        # get the number of wavelength pixels
+        n_wav = self.n_wav
+        # get the number of bins for this order
+        n_bins = binning[onum]
+        # ---------------------------------------------------------------------
+        # deal with no binning required
+        if n_bins is None:
+            # get the original wavelength
+            wavelength1 = self.spec[onum]['WAVELENGTH']
+            # set bin limits
+            bin_limits = np.zeros((2, n_wav[onum]))
+            # set the bin limits to the wavelength (delta function?)
+            for bin_it in range(n_wav[onum]):
+                wave_start = wavelength1[:, bin_it]
+                bin_limits[:, bin_it] = (wave_start, wave_start)
+            self.spec[onum]['BIN_LIMITS'] = bin_limits
+            # return a single bin, startings at first pixel and going
+            #    to last pixel
+            n_bins = -1
+            starts = np.array([])
+            ends = np.array([])
+            return n_bins, starts, ends
+        # ---------------------------------------------------------------------
+        # calculate the bin size
+        bin_size = n_wav[onum] // n_bins
+        # ---------------------------------------------------------------------
+        starts, ends = [], []
+        # loop around the bins and fill vectors
+        for bin_it in range(n_bins):
+            # calculate the start and end point for this bin
+            start = bin_it * bin_size
+            end = (bin_it + 1) * bin_size
+
+            starts.append(start)
+            ends.append(end)
+        # ---------------------------------------------------------------------
+        # cast into arrays
+        starts = np.array(starts)
+        ends = np.array(ends)
+        # return these
+        return n_bins, starts, ends
+
+    def const_r_spectral_binning(self, params: ParamDict, onum: int
+                                ) -> Tuple[int, np.ndarray, np.ndarray]:
+        """
+        Provides the start and end indices for spectral binning at a
+        constant resolution - also removes based on wavelength ranges using:
+        params['BIN_WAVE_MIN'][onum] and params['BIN_WAVE_MAX'][onum]
+
+        :param params: ParamDict, the parameter dictionary of constants
+        :param onum: int, the order number
+
+        :return: tuple, 1. int: the number of bins, 2. numpy array: the start
+                 indices for each bin, 3. numpy array: the end indices for
+                 each bin
+        """
+
+        # get resolution wave min and wave max for this order
+        resolution = params['BIN_RESOLUTION'][onum]
+        wave_min = params['BIN_WAVE_MIN'][onum]
+        wave_max = params['BIN_WAVE_MAX'][onum]
+
+        # get the wave solution for first spectrum
+        #   (this assumes all wave solutions are the same)
+        wave = self.spec[onum]['WAVELENGTH'][0]
+
+        # test the wavelengths are truely decending
+        if np.min(np.diff(wave)) > 0:
+            emsg = 'For binning by const r wave sol much be in decending order.'
+            raise base_classes.TransitFitExcept(emsg)
+        # ---------------------------------------------------------------------
+        # find the maximum/minimum indices to keep
+        if wave_min is None:
+            imax = wave.size - 1
+        else:
+            imax = np.searchsorted(-wave, -wave_min) - 1
+        if wave_max is None:
+            imin = 0
+        else:
+            imin = np.searchsorted(-wave, -wave_max)
+        # ---------------------------------------------------------------------
+        # storage of bins
+        starts, ends = [], []
+        # ---------------------------------------------------------------------
+        # iterators starting points
+        end = imax
+        start = imax - 1
+        # have to start rtest_previous at a value
+        rtest_previous = np.inf
+        # ---------------------------------------------------------------------
+        # loop round until we reach the end of our indices
+        while start > imin:
+            # work out the wave diff between start and end iterator
+            dwave = wave[start] - wave[end]
+            # work out the resolution
+            r_test = wave[start: end + 1].mean() / dwave
+            # we only stop when resolution meets our requirement
+            #  (resolution will start really high)
+            if r_test < resolution:
+                # if the difference in resolution is greater than previously
+                #   calculated we use the pixel after
+                if abs(rtest_previous - resolution) < abs(r_test - resolution):
+                    start += 1
+                # append to starts and end
+                starts.append(int(start))
+                ends.append(int(end))
+                # change start and end position
+                end = start -1
+                start -= 1
+            # update previous
+            rtest_previous = float(r_test)
+            # move start back
+            start -= 1
+        # ---------------------------------------------------------------------
+        # cast into arrays
+        starts = np.array(starts)
+        ends = np.array(ends)
+        # record the number of bins
+        n_bins = starts.size
+        # return these
+        return n_bins, starts, ends
+
     def apply_spectral_binning(self, params: ParamDict):
         """
         Apply spectral binning
@@ -171,35 +312,32 @@ class InputData:
         :param params: ParamDict, parameter dictionary of constants
         :return:
         """
-        # TODO: Must make sure binning is consistent between orders
-        # get the number of bins required per order
-        binning = params['ORDER_BINS']
+        # get the binning mode
+        bmode = params['BINNING_MODE']
         # get the number of integrations
         n_int = self.n_int
-        # get the number of wavelength pixels
-        n_wav = self.n_wav
         # get the orders
         orders = self.orders
         # ---------------------------------------------------------------------
+        # deal with simple mode
+        # ---------------------------------------------------------------------
         # loop around each order
         for onum in orders:
-            # get the number of bins for this order
-            n_bins = binning[onum]
-            # deal with no binning required
-            if n_bins is None:
-                # get the original wavelength
-                wavelength1 = self.spec[onum]['WAVELENGTH']
-                # set bin limits
-                bin_limits = np.zeros((2, n_wav[onum]))
-                # set the bin limits to the wavelength (delta function?)
-                for bin_it in range(n_wav[onum]):
-                    wave_start = wavelength1[:, bin_it]
-                    bin_limits[:, bin_it] = (wave_start, wave_start)
-                self.spec[onum]['BIN_LIMITS'] = bin_limits
-                # skip binning
+            # get n_bins, starts, ends from binning mode
+            if bmode == 'simple':
+                bout  = self.simple_spectral_binning(params, onum)
+            elif bmode == 'const_R':
+                bout = self.const_r_spectral_binning(params, onum)
+            else:
+                emsg = (f'Binning mode = {bmode} not valid. '
+                        f'Please use "simple" or "const_R"')
+                raise base_classes.TransitFitExcept(emsg)
+            # extract out values from binning function
+            #   (number of bins, start indices, end indices)
+            n_bins, starts, ends = bout
+            # skip binning if n_bins == -1 (this is the skip criteria)
+            if n_bins == -1:
                 continue
-            # calculate the bin size
-            bin_size = n_wav[onum] // n_bins
             # set up storage for bin limits
             bin_limits = np.zeros((2, n_bins))
             # get original vectors
@@ -212,10 +350,10 @@ class InputData:
             time2 = np.zeros((n_int, n_bins))
             flux2 = np.zeros((n_int, n_bins))
             flux_err2 = np.zeros((n_int, n_bins))
-            # loop aroun the bins and fill vectors
+            # loop around the bins and fill vectors
             for bin_it in range(n_bins):
-                # calculate the start and end point for this bin
-                start, end = bin_it * bin_size, (bin_it + 1) * bin_size
+                # get the start and end point (in pixels) for this bin
+                start, end = starts[bin_it], ends[bin_it]
                 # calculate the binned values (mean)
                 bin_wave = np.mean(wavelength1[:, start:end], axis=1)
                 bin_time = np.mean(time1[:, start:end], axis=1)
@@ -242,6 +380,10 @@ class InputData:
             self.spec[onum]['BIN_LIMITS'] = bin_limits
             # update the number of pixels and wavelengths
             self.n_wav[onum] = n_bins
+            # -----------------------------------------------------------------
+            # for simple bining we then remove bins
+            if bmode == 'simple':
+                self.remove_simple_bins(params)
 
     def normalize_by_out_of_transit_flux(self, params: ParamDict):
         """
@@ -285,7 +427,7 @@ class InputData:
             self.spec[onum]['FLUX'] /= out_flux[None, :]
             self.spec[onum]['FLUX_ERROR'] /= out_flux[None, :]
 
-    def remove_bins(self, params: ParamDict):
+    def remove_simple_bins(self, params: ParamDict):
         """
         Remove bin indices from data
 

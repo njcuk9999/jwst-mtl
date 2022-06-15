@@ -35,7 +35,7 @@ if __name__ == "__main__":
 
     # config file (set manually)
     config_file = ('/data/jwst-soss/bin/jwst-mtl-soss/SOSS/soss_tfit/recipes/'
-                   'example_david_change_in_code.yaml')
+                   'example_jason.yaml')
 
     # -------------------------------------------------------------------------
     # Step 1: load parameter file into our parameter class
@@ -63,7 +63,7 @@ if __name__ == "__main__":
 
     # -------------------------------------------------------------------------
     # apply spectral binning
-    cprint('Applying spectral binning')
+    cprint('Applying spectral binning and removing bins')
     data.apply_spectral_binning(params)
 
     # -------------------------------------------------------------------------
@@ -83,21 +83,6 @@ if __name__ == "__main__":
               title=f'Order {order} wave bin: {ibin}')
     plt.show()
     plt.close()
-
-    # -------------------------------------------------------------------------
-    # TODO: remove
-    # # remove a few lambdas from order 2 (S/N) too low
-    # order = 2
-    # imin = 1   # david uses 4 for bins = [30, 15]
-    # # loop around each quantity
-    # for quantity in data.spec[order]:
-    #     data.spec[order][quantity] = data.spec[order][quantity][:, imin:]
-    # # update nwave
-    # data.n_wav[order] = data.spec[order]['WAVELENGTH'].shape[1]
-
-    # remove any bins user wishes to remove
-    cprint('Remove bins from order')
-    data.remove_bins(params)
 
     # -------------------------------------------------------------------------
     # create the photospectra dictionary (data.phot)
