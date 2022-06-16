@@ -162,6 +162,7 @@ def run_stage2(rateints, contamination_mask=None, skip_atoca=False):
                                                                           soss_atoca=False,
                                                                           subtract_background=False,
                                                                           soss_bad_pix='masking',
+                                                                          soss_width=24,
                                                                           # soss_tikfac=3.38e-15,
                                                                           soss_modelname=None,
                                                                           override_spectrace=ATOCAREF_DIR + SPECTRACE,
@@ -282,6 +283,8 @@ if __name__ == "__main__":
     if True:
         outdir = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/'
         wildcard = outdir+'supplemental_jw01091002001_03101_00001-seg00?_nis/timeseries_greyscale_rawflux.fits'
-        a = commutils.combine_timeseries(wildcard, outdir)
+        outputname = outdir+'timeseries_combined_fluxcal.fits'
+        a = commutils.combine_timeseries(wildcard, outputname)
         wildcard = outdir+'jw01091002001_03101_00001-seg00?_nis_extract1dstep.fits'
-        a = commutils.combine_multi_spec(wildcard, outdir)
+        outputname = outdir+'extracted_spectra_combined_fluxcal.fits'
+        a = commutils.combine_multi_spec(wildcard, outputname)

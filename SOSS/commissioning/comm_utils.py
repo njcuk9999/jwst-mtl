@@ -569,7 +569,7 @@ def combine_segments(prefix):
     return
 
 
-def combine_multi_spec(wildcard, outdir):
+def combine_multi_spec(wildcard, outputname):
     """
     Example:
     #>>> filename_list = ['spec_part1.fits', 'spec_part2.fits', 'etc.fits']
@@ -602,7 +602,7 @@ def combine_multi_spec(wildcard, outdir):
             # Append single spec to output
             combined.spec.append(single_spec_obj)
 
-    combined.save(outdir+'/extracted_spectra_combined.fits')
+    combined.save(outputname)
 
     return
 
@@ -613,7 +613,7 @@ def combine_multi_spec(wildcard, outdir):
 #combined = combine_multi_spec(multi_spec_list)
 #combined.save('spec_combined.fits')
 
-def combine_timeseries(wildcard, outdir):
+def combine_timeseries(wildcard, outputname):
 
     nisfiles= sorted(glob.glob(wildcard))
     print(nisfiles)
@@ -640,7 +640,7 @@ def combine_timeseries(wildcard, outdir):
     ts = ts.transpose(1, 0, 2)
 
     hdu = fits.PrimaryHDU(ts)
-    hdu.writeto(outdir+'/timeseries_combined.fits', overwrite=True)
+    hdu.writeto(outputname, overwrite=True)
 
     return
 
