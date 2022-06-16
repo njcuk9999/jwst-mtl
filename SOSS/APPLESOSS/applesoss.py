@@ -48,6 +48,10 @@ class EmpiricalProfile:
     oversample : int
         Oversampling factor. Oversampling will be equal in the spectral and
         spatial directions.
+    soss_width : int
+        Proposed box extraction width. The spatial profile will be zeroed
+        outside of this box. Should be synchronized with the parameter of the
+        same name in ATOCA.
     verbose : int
         Level of verbosity: either 3, 2, 1, or 0.
          3 - show all of progress prints, progress bars, and diagnostic plots.
@@ -69,7 +73,8 @@ class EmpiricalProfile:
         Save spatial profile models to reference file.
     """
 
-    def __init__(self, clear, f277w=None, pad=0, oversample=1, verbose=0):
+    def __init__(self, clear, f277w=None, pad=0, oversample=1, soss_width=40,
+                 verbose=0):
         """Initializer for EmpiricalProfile.
         """
 
@@ -78,6 +83,7 @@ class EmpiricalProfile:
         self.f277w = f277w
         self.pad = pad
         self.oversample = oversample
+        self.soss_width = soss_width
         self.verbose = verbose
 
         # Validate the parameters and determine the correct subarray.
@@ -108,7 +114,8 @@ class EmpiricalProfile:
         o1, o2, o3 = build_empirical_profile(self.clear, self.f277w,
                                              self.subarray,
                                              self.pad, self.oversample,
-                                             self.verbose, lazy)
+                                             self.soss_width, self.verbose,
+                                             lazy)
         # Set any niggling negatives to zero (mostly for the bluest end of the
         # second order where things get skrewy).
         for o in [o1, o2, o3]:
@@ -156,7 +163,7 @@ class EmpiricalProfile:
 
 
 def build_empirical_profile(clear, f277w, subarray, pad,
-                            oversample, verbose, lazy=False):
+                            oversample, soss_width, verbose, lazy=False):
     """Main procedural function for the empirical spatial profile construction
     module. Calling this function will initialize and run all the required
     subroutines to produce a spatial profile for the first, second and third
@@ -177,6 +184,9 @@ def build_empirical_profile(clear, f277w, subarray, pad,
     oversample : int
         Oversampling factor. Oversampling will be equal in the spectral and
         spatial directions.
+    soss_width : int
+        Proposed extraction box size. Should be synchronized with parameter of
+        the same name in ATOCA.
     verbose : int
         Level of verbosity: either 3, 2, 1, or 0.
          3 - show all of progress prints, progress bars, and diagnostic plots.
@@ -338,6 +348,26 @@ def build_empirical_profile(clear, f277w, subarray, pad,
                                         centroids['order 3']['X centroid'],
                                         centroids['order 3']['Y centroid'],
                                         pad=pad)
+
+    # Zero out everything not within the proposed extraction region.
+    ii = np.where((centroids['order 1']['Y centroid'] < 255) &
+                  (centroids['order 1']['Y centroid'] > 0))
+    weights_o1 = utils.get_box_weights(centroids['order 1']['Y centroid'][ii],
+                                       soss_width, (dimy, dimx),
+                                       cols=centroids['order 1']['X centroid'][ii].astype(int))
+    o1_uncontam *= weights_o1
+    ii = np.where((centroids['order 2']['Y centroid'] < 255) &
+                  (centroids['order 2']['Y centroid'] > 0))
+    weights_o2 = utils.get_box_weights(centroids['order 2']['Y centroid'][ii],
+                                       soss_width, (dimy, dimx),
+                                       cols=centroids['order 2']['X centroid'][ii].astype(int))
+    o2_uncontam *= weights_o2
+    ii = np.where((centroids['order 3']['Y centroid'] < 255) &
+                  (centroids['order 3']['Y centroid'] > 0))
+    weights_o3 = utils.get_box_weights(centroids['order 3']['Y centroid'][ii],
+                                       soss_width, (dimy, dimx),
+                                       cols=centroids['order 3']['X centroid'][ii].astype(int))
+    o3_uncontam *= weights_o3
 
     # Column normalize. Only want the original detector to sum to 1, not the
     # additional padding + oversampling.
