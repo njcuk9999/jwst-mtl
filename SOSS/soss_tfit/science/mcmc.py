@@ -1738,8 +1738,8 @@ class Sampler:
             dout = self.results_tdepth(n_samples=tdepth_samples)
             # push into table
             depth_table['P50'] = dout[0]
-            table[label_p16] = dout[1]
-            table[label_p84] = dout[2]
+            depth_table[label_p16] = dout[1]
+            depth_table[label_p84] = dout[2]
             depth_table['P50_UPPER'] = dout[4]
             depth_table['P50_LOWER'] = dout[3]
         # stack the table to add the depth table
