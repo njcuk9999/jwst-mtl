@@ -85,6 +85,7 @@ class TransitFit:
     prior: List[Dict[str, Any]]
     # name of each parameter [n_param]
     pnames: List[str]
+    pfullnames: List[str]
     # additional arguments passed to mcmc
     pkwargs: Dict[str, Any]
     # the position in the flattened x array [n_param, n_phot]
@@ -108,6 +109,8 @@ class TransitFit:
     fluxerr: np.ndarray
     # the order array [n_phot, n_int]
     orders: np.ndarray
+    # the limits for each bin
+    bin_limits: np.ndarray
     # -------------------------------------------------------------------------
     # parameters that must have shape [n_x]
     # -------------------------------------------------------------------------
@@ -115,6 +118,7 @@ class TransitFit:
     x0: np.ndarray
     # name of the fitted params flattened [n_x]
     xnames: np.ndarray
+    xfullnames: np.ndarray
     # length of fitted params flattened [n_x]
     n_x: int
     # numpy array [n_param]
@@ -153,6 +157,7 @@ class TransitFit:
         self.prior = []
         # name of each parameter
         self.pnames = []
+        self.pfullnames = []
         # additional arguments passed to mcmc
         self.pkwargs = dict()
         # the position in the flattened x array [n_param, n_phot]
@@ -174,6 +179,8 @@ class TransitFit:
         self.fluxerr = np.array([])
         # the order array [n_phot, n_int]
         self.orders = np.array([])
+        # the bin limits in micron [n_phot, 2]   (start,end)
+        self.bin_limits = np.array([])
         # -------------------------------------------------------------------------
         # parameters that must have shape [n_x]
         # -------------------------------------------------------------------------
@@ -181,6 +188,7 @@ class TransitFit:
         self.x0 = np.array([])
         # name of the fitted params flattened [n_x]
         self.xnames = np.array([])
+        self.xfullnames = np.array([])
         # length of fitted params flattened [n_x]
         self.n_x = 0
         # numpy array [n_param]
@@ -269,6 +277,8 @@ class TransitFit:
         new.fluxerr = self.fluxerr
         # the order array [n_phot, n_int]
         new.orders = self.orders
+        # the bin limits in micron [n_phot, 2]   (start,end)
+        new.bin_limits = self.bin_limits
         # ---------------------------------------------------------------------
         # parameters that must have shape [n_x]
         # ---------------------------------------------------------------------
@@ -276,6 +286,7 @@ class TransitFit:
         new.x0 = np.array(self.x0)
         # name of the fitted params flattened [n_x]
         new.xnames = self.xnames
+        new.xfullnames = self.xfullnames
         # length of fitted params flattened [n_x]
         new.n_x = self.n_x
         # numpy array [n_param]
@@ -307,6 +318,7 @@ class TransitFit:
         # set up storage
         x0 = []
         xnames = []
+        xfullnames = []
         # position of x in p
         p0pos = np.zeros_like(self.p0)
         x0pos = []
@@ -324,6 +336,7 @@ class TransitFit:
             if self.wmask[it]:
                 x0 += list(self.p0[it])
                 xnames += [self.pnames[it]] * self.n_phot
+                xfullnames += [self.pfullnames[it]] * self.n_phot
                 xbetas += [self.pbetas[it]] * self.n_phot
                 # add to the positions so we can recover p0 from x0
                 p0pos[it] = np.arange(count_x, count_x + self.n_phot)
@@ -336,6 +349,7 @@ class TransitFit:
             else:
                 x0 += [self.p0[it][0]]
                 xnames += [self.pnames[it]]
+                xfullnames += [self.pfullnames[it]]
                 xbetas += [self.pbetas[it]]
                 # add to the positions so we can recover p0 from x0
                 p0pos[it] = np.full(self.n_phot, count_x)
@@ -346,6 +360,7 @@ class TransitFit:
         # set values
         self.x0 = np.array(x0)
         self.xnames = np.array(xnames)
+        self.xfullnames = np.array(xfullnames)
         self.n_x = len(x0)
         self.p0pos = np.array(p0pos, dtype=int)
         self.x0pos = np.array(x0pos)
@@ -574,6 +589,7 @@ def setup_params_mcmc(params: ParamDict, data: InputData) -> TransitFit:
     transit_wmask = np.zeros(n_param, dtype=bool)
     transit_prior = []
     transit_pnames = []
+    transit_pfullnames = []
     transit_pbetas = []
     # -------------------------------------------------------------------------
     # get the transit fit stellar params
@@ -589,6 +605,7 @@ def setup_params_mcmc(params: ParamDict, data: InputData) -> TransitFit:
         transit_wmask[pnum] = wmask
         transit_prior.append(prior)
         transit_pnames.append(pname)
+        transit_pfullnames.append(key)
         transit_pbetas.append(pbeta)
         # add to the parameter number
         pnum += 1
@@ -616,6 +633,7 @@ def setup_params_mcmc(params: ParamDict, data: InputData) -> TransitFit:
             transit_wmask[pnum] = wmask
             transit_prior.append(prior)
             transit_pnames.append(f'{pname}{nplanet}')
+            transit_pfullnames.append(f'{key}_{nplanet}')
             transit_pbetas.append(pbeta)
             # add to the parameter number
             pnum += 1
@@ -633,6 +651,7 @@ def setup_params_mcmc(params: ParamDict, data: InputData) -> TransitFit:
         transit_wmask[pnum] = wmask
         transit_prior.append(prior)
         transit_pnames.append(pname)
+        transit_pfullnames.append(key)
         transit_pbetas.append(pbeta)
         # add to the parameter number
         pnum += 1
@@ -647,12 +666,14 @@ def setup_params_mcmc(params: ParamDict, data: InputData) -> TransitFit:
     tfit.flux = data.phot['FLUX']
     tfit.fluxerr = data.phot['FLUX_ERROR']
     tfit.orders = data.phot['ORDERS']
+    tfit.bin_limits = data.phot['BIN_LIMITS']
     # add the parameters
     tfit.p0 = transit_p0
     tfit.fmask = transit_fmask
     tfit.wmask = transit_wmask
     tfit.prior = transit_prior
     tfit.pnames = np.array(transit_pnames)
+    tfit.pfullnames = np.array(transit_pfullnames)
     tfit.pbetas = np.array(transit_pbetas)
     # set the number of params
     tfit.n_param = len(transit_p0)
@@ -1616,10 +1637,13 @@ class Sampler:
         """
         # get which results we want
         result_mode = self.params['RESULT_MODE']
+        # get number of samples for transit depth
+        tdepth_samples = self.params['TRANSIT_DEPTH_NSAMPLES']
         # get length
         n_x = self.tfit.n_x
         # get the names
         xnames = self.tfit.xnames
+        xfullnames = self.tfit.xfullnames
         # -----------------------------------------------------------------
         # get the p50, p16 and p84
         pvalues = general.sigma_percentiles()
@@ -1630,7 +1654,9 @@ class Sampler:
         # create table
         table = Table()
         # add columns
-        table['NAME'] = xnames
+        # TODO: Add Name + Shortname
+        table['NAME'] = xfullnames
+        table['SHORTNAME'] = xnames
         table['WAVE_CENT'] = np.full(n_x, np.nan)
         # if it is a fitted parameter
         if result_mode in ['mode', 'all']:
@@ -1694,26 +1720,28 @@ class Sampler:
         # add in transit depth (new table stacked)
         # ---------------------------------------------------------------------
         depth_table = Table()
-        depth_table['NAME'] = ['transit_depth']
-        depth_table['WAVE_CENT'] = [np.nan]
-        # -----------------------------------------------------------------
+        depth_table['NAME'] = ['transit_depth'] * self.tfit.n_phot
+        depth_table['SHORTNAME'] = ['TD'] * self.tfit.n_phot
+        depth_table['WAVE_CENT'] = self.tfit.wavelength[:, 0]
+        # ---------------------------------------------------------------------
         # deal with result mode
         if result_mode in ['mode', 'all']:
             # push into table
-            depth_table['MODE'] = [np.nan]
-            depth_table['MODE_LOWER'] = [np.nan]
-            depth_table['MODE_UPPER'] = [np.nan]
-        # -----------------------------------------------------------------
+            depth_table['MODE'] = np.full(self.tfit.n_phot, np.nan)
+            depth_table['MODE_LOWER'] = np.full(self.tfit.n_phot, np.nan)
+            depth_table['MODE_UPPER'] = np.full(self.tfit.n_phot, np.nan)
+        # ---------------------------------------------------------------------
         # deal with result mode
         if result_mode in ['percentile', 'all']:
             # get depth
-            dout = self.results_tdepth(n_samples=10000)
+            # TODO: add n_samples to yaml n_samples=10000
+            dout = self.results_tdepth(n_samples=tdepth_samples)
             # push into table
-            depth_table['P50'] = [dout[0]]
-            table[label_p16] = [dout[1]]
-            table[label_p84] = [dout[2]]
-            depth_table['P50_UPPER'] = [dout[3]]
-            depth_table['P50_LOWER'] = [dout[4]]
+            depth_table['P50'] = dout[0]
+            table[label_p16] = dout[1]
+            table[label_p84] = dout[2]
+            depth_table['P50_UPPER'] = dout[4]
+            depth_table['P50_LOWER'] = dout[3]
         # stack the table to add the depth table
         out_table = vstack([table, depth_table])
         # ---------------------------------------------------------------------
@@ -1760,7 +1788,7 @@ class Sampler:
                 depth[n_it, bp] = 1.0 - transit_fit.transitmodel(**tkwargs)
         # get the depths 16th, 50th and 86th
         d16, d50, d84 = np.percentile(depth, pvalues, axis=0)
-        d_elo = d16 - d50
+        d_elo = d50 - d16
         d_ehi = d84 - d50
         # get depth 50th + and - values
         return d50, d16, d84, d_elo, d_ehi

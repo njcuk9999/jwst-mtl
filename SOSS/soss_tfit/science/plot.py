@@ -307,6 +307,7 @@ def plot_hist(params: ParamDict, tfit: TransitFit, chain: np.ndarray,
     #   then grid is NxM where NxM >= tfit.n_x
     if param_num is None:
         xnames = tfit.xnames
+        xchain = chain.T
         # get the number of rows and columns (try to make it a square grid)
         nrows = int(np.sqrt(tfit.n_x))
         ncols = (tfit.n_x // nrows) + 1
@@ -317,7 +318,8 @@ def plot_hist(params: ParamDict, tfit: TransitFit, chain: np.ndarray,
         ijarr = [(i, j) for i in range(nrows) for j in range(ncols)]
     # else we have one plot - the grid is (1x1) and the plotting is easy
     else:
-        xnames = tfit.xnames[param_num]
+        xnames = [tfit.xnames[param_num]]
+        xchain = [chain[:, param_num]]
         # set up figure
         fig, frame = plt.subplots(ncols=1, nrows=1, figsize=(10, 10))
         # we only have one frame but want to use a 1x1 grid
@@ -329,9 +331,9 @@ def plot_hist(params: ParamDict, tfit: TransitFit, chain: np.ndarray,
         frame = frames[ij]
         # only plot those for which we have values (the grid may have some
         #   empty space)
-        if kt < len(xnames) - 1:
+        if kt < len(xnames) - 1 or param_num is not None:
             # plot the histogram
-            frame.hist(chain[:, kt])
+            frame.hist(xchain[kt])
             # set title
             frame.set_title(xnames[kt], y=1.0, pad=-14)
         else:

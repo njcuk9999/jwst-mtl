@@ -34,7 +34,7 @@ FitParam = base_classes.FitParam
 cprint = base_classes.Printer()
 # Define quantities
 QUANTITIES = ['WAVELENGTH', 'FLUX', 'FLUX_ERROR']
-TQUANTITIES = ['WAVELENGTH', 'FLUX', 'FLUX_ERROR', 'TIME']
+TQUANTITIES = ['WAVELENGTH', 'FLUX', 'FLUX_ERROR', 'TIME', 'BIN_LIMITS']
 
 
 # =============================================================================
@@ -487,6 +487,7 @@ class InputData:
         # loop around order
         order0 = self.orders[0]
         # fill phot with first order
+        # TODO: Add bin limits to phot
         for quantity in TQUANTITIES:
             self.phot[quantity] = self.spec[order0][quantity].T
         # keep track of the orders

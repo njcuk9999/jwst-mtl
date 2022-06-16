@@ -41,13 +41,16 @@ global_params:
   #    current options are 'percentile', 'mode', 'all'
   result-mode: percentile
 
+  # Define the number of samples to use for transit depth calculation
+  transit_depth_nsamples: 10000
+
   # ---------------------------------------------------------------------------
   # binning parameters
   # ---------------------------------------------------------------------------
   binning:
     # binning mode should either be 'simple' or 'const_R'
     mode: simple
-    # parameters for simple binning
+    # parameters for simple binning (divide each order into N chunks)
     simple:
       # Number of bins used for each order for spectral binning (set to None for no binning)
       order_bins:
@@ -58,7 +61,7 @@ global_params:
       remove_bins:
         1: None
         2: None
-    # parameters for binning by const R
+    # parameters for binning by const R (divide into bins of equal resolution)
     const_R:
       # Resolution to bin at
       #   Must define for each value of "global_params.orders"
