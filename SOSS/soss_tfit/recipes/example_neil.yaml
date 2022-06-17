@@ -48,7 +48,7 @@ global_params:
   # ---------------------------------------------------------------------------
   binning:
     # binning mode should either be 'simple' or 'const_R'
-    mode: simple
+    mode: const_R
     # parameters for simple binning (divide each order into N chunks)
     simple:
       # Number of bins used for each order for spectral binning (set to None for no binning)
@@ -59,7 +59,7 @@ global_params:
       #   list per order or set to None to skip removal
       remove_bins:
         1: None
-        2: None
+        2: 0
     # parameters for binning by const R (divide into bins of equal resolution)
     const_R:
       # Resolution to bin at
@@ -145,11 +145,11 @@ mcmc_params:
   nwalkers: 3
   # Total length of chain will be nwalkers*nsteps
   nsteps:
-    trial: 1000
+    trial: 500
     full: 1000
   # the number of steps we add on next loop (if convergence not met)
   nsteps_inc:
-    trial: 1000
+    trial: 500
     full: 1000
 # burn-in fraction for evaluating convergence
   burninf:
@@ -177,7 +177,7 @@ mcmc_params:
     # Number of fit threads per chain
     #    Currently this does not work, use export OMP_NUM_THREADS=N
     #    before running! OMP_NUM_THREADS=N_fit_threads
-    N_fit_threads: 8
+    N_fit_threads: 7
 
 
 # =============================================================================

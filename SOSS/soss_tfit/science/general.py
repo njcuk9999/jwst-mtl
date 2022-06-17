@@ -255,11 +255,11 @@ class InputData:
             raise base_classes.TransitFitExcept(emsg)
         # ---------------------------------------------------------------------
         # find the maximum/minimum indices to keep
-        if wave_min is None:
+        if wave_min in [None, 'None', '', 'Null']:
             imax = wave.size - 1
         else:
             imax = np.searchsorted(-wave, -wave_min) - 1
-        if wave_max is None:
+        if wave_max in [None, 'None', '', 'Null']:
             imin = 0
         else:
             imin = np.searchsorted(-wave, -wave_max)

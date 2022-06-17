@@ -391,7 +391,8 @@ def plot_spectrum(params: ParamDict, data: InputData, results: Table,
         raise ValueError('plotlabel argument is required when key != "RD1"')
     # -------------------------------------------------------------------------
     # get the results for binkey
-    rmask = results['NAME'] == key
+    rmask = results['SHORTNAME'] == key
+    rmask |= results['NAME'] == key
     # get the arrays
     wave = data.phot['WAVELENGTH'][:, 0]
     # -------------------------------------------------------------------------
