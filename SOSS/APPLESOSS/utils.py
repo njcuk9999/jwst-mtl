@@ -394,3 +394,73 @@ def verbose_to_bool(verbose):
         verbose_bool = True
 
     return verbose_bool
+
+
+import webbpsf
+import warnings
+
+def generate_psfs(wave_increment=0.1, npix=400):
+    nsteps = int((2.9 - 0.5) / wave_increment)
+    time_frame = (nsteps * 2) / 3600
+    if time_frame > 0.5:
+        print(
+            'Go for a nice walk, PSF generation predicted to take {0} hrs for {1} PSFs'.format(
+                time_frame, nsteps))
+    wavelengths = np.linspace(0.5, 2.9, nsteps) * 1e-6
+
+    # Set up WebbPSF simulation for NIRISS.
+    niriss = webbpsf.NIRISS()
+    # Override the default minimum wavelength of 0.6 microns.
+    niriss.SHORT_WAVELENGTH_MIN = 0.5e-6
+    # Set correct filter and pupil wheel components.
+    niriss.filter = 'CLEAR'
+    niriss.pupil_mask = 'GR700XD'
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        cube = niriss.calc_datacube(wavelengths=wavelengths, fov_pixels=npix,
+                                    oversample=1)
+    # Collapse into 1D PSF
+    psfs = np.nansum(cube[0].data, axis=1)
+
+    return psfs
+
+
+def interpolate_profile(w, wavelengths, psfs):
+    low = np.where(wavelengths < w)[0][-1]
+    up = np.where(wavelengths > w)[0][0]
+
+    anch_low = wavelengths[low]
+    anch_up = wavelengths[up]
+
+    weight_low = 1 - (w - anch_low) / 0.1
+    weight_up = 1 - (anch_up - w) / 0.1
+
+    profile = np.average(np.array([psfs[low], psfs[up]]),
+                         weights=np.array([weight_low, weight_up]), axis=0)
+
+    return profile
+
+
+def simulate_wings(w, wave_increment, psfs, halfwidth=12):
+    nsteps = int((2.9 - 0.5) / wave_increment)
+    wavelengths = np.linspace(0.5, 2.9, nsteps)
+
+    stand = interpolate_profile(w, wavelengths, psfs)
+    max_val = np.nanmax(stand)
+    stand /= max_val
+
+    # Define the edges of the profile 'core'.
+    ax = np.arange(400)
+    ystart = int(round(400 // 2 - halfwidth, 0))
+    yend = int(round(400 // 2 + halfwidth, 0))
+    # Get and fit the 'right' wing.
+    wing = stand[yend:]
+    pp = np.polyfit(ax[yend:], np.log10(wing), 9)
+    wing = 10 ** (np.polyval(pp, ax[yend:]))
+    # Get and fit the 'left' wing.
+    wing2 = stand[:ystart]
+    pp = np.polyfit(ax[:ystart], np.log10(wing2), 9)
+    wing2 = 10 ** (np.polyval(pp, ax[:ystart]))
+
+    return wing, wing2
