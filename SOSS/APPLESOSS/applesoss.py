@@ -270,7 +270,7 @@ def build_empirical_profile(clear, f277w, subarray, pad,
     # Lazy method: no interpolation, no F277W. Just fit the wing of the first
     # order for each wavelength. Relies on some fine tuning and the second
     # order to be low level when it physically overlaps the first order.
-    psfs = utils.generate_psfs(wave_increment=0.1)
+    psfs = utils.generate_psfs(wave_increment=0.1, verbose=verbose)
     if lazy is True:
         if verbose != 0:
             print('  Lazy method selected...', flush=True)
@@ -512,13 +512,13 @@ def construct_order23(residual, cen, order, psfs, pivot=750, halfwidth=12,
 
         # Get a copy of the spatial profile, and normalize it by its max value.
         working_prof = np.copy(residual[:, i])
-        max_val = np.nanmax(working_prof)
+        max_val = np.nanpercentile(working_prof, 99.5)
         working_prof /= max_val
 
         # Simulate the wings.
         if first_time is False:
             verbose = 0
-        wing, wing2 = utils.simulate_wings(wave, 0.1, psfs, halfwidth=halfwidth)
+        wing, wing2 = simulate_wings(wave, psfs, halfwidth=halfwidth)
         first_time = False
         # Concatenate the wings onto the profile core.
         end = int(round((cen_o + 1 * halfwidth), 0))
@@ -930,7 +930,50 @@ def rescale_model(data, model, centroids, pad=0, verbose=0):
     return model_rescale
 
 
-def simulate_wings(wavelength, width_coefs, halfwidth=12, verbose=0):
+def simulate_wings(w, psfs, halfwidth=12):
+    """Extract the wings from a simulated WebbPSF 1D profile.
+
+    Parameters
+    ----------
+    w : float
+        Wavelength of interest (µm).
+    psfs : np.recarray
+        Array of simulated SOSS PSFs.
+    halfwidth : int
+        Half width of the SOSS trace.
+
+    Returns
+    -------
+    wing : np.array
+        Extracted right wing.
+    wing2 : np.array
+        Extracted left wing.
+    """
+
+    # Get the simulated profile at the desired wavelength.
+    stand = utils.interpolate_profile(w, psfs)
+    psf_size = np.shape(psfs['PSF'])[1]
+    # Normalize to a max value of one to match the simulated profile.
+    max_val = np.nanpercentile(stand, 99.5)
+    stand /= max_val
+
+    # Define the edges of the profile 'core'.
+    ax = np.arange(psf_size)
+    ystart = int(round(psf_size//2 - halfwidth, 0))
+    yend = int(round(psf_size//2 + halfwidth, 0))
+    # Get and fit the 'right' wing.
+    wing = stand[yend:]
+    pp = np.polyfit(ax[yend:], np.log10(wing), 9)
+    wing = 10**np.polyval(pp, ax[yend:])
+    # Get and fit the 'left' wing.
+    wing2 = stand[:ystart]
+    pp = np.polyfit(ax[:ystart], np.log10(wing2), 9)
+    wing2 = 10**np.polyval(pp, ax[:ystart])
+
+    return wing, wing2
+
+
+def simulate_wings_OLD(wavelength, width_coefs, halfwidth=12, verbose=0):
     """Extract the spatial profile wings from a simulated SOSS PSF to
     reconstruct the wings of the second order.
 
@@ -964,7 +1007,6 @@ def simulate_wings(wavelength, width_coefs, halfwidth=12, verbose=0):
         psf = fits.getdata(ref_profile, 0)
     stand = np.sum(psf, axis=0)
     # Normalize the profile by its maximum.
-    # TODO: dont use max, use like highest 5% of pixels or something
     max_val = np.nanmax(stand)
     stand /= max_val
     # Scale the profile width to match the current wavelength.
