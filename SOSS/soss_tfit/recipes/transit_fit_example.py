@@ -131,11 +131,11 @@ if __name__ == "__main__":
     sampler2.tfit = tfit_final
     # -------------------------------------------------------------------------
     # plot transit
-    plot.plot_transit_fit(params, tfit_final)
+    plot.plot_transit_fit(params, tfit_final, bandpass=1)
     # plot the chains
-    plot.plot_chains(params, sampler2.chain, 0, tfit_final.xnames)
+    # plot.plot_chains(params, sampler2.chain, 0, tfit_final.xnames)
     # quick check of posterior
-    plot.plot_hist(params, tfit_final, sampler2.chain[::10], param_num=None)
+    # plot.plot_hist(params, tfit_final, sampler2.chain[::10], param_num=None)
 
     # -------------------------------------------------------------------------
     # Step 6: generate statistics
