@@ -12,6 +12,7 @@ Created on 2022-04-06
 from astropy.io import fits
 from astropy.table import Table, vstack
 import numpy as np
+import bottleneck as bn
 import os
 import pickle
 import time as timemod
@@ -209,6 +210,9 @@ class TransitFit:
         # the rejection [rejected, parameter number]   where rejected = 0 for
         #   accepted and rejected = 1 for rejected
         self.ac = []
+        # define a dictionary to store the 2D positions of all x0 variables
+        #   (for use when updating a single x variable)
+        self.x0_to_p0 = dict()
 
     def __getstate__(self) -> dict:
         """
@@ -305,6 +309,9 @@ class TransitFit:
         #   accepted and rejected = 1 for rejected
         new.ac = []
         # ---------------------------------------------------------------------
+        # the x0 to p0 translation dictionary
+        new.x0_to_p0 = self.x0_to_p0
+
         return new
 
     def get_fitted_params(self):
@@ -357,7 +364,16 @@ class TransitFit:
                 count_x += 1
                 # update the x positions
                 x0pos += [(it, 0)]
-        # set values
+        # ---------------------------------------------------------------------
+        # define a new x0 to p0 translation dictionary
+        x0_to_p0 = dict()
+        # loop around the parameters in x and return the index positions of
+        #   each p0 position (for each x)
+        for it in range(self.n_x):
+            # assign each x value
+            x0_to_p0[it] = (self.p0pos == it).nonzero()
+        # ---------------------------------------------------------------------
+        # set values in class
         self.x0 = np.array(x0)
         self.xnames = np.array(xnames)
         self.xfullnames = np.array(xfullnames)
@@ -365,6 +381,7 @@ class TransitFit:
         self.p0pos = np.array(p0pos, dtype=int)
         self.x0pos = np.array(x0pos)
         self.xbeta = np.array(xbetas)
+        self.x0_to_p0 = x0_to_p0
 
     def update_p0_from_x0(self):
         """
@@ -375,10 +392,13 @@ class TransitFit:
         """
         # loop around all parameters
         for it in range(self.n_x):
-            # find all places where it is valid
-            mask = it == self.p0pos
-            # update p0 with x0 value
-            self.p0[mask] = self.x0[it]
+            # update the value of p0 from the translated value
+            #     (in x0_to_p0 dict)
+            self.p0[self.x0_to_p0[it]] = self.x0[it]
+            # # find all places where it is valid
+            # mask = it == self.p0pos
+            # # update p0 with x0 value
+            # self.p0[mask] = self.x0[it]
 
     def update_x0_from_p0(self):
         """
@@ -399,8 +419,9 @@ class TransitFit:
         # update the choosen value by a random number drawn from a gaussian
         #   with centre = 0 and fwhm = beta
         self.x0[param_it] += np.random.normal(0.0, beta[param_it])
-        # update full solution
-        self.update_p0_from_x0()
+        # update just this parameter of the full solution
+        self.p0[self.x0_to_p0[param_it]] = self.x0[param_it]
+        # self.update_p0_from_x0()
 
     def generate_demcmc_sample(self, buffer, corbeta: float):
         # get the length of the buffer
@@ -860,9 +881,9 @@ def lnprob(tfit: TransitFit) -> float:
             # non-correlated noise-model
             if model_type == 0:
                 log1 = np.log(fluxerr[phot_it] ** 2 * dscale[phot_it] ** 2)
-                sum1 = np.sum(log1)
+                sum1 = bn.nansum(log1)
                 sqrdiff = (flux[phot_it] - model)**2
-                sum2 = np.sum(sqrdiff / (fluxerr[phot_it]**2 * dscale[phot_it]**2))
+                sum2 = bn.nansum(sqrdiff / (fluxerr[phot_it]**2 * dscale[phot_it]**2))
                 logl += -0.5 * (sum1 + sum2)
         # else we return our bad log likelihood
         else:
@@ -888,10 +909,11 @@ def mhg_mcmc(tfit: TransitFit, loglikelihood: Any, beta: np.ndarray,
 
     :return:
     """
-    # we do not use bugger and corbeta here (used for de_mhg_mcmc)
+    # we do not use buffer and corbeta here (used for de_mhg_mcmc)
     _ = buffer, corbeta
-    # copy fit
-    tfit0 = tfit.copy()
+    # copy initial parameters (ready for a reset if rejected)
+    p0 = tfit.p0.copy()
+    x0 = tfit.x0.copy()
     # -------------------------------------------------------------------------
     # Step 1: Generate trial state
     # -------------------------------------------------------------------------
@@ -914,16 +936,12 @@ def mhg_mcmc(tfit: TransitFit, loglikelihood: Any, beta: np.ndarray,
     test = np.random.rand()
     # if test is less than our acceptance level accept new trial
     if test <= alpha:
-        tfit.x0 = np.array(tfit.x0)
         tfit.llx = float(llxt)
         tfit.ac = [0, tfit.n_tmp]
-        # update full solution
-        tfit.update_p0_from_x0()
-        tfit.p0 = np.array(tfit.p0)
     # else we reject and start from previous point (tfit0)
     else:
-        tfit.x0 = np.array(tfit0.x0)
-        tfit.p0 = np.array(tfit0.p0)
+        tfit.x0 = x0
+        tfit.p0 = p0
         tfit.ac = [1, tfit.n_tmp]
     # return tfit instance
     return tfit
@@ -950,8 +968,9 @@ def de_mhg_mcmc(tfit: TransitFit, loglikelihood: Any, beta: np.ndarray,
     if buffer is None and corbeta is None:
         emsg = 'buffer and corbeta must not be None for de_mhg_mcmc()'
         raise base_classes.TransitFitExcept(emsg)
-    # copy fit
-    tfit0 = tfit.copy()
+    # copy initial parameters (ready for a reset if rejected)
+    p0 = tfit.p0.copy()
+    x0 = tfit.x0.copy()
     # draw a random number to decide which sampler to use
     rsamp = np.random.rand()
     # -------------------------------------------------------------------------
@@ -979,16 +998,12 @@ def de_mhg_mcmc(tfit: TransitFit, loglikelihood: Any, beta: np.ndarray,
     test = np.random.rand()
     # if test is less than our acceptance level accept new trial
     if test <= alpha:
-        tfit.x0 = np.array(tfit.x0)
         tfit.llx = float(llxt)
         tfit.ac = [0, tfit.n_tmp]
-        # update full solution
-        tfit.update_p0_from_x0()
-        tfit.p0 = np.array(tfit.p0)
     # else we reject and start from previous point (tfit0)
     else:
-        tfit.x0 = np.array(tfit0.x0)
-        tfit.p0 = np.array(tfit0.p0)
+        tfit.x0 = x0
+        tfit.p0 = p0
         tfit.ac = [1, tfit.n_tmp]
     # return tfit instance
     return tfit
