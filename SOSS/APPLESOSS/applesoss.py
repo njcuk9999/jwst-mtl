@@ -42,12 +42,6 @@ class EmpiricalProfile:
     oversample : int
         Oversampling factor. Oversampling will be equal in the spectral and
         spatial directions.
-    verbose : int
-        Level of verbosity: either 3, 2, 1, or 0.
-         3 - show all of progress prints, progress bars, and diagnostic plots.
-         2 - show progress prints and bars.
-         1 - show only progress prints.
-         0 - show nothing.
     order1 : np.array
         First order spatial profile.
     order2 : np.array
@@ -63,7 +57,7 @@ class EmpiricalProfile:
         Save spatial profile models to reference file.
     """
 
-    def __init__(self, clear, pad=0, oversample=1, verbose=0):
+    def __init__(self, clear, pad=0, oversample=1):
         """Initializer for EmpiricalProfile.
         """
 
@@ -71,7 +65,6 @@ class EmpiricalProfile:
         self.clear = clear
         self.pad = pad
         self.oversample = oversample
-        self.verbose = verbose
 
         # Validate the parameters and determine the correct subarray.
         self.subarray = self.validate_inputs()
@@ -79,14 +72,31 @@ class EmpiricalProfile:
         self.order2 = None
         self.order3 = None
 
-    def build_empirical_profile(self, wave_increment=0.1):
+    def build_empirical_profile(self, wave_increment=0.1, halfwidth=12,
+                                verbose=0):
         """Run the empirical spatial profile construction module.
+
+        Parameters
+        ----------
+        wave_increment : float
+            Wavelength step (in µm) for PSF simulations. For accuracy, it is
+            advisable not to use steps larger than 0.1µm.
+        halfwidth : int
+            half-width of the trace in native pixels.
+        verbose: int
+            Level of verbosity: either 3, 2, 1, or 0.
+            3 - show all of progress prints, progress bars, and diagnostic
+            plots.
+            2 - show progress prints and bars.
+            1 - show only progress prints.
+            0 - show nothing.
         """
 
         # Run the empirical spatial profile construction.
         o1, o2, o3 = build_empirical_profile(self.clear, self.subarray,
                                              self.pad, self.oversample,
-                                             self.verbose, wave_increment)
+                                             wave_increment, halfwidth,
+                                             verbose)
         # Set any niggling negatives to zero (mostly for the bluest end of the
         # second order where things get skrewy).
         for o in [o1, o2, o3]:
@@ -133,8 +143,8 @@ class EmpiricalProfile:
         return utils.validate_inputs(self)
 
 
-def build_empirical_profile(clear, subarray, pad, oversample, verbose,
-                            wave_increment):
+def build_empirical_profile(clear, subarray, pad, oversample, wave_increment,
+                            halfwidth, verbose):
     """Main procedural function for the empirical spatial profile construction
     module. Calling this function will initialize and run all the required
     subroutines to produce a spatial profile for the first, second and third
@@ -153,6 +163,10 @@ def build_empirical_profile(clear, subarray, pad, oversample, verbose,
     oversample : int
         Oversampling factor. Oversampling will be equal in the spectral and
         spatial directions.
+    wave_increment : float
+        Wavelength step (in µm) for PSF simulations.
+    halfwidth : int
+        Half-width of the trace in native pixels.
     verbose : int
         Level of verbosity: either 3, 2, 1, or 0.
          3 - show all of progress prints, progress bars, and diagnostic plots.
@@ -227,7 +241,7 @@ def build_empirical_profile(clear, subarray, pad, oversample, verbose,
     if verbose != 0:
         print('  Starting the first order model...', flush=True)
     o1_uncontam, o1_native = reconstruct_order(clear, centroids, order=1,
-                                               psfs=psfs)
+                                               psfs=psfs, halfwidth=halfwidth)
     # Add padding to first order spatial axis if necessary.
     if pad != 0:
         o1_uncontam = np.pad(o1_uncontam, ((pad, pad), (0, 0)), mode='edge')
@@ -237,7 +251,7 @@ def build_empirical_profile(clear, subarray, pad, oversample, verbose,
     if verbose != 0:
         print('  Starting the second order trace...')
     o2_out = reconstruct_order(clear - o1_native, centroids, order=2,
-                               psfs=psfs,
+                               psfs=psfs, halfwidth=halfwidth,
                                o1_prof=o1_uncontam[pad:dimy + pad, :],
                                verbose=verbose)
     o2_uncontam, o2_native = o2_out[0], o2_out[1]
@@ -251,6 +265,7 @@ def build_empirical_profile(clear, subarray, pad, oversample, verbose,
         print('  Starting the third order trace...')
     o3_out = reconstruct_order(clear - o1_native - o2_native, centroids,
                                order=3, psfs=psfs, pivot=700,
+                               halfwidth=halfwidth,
                                o2_prof=o2_uncontam[pad:dimy + pad, :],
                                verbose=verbose)
     o3_uncontam = o3_out[0]
@@ -434,7 +449,7 @@ def pad_spectral_axis(frame, xcens, ycens, pad=0, ref_cols=None,
     return newframe
 
 
-def reconstruct_order(residual, cen, order, psfs, pivot=750, halfwidth=12,
+def reconstruct_order(residual, cen, order, psfs, halfwidth, pivot=750,
                       o1_prof=None, o2_prof=None, verbose=0):
     """Reconstruct the wings of the second or third orders after the first
     order spatial profile has been modeled and subtracted off.
@@ -448,6 +463,10 @@ def reconstruct_order(residual, cen, order, psfs, pivot=750, halfwidth=12,
         Centroids dictionary.
     order : int
         The order to reconstruct.
+    psfs : array-like
+        Array of simulated 1D SOSS PSFs.
+    halfwidth : int
+        Half-width of the trace in native pixels.
     pivot : int
         For order 2, minimum spectral pixel value for which a wing
         reconstruction will be attempted. For order 3, the maximum pixel value.

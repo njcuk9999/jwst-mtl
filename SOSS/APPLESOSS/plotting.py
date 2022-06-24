@@ -48,7 +48,7 @@ def plot_centroid(clear, centroid_dict):
 
 
 def plot_wing_simulation(stand, halfwidth, wing, wing2, ax, ystart, yend):
-    """Do diagnostic plot for order 2 wing simulation.
+    """Do diagnostic plot for wing simulations.
     """
 
     plt.figure(figsize=(8, 5))

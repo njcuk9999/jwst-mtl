@@ -38,9 +38,9 @@ def generate_psfs(wave_increment=0.1, npix=400, verbose=0):
     # range and the chosen increment.
     nsteps = int((2.9 - 0.5) / wave_increment)
     # Estimate time to completion assuming ~2.5s per PSF.
-    time_frame = (nsteps * 2.5) / 60
+    time_frame = (nsteps * 5) / 60
     if verbose != 0:
-        print('    Generating {0} PSFs. Expected to take about {1:.2f} mins.'.format(nsteps, time_frame))
+        print('   Generating {0} PSFs. Expected to take about {1:.2f} mins.'.format(nsteps, time_frame))
     wavelengths = np.linspace(0.5, 2.9, nsteps) * 1e-6
 
     # Set up WebbPSF simulation for NIRISS.
@@ -238,9 +238,6 @@ def validate_inputs(etrace):
         raise ValueError('Padding must be an integer.')
     if type(etrace.oversample) != int:
         raise ValueError('Oversampling factor must be an integer.')
-    # Ensure verbose is the correct format.
-    if etrace.verbose not in [0, 1, 2, 3]:
-        raise ValueError('Verbose argument must be in the range 0 to 3.')
 
     # Determine correct subarray dimensions.
     dimy, dimx = np.shape(etrace.clear)
