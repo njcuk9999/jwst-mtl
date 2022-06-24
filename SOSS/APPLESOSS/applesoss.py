@@ -398,16 +398,16 @@ def pad_spectral_axis(frame, xcens, ycens, pad=0, ref_cols=None,
 
     Parameters
     ----------
-    frame : np.array
+    frame : array-like
         Data frame.
-    xcens : list
+    xcens : array-like
         X-coordinates of the trace centroids.
-    ycens : list
+    ycens : array-like
         Y-coordinates of the trace centroids.
     pad : int
         Amount of padding to add along either end of the spectral axis (in
         pixels).
-    ref_cols : list, np.array, None
+    ref_cols : array-like
         Which columns to use as the reference profiles for the padding.
     replace : bool
         Toggle for functionality to replace reference pixel columns.
@@ -451,12 +451,12 @@ def pad_spectral_axis(frame, xcens, ycens, pad=0, ref_cols=None,
 
 def reconstruct_order(residual, cen, order, psfs, halfwidth, pivot=750,
                       o1_prof=None, o2_prof=None, verbose=0):
-    """Reconstruct the wings of the second or third orders after the first
-    order spatial profile has been modeled and subtracted off.
+    """Reconstruct the wings of the the spatial profiles using simulated
+    WebbPSF PSFs.
 
     Parameters
     ----------
-    residual : np.array
+    residual : array-like
         NIRISS/SOSS data frame residual map - either with o1, or both o1 and
         o2 removed.
     cen : dict
@@ -472,6 +472,9 @@ def reconstruct_order(residual, cen, order, psfs, halfwidth, pivot=750,
         reconstruction will be attempted. For order 3, the maximum pixel value.
         For spectral pixels < or >pivot respectively, the profile at pivot will
         be used.
+    o1_prof : array-like
+        Uncontaminated order 1 spatial profile. Only necessary for
+        reconstruction of order 2.
     halfwidth : int
         Half width in pixels of the spatial profile core.
     verbose : int
@@ -623,10 +626,6 @@ def reconstruct_order(residual, cen, order, psfs, halfwidth, pivot=750,
                                             anchor_prof_native)
             new_frame_native[:, i] = working_prof_native
 
-            # # Handle all rows after hard cut.
-            # new_frame = pad_order23(new_frame[halfwidth:-halfwidth], cen,
-            #                         pad=halfwidth, order=order)
-
     return new_frame, new_frame_native
 
 
@@ -683,5 +682,5 @@ def simulate_wings(w, psfs, halfwidth=12, verbose=0):
 if __name__ == '__main__':
     clear_data = fits.getdata('Ref_files/simulated_data.fits', 0)
 
-    spat_prof = EmpiricalProfile(clear_data, verbose=1)
-    spat_prof.build_empirical_profile()
+    spat_prof = EmpiricalProfile(clear_data)
+    spat_prof.build_empirical_profile(verbose=1)
