@@ -257,7 +257,7 @@ def build_empirical_profile(clear, subarray, pad, oversample, wave_increment,
     o2_uncontam, o2_native = o2_out[0], o2_out[1]
     # Add padding to the second order spatial axis if necessary.
     if pad != 0:
-        o2_uncontam = pad_order23(o2_uncontam, centroids, pad, order=2)
+        o2_uncontam = pad_orders2_and_3(o2_uncontam, centroids, pad, order=2)
 
     # === Third Order ===
     # Construct the third order profile.
@@ -271,7 +271,7 @@ def build_empirical_profile(clear, subarray, pad, oversample, wave_increment,
     o3_uncontam = o3_out[0]
     # Add padding to the third order spatial axis if necessary.
     if pad != 0:
-        o3_uncontam = pad_order23(o3_uncontam, centroids, pad, order=3)
+        o3_uncontam = pad_orders2_and_3(o3_uncontam, centroids, pad, order=3)
 
     # ========= FINAL TUNING =========
     # Pad the spectral axes.
@@ -343,14 +343,14 @@ def oversample_frame(dataframe, os):
     return data_os
 
 
-def pad_order23(dataframe, cen, pad, order):
+def pad_orders2_and_3(dataframe, cen, pad, order):
     """Add padding to the spatial axis of an order 2 or 3 dataframe. Since
     these orders curve almost vertically at short wavelengths, we must take
     special care to properly extend the spatial profile
 
     Parameters
     ----------
-    dataframe : np.array
+    dataframe : array-like
         A dataframe of order 2 or 3.
     cen : dict
         Centroids dictionary.
@@ -549,34 +549,21 @@ def reconstruct_order(residual, cen, order, psfs, halfwidth, pivot=750,
         new_frame_native[:, i] = stitch_native
 
     # For columns where the order 2 core is not distinguishable (due to the
-    # throughput dropping near 0, or it being buried in order 1) reuse the
-    # reddest reconstructed profile.
+    # throughput dropping near 0, or it being buried in order 1) reuse a
+    # profile from order 1 at the same wavelength. The shape of the PSF is
+    # completely determined by the optics, and should thus be identical for a
+    # given wavelengths, irrrespective of the order. The differing
+    # tilt/spectral resolution of order 1 vs 2 may have some effect here
+    # though.
     if order == 2:
         wavecal_x_o1, wavecal_w_o1 = utils.get_wave_solution(order=1)
         for i in range(pivot):
             wave_o2 = wavecal_w[i]
-            up = np.where(wavecal_w_o1 > wave_o2)[0][-1]
-            low = np.where(wavecal_w_o1 < wave_o2)[0][0]
-            anch_low = wavecal_w_o1[low]
-            anch_up = wavecal_w_o1[up]
-
-            # Assume that the PSF varies linearly over the interval.
-            # Calculate the weighting coefficients for each anchor.
-            diff = np.abs(anch_up - anch_low)
-            weight_low = 1 - (wave_o2 - anch_low) / diff
-            weight_up = 1 - (anch_up - wave_o2) / diff
-
-            profile = np.average(np.array([o1_prof[:, low], o1_prof[:, up]]),
-                                 weights=np.array([weight_low, weight_up]),
-                                 axis=0)
-
+            co1 = cen['order 1']['Y centroid']
             co2 = cen['order 2']['Y centroid'][i]
-            co1_l = cen['order 1']['Y centroid'][low]
-            co1_u = cen['order 1']['Y centroid'][up]
-            co1 = np.mean([co1_l, co1_u])
-            working_prof = np.interp(np.arange(dimy), np.arange(dimy) - co1 + co2,
-                                     profile)
-
+            working_prof = utils.interpolate_profile(wave_o2, co2,
+                                                     wavecal_w_o1, o1_prof.T,
+                                                     co1)
             new_frame[:, i] = working_prof
 
     # O3

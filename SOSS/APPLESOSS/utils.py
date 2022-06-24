@@ -41,7 +41,7 @@ def generate_psfs(wave_increment=0.1, npix=400, verbose=0):
     time_frame = int((nsteps * 5) / 60)
     if verbose != 0:
         print('   Generating {0} PSFs. Expected to take about {1} mins.'.format(nsteps, time_frame))
-    wavelengths = np.linspace(0.5, 2.9, nsteps) * 1e-6
+    wavelengths = (np.linspace(0.5, 2.9, nsteps) * 1e-6)[::-1]
 
     # Set up WebbPSF simulation for NIRISS.
     niriss = webbpsf.NIRISS()
@@ -113,10 +113,14 @@ def interpolate_profile(w, w_cen, wavelengths, psfs, psfs_cen):
     ----------
     w : float
         Wavelength at which to return a PSF (in µm).
+    w_cen : float
+        Centroid position of the profile at w.
     wavelengths : array_like
         Wavelengths (in µm) corresponding to the PSF array.
     psfs : array-like
         WebbPSF simulated 1D PSFs.
+    psfs_cen : array_like
+        Array of centroid positions for the profiles in psfs.
 
     Returns
     -------
@@ -125,8 +129,8 @@ def interpolate_profile(w, w_cen, wavelengths, psfs, psfs_cen):
     """
 
     # Get the simulated PSF anchors for the interpolation.
-    low = np.where(wavelengths < w)[0][-1]
-    up = np.where(wavelengths > w)[0][0]
+    low = np.where(wavelengths < w)[0][0]
+    up = np.where(wavelengths > w)[0][-1]
     anch_low = wavelengths[low]
     anch_up = wavelengths[up]
 
@@ -137,13 +141,14 @@ def interpolate_profile(w, w_cen, wavelengths, psfs, psfs_cen):
                        np.arange(len_psf) - psfs_cen[up] + w_cen,
                        psfs[up])
     psf_low = np.interp(np.arange(len_psf),
-                       np.arange(len_psf) - psfs_cen[low] + w_cen,
-                       psfs[low])
+                        np.arange(len_psf) - psfs_cen[low] + w_cen,
+                        psfs[low])
 
     # Assume that the PSF varies linearly over the interval.
     # Calculate the weighting coefficients for each anchor.
-    weight_low = 1 - (w - anch_low) / 0.1
-    weight_up = 1 - (anch_up - w) / 0.1
+    diff = np.abs(anch_up - anch_low)
+    weight_low = 1 - (w - anch_low) / diff
+    weight_up = 1 - (anch_up - w) / diff
 
     # Linearly interpolate the anchor profiles to the wavelength of interest.
     profile = np.average(np.array([psf_low, psf_up]),
