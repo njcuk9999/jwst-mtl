@@ -319,7 +319,7 @@ def build_empirical_profile(clear, f277w, subarray, pad,
     if verbose != 0:
         print('  Starting the second order trace...')
     o2_out = construct_order23(clear - o1_native[pad:dimy + pad, :],
-                               centroids, 2, psfs, verbose=verbose)
+                               centroids, 2, psfs, verbose=verbose, o1_prof=o1_native[pad:dimy + pad, :])
     o2_uncontam, o2_native = o2_out[0], o2_out[1]
     # Add padding to the second order if necessary
     if pad != 0:
@@ -445,7 +445,7 @@ def chromescale(profile, wave_start, wave_end, ycen, poly_coef):
 
 
 def construct_order23(residual, cen, order, psfs, pivot=750, halfwidth=12,
-                      verbose=0):
+                      o1_prof=None, o2_prof=None, verbose=0):
     """Reconstruct the wings of the second or third orders after the first
     order spatial profile has been modeled and subtracted off.
 
@@ -539,18 +539,45 @@ def construct_order23(residual, cen, order, psfs, pivot=750, halfwidth=12,
     # throughput dropping near 0, or it being buried in order 1) reuse the
     # reddest reconstructed profile.
     if order == 2:
+        wavecal_x_o1, wavecal_w_o1 = utils.get_wave_solution(order=1)
         for i in range(pivot):
-            anchor_prof = new_frame[:, pivot]
-            anchor_prof_native = new_frame_native[:, pivot]
-            sc = cen['order '+str(order)]['Y centroid'][pivot]
-            ec = cen['order '+str(order)]['Y centroid'][i]
-            working_prof = np.interp(np.arange(dimy), np.arange(dimy) - sc + ec,
-                                     anchor_prof)
+            wave_o2 = wavecal_w[i]
+            up = np.where(wavecal_w_o1 > wave_o2)[0][-1]
+            low = np.where(wavecal_w_o1 < wave_o2)[0][0]
+            anch_low = wavecal_w_o1[low]
+            anch_up = wavecal_w_o1[up]
+
+            # Assume that the PSF varies linearly over the interval.
+            # Calculate the weighting coefficients for each anchor.
+            diff = np.abs(anch_up - anch_low)
+            weight_low = 1 - (wave_o2 - anch_low) / diff
+            weight_up = 1 - (anch_up - wave_o2) / diff
+
+            profile = np.average(np.array([o1_prof[:, low], o1_prof[:, up]]),
+                                 weights=np.array([weight_low, weight_up]),
+                                 axis=0)
+
+            co2 = cen['order 2']['Y centroid'][i]
+            co1_l = cen['order 1']['Y centroid'][low]
+            co1_u = cen['order 1']['Y centroid'][up]
+            co1 = np.mean([co1_l, co1_u])
+            working_prof = np.interp(np.arange(dimy), np.arange(dimy) - co1 + co2,
+                                     profile)
+
             new_frame[:, i] = working_prof
-            working_prof_native = np.interp(np.arange(dimy),
-                                            np.arange(dimy) - sc + ec,
-                                            anchor_prof_native)
-            new_frame_native[:, i] = working_prof_native
+
+
+            # anchor_prof = new_frame[:, pivot]
+            # anchor_prof_native = new_frame_native[:, pivot]
+            # sc = cen['order '+str(order)]['Y centroid'][pivot]
+            # ec = cen['order '+str(order)]['Y centroid'][i]
+            # working_prof = np.interp(np.arange(dimy), np.arange(dimy) - sc + ec,
+            #                          anchor_prof)
+            # new_frame[:, i] = working_prof
+            # working_prof_native = np.interp(np.arange(dimy),
+            #                                 np.arange(dimy) - sc + ec,
+            #                                 anchor_prof_native)
+            # new_frame_native[:, i] = working_prof_native
 
     # For columns where the centroid is off the detector, reuse the bluest
     # reconstructed profile.
@@ -568,9 +595,9 @@ def construct_order23(residual, cen, order, psfs, pivot=750, halfwidth=12,
                                             anchor_prof_native)
             new_frame_native[:, i] = working_prof_native
 
-            # Handle all rows after hard cut.
-            new_frame = pad_order23(new_frame[halfwidth:-halfwidth], cen,
-                                    pad=halfwidth, order=order)
+            # # Handle all rows after hard cut.
+            # new_frame = pad_order23(new_frame[halfwidth:-halfwidth], cen,
+            #                         pad=halfwidth, order=order)
 
     return new_frame, new_frame_native
 
