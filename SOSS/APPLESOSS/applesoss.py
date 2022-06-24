@@ -629,7 +629,7 @@ def reconstruct_order(residual, cen, order, psfs, halfwidth, pivot=750,
     return new_frame, new_frame_native
 
 
-def simulate_wings(w, psfs, halfwidth=12, verbose=0):
+def simulate_wings(w, psfs, halfwidth, verbose=0):
     """Extract the wings from a simulated WebbPSF 1D profile.
 
     Parameters
@@ -652,7 +652,8 @@ def simulate_wings(w, psfs, halfwidth=12, verbose=0):
     """
 
     # Get the simulated profile at the desired wavelength.
-    stand = utils.interpolate_profile(w, psfs['Wave'][:, 0], psfs['PSF'])
+    stand = utils.interpolate_profile(w, 0, psfs['Wave'][:, 0], psfs['PSF'],
+                                      np.zeros_like(psfs['Wave'][:, 0]))
     psf_size = np.shape(psfs['PSF'])[1]
     # Normalize to a max value of one to match the simulated profile.
     max_val = np.nanpercentile(stand, 99.5)

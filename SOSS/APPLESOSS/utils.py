@@ -104,7 +104,7 @@ def get_wave_solution(order):
     return wavecal_x, wavecal_w
 
 
-def interpolate_profile(w, wavelengths, psfs):
+def interpolate_profile(w, w_cen, wavelengths, psfs, psfs_cen):
     """For efficiency, 1D SOSS PSFs were generated through WebbPSF at
     discrete intervals. This function performs the linear interpolation to
     construct profiles at a specified wavelength.
@@ -121,7 +121,7 @@ def interpolate_profile(w, wavelengths, psfs):
     Returns
     -------
     profile : np.array
-        1D SOSS PSF at waveleength w.
+        1D SOSS PSF at wavelength w.
     """
 
     # Get the simulated PSF anchors for the interpolation.
@@ -130,13 +130,23 @@ def interpolate_profile(w, wavelengths, psfs):
     anch_low = wavelengths[low]
     anch_up = wavelengths[up]
 
+    # Shift the anchor profiles to the centroid position of the wavelength of
+    # interest.
+    len_psf = np.shape(psfs)[1]
+    psf_up = np.interp(np.arange(len_psf),
+                       np.arange(len_psf) - psfs_cen[up] + w_cen,
+                       psfs[up])
+    psf_low = np.interp(np.arange(len_psf),
+                       np.arange(len_psf) - psfs_cen[low] + w_cen,
+                       psfs[low])
+
     # Assume that the PSF varies linearly over the interval.
     # Calculate the weighting coefficients for each anchor.
     weight_low = 1 - (w - anch_low) / 0.1
     weight_up = 1 - (anch_up - w) / 0.1
 
-    # Linearly interpolate the anchor profiles to the wwavelength of interest.
-    profile = np.average(np.array([psfs[low], psfs[up]]),
+    # Linearly interpolate the anchor profiles to the wavelength of interest.
+    profile = np.average(np.array([psf_low, psf_up]),
                          weights=np.array([weight_low, weight_up]), axis=0)
 
     return profile
