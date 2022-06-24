@@ -5,10 +5,10 @@ Created on Fri Mar 19 11:46 2021
 
 @author: MCR
 
-Definitions of the main functions for the APPleSOSS (A Producer of ProfiLEs for
-SOSS) module. This class will be initialized and called by the user to create
-models of the spatial profiles for the first, second, and third order SOSS
-traces, for use as the specprofile reference file required by the ATOCA
+Definitions of the main functions for the APPleSOSS (A Producer of ProfiLEs
+for SOSS) module. This class will be initialized and called by the user to
+create models of the spatial profiles for the first, second, and third order
+SOSS traces, for use as the specprofile reference file required by the ATOCA
 algorithm.
 """
 
@@ -206,7 +206,7 @@ def build_empirical_profile(clear, subarray, pad, oversample, wave_increment,
         print('  Interpolating bad pixels...', flush=True)
     floor = np.nanpercentile(clear, 0.1)
     clear -= floor
-    #clear = utils.replace_badpix(clear, verbose=verbose)
+    clear = utils.replace_badpix(clear, verbose=verbose)
 
     # Get the centroid positions for both orders from the data using the
     # edgetrig method.
@@ -476,7 +476,7 @@ def reconstruct_order(residual, cen, order, psfs, halfwidth, pad, pivot=750,
 
         # Get a copy of the spatial profile, and normalize it by its max value.
         working_prof = np.copy(residual[:, i])
-        max_val = np.nanpercentile(working_prof, 99.5)
+        max_val = np.nanpercentile(working_prof[(cen_o-halfwidth):(cen_o+halfwidth)], 99.5)
         working_prof /= max_val
 
         # Simulate the wings.
