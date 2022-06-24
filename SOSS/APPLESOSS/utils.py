@@ -40,7 +40,7 @@ def generate_psfs(wave_increment=0.1, npix=400, verbose=0):
     # Estimate time to completion assuming ~5s per PSF.
     time_frame = int((nsteps * 5) / 60)
     if verbose != 0:
-        print('   Generating {0} PSFs. Expected to take about {1} mins.'.format(nsteps, time_frame))
+        print('  Generating {0} PSFs. Expected to take about {1} mins.'.format(nsteps, time_frame))
     wavelengths = (np.linspace(0.5, 2.9, nsteps) * 1e-6)[::-1]
 
     # Set up WebbPSF simulation for NIRISS.

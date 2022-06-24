@@ -205,7 +205,7 @@ def build_empirical_profile(clear, subarray, pad, oversample, wave_increment,
     # Add a floor level such that all pixel values are positive and interpolate
     # bad pixels
     if verbose != 0:
-        print(' Initial processing...')
+        print(' Initial processing.')
         print('  Interpolating bad pixels...', flush=True)
     floor = np.nanpercentile(clear, 0.1)
     clear -= floor
@@ -239,6 +239,7 @@ def build_empirical_profile(clear, subarray, pad, oversample, wave_increment,
     # === First Order ===
     # Construct the first order profile.
     if verbose != 0:
+        print(' Building the spatial profile models.')
         print('  Starting the first order model...', flush=True)
     o1_uncontam, o1_native = reconstruct_order(clear, centroids, order=1,
                                                psfs=psfs, halfwidth=halfwidth)
@@ -475,6 +476,9 @@ def reconstruct_order(residual, cen, order, psfs, halfwidth, pivot=750,
     o1_prof : array-like
         Uncontaminated order 1 spatial profile. Only necessary for
         reconstruction of order 2.
+    o2_prof : array_like
+        Uncontaminated order 2 spatial profile. Only necessary for
+        reconstruction of order 3.
     halfwidth : int
         Half width in pixels of the spatial profile core.
     verbose : int
@@ -492,7 +496,6 @@ def reconstruct_order(residual, cen, order, psfs, halfwidth, pivot=750,
     dimy, dimx = np.shape(residual)
     new_frame = np.zeros_like(residual)
     new_frame_native = np.zeros_like(residual)
-
     # Get wavelength calibration.
     wavecal_x, wavecal_w = utils.get_wave_solution(order=order)
 
@@ -501,9 +504,6 @@ def reconstruct_order(residual, cen, order, psfs, halfwidth, pivot=750,
         maxi = pivot
     else:
         maxi = dimx
-    # Hard stop for profile reuse - will handle these via padding.
-    if order in [2, 3]:
-        stop = np.where(cen['order ' + str(order)]['Y centroid'] >= dimy)[0][0] + halfwidth
     for i in range(dimx):
         wave = wavecal_w[i]
         # Skip over columns where the throughput is too low to get a good core
@@ -566,52 +566,32 @@ def reconstruct_order(residual, cen, order, psfs, halfwidth, pivot=750,
                                                      co1)
             new_frame[:, i] = working_prof
 
-    # O3
+        # For columns where the centroid is off the detector, reuse the bluest
+        # reconstructed profile.
+        # Hard stop for profile reuse.
+        stop = np.where(cen['order 2']['Y centroid'] >= dimy)[0][0] + halfwidth
+        for i in range(maxi, stop):
+            anchor_prof = new_frame[:, maxi - 1]
+            sc = cen['order '+str(order)]['Y centroid'][maxi - 1]
+            ec = cen['order '+str(order)]['Y centroid'][i]
+            working_prof = np.interp(np.arange(dimy), np.arange(dimy)-sc+ec,
+                                     anchor_prof)
+            new_frame[:, i] = working_prof
+
+    # Do something similar for order 3. Where the throughput is too low, reuse
+    # a profile of the same wavelength from order 2.
     if order == 3:
+        # Hard stop for profile reuse.
+        stop = np.where(cen['order 3']['Y centroid'] >= dimy)[0][0] + halfwidth
         wavecal_x_o2, wavecal_w_o2 = utils.get_wave_solution(order=2)
         for i in range(maxi, stop):
             wave_o3 = wavecal_w[i]
-            up = np.where(wavecal_w_o2 > wave_o3)[0][-1]
-            low = np.where(wavecal_w_o2 < wave_o3)[0][0]
-            anch_low = wavecal_w_o2[low]
-            anch_up = wavecal_w_o2[up]
-
-            # Assume that the PSF varies linearly over the interval.
-            # Calculate the weighting coefficients for each anchor.
-            diff = np.abs(anch_up - anch_low)
-            weight_low = 1 - (wave_o3 - anch_low) / diff
-            weight_up = 1 - (anch_up - wave_o3) / diff
-
-            profile = np.average(
-                np.array([o2_prof[:, low], o2_prof[:, up]]),
-                weights=np.array([weight_low, weight_up]),
-                axis=0)
-
+            co2 = cen['order 2']['Y centroid']
             co3 = cen['order 3']['Y centroid'][i]
-            co2_l = cen['order 2']['Y centroid'][low]
-            co2_u = cen['order 2']['Y centroid'][up]
-            co2 = np.mean([co2_l, co2_u])
-            working_prof = np.interp(np.arange(dimy),
-                                     np.arange(dimy) - co2 + co3,
-                                     profile)
-
+            working_prof = utils.interpolate_profile(wave_o3, co3,
+                                                     wavecal_w_o2, o2_prof.T,
+                                                     co2)
             new_frame[:, i] = working_prof
-
-    # For columns where the centroid is off the detector, reuse the bluest
-    # reconstructed profile.
-    if order in [2]:
-        for i in range(maxi, stop):
-            anchor_prof = new_frame[:, maxi - 1]
-            anchor_prof_native = new_frame_native[:, maxi - 1]
-            sc = cen['order '+str(order)]['Y centroid'][maxi - 1]
-            ec = cen['order '+str(order)]['Y centroid'][i]
-            working_prof = np.interp(np.arange(dimy), np.arange(dimy) - sc + ec,
-                                     anchor_prof)
-            new_frame[:, i] = working_prof
-            working_prof_native = np.interp(np.arange(dimy),
-                                            np.arange(dimy) - sc + ec,
-                                            anchor_prof_native)
-            new_frame_native[:, i] = working_prof_native
 
     return new_frame, new_frame_native
 
