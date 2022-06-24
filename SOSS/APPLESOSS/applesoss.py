@@ -5,7 +5,7 @@ Created on Fri Mar 19 11:46 2021
 
 @author: MCR
 
-Definitions of the main functions for the APPLESOSS (A Producer of ProfiLEs for
+Definitions of the main functions for the APPleSOSS (A Producer of ProfiLEs for
 SOSS) module. This class will be initialized and called by the user to create
 models of the spatial profiles for the first, second, and third order SOSS
 traces, for use as the specprofile reference file required by the ATOCA
@@ -32,7 +32,7 @@ class EmpiricalProfile:
 
     Attributes
     ----------
-    clear : np.array
+    clear : array-like
         SOSS CLEAR exposure data frame.
     subarray : str
         NIRISS SOSS subarray identifier. One of 'SUBSTRIP256', or 'FULL'.
@@ -42,11 +42,11 @@ class EmpiricalProfile:
     oversample : int
         Oversampling factor. Oversampling will be equal in the spectral and
         spatial directions.
-    order1 : np.array
+    order1 : array-like
         First order spatial profile.
-    order2 : np.array
+    order2 : array-like
         Second order spatial profile.
-    order3 : np.array
+    order3 : array-like
         Third order spatial profile.
 
     Methods
@@ -147,13 +147,13 @@ def build_empirical_profile(clear, subarray, pad, oversample, wave_increment,
                             halfwidth, verbose):
     """Main procedural function for the empirical spatial profile construction
     module. Calling this function will initialize and run all the required
-    subroutines to produce a spatial profile for the first, second and third
-    orders.= The spatial profiles generated can include oversampling as well
+    subroutines to produce a spatial profile for the first, second, and third
+    orders. The spatial profiles generated can include oversampling as well
     as padding in both the spatial and spectral directions.
 
     Parameters
     ----------
-    clear : np.array
+    clear : array-like
         SOSS CLEAR exposure data frame.
     subarray : str
         NIRISS SOSS subarray identifier. One of 'SUBSTRIP256', or 'FULL'.
@@ -321,7 +321,7 @@ def oversample_frame(dataframe, os):
 
     Parameters
     ----------
-    dataframe : np.array
+    dataframe : array-like
         Dataframe to be oversampled.
     os : int
         Oversampling factor to apply to each axis.
@@ -489,7 +489,8 @@ def reconstruct_order(residual, cen, order, psfs, halfwidth, pivot=750,
     new_frame : np.array
         Model of the second order spatial profile with wings reconstructed.
     new_frame_native : np.array
-        New frame, but at the native counts level.
+        Reconstructed profile at the native counts level. Only really necessary
+        for order 1.
     """
 
     # Initalize new data frame and get subarray dimensions.
@@ -532,21 +533,17 @@ def reconstruct_order(residual, cen, order, psfs, halfwidth, pivot=750,
                                      verbose=verbose)
         first_time = False
         # Concatenate the wings onto the profile core.
-        end = int(round((cen_o + 1 * halfwidth), 0))
-        start = int(round((cen_o - 1 * halfwidth), 0))
+        end = int(round((cen_o + halfwidth), 0))
+        start = int(round((cen_o - halfwidth), 0))
         stitch = np.concatenate([wing2, working_prof[start:end], wing])
-        # Rescale to native flux level.
-        stitch_native = stitch * max_val
         # Shift the profile back to its correct centroid position
         psf_len = np.shape(psfs['PSF'])[1]
         stitch = np.interp(np.arange(dimy),
                            np.arange(psf_len) - psf_len//2 + cen_o,
                            stitch)
-        stitch_native = np.interp(np.arange(dimy),
-                                  np.arange(psf_len) - psf_len//2 + cen_o,
-                                  stitch_native)
         new_frame[:, i] = stitch
-        new_frame_native[:, i] = stitch_native
+        # Rescale to native flux level.
+        new_frame_native[:, i] = stitch * max_val
 
     # For columns where the order 2 core is not distinguishable (due to the
     # throughput dropping near 0, or it being buried in order 1) reuse a
