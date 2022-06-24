@@ -1901,3 +1901,50 @@ def loicpsf(wavelist=None, wfe_real=None, save_to_disk=True, oversampling=10,
 
     if save_to_disk is False:
         return psf_list
+
+def pad_orders2_and_3(dataframe, cen, pad, order):
+    """Add padding to the spatial axis of an order 2 or 3 dataframe. Since
+    these orders curve almost vertically at short wavelengths, we must take
+    special care to properly extend the spatial profile
+
+    Parameters
+    ----------
+    dataframe : array-like
+        A dataframe of order 2 or 3.
+    cen : dict
+        Centroids dictionary.
+    pad : int
+        Amount of padding to add to the spatial axis.
+    order : int
+        Order to pad.
+
+    Returns
+    -------
+    frame_padded : np.array
+        The dataframe with the appropriate amount of padding added to
+        the spatial axis.
+    """
+
+    # Initalize padded array.
+    dimy, dimx = np.shape(dataframe)
+    frame_padded = np.zeros((dimy + pad, dimx))
+    frame_padded[:-pad] = dataframe
+
+    # Use the shortest wavelength slice along the spatial axis as a reference
+    # profile.
+    anchor_prof = dataframe[-2, :]
+    xcen_anchor = np.where(cen['order '+str(order)]['Y centroid'] >= dimy - 2)[0][0]
+
+    # To pad the upper edge of the spatial axis, shift the reference profile
+    # according to extrapolated centroids.
+    for yval in range(dimy-2, dimy-1+pad):
+        xval = np.where(cen['order '+str(order)]['Y centroid'] >= yval)[0][0]
+        shift = xcen_anchor - xval
+        working_prof = np.interp(np.arange(dimx), np.arange(dimx) - shift,
+                                 anchor_prof)
+        frame_padded[yval] = working_prof
+
+    # Pad the lower edge with zeros.
+    frame_padded = np.pad(frame_padded, ((pad, 0), (0, 0)), mode='edge')
+
+    return frame_padded
