@@ -10,13 +10,10 @@ Miscellaneous utility functions for APPLESOSS.
 
 from astropy.io import fits
 import numpy as np
-import pandas as pd
-from scipy.optimize import least_squares
 from tqdm import tqdm
 import warnings
 import webbpsf
 
-from SOSS.APPLESOSS import _calibrations
 from SOSS.APPLESOSS import plotting
 
 
@@ -68,61 +65,6 @@ def generate_psfs(wave_increment=0.1, npix=400, verbose=0):
     psfs['PSF'] = psfs_1d
 
     return psfs
-
-
-def get_box_weights(centroid, n_pix, shape, cols=None):
-    """ Return the weights of a box aperture given the centroid and the width
-    of the box in pixels. All pixels will have the same weights except at the
-    ends of the box aperture.
-    Copy of the same function in soss_boxextract.py of the jwst pipeline to
-    circumvent package versioning issues...
-
-    Parameters
-    ----------
-    centroid : array[float]
-        Position of the centroid (in rows). Same shape as `cols`
-    n_pix : float
-        Width of the extraction box in pixels.
-    shape : Tuple(int, int)
-        Shape of the output image. (n_row, n_column)
-    cols : array[int]
-        Column indices of good columns. Used if the centroid is defined
-        for specific columns or a sub-range of columns.
-    Returns
-    -------
-    weights : array[float]
-        An array of pixel weights to use with the box extraction.
-    """
-
-    nrows, ncols = shape
-
-    # Use all columns if not specified
-    if cols is None:
-        cols = np.arange(ncols)
-
-    # Row centers of all pixels.
-    rows = np.indices((nrows, len(cols)))[0]
-
-    # Pixels that are entierly inside the box are set to one.
-    cond = (rows <= (centroid - 0.5 + n_pix / 2))
-    cond &= ((centroid + 0.5 - n_pix / 2) <= rows)
-    weights = cond.astype(float)
-
-    # Fractional weights at the upper bound.
-    cond = (centroid - 0.5 + n_pix / 2) < rows
-    cond &= (rows < (centroid + 0.5 + n_pix / 2))
-    weights[cond] = (centroid + n_pix / 2 - (rows - 0.5))[cond]
-
-    # Fractional weights at the lower bound.
-    cond = (rows < (centroid + 0.5 - n_pix / 2))
-    cond &= ((centroid - 0.5 - n_pix / 2) < rows)
-    weights[cond] = (rows + 0.5 - (centroid - n_pix / 2))[cond]
-
-    # Return with the specified shape with zeros where the box is not defined.
-    out = np.zeros(shape, dtype=float)
-    out[:, cols] = weights
-
-    return out
 
 
 def get_wave_solution(order):
@@ -197,102 +139,6 @@ def interpolate_profile(w, psfs):
                          weights=np.array([weight_low, weight_up]), axis=0)
 
     return profile
-
-
-def lik(k, data, model):
-    """Utility likelihood function for flux rescaling. Essentially a Chi^2
-    multiplied by the data such that wing values don't carry too much weight.
-    """
-    return np.nansum((data - k*model)**2)
-
-
-def local_mean(array, step):
-    """Calculate the mean of an array in chunks of 2*step.
-    """
-    running_means = []
-    for i in range(-step, step):
-        if i == 0:
-            continue
-        running_means.append(np.roll(array, i))
-    loc_mean = np.mean(running_means, axis=0)
-
-    return loc_mean
-
-
-def _poly_res(p, x, y):
-    """Residuals from a polynomial.
-    """
-    return np.polyval(p, x) - y
-
-
-def read_interp_coefs(f277w=True, verbose=0):
-    """Read the interpolation coefficients from the appropriate reference file.
-    If the reference file does not exist, or the correct coefficients cannot be
-    found, they will be recalculated.
-
-    Parameters
-    ----------
-    f277w : bool
-        If True, selects the coefficients with a 2.45µm red anchor.
-    verbose : int
-        Level of verbosity.
-
-    Returns
-    -------
-    coef_b : np.array
-        Blue anchor coefficients.
-    coef_r : np.array
-        Red anchor coefficients.
-    """
-
-    # Attempt to read interpolation coefficients from reference file.
-    try:
-        df = pd.read_csv('Ref_files/interpolation_coefficients.csv')
-        # If there is an F277W exposure, get the coefficients to 2.45µm.
-        if f277w is True:
-            coef_b = np.array(df['F_blue'])
-            coef_r = np.array(df['F_red'])
-        # For no F277W exposure, get the coefficients out to 2.9µm.
-        else:
-            coef_b = np.array(df['NF_blue'])
-            coef_r = np.array(df['NF_red'])
-    # If the reference file does not exists, or the appropriate coefficients
-    # have not yet been generated, call the _calc_interp_coefs function to
-    #  calculate them.
-    except (FileNotFoundError, KeyError):
-        print('No interpolation coefficients found. They will be calculated now.')
-        coef_b, coef_r = _calibrations.calc_interp_coefs(f277w=f277w,
-                                                         verbose=verbose)
-
-    return coef_b, coef_r
-
-
-def read_width_coefs(verbose=0):
-    """Read the width coefficients from the appropriate reference file.
-    If the reference file does not exist, the coefficients will be
-    recalculated.
-
-    Parameters
-    ----------
-    verbose : int
-        Level of verbosity.
-
-    Returns
-    -------
-    wc : np.array
-        Width calbration polynomial coefficients.
-    """
-
-    # First try to read the width calibration file, if it exists.
-    try:
-        coef_file = pd.read_csv('Ref_files/width_coefficients.csv')
-        wc = np.array(coef_file['width_coefs'])
-    # If file does not exist, redo the width calibration.
-    except FileNotFoundError:
-        print('No width coefficients found. They will be calculated now.')
-        wc = _calibrations.derive_width_relations(verbose=verbose)
-
-    return wc
 
 
 def replace_badpix(clear, thresh=5, box_size=10, verbose=0):
@@ -371,62 +217,6 @@ def replace_badpix(clear, thresh=5, box_size=10, verbose=0):
     return clear_r
 
 
-def robust_polyfit(x, y, p0):
-    """Wrapper around scipy's least_squares fitting routine implementing the
-     Huber loss function - to be more resistant to outliers.
-
-    Parameters
-    ----------
-    x : list, np.array
-        Data describing dependant variable.
-    y : list, np.array
-        Data describing independent variable.
-    p0 : tuple
-        Initial guess straight line parameters. The length of p0 determines the
-        polynomial order to be fit - i.e. a length 2 tuple will fit a 1st order
-        polynomial, etc.
-
-    Returns
-    -------
-    res.x : list
-        Best fitting parameters of the desired polynomial order.
-    """
-
-    # Preform outlier resistant fitting.
-    res = least_squares(_poly_res, p0, loss='huber', f_scale=0.1, args=(x, y))
-    return res.x
-
-
-def sigma_clip(xdata, ydata, thresh=5):
-    """Perform rough sigma clipping on data to remove outliers.
-
-    Parameters
-    ----------
-    xdata : list, np.array
-        Independent variable.
-    ydata : list, np.array
-        Dependent variable.
-    thresh : int
-        Sigma threshold at which to clip.
-
-    Returns
-    -------
-    xdata : np.array
-        Independent variable; sigma clipped.
-    ydata : np.array
-        Dependent variable; sigma clipped.
-    """
-
-    xdata, ydata = np.atleast_1d(xdata), np.atleast_1d(ydata)
-    # Get mean and standard deviation.
-    mean = np.mean(ydata)
-    std = np.std(ydata)
-    # Points which are >thresh-sigma deviant.
-    inds = np.where(np.abs(ydata - mean) < thresh*std)
-
-    return xdata[inds], ydata[inds]
-
-
 def validate_inputs(etrace):
     """Validate the input parameters for the empirical trace construction
     module, and determine the correct subarray for the data.
@@ -443,11 +233,6 @@ def validate_inputs(etrace):
         dataframe.
     """
 
-    # Ensure F277W exposure has same shapse as CLEAR.
-    if etrace.f277w is not None:
-        if np.shape(etrace.f277w) != np.shape(etrace.clear):
-            msg = 'F277W and CLEAR frames must be the same shape.'
-            raise ValueError(msg)
     # Ensure padding and oversampling are integers.
     if type(etrace.pad) != int:
         raise ValueError('Padding must be an integer.')

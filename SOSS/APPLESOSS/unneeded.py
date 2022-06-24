@@ -692,3 +692,1212 @@ def plot_width_cal(fit_widths, fit_waves, width_poly):
     plt.ylabel('Trace Spatial Width [pixels]', fontsize=14)
     plt.legend(fontsize=12)
     plt.show()
+
+
+
+def simulate_wings_OLD(wavelength, width_coefs, halfwidth=12, verbose=0):
+    """Extract the spatial profile wings from a simulated SOSS PSF to
+    reconstruct the wings of the second order.
+
+    Parameters
+    ----------
+    wavelength : float
+        Wavelength for which to simulate wings.
+    width_coefs : np.array
+        Trace width polynomial coefficients.
+    halfwidth : int
+        Half width of a spatial profile along the spatial axis.
+    verbose : int
+        Level of verbosty.
+
+    Returns
+    -------
+    wing : np.array
+        Right wing fit.
+    wing2 : np.array
+        Left wing fit.
+    """
+
+    # Open a simulated PSF from which to steal some wings.
+    ref_profile = 'Ref_files/SOSS_PSFs/SOSS_os1_256x256_1.000000_0.fits'
+    try:
+        psf = fits.getdata(ref_profile, 0)
+    except FileNotFoundError:
+        # If the profile doesn't exist, create it and save it to disk.
+        _calibrations.loicpsf([1.0 * 1e-6], save_to_disk=True, oversampling=1,
+                              pixel=256, verbose=False, wfe_real=0)
+        psf = fits.getdata(ref_profile, 0)
+    stand = np.sum(psf, axis=0)
+    # Normalize the profile by its maximum.
+    max_val = np.nanmax(stand)
+    stand /= max_val
+    # Scale the profile width to match the current wavelength.
+    stand = chromescale(stand, 1, wavelength, 128, width_coefs)
+
+    # Define the edges of the profile 'core'.
+    ax = np.arange(256)
+    ystart = int(round(256 // 2 - halfwidth, 0))
+    yend = int(round(256 // 2 + halfwidth, 0))
+    # Get and fit the 'right' wing.
+    wing = stand[yend:]
+    pp = np.polyfit(ax[yend:], np.log10(wing), 7)
+    wing = 10**(np.polyval(pp, ax[yend:]))
+    # Get and fit the 'left' wing.
+    wing2 = stand[:ystart]
+    pp = np.polyfit(ax[:ystart], np.log10(wing2), 7)
+    wing2 = 10**(np.polyval(pp, ax[:ystart]))
+
+    # Do diagnostic plot if necessary.
+    if verbose == 3:
+        plotting.plot_wing_simulation(stand, halfwidth, wing, wing2, ax,
+                                      ystart, yend)
+
+    return wing, wing2
+
+
+def chromescale(profile, wave_start, wave_end, ycen, poly_coef):
+    """Correct chromatic variations in the PSF along the spatial direction
+    using the polynomial relationship derived in _fit_trace_widths.
+
+    Parameters
+    ----------
+    profile : np.array
+        1D PSF profile to be rescaled.
+    wave_start : float
+        Starting wavelength.
+    wave_end : float
+        Wavelength after rescaling.
+    ycen : float
+        Y-pixel position of the order 1 trace centroid.
+    poly_coef : tuple
+        1st order polynomial coefficients describing the variation of the trace
+        width with wavelength, e.g. as output by _fit_trace_widths.
+
+    Returns
+    -------
+    prof_rescale : np.array
+        Rescaled 1D PSF profile.
+    """
+
+    # Get the starting and ending trace widths.
+    w_start = np.polyval(poly_coef, wave_start)
+    w_end = np.polyval(poly_coef, wave_end)
+
+    # Create a rescaled spatial axis. Shift the Y-centroid to zero so
+    # that it does not move during the rescaling.
+    xax = np.arange(len(profile)) - ycen
+    xax_rescale = xax * (w_end / w_start)
+    # Rescale the PSF by interpolating onto the new axis.
+    prof_rescale = np.interp(xax, xax_rescale, profile)
+
+    # Ensure the total flux remains the same
+    # Integrate the profile with a Trapezoidal method.
+    flux_i = np.sum(profile[1:-1]) + 0.5 * (profile[0] + profile[-1])
+    flux_f = np.sum(prof_rescale[1:-1]) + 0.5 * (
+            prof_rescale[0] + prof_rescale[-1])
+    # Rescale the new profile so the total encompassed flux remains the same.
+    prof_rescale /= (flux_f / flux_i)
+
+    return prof_rescale
+
+
+def reconstruct_wings256(profile, ycens=None, contamination=[2, 3], pad=0,
+                         halfwidth=14, verbose=0, smooth=True, **kwargs):
+    """Masks the second and third diffraction orders and reconstructs the
+     underlying wing structure of the first order. Also adds padding in the
+     spatial direction if required.
+
+    Parameters
+    ----------
+    profile : np.array
+        Spectral trace spatial profile.
+    ycens : list, np.array
+        Y-coordinates of the trace centroids. Must include all three
+        diffraction orders if contamination is True, or only the first order if
+        False.
+    contamination : list, np.array, None
+        List of contaminating orders present on the detector (not including the
+        first order). For an uncontaminated detector, pass None.
+    pad : int
+        Amount to pad each end of the spatial axis (in pixels).
+    halfwidth : int
+        Half width of the profile core in pixels.
+    verbose : int
+        Level of verbosity.
+    smooth : bool
+        If True, smooths over highly deviant pixels in the spatial profile.
+
+    Returns
+    -------
+    newprof : np.array
+        Input spatial profile with reconstructed wings and padding.
+
+    Raises
+    ------
+    ValueError
+        If centroids are not provided for all three orders when contamination
+        is not None.
+    """
+
+    dimy = len(profile)
+    # Convert Y-centroid positions to indices
+    ycens = np.atleast_1d(ycens)
+    ycens = np.round(ycens, 0).astype(int)
+    if contamination is not None and ycens.size != 3:
+        errmsg = 'Centroids must be provided for first three orders ' \
+                 'if there is contamination.'
+        raise ValueError(errmsg)
+
+    # mask negative and zero values.
+    profile[profile <= 0] = np.nan
+
+    # ======= RECONSTRUCT CONTAMINATED WING =======
+    # Mask the cores of the first three diffraction orders and fit a straight
+    # line to the remaining pixels. Additionally mask any outlier pixels that
+    # are >3-sigma deviant from that line. Fit a 7th order polynomial to
+    # remaining pixels.
+    # Get the right wing of the trace profile in log space and spatial axis.
+    working_profile, axis = np.copy(profile), np.arange(dimy)
+    working_profile = np.log10(working_profile)
+
+    # === Outlier masking ===
+    # Mask the cores of each order.
+    for order, ycen in enumerate(ycens):
+        order += 1
+        if order == 1:
+            start = 0
+            end = int(ycen + 2.5*halfwidth)
+        else:
+            start = np.min([ycen - int(1.5*halfwidth), dimy-2])
+            end = np.min([ycen + int(1.5*halfwidth), dimy-1])
+        # Set core of each order to NaN.
+        working_profile[start:end] = np.nan
+    # Fit the unmasked part of the wing to determine the mean linear trend.
+    inds = np.where(np.isfinite(working_profile))[0]
+    pp = utils.robust_polyfit(axis[inds], working_profile[inds], (0, 0))
+    wing_mean = pp[1] + pp[0] * axis
+    # Calculate the standard dev of unmasked points from the mean trend.
+    stddev_m = np.sqrt(np.median((working_profile[inds] - wing_mean[inds])**2))
+
+    # === Wing fit ===
+    # Get fresh contaminated wing profile.
+    working_profile = np.copy(profile)
+    working_profile = np.log10(working_profile)
+    # Mask first order core.
+    working_profile[:int(ycens[0] + halfwidth)] = np.nan
+    # Mask second and third orders.
+    if contamination is not None:
+        for order, ycen in enumerate(ycens):
+            order += 1
+            if order in contamination:
+                if order == 3:
+                    halfwidth -= 2
+                if order == 2 and ycens[0] - ycens[1] < 5:
+                    if (ycens[1]-0.5*halfwidth)-(ycens[0]+1.5*halfwidth) < 5:
+                        start = int(np.max([ycen, 0]))
+                    else:
+                        start = np.max([ycen - halfwidth, 0]).astype(int)
+                else:
+                    start = np.max([ycen - 1.5*halfwidth, 0]).astype(int)
+                end = np.max([ycen + 1.5*halfwidth, 1]).astype(int)
+                # Set core of each order to NaN.
+                working_profile[start:end] = np.nan
+    halfwidth += 2
+    # Find all outliers that are >3-sigma deviant from the mean.
+    start = int(ycens[0] + 2.5*halfwidth)
+    inds2 = np.where(
+        np.abs(working_profile[start:] - wing_mean[start:]) > 3*stddev_m)
+    # Mask outliers
+    working_profile[start:][inds2] = np.nan
+    # Mask edge of the detector.
+    working_profile[-3:] = np.nan
+    # Indices of all unmasked points in the contaminated wing.
+    inds3 = np.isfinite(working_profile)
+
+    # Fit with a 9th order polynomial.
+    # To ensure that the polynomial does not start turning up in the padded
+    # region, extend the linear fit to the edge of the pad to force the fit
+    # to continue decreasing.
+    ext_ax = np.arange(25) + np.max(axis[inds3]) + np.max([pad, 25])
+    ext_prof = pp[1] + pp[0] * ext_ax
+    # Concatenate right-hand profile with the extended linear trend.
+    fit_ax = np.concatenate([axis[inds3], ext_ax])
+    fit_prof = np.concatenate([working_profile[inds3], ext_prof])
+    # Use np.polyfit for a first estimate of the coefficients.
+    pp_r0 = np.polyfit(fit_ax, fit_prof, 9)
+    # Robust fit using the polyfit results as a starting point.
+    pp_r = utils.robust_polyfit(fit_ax, fit_prof, pp_r0)
+
+    # === Stitching ===
+    newprof = np.copy(profile)
+    # Interpolate contaminated regions.
+    if contamination is not None:
+        for order in contamination:
+            # Interpolate around the trace centroid.
+            start = np.max([ycens[order - 1]-1.5*halfwidth, ycens[0]+halfwidth]).astype(int)
+            if start >= dimy-1:
+                # If order is off of the detector.
+                continue
+            end = np.min([ycens[order - 1]+1.5*halfwidth, dimy-1]).astype(int)
+            # Join interpolations to the data.
+            newprof = np.concatenate([newprof[:start],
+                                      10**np.polyval(pp_r, axis)[start:end],
+                                      newprof[end:]])
+
+    # Interpolate nans and negatives with median of surrounding pixels.
+    for pixel in np.where(np.isnan(newprof))[0]:
+        minp = np.max([pixel-5, 0])
+        maxp = np.min([pixel+5, dimy])
+        newprof[pixel] = np.nanmedian(newprof[minp:maxp])
+
+    if smooth is True:
+        # Replace highly deviant pixels throughout the wings.
+        wing_fit = np.polyval(pp_r, axis[int(ycens[0] + 2.5*halfwidth):])
+        # Calculate the standard dev of unmasked points from the wing fit.
+        stddev_f = np.sqrt(np.nanmedian((np.log10(newprof[int(ycens[0] + 2.5*halfwidth):])-wing_fit)**2))
+        # Find all outliers that are >3-sigma deviant from the mean.
+        inds4 = np.where(np.abs(np.log10(newprof[int(ycens[0] + 2.5*halfwidth):])-wing_fit) > 3*stddev_f)
+        newprof[int(ycens[0] + 2.5*halfwidth):][inds4] = 10**wing_fit[inds4]
+
+    # Add padding - padding values are constant at the median of edge pixels.
+    padval_r = np.median(newprof[-8:-3])
+    padval_l = np.median(newprof[3:8])
+    newprof = np.concatenate([np.tile(padval_l, pad+4), newprof[4:-4],
+                              np.tile(padval_r, pad+4)])
+
+    # Do diagnostic plot if requested.
+    if verbose == 3:
+        plotting.plot_wing_reconstruction(profile, ycens, axis[inds3],
+                                          working_profile[inds3], pp_r,
+                                          newprof, pad, **kwargs)
+
+    return newprof
+
+
+def rescale_model(data, model, centroids, pad=0, verbose=0):
+    """Rescale a column normalized trace model to the flux level of an actual
+    observation. A multiplicative coefficient is determined via Chi^2
+    minimization independently for each column, such that the rescaled model
+    best matches the data.
+
+    Parameters
+    ----------
+    data : np.array
+        Observed dataframe.
+    model : np.array
+        Column normalized trace model.
+    centroids : dict
+        Centroids dictionary.
+    pad : int
+        Amount of padding on the spatial axis.
+    verbose : int
+        Level of verbosity.
+
+    Returns
+    -------
+    model_rescale : np.array
+        Trace model after rescaling.
+    """
+
+    # Determine first guess coefficients.
+    k0 = np.nanmax(data, axis=0)
+    ks = []
+    # Loop over all columns - surely there is a more vectorized way to do this
+    # whenever I try to minimize all of k at once I get nonsensical results?
+    disable = utils.verbose_to_bool(verbose)
+    for i in tqdm(range(data.shape[1]), disable=disable):
+        # Get region around centroid
+        ycen = int(round(centroids['order 1']['Y centroid'][i], 0)) + pad
+        start = ycen - 13
+        end = ycen + 14
+        # Minimize the Chi^2.
+        lik_args = (data[(start - pad):(end - pad), i], model[start:end, i])
+        k = minimize(utils.lik, k0[i], lik_args)
+        ks.append(k.x[0])
+
+    # Rescale the column normalized model.
+    ks = np.array(ks)
+    model_rescale = ks * model
+
+    return model_rescale
+
+
+def get_box_weights(centroid, n_pix, shape, cols=None):
+    """ Return the weights of a box aperture given the centroid and the width
+    of the box in pixels. All pixels will have the same weights except at the
+    ends of the box aperture.
+    Copy of the same function in soss_boxextract.py of the jwst pipeline to
+    circumvent package versioning issues...
+
+    Parameters
+    ----------
+    centroid : array[float]
+        Position of the centroid (in rows). Same shape as `cols`
+    n_pix : float
+        Width of the extraction box in pixels.
+    shape : Tuple(int, int)
+        Shape of the output image. (n_row, n_column)
+    cols : array[int]
+        Column indices of good columns. Used if the centroid is defined
+        for specific columns or a sub-range of columns.
+    Returns
+    -------
+    weights : array[float]
+        An array of pixel weights to use with the box extraction.
+    """
+
+    nrows, ncols = shape
+
+    # Use all columns if not specified
+    if cols is None:
+        cols = np.arange(ncols)
+
+    # Row centers of all pixels.
+    rows = np.indices((nrows, len(cols)))[0]
+
+    # Pixels that are entierly inside the box are set to one.
+    cond = (rows <= (centroid - 0.5 + n_pix / 2))
+    cond &= ((centroid + 0.5 - n_pix / 2) <= rows)
+    weights = cond.astype(float)
+
+    # Fractional weights at the upper bound.
+    cond = (centroid - 0.5 + n_pix / 2) < rows
+    cond &= (rows < (centroid + 0.5 + n_pix / 2))
+    weights[cond] = (centroid + n_pix / 2 - (rows - 0.5))[cond]
+
+    # Fractional weights at the lower bound.
+    cond = (rows < (centroid + 0.5 - n_pix / 2))
+    cond &= ((centroid - 0.5 - n_pix / 2) < rows)
+    weights[cond] = (rows + 0.5 - (centroid - n_pix / 2))[cond]
+
+    # Return with the specified shape with zeros where the box is not defined.
+    out = np.zeros(shape, dtype=float)
+    out[:, cols] = weights
+
+    return out
+
+
+def read_interp_coefs(f277w=True, verbose=0):
+    """Read the interpolation coefficients from the appropriate reference file.
+    If the reference file does not exist, or the correct coefficients cannot be
+    found, they will be recalculated.
+
+    Parameters
+    ----------
+    f277w : bool
+        If True, selects the coefficients with a 2.45µm red anchor.
+    verbose : int
+        Level of verbosity.
+
+    Returns
+    -------
+    coef_b : np.array
+        Blue anchor coefficients.
+    coef_r : np.array
+        Red anchor coefficients.
+    """
+
+    # Attempt to read interpolation coefficients from reference file.
+    try:
+        df = pd.read_csv('Ref_files/interpolation_coefficients.csv')
+        # If there is an F277W exposure, get the coefficients to 2.45µm.
+        if f277w is True:
+            coef_b = np.array(df['F_blue'])
+            coef_r = np.array(df['F_red'])
+        # For no F277W exposure, get the coefficients out to 2.9µm.
+        else:
+            coef_b = np.array(df['NF_blue'])
+            coef_r = np.array(df['NF_red'])
+    # If the reference file does not exists, or the appropriate coefficients
+    # have not yet been generated, call the _calc_interp_coefs function to
+    #  calculate them.
+    except (FileNotFoundError, KeyError):
+        print('No interpolation coefficients found. They will be calculated now.')
+        coef_b, coef_r = _calibrations.calc_interp_coefs(f277w=f277w,
+                                                         verbose=verbose)
+
+    return coef_b, coef_r
+
+
+def read_width_coefs(verbose=0):
+    """Read the width coefficients from the appropriate reference file.
+    If the reference file does not exist, the coefficients will be
+    recalculated.
+
+    Parameters
+    ----------
+    verbose : int
+        Level of verbosity.
+
+    Returns
+    -------
+    wc : np.array
+        Width calbration polynomial coefficients.
+    """
+
+    # First try to read the width calibration file, if it exists.
+    try:
+        coef_file = pd.read_csv('Ref_files/width_coefficients.csv')
+        wc = np.array(coef_file['width_coefs'])
+    # If file does not exist, redo the width calibration.
+    except FileNotFoundError:
+        print('No width coefficients found. They will be calculated now.')
+        wc = _calibrations.derive_width_relations(verbose=verbose)
+
+    return wc
+
+
+def robust_polyfit(x, y, p0):
+    """Wrapper around scipy's least_squares fitting routine implementing the
+     Huber loss function - to be more resistant to outliers.
+
+    Parameters
+    ----------
+    x : list, np.array
+        Data describing dependant variable.
+    y : list, np.array
+        Data describing independent variable.
+    p0 : tuple
+        Initial guess straight line parameters. The length of p0 determines the
+        polynomial order to be fit - i.e. a length 2 tuple will fit a 1st order
+        polynomial, etc.
+
+    Returns
+    -------
+    res.x : list
+        Best fitting parameters of the desired polynomial order.
+    """
+
+    # Preform outlier resistant fitting.
+    res = least_squares(_poly_res, p0, loss='huber', f_scale=0.1, args=(x, y))
+    return res.x
+
+
+def sigma_clip(xdata, ydata, thresh=5):
+    """Perform rough sigma clipping on data to remove outliers.
+
+    Parameters
+    ----------
+    xdata : list, np.array
+        Independent variable.
+    ydata : list, np.array
+        Dependent variable.
+    thresh : int
+        Sigma threshold at which to clip.
+
+    Returns
+    -------
+    xdata : np.array
+        Independent variable; sigma clipped.
+    ydata : np.array
+        Dependent variable; sigma clipped.
+    """
+
+    xdata, ydata = np.atleast_1d(xdata), np.atleast_1d(ydata)
+    # Get mean and standard deviation.
+    mean = np.mean(ydata)
+    std = np.std(ydata)
+    # Points which are >thresh-sigma deviant.
+    inds = np.where(np.abs(ydata - mean) < thresh*std)
+
+    return xdata[inds], ydata[inds]
+
+
+def lik(k, data, model):
+    """Utility likelihood function for flux rescaling. Essentially a Chi^2
+    multiplied by the data such that wing values don't carry too much weight.
+    """
+    return np.nansum((data - k*model)**2)
+
+
+def local_mean(array, step):
+    """Calculate the mean of an array in chunks of 2*step.
+    """
+    running_means = []
+    for i in range(-step, step):
+        if i == 0:
+            continue
+        running_means.append(np.roll(array, i))
+    loc_mean = np.mean(running_means, axis=0)
+
+    return loc_mean
+
+
+def _poly_res(p, x, y):
+    """Residuals from a polynomial.
+    """
+    return np.polyval(p, x) - y
+
+
+def plot_interpmodel(waves, nw1, nw2, p1, p2):
+    """Plot the diagnostic results of the derive_model function. Four plots
+    are generated, showing the normalized interpolation coefficients for the
+    blue and red anchors for each WFE realization, as well as the mean trend
+    across WFE for each anchor profile, and the resulting polynomial fit to
+    the mean trends.
+
+    Parameters
+    ----------
+    waves : np.array of float
+        Wavelengths at which WebbPSF monochromatic PSFs were created.
+    nw1 : np.array of float
+        Normalized interpolation coefficient for the blue anchor
+        for each PSF profile.
+    nw2 : np.array of float
+        Normalized interpolation coefficient for the red anchor
+        for each PSF profile.
+    p1 : np.array of float
+        Polynomial coefficients of the fit to the mean interpolation
+        coefficients for the blue anchor.
+    p2 : np.array of float
+        Polynomial coefficients of the fit to the mean interpolation
+        coefficients for the red anchor.
+    """
+
+    f, ax = plt.subplots(2, 2, figsize=(14, 6))
+    for i in range(10):
+        ax[0, 0].plot(waves, nw1[i])
+        ax[1, 0].plot(waves, nw2[i])
+
+    ax[0, 1].plot(waves, np.mean(nw1, axis=0))
+    ax[0, 1].plot(waves, np.mean(nw2, axis=0))
+
+    ax[-1, 0].set_xlabel('Wavelength [µm]', fontsize=14)
+    ax[-1, 1].set_xlabel('Wavelength [µm]', fontsize=14)
+
+    y1 = np.polyval(p1, waves)
+    y2 = np.polyval(p2, waves)
+
+    ax[1, 1].plot(waves, y1, c='r', ls=':')
+    ax[1, 1].plot(waves, y2, c='b', ls=':')
+    ax[1, 1].plot(waves, np.mean(nw1, axis=0), c='b', label='Blue Anchor')
+    ax[1, 1].plot(waves, np.mean(nw2, axis=0), c='r', label='Red Anchor')
+    ax[1, 1].set_xlim(np.min(waves), np.max(waves))
+    ax[1, 1].legend(loc=1, fontsize=12)
+
+    f.tight_layout()
+    plt.show()
+
+
+def plot_width_relation(wave_range, widths, wfit, ii):
+    """Do diagnostic plot for trace width calibrations.
+    """
+
+    ax = np.linspace(wave_range[0], wave_range[-1], 100)
+    plt.figure(figsize=(8, 5))
+    plt.scatter(wave_range[ii], widths[ii], c='black', alpha=0.5,
+                label='Measured Widths')
+    plt.plot(ax, np.polyval(wfit, ax), label='Width Fit', c='red')
+
+    plt.xlabel('Spectral Pixel', fontsize=14)
+    plt.ylabel('Relative Spatial Profile Width', fontsize=14)
+    plt.legend()
+    plt.show()
+
+
+def plot_wing_reconstruction(profile, ycens, axis_r, prof_r2, pp_r, newprof,
+                             pad, text=None):
+    """Do diagnostic plotting for wing reconstruction.
+    """
+
+    dimy = len(profile)
+
+    plt.figure(figsize=(8, 5))
+    plt.plot(np.arange(dimy), np.log10(profile), ls=':', c='black',
+             label='original profile')
+    for ycen in ycens:
+        plt.axvline(ycen, ls=':', c='grey')
+    plt.scatter(axis_r, prof_r2, c='orange', s=15, label='unmasked points')
+    ax_tot = np.arange(dimy+2*pad) - pad
+    plt.plot(ax_tot, np.log10(newprof), c='blue', alpha=1,
+             label='reconstructed profile',)
+    plt.plot(ax_tot[(ycens[0]+18+pad):-(pad+4)],
+             np.polyval(pp_r, ax_tot[(ycens[0]+18+pad):-(pad+4)]), c='red',
+             lw=2, ls='--', label='right wing fit')
+    if text is not None:
+        plt.text(ax_tot[5], np.min(np.log10(newprof)), text, fontsize=14)
+
+    plt.xlabel('Spatial Pixel', fontsize=12)
+    plt.xlim(int(ax_tot[0]), int(ax_tot[-1]))
+    plt.legend(fontsize=12)
+    plt.show()
+
+
+def plot_f277_rescale(f277_init, f277_rescale, clear_prof):
+    """Do diagnoostic plot for F277W rescaling.
+    """
+
+    plt.figure(figsize=(8, 8))
+    gs = gridspec.GridSpec(2, 1, height_ratios=[1, 1])
+
+    ax1 = plt.subplot(gs[0])
+    ax1.plot(clear_prof / np.nansum(clear_prof), c='blue')
+    ax1.plot(f277_init, c='red', ls='--')
+    ax1.xaxis.set_major_formatter(plt.NullFormatter())
+
+    ax2 = plt.subplot(gs[1])
+    ax2.plot(clear_prof / np.nansum(clear_prof), c='blue')
+    ax2.plot(f277_rescale, c='red', ls='--')
+    ax2.set_xlabel('Spatial Pixel', fontsize=14)
+
+    plt.subplots_adjust(hspace=0)
+    plt.show()
+
+
+def construct_order1(clear, f277w, ycens, subarray, pad=0, verbose=0):
+    """This creates the full order 1 trace profile model. The region
+    contaminated by the second order is interpolated from the CLEAR and F277W
+    exposures.
+    The steps are as follows:
+        1. Determine the red and blue anchor profiles for the interpolation.
+        2. Construct the interpolated profile at each wavelength in the
+           overlap region.
+        3. Stitch together the original CLEAR exposure and the interpolated
+           trace model (as well as the F277W exposure if provided).
+        4. Mask the contamination from the second and third orders, and
+           reconstruct the underlying wing structure of the first order -
+           including any padding in the spatial direction.
+
+    Parameters
+    ----------
+    clear : np.array
+        NIRISS SOSS CLEAR exposure dataframe.
+    f277w : np.array
+        NIRISS SOSS F277W filter exposure dataframe.
+    ycens : dict
+        Dictionary of Y-coordinates for the trace centroids of the first three
+        diffraction orders, ie. as returned by get_soss_centroids.
+    subarray : str
+        Subarray identifier. "SUBSTRIP256", or "FULL".
+    pad : int
+        Number of pixels of padding to add on both ends of the spatial axis.
+    verbose : int
+        Level of verbosity.
+
+    Returns
+    -------
+    o1frame : np.array
+        Interpolated order 1 trace model with padding.
+    """
+
+    # Get subarray dimensions
+    dimx = 2048
+    if subarray == 'SUBSTRIP256':
+        dimy = 256
+    elif subarray == 'FULL':
+        dimy = 2048
+
+    # ========= INITIAL SETUP =========
+    # Get wavelengh calibration.
+    wavecal_x, wavecal_w = utils.get_wave_solution(order=1)
+    # Determine how the trace width changes with wavelength.
+    if verbose != 0:
+        print('   Calibrating trace widths...')
+    width_polys = utils.read_width_coefs(verbose=verbose)
+
+    # ========= GET ANCHOR PROFILES =========
+    if verbose != 0:
+        print('   Getting anchor profiles...')
+    # Determine the anchor profiles - blue anchor.
+    # Find the pixel position of 2.1µm.
+    i_b = np.where(wavecal_w >= 2.1)[0][-1]
+    xdb = int(wavecal_x[i_b])
+    ydb = ycens['order 1']['Y centroid'][xdb]
+    # Extract the 2.1µm anchor profile from the data - take median profile of
+    # neighbouring five columns to mitigate effects of outliers.
+    bl_anch = np.median(clear[:, (xdb - 2):(xdb + 2)], axis=1)
+
+    # Mask second and third order, reconstruct wing structure and pad.
+    cens = [ycens['order 1']['Y centroid'][xdb],
+            ycens['order 2']['Y centroid'][xdb],
+            ycens['order 3']['Y centroid'][xdb]]
+    bl_anch = applesoss.reconstruct_wings256(bl_anch, ycens=cens,
+                                             contamination=[2, 3], pad=pad,
+                                             verbose=verbose, smooth=True,
+                                             **{'text': 'Blue anchor'})
+    # Remove the chromatic scaling.
+    bl_anch = applesoss.chromescale(bl_anch, 2.1, 2.5, ydb + pad, width_polys)
+    # Normalize
+    bl_anch /= np.nansum(bl_anch)
+
+    # Determine the anchor profiles - red anchor.
+    # If an F277W exposure is provided, only interpolate out to 2.45µm.
+    # Red-wards of 2.45µm we have perfect knowledge of the order 1 trace.
+    # Find the pixel position of 2.45µm.
+    i_r = np.where(wavecal_w >= 2.45)[0][-1]
+    xdr = int(wavecal_x[i_r])
+    ydr = ycens['order 1']['Y centroid'][xdr]
+
+    # Extract and rescale the 2.45µm profile - take median of neighbouring
+    # five columns to mitigate effects of outliers.
+    rd_anch = np.median(f277w[:, (xdr - 2):(xdr + 2)], axis=1)
+    # Reconstruct wing structure and pad.
+    cens = [ycens['order 1']['Y centroid'][xdr]]
+    rd_anch = applesoss.reconstruct_wings256(rd_anch, ycens=cens,
+                                             contamination=None, pad=pad,
+                                             verbose=verbose, smooth=True,
+                                             **{'text': 'Red anchor'})
+    rd_anch = applesoss.chromescale(rd_anch, 2.45, 2.5, ydr + pad, width_polys)
+    # Normalize
+    rd_anch /= np.nansum(rd_anch)
+
+    # Interpolation polynomial coefs, calculated via calc_interp_coefs
+    coef_b, coef_r = utils.read_interp_coefs(verbose=verbose)
+
+    # Since there will lkely be a different number of integrations for the
+    # F277W exposure vs the CLEAR, the flux levels of the two anchors will
+    # likely be different. Rescale the F277W anchor to match the CLEAR level.
+    rd_anch = rescale_f277(rd_anch, clear[:, xdr], ycen=ydr, pad=pad,
+                           verbose=verbose)
+
+    # ========= INTERPOLATE THE CONTAMINATED REGION =========
+    # Create the interpolated order 1 PSF.
+    map2d = np.zeros((dimy + 2 * pad, dimx)) * np.nan
+    # Get centroid pixel coordinates and wavelengths for interpolation region.
+    cenx_d = np.arange(xdb - xdr).astype(int) + xdr
+    ceny_d = ycens['order 1']['Y centroid'][cenx_d]
+    lmbda = wavecal_w[cenx_d]
+
+    # Create an interpolated 1D PSF at each required position.
+    if verbose != 0:
+        print('   Interpolating trace...', flush=True)
+    disable = utils.verbose_to_bool(verbose)
+    for i, vals in tqdm(enumerate(zip(cenx_d, ceny_d, lmbda)),
+                        total=len(lmbda), disable=disable):
+        cenx, ceny, lbd = int(round(vals[0], 0)), vals[1], vals[2]
+        # Evaluate the interpolation polynomials at the current wavelength.
+        wb_i = np.polyval(coef_b, lbd)
+        wr_i = np.polyval(coef_r, lbd)
+        # Recenter the profile of both anchors on the correct Y-centroid.
+        bax = np.arange(dimy + 2 * pad) - ydb + ceny
+        bl_anch_i = np.interp(np.arange(dimy + 2 * pad), bax, bl_anch)
+        rax = np.arange(len(rd_anch)) - ydr + ceny
+        rd_anch_i = np.interp(np.arange(dimy + 2 * pad), rax, rd_anch)
+        # Construct the interpolated profile.
+        prof_int = (wb_i * bl_anch_i + wr_i * rd_anch_i)
+        # Re-add the lambda/D scaling.
+        prof_int_cs = applesoss.chromescale(prof_int, 2.5, lbd, ceny + pad,
+                                            width_polys)
+        # Put the interpolated profile on the detector.
+        map2d[:, cenx] = prof_int_cs
+
+        # Note detector coordinates of the edges of the interpolated region.
+        bl_end = cenx
+        if i == 0:
+            # 2.9µm (i=0) limit will be off the end of the detector.
+            rd_end = cenx
+
+    # ========= RECONSTRUCT THE FIRST ORDER WINGS =========
+    if verbose != 0:
+        print('   Stitching data and reconstructing wings...', flush=True)
+    # Stitch together the interpolation and data.
+    o1frame = np.zeros((dimy + 2 * pad, dimx))
+    # Insert interpolated data.
+    o1frame[:, rd_end:bl_end] = map2d[:, rd_end:bl_end]
+    # Bluer region is known from the CLEAR exposure.
+    disable = utils.verbose_to_bool(verbose)
+    for col in tqdm(range(bl_end, dimx), disable=disable):
+        cens = [ycens['order 1']['Y centroid'][col],
+                ycens['order 2']['Y centroid'][col],
+                ycens['order 3']['Y centroid'][col]]
+        # Mask contamination from second and third orders, reconstruct
+        # wings and add padding.
+        o1frame[:, col] = applesoss.reconstruct_wings256(clear[:, col],
+                                                         ycens=cens, pad=pad,
+                                                         smooth=True)
+    # Add on the F277W frame to the red of the model.
+    disable = utils.verbose_to_bool(verbose)
+    for col in tqdm(range(rd_end), disable=disable):
+        cens = [ycens['order 1']['Y centroid'][col]]
+        o1frame[:, col] = applesoss.reconstruct_wings256(f277w[:, col],
+                                                         ycens=cens,
+                                                         contamination=None,
+                                                         pad=pad, smooth=True)
+
+        o1frame[:, col] = rescale_f277(o1frame[:, col], clear[:, col],
+                                       ycen=cens[0], verbose=0)
+
+    # Column normalize - necessary for uniformity as anchor profiles are
+    # normalized whereas stitched data is not.
+    o1frame /= np.nansum(o1frame, axis=0)
+
+    return o1frame
+
+
+def rescale_f277(f277_prof, clear_prof, ycen=71, width=50, max_iter=10, pad=0,
+                 verbose=0):
+    """As the F277W and CLEAR exposures will likely have different flux levels
+    due to different throughputs as well as possibly a different number of
+    integrations. Rescale the F277W profile to the flux level of the CLEAR
+    profile such that both profiles can be used as end points for interplation.
+
+    Parameters
+    ----------
+    f277_prof : np.array
+        Spatial profile in the F277W fiter.
+    clear_prof : np.array
+        Spatial profile in the CLEAR filter.
+    ycen : float
+        Y-Centroid position of the F277W profile.
+    width : int
+        Pixel width on either end of the centroid to consider.
+    max_iter : int
+        Maximum number of iterations.
+    pad : int
+        Amount of padding included in the spatial profiles.
+    verbose : int
+        Level of verbosity
+
+    Returns
+    -------
+    f277_rescale : np.array
+        F277W profile rescaled to the flux level of the CLEAR profile.
+    """
+
+    dimy = len(f277_prof)
+    start, end = int(ycen - width), int(ycen + width)
+    # Iterate over different rescalings + vertical shifts to minimize the
+    # Chi^2 between the F277W and CLEAR exposures.
+    # Calculate starting Chi^2 value.
+    chi2 = np.nansum(((f277_prof[pad:(dimy + pad)] /
+                       np.nansum(f277_prof[pad:(dimy + pad)]))[start:end] -
+                      (clear_prof / np.nansum(clear_prof))[start:end]) ** 2)
+    # Append Chi^2 and normalize F277W profile to arrays.
+    chi2_arr = [chi2]
+    anchor_arr = [f277_prof / np.nansum(f277_prof)]
+
+    niter = 0
+    while niter < max_iter:
+        # Subtract an offset so the floors of the two profilels match.
+        offset = np.nanpercentile(clear_prof / np.nansum(clear_prof), 1) - \
+                 np.nanpercentile(f277_prof / np.nansum(f277_prof), 1)
+
+        # Normalize offset F277W.
+        f277_prof = f277_prof / np.nansum(f277_prof) + offset
+
+        # Calculate new Chi^2.
+        chi2 = np.nansum(((f277_prof[pad:(dimy + pad)] /
+                           np.nansum(f277_prof[pad:(dimy + pad)]))[start:end] -
+                          (clear_prof / np.nansum(clear_prof))[
+                          start:end]) ** 2)
+        chi2_arr.append(chi2)
+        anchor_arr.append(f277_prof / np.nansum(f277_prof))
+
+        niter += 1
+
+    # Keep the best fitting F277W profile.
+    min_chi2 = np.argmin(chi2_arr)
+    f277_rescale = anchor_arr[min_chi2]
+
+    if verbose == 3:
+        plotting.plot_f277_rescale(anchor_arr[0][pad:(dimy + pad)],
+                                   f277_rescale[pad:(dimy + pad)],
+                                   clear_prof)
+
+    return f277_rescale
+
+
+def calc_interp_coefs(f277w=True, verbose=0):
+    """Function to calculate the interpolation coefficients necessary to
+    construct a monochromatic PSF profile at any wavelength between
+    the two 1D PSF anchor profiles. Linear combinations of the blue and red
+    anchor are iteratively fit to each intermediate wavelength to find the
+    best fitting combination. The mean linear coefficients across the 10 WFE
+    error realizations are returned for each wavelengths.
+    When called, 2D monochromatic PSF profiles will be generated and saved
+    to disk if the user does not already have them available.
+    This should not need to be called by the end user except in rare cases.
+
+    Parameters
+    ----------
+    f277w : bool
+        Set to False if no F277W exposure is available for the observation.
+        Finds coefficients for the entire 2.1 - 2.9µm region in this case.
+    verbose : int
+        Level of verbosity.
+
+    Returns
+    -------
+    pb : np.array of float
+        Polynomial coefficients of the interpolation index fits for the
+        blue anchor.
+    pr : np.array of float
+        Polynomial coefficients of the interpolation index fits for the
+        red anchor.
+    """
+
+    if verbose != 0:
+        print('Calculating interpolation coefficients.')
+    # Red anchor is 2.9µm without an F277W exposure.
+    if f277w is False:
+        wave_range = np.linspace(2.1, 2.9, 7)
+    # Red anchor is 2.45µm with F277W exposure.
+    else:
+        wave_range = np.linspace(2.1, 2.45, 7)
+
+    # Read in monochromatic PSFs generated by WebbPSF.
+    psf_list = []
+    # Loop over all 10 available WFE realizations.
+    for i in range(10):
+        psf_run = []
+        # Import the PSFs,
+        for w in wave_range:
+            # If the user already has the PSFs generated, import them.
+            infile = 'Ref_files/SOSS_PSFs/SOSS_os10_128x128_{0:.6f}_{1:.0f}.fits'.format(w, i)
+            try:
+                psf_run.append(fits.getdata(infile, 0))
+            # Generate missing PSFs if necessary.
+            except FileNotFoundError:
+                errmsg = ' No monochromatic PSF found for {0:.2f}µm and WFE '\
+                         'realization {1:.0f}. Creating it now.'.format(w, i)
+                print(errmsg)
+                loicpsf(wavelist=[w*1e-6], wfe_real=i, verbose=False)
+                psf_run.append(fits.open(infile)[0].data)
+        psf_list.append(psf_run)
+
+    # Determine specific interpolation coefficients for all WFEs
+    wb, wr = [], []
+    for E in range(10):
+        # Generate the blue wavelength anchor.
+        # The width of the 1D PSF has lambda/D dependence, so rescale all
+        # profiles to a common wavelength to remove these chromatic effects.
+        rngeb = np.linspace(0, round(1280*(2.5/2.1), 0) - 1, 1280)
+        offsetb = rngeb[640] - 640
+        newb = np.interp(np.arange(1280), rngeb - offsetb,
+                         np.sum(psf_list[E][0][600:700, :], axis=0))
+
+        # Generate the red wavelength anchor.
+        if f277w is False:
+            # Use 2.85µm for CLEAR.
+            rnger = np.linspace(0, round(1280*(2.5/2.9), 0) - 1, 1280)
+        else:
+            # Or 2.42µm for F277W.
+            rnger = np.linspace(0, round(1280*(2.5/2.45), 0) - 1, 1280)
+        offsetr = rnger[640] - 640
+        # Remove lambda/D scaling.
+        newr = np.interp(np.arange(1280), rnger - offsetr,
+                         np.sum(psf_list[E][6][600:700, :], axis=0))
+
+        # Loop over all monochromatic PSFs to determine interpolation
+        # coefficients.
+        for f, wave in enumerate(wave_range):
+            # Lists for running counts of indices and model residuals.
+            resid, ind_i, ind_j = [], [], []
+
+            # Rescale monochromatic PSF to remove lambda/D.
+            newrnge = np.linspace(0, round(1280*(2.5/wave), 0) - 1, 1280)
+            newoffset = newrnge[640] - 640
+            newpsf = np.interp(np.arange(1280), newrnge - newoffset,
+                               np.sum(psf_list[E][f][600:700, :], axis=0))
+
+            # Brute force the coefficient determination.
+            for i in range(1, 100):
+                for j in range(1, 100):
+                    i /= 10
+                    j /= 10
+                    # Create a test profile which is a mix of the two anchors.
+                    mix = (i*newb + j*newr) / (i + j)
+
+                    # Save current iteration in running counts.
+                    resid.append(np.sum(np.abs(newpsf - mix)[450:820]))
+                    ind_i.append(i)
+                    ind_j.append(j)
+
+            # Determine which combination of indices minimizes model residuals.
+            ind = np.where(resid == np.min(resid))[0][0]
+            # Save the normalized indices for this wavelength.
+            wb.append(ind_i[ind] / (ind_i[ind] + ind_j[ind]))
+            wr.append(ind_j[ind] / (ind_i[ind] + ind_j[ind]))
+
+    wb = np.reshape(wb, (10, 7))
+    wr = np.reshape(wr, (10, 7))
+
+    # Fit a second order polynomial to the mean of the interpolation indices.
+    pb = np.polyfit(wave_range, np.mean(wb, axis=0), 2)
+    pr = np.polyfit(wave_range, np.mean(wr, axis=0), 2)
+
+    # Show the diagnostic plot if necessary.
+    if verbose == 3:
+        plotting.plot_interpmodel(wave_range, wb, wr, pb, pr)
+
+    # Save the coefficients to disk so that they can be accessed by the
+    # empirical trace construction module.
+    try:
+        df = pd.read_csv('Ref_files/interpolation_coefficients.csv')
+    except FileNotFoundError:
+        # If the interpolation coefficients file does not already exist, create
+        # a new dictionary.
+        df = {}
+    # Replace the data for F277W or no F277W depending on which was run.
+    if f277w is True:
+        df['F_red'] = pr
+        df['F_blue'] = pb
+    else:
+        df['NF_red'] = pr
+        df['NF_blue'] = pb
+    # Write to file.
+    df = pd.DataFrame(data=df)
+    df.to_csv('Ref_files/interpolation_coefficients.csv', index=False)
+
+    return pb, pr
+
+
+def derive_width_relations(no_wave=25, wave_start=0.6, wave_end=2.9,
+                           verbose=0):
+    """Due to the defocusing of the SOSS PSF, its width does not simply evolve
+    as it would if diffraction limited. Use the WebbPSF package to simulate
+    SOSS PSFs at different wavelengths, and fit a Gaussian profile o each PSF
+    to estimate the evolution in the widths.
+    When called, 2D monochromatic PSF profiles will be generated and saved
+    to disk if the user does not already have them available.
+    This should not need to be called by the end user except in rare cases.
+
+    Parameters
+    ----------
+    no_wave : int
+        Number of wavelengths to include.
+    wave_start : float
+        Smallest wavelength to consider in microns.
+    wave_end : float
+       vLargest wavelength to consider in microns.
+    verbose : int
+        Level of verbosity
+
+    Returns
+    -------
+    wfit : np.array
+        Polynomial coefficients describing how the spatial profile width
+        changes with wavelength.
+    """
+
+    # Get wavelength range to consider
+    wave_range = np.linspace(wave_start, wave_end, no_wave)
+    psfs = []
+    # Generate PSFs for each wavelength.
+    for w in wave_range:
+        # If the user already has the PSFs generated, import them.
+        infile = 'Ref_files/SOSS_PSFs/SOSS_os10_128x128_{0:.6f}_{1:.0f}.fits'.format(w, 0)
+        try:
+            psf = fits.getdata(infile, 0)
+        # Generate missing PSFs if necessary.
+        except FileNotFoundError:
+            errmsg = ' No monochromatic PSF found for {0:.2f}µm and WFE ' \
+                     'realization {1:.0f}. Creating it now.'.format(w, 0)
+            print(errmsg)
+            loicpsf(wavelist=[w * 1e-6], wfe_real=0, verbose=False)
+            psf = fits.getdata(infile, 0)
+        psfs.append(np.sum(psf[600:700, :], axis=0))
+    psfs = np.array(psfs)
+
+    # Define the gaussian model.
+    def gauss(x, *p):
+        amp, mu, sigma = p
+        return amp * np.exp(-(x - mu) ** 2 / (2. * sigma ** 2))
+    # Initial guess parameters
+    p0 = [0.01, 600., 200.]
+
+    # Fit the Gaussian to the PSF at each wavelength and save the width.
+    widths = []
+    for i in range(len(wave_range)):
+        coeff, var_matrix = curve_fit(gauss, np.arange(1280), psfs[i], p0=p0)
+        widths.append(np.abs(coeff[2]))
+    widths = np.array(widths)
+
+    # Normalize widths to their max value, and remove spurious smalll-valued
+    # outliers.
+    widths /= np.nanmax(widths)
+    ii = np.where(widths > 0.9)
+
+    # Fit a polynomial to the widths.
+    pp_init = np.polyfit(wave_range[ii], widths[ii], 5)
+    wfit = utils.robust_polyfit(wave_range[ii], widths[ii], pp_init)
+
+    # Do debugging plot.
+    if verbose == 3:
+        plotting.plot_width_relation(wave_range, widths, wfit, ii)
+
+    # Save the polynomial ceofficients to file so that this doesn't need to be
+    # repeated.
+    df = {'width_coefs': wfit}
+    df = pd.DataFrame(data=df)
+    df.to_csv('Ref_files/width_coefficients.csv', index=False)
+
+    return wfit
+
+
+def loicpsf(wavelist=None, wfe_real=None, save_to_disk=True, oversampling=10,
+            pixel=128, verbose=True):
+    """Calls the WebbPSF package to create monochromatic PSFs for NIRISS
+    SOSS observations and save them to disk.
+
+    Parameters
+    ----------
+    wavelist : list
+        List of wavelengths (in meters) for which to generate PSFs.
+    wfe_real : int
+        Index of wavefront realization to use for the PSF (if non-default
+        WFE realization is desired).
+    save_to_disk : bool
+        Whether to save PSFs to disk, or return them from the function.
+    oversampling : int
+        Oversampling pixels scale for the PSF.
+    pixel : int
+        Width of the PSF in native pixels.
+    verbose : bool
+        Whether to print explanatory comments.
+
+    Returns
+    -------
+    psf_list : list
+        If save_to_disk is False, a list of the generated PSFs.
+    """
+
+    # Create PSF storage array.
+    psf_list = []
+
+    if wavelist is None:
+        # List of wavelengths to generate PSFs for
+        wavelist = np.linspace(0.5, 5.2, 95) * 1e-6
+
+    # Select the NIRISS instrument
+    niriss = webbpsf.NIRISS()
+
+    # Override the default minimum wavelength of 0.6 microns
+    niriss.SHORT_WAVELENGTH_MIN = 0.5e-6
+    # Set correct filter and pupil wheel components
+    niriss.filter = 'CLEAR'
+    niriss.pupil_mask = 'GR700XD'
+
+    # Change the WFE realization if desired
+    if wfe_real is not None:
+        niriss.pupilopd = ('OPD_RevW_ote_for_NIRISS_predicted.fits.gz',
+                           wfe_real)
+
+    # Loop through all wavelengths to generate PSFs
+    first_time = True
+    for wave in wavelist:
+        if verbose is True:
+            print('Calculating PSF at wavelength ',
+                  round(wave/1e-6, 2), ' microns')
+        psf = niriss.calc_psf(monochromatic=wave, fov_pixels=pixel,
+                              oversample=oversampling, display=False)
+        psf_list.append(psf)
+
+        if save_to_disk is True:
+            filepath = 'Ref_files/SOSS_PSFs/'
+            if first_time is True:
+                # PSFs will be saved to a SOSS_PSFs directory. If it does not
+                # already exist, create it.
+                if os.path.exists(filepath):
+                    pass
+                else:
+                    os.mkdir(filepath)
+                first_time = False
+            # Save psf realization to disk
+            text = '{0:5f}'.format(wave*1e+6)
+            fpars = [oversampling, pixel, text, wfe_real]
+            outfile = filepath+'SOSS_os{0}_{1}x{1}_{2}_{3}.fits'.format(*fpars)
+            psf.writeto(outfile, overwrite=True)
+
+    if save_to_disk is False:
+        return psf_list

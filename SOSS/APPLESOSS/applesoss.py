@@ -16,13 +16,9 @@ algorithm.
 from astropy.io import fits
 import numpy as np
 from scipy.interpolate import interp2d
-from scipy.optimize import minimize
-from tqdm import tqdm
 import warnings
 
 from SOSS.dms.soss_centroids import get_soss_centroids
-from SOSS.APPLESOSS import _calibrations
-from SOSS.APPLESOSS import interpolation_model
 from SOSS.APPLESOSS import plotting
 from SOSS.APPLESOSS import utils
 from SOSS.dms import soss_ref_files
@@ -38,8 +34,6 @@ class EmpiricalProfile:
     ----------
     clear : np.array
         SOSS CLEAR exposure data frame.
-    f277w : np.array
-        SOSS exposure data frame using the F277W filter.
     subarray : str
         NIRISS SOSS subarray identifier. One of 'SUBSTRIP256', or 'FULL'.
     pad : int
@@ -48,10 +42,6 @@ class EmpiricalProfile:
     oversample : int
         Oversampling factor. Oversampling will be equal in the spectral and
         spatial directions.
-    soss_width : int
-        Proposed box extraction width. The spatial profile will be zeroed
-        outside of this box. Should be synchronized with the parameter of the
-        same name in ATOCA.
     verbose : int
         Level of verbosity: either 3, 2, 1, or 0.
          3 - show all of progress prints, progress bars, and diagnostic plots.
@@ -73,17 +63,14 @@ class EmpiricalProfile:
         Save spatial profile models to reference file.
     """
 
-    def __init__(self, clear, f277w=None, pad=0, oversample=1, soss_width=40,
-                 verbose=0):
+    def __init__(self, clear, pad=0, oversample=1, verbose=0):
         """Initializer for EmpiricalProfile.
         """
 
         # Initialize input attributes.
         self.clear = clear
-        self.f277w = f277w
         self.pad = pad
         self.oversample = oversample
-        self.soss_width = soss_width
         self.verbose = verbose
 
         # Validate the parameters and determine the correct subarray.
@@ -92,30 +79,14 @@ class EmpiricalProfile:
         self.order2 = None
         self.order3 = None
 
-    def build_empirical_profile(self, lazy=True):
+    def build_empirical_profile(self):
         """Run the empirical spatial profile construction module.
-
-        Parameters
-        ----------
-        lazy : bool
-            If True, activate lazy mode (this might actually be better...).
         """
 
-        # Ensure F277W exposure is provided if user does not want lazy method,
-        # But warn that its probably better.
-        if lazy is False:
-            if self.f277w is None:
-                msg = 'An F277W exposure must be provided for this method.'
-                raise ValueError(msg)
-            else:
-                msg = 'This method is now depreciated.'
-                warnings.warn(msg, DeprecationWarning, stacklevel=2)
         # Run the empirical spatial profile construction.
-        o1, o2, o3 = build_empirical_profile(self.clear, self.f277w,
-                                             self.subarray,
+        o1, o2, o3 = build_empirical_profile(self.clear, self.subarray,
                                              self.pad, self.oversample,
-                                             self.soss_width, self.verbose,
-                                             lazy)
+                                             self.verbose)
         # Set any niggling negatives to zero (mostly for the bluest end of the
         # second order where things get skrewy).
         for o in [o1, o2, o3]:
@@ -162,8 +133,7 @@ class EmpiricalProfile:
         return utils.validate_inputs(self)
 
 
-def build_empirical_profile(clear, f277w, subarray, pad,
-                            oversample, soss_width, verbose, lazy=False):
+def build_empirical_profile(clear, subarray, pad, oversample, verbose):
     """Main procedural function for the empirical spatial profile construction
     module. Calling this function will initialize and run all the required
     subroutines to produce a spatial profile for the first, second and third
@@ -174,27 +144,20 @@ def build_empirical_profile(clear, f277w, subarray, pad,
     ----------
     clear : np.array
         SOSS CLEAR exposure data frame.
-    f277w : np.array, None
-        SOSS exposure data frame using the F277W filter.
     subarray : str
-        NIRISS SOSS subarray identifier. One of SUBSTRIP256', or 'FULL'.
+        NIRISS SOSS subarray identifier. One of 'SUBSTRIP256', or 'FULL'.
     pad : int
         Amount of padding to include (in native pixels) in the spatial and
         spectral directions.
     oversample : int
         Oversampling factor. Oversampling will be equal in the spectral and
         spatial directions.
-    soss_width : int
-        Proposed extraction box size. Should be synchronized with parameter of
-        the same name in ATOCA.
     verbose : int
         Level of verbosity: either 3, 2, 1, or 0.
          3 - show all of progress prints, progress bars, and diagnostic plots.
          2 - show progress prints and bars.
          1 - show only progress prints.
          0 - show nothing.
-    lazy : bool
-        If True, activate lazy mode (might actually be better....).
 
     Returns
     -------
@@ -209,7 +172,6 @@ def build_empirical_profile(clear, f277w, subarray, pad,
     ------
     ValueError
         When the clear dimensions do not match a known subarray.
-        If the bad pixel mask is not the same shape as the clear frame.
     """
 
     if verbose != 0:
@@ -221,8 +183,6 @@ def build_empirical_profile(clear, f277w, subarray, pad,
     # If subarray is FULL - trim down to SUBSTRIP256 and work with that.
     if subarray == 'FULL':
         clear = clear[-256:, :]
-        if f277w is not None:
-            f277w = f277w[-256:, :]
         # Reset all variable to appropriate SUBSTRIP256 values.
         subarray = 'SUBSTRIP256'
         dimy, dimx = np.shape(clear)
@@ -235,10 +195,6 @@ def build_empirical_profile(clear, f277w, subarray, pad,
     floor = np.nanpercentile(clear, 0.1)
     clear -= floor
     #clear = utils.replace_badpix(clear, verbose=verbose)
-    if f277w is not None:
-        floor_f277w = np.nanpercentile(f277w, 0.1)
-        f277w -= floor_f277w
-        f277w = utils.replace_badpix(f277w, verbose=verbose)
 
     # Get the centroid positions for both orders from the data using the
     # edgetrig method.
@@ -256,11 +212,6 @@ def build_empirical_profile(clear, f277w, subarray, pad,
                               centroids['order 1']['X centroid'][5:-5],
                               centroids['order 1']['Y centroid'][5:-5],
                               pad=5, ref_cols=[0, -1], replace=True)
-    if f277w is not None:
-        f277w = pad_spectral_axis(f277w[:, 5:-5],
-                                  centroids['order 1']['X centroid'][5:-5],
-                                  centroids['order 1']['Y centroid'][5:-5],
-                                  pad=5, ref_cols=[0, -1], replace=True)
 
     # ========= CONSTRUCT SPATIAL PROFILE MODELS =========
     # Build a first estimate of the first and second order spatial profiles.
@@ -271,49 +222,7 @@ def build_empirical_profile(clear, f277w, subarray, pad,
     # order for each wavelength. Relies on some fine tuning and the second
     # order to be low level when it physically overlaps the first order.
     psfs = utils.generate_psfs(wave_increment=0.1, verbose=verbose)
-    if lazy is True:
-        if verbose != 0:
-            print('  Lazy method selected...', flush=True)
-        o1_native = np.zeros((dimy + 2*pad, dimx))
-        first_time = True
-        vbs = verbose
-        disable = utils.verbose_to_bool(verbose)
-        # for i in tqdm(range(dimx), disable=disable):
-        #     profile = np.copy(clear[:, i])
-        #     cens = [centroids['order 1']['Y centroid'][i],
-        #             centroids['order 2']['Y centroid'][i],
-        #             centroids['order 3']['Y centroid'][i]]
-        #     if first_time is False:
-        #         vbs = 0
-        #     newprof = reconstruct_wings256(profile, ycens=cens,
-        #                                    contamination=[2, 3],
-        #                                    pad=pad, verbose=vbs,
-        #                                    smooth=True)
-        #     first_time = False
-        #     o1_native[:, i] = newprof
-        o1_uncontam, o1_native = construct_order23(clear, centroids, 1, psfs)
-
-
-    # The original method. Get anchor profiles from the bluest clean order 1
-    # profile in the CLEAR exposure, and the reddest in the F277W. Use these
-    # anchors to interpolate the contaminated region. Stitch together the
-    # F277W, interpolation, and CLEAR for the final model.
-    else:
-        o1_rough = interpolation_model.construct_order1(clear, f277w,
-                                                        centroids,
-                                                        subarray=subarray,
-                                                        pad=pad,
-                                                        verbose=verbose)
-
-        # Rescale the first order profile to the native flux level.
-        if verbose != 0:
-            print('   Rescaling first order to native flux level...',
-                  flush=True)
-        o1_native = rescale_model(clear, o1_rough, centroids,
-                                  pad=pad, verbose=verbose)
-    # Add back the floor.
-    #o1_uncontam = o1_native + floor
-    #return o1_native, None, None
+    o1_uncontam, o1_native = construct_order23(clear, centroids, 1, psfs)
 
     # Construct the second order profile.
     if verbose != 0:
@@ -354,26 +263,6 @@ def build_empirical_profile(clear, f277w, subarray, pad,
                                         centroids['order 3']['Y centroid'],
                                         pad=pad)
 
-    # # Zero out everything not within the proposed extraction region.
-    # ii = np.where((centroids['order 1']['Y centroid'] < 255) &
-    #               (centroids['order 1']['Y centroid'] > 0))
-    # weights_o1 = utils.get_box_weights(centroids['order 1']['Y centroid'][ii],
-    #                                    soss_width, (dimy, dimx),
-    #                                    cols=centroids['order 1']['X centroid'][ii].astype(int))
-    # o1_uncontam *= weights_o1
-    # ii = np.where((centroids['order 2']['Y centroid'] < 255) &
-    #               (centroids['order 2']['Y centroid'] > 0))
-    # weights_o2 = utils.get_box_weights(centroids['order 2']['Y centroid'][ii],
-    #                                    soss_width, (dimy, dimx),
-    #                                    cols=centroids['order 2']['X centroid'][ii].astype(int))
-    # o2_uncontam *= weights_o2
-    # ii = np.where((centroids['order 3']['Y centroid'] < 255) &
-    #               (centroids['order 3']['Y centroid'] > 0))
-    # weights_o3 = utils.get_box_weights(centroids['order 3']['Y centroid'][ii],
-    #                                    soss_width, (dimy, dimx),
-    #                                    cols=centroids['order 3']['X centroid'][ii].astype(int))
-    # o3_uncontam *= weights_o3
-
     # Column normalize. Only want the original detector to sum to 1, not the
     # additional padding + oversampling.
     o1_uncontam /= np.nansum(o1_uncontam, axis=0)
@@ -396,52 +285,6 @@ def build_empirical_profile(clear, f277w, subarray, pad,
         print('\nDone.')
 
     return o1_uncontam, o2_uncontam, o3_uncontam
-
-
-def chromescale(profile, wave_start, wave_end, ycen, poly_coef):
-    """Correct chromatic variations in the PSF along the spatial direction
-    using the polynomial relationship derived in _fit_trace_widths.
-
-    Parameters
-    ----------
-    profile : np.array
-        1D PSF profile to be rescaled.
-    wave_start : float
-        Starting wavelength.
-    wave_end : float
-        Wavelength after rescaling.
-    ycen : float
-        Y-pixel position of the order 1 trace centroid.
-    poly_coef : tuple
-        1st order polynomial coefficients describing the variation of the trace
-        width with wavelength, e.g. as output by _fit_trace_widths.
-
-    Returns
-    -------
-    prof_rescale : np.array
-        Rescaled 1D PSF profile.
-    """
-
-    # Get the starting and ending trace widths.
-    w_start = np.polyval(poly_coef, wave_start)
-    w_end = np.polyval(poly_coef, wave_end)
-
-    # Create a rescaled spatial axis. Shift the Y-centroid to zero so
-    # that it does not move during the rescaling.
-    xax = np.arange(len(profile)) - ycen
-    xax_rescale = xax * (w_end / w_start)
-    # Rescale the PSF by interpolating onto the new axis.
-    prof_rescale = np.interp(xax, xax_rescale, profile)
-
-    # Ensure the total flux remains the same
-    # Integrate the profile with a Trapezoidal method.
-    flux_i = np.sum(profile[1:-1]) + 0.5 * (profile[0] + profile[-1])
-    flux_f = np.sum(prof_rescale[1:-1]) + 0.5 * (
-            prof_rescale[0] + prof_rescale[-1])
-    # Rescale the new profile so the total encompassed flux remains the same.
-    prof_rescale /= (flux_f / flux_i)
-
-    return prof_rescale
 
 
 def construct_order23(residual, cen, order, psfs, pivot=750, halfwidth=12,
@@ -483,8 +326,6 @@ def construct_order23(residual, cen, order, psfs, pivot=750, halfwidth=12,
 
     # Get wavelength calibration.
     wavecal_x, wavecal_w = utils.get_wave_solution(order=order)
-    # Get width polynomial coefficients.
-    #width_polys = utils.read_width_coefs(verbose=verbose)
 
     first_time = True
     if order == 3:
@@ -518,7 +359,8 @@ def construct_order23(residual, cen, order, psfs, pivot=750, halfwidth=12,
         # Simulate the wings.
         if first_time is False:
             verbose = 0
-        wing, wing2 = simulate_wings(wave, psfs, halfwidth=halfwidth)
+        wing, wing2 = simulate_wings(wave, psfs, halfwidth=halfwidth,
+                                     verbose=verbose)
         first_time = False
         # Concatenate the wings onto the profile core.
         end = int(round((cen_o + 1 * halfwidth), 0))
@@ -596,19 +438,6 @@ def construct_order23(residual, cen, order, psfs, pivot=750, halfwidth=12,
                                      profile)
 
             new_frame[:, i] = working_prof
-
-
-            # anchor_prof = new_frame[:, pivot]
-            # anchor_prof_native = new_frame_native[:, pivot]
-            # sc = cen['order '+str(order)]['Y centroid'][pivot]
-            # ec = cen['order '+str(order)]['Y centroid'][i]
-            # working_prof = np.interp(np.arange(dimy), np.arange(dimy) - sc + ec,
-            #                          anchor_prof)
-            # new_frame[:, i] = working_prof
-            # working_prof_native = np.interp(np.arange(dimy),
-            #                                 np.arange(dimy) - sc + ec,
-            #                                 anchor_prof_native)
-            # new_frame_native[:, i] = working_prof_native
 
     # For columns where the centroid is off the detector, reuse the bluest
     # reconstructed profile.
@@ -767,228 +596,7 @@ def pad_spectral_axis(frame, xcens, ycens, pad=0, ref_cols=None,
     return newframe
 
 
-def reconstruct_wings256(profile, ycens=None, contamination=[2, 3], pad=0,
-                         halfwidth=14, verbose=0, smooth=True, **kwargs):
-    """Masks the second and third diffraction orders and reconstructs the
-     underlying wing structure of the first order. Also adds padding in the
-     spatial direction if required.
-
-    Parameters
-    ----------
-    profile : np.array
-        Spectral trace spatial profile.
-    ycens : list, np.array
-        Y-coordinates of the trace centroids. Must include all three
-        diffraction orders if contamination is True, or only the first order if
-        False.
-    contamination : list, np.array, None
-        List of contaminating orders present on the detector (not including the
-        first order). For an uncontaminated detector, pass None.
-    pad : int
-        Amount to pad each end of the spatial axis (in pixels).
-    halfwidth : int
-        Half width of the profile core in pixels.
-    verbose : int
-        Level of verbosity.
-    smooth : bool
-        If True, smooths over highly deviant pixels in the spatial profile.
-
-    Returns
-    -------
-    newprof : np.array
-        Input spatial profile with reconstructed wings and padding.
-
-    Raises
-    ------
-    ValueError
-        If centroids are not provided for all three orders when contamination
-        is not None.
-    """
-
-    dimy = len(profile)
-    # Convert Y-centroid positions to indices
-    ycens = np.atleast_1d(ycens)
-    ycens = np.round(ycens, 0).astype(int)
-    if contamination is not None and ycens.size != 3:
-        errmsg = 'Centroids must be provided for first three orders ' \
-                 'if there is contamination.'
-        raise ValueError(errmsg)
-
-    # mask negative and zero values.
-    profile[profile <= 0] = np.nan
-
-    # ======= RECONSTRUCT CONTAMINATED WING =======
-    # Mask the cores of the first three diffraction orders and fit a straight
-    # line to the remaining pixels. Additionally mask any outlier pixels that
-    # are >3-sigma deviant from that line. Fit a 7th order polynomial to
-    # remaining pixels.
-    # Get the right wing of the trace profile in log space and spatial axis.
-    working_profile, axis = np.copy(profile), np.arange(dimy)
-    working_profile = np.log10(working_profile)
-
-    # === Outlier masking ===
-    # Mask the cores of each order.
-    for order, ycen in enumerate(ycens):
-        order += 1
-        if order == 1:
-            start = 0
-            end = int(ycen + 2.5*halfwidth)
-        else:
-            start = np.min([ycen - int(1.5*halfwidth), dimy-2])
-            end = np.min([ycen + int(1.5*halfwidth), dimy-1])
-        # Set core of each order to NaN.
-        working_profile[start:end] = np.nan
-    # Fit the unmasked part of the wing to determine the mean linear trend.
-    inds = np.where(np.isfinite(working_profile))[0]
-    pp = utils.robust_polyfit(axis[inds], working_profile[inds], (0, 0))
-    wing_mean = pp[1] + pp[0] * axis
-    # Calculate the standard dev of unmasked points from the mean trend.
-    stddev_m = np.sqrt(np.median((working_profile[inds] - wing_mean[inds])**2))
-
-    # === Wing fit ===
-    # Get fresh contaminated wing profile.
-    working_profile = np.copy(profile)
-    working_profile = np.log10(working_profile)
-    # Mask first order core.
-    working_profile[:int(ycens[0] + halfwidth)] = np.nan
-    # Mask second and third orders.
-    if contamination is not None:
-        for order, ycen in enumerate(ycens):
-            order += 1
-            if order in contamination:
-                if order == 3:
-                    halfwidth -= 2
-                if order == 2 and ycens[0] - ycens[1] < 5:
-                    if (ycens[1]-0.5*halfwidth)-(ycens[0]+1.5*halfwidth) < 5:
-                        start = int(np.max([ycen, 0]))
-                    else:
-                        start = np.max([ycen - halfwidth, 0]).astype(int)
-                else:
-                    start = np.max([ycen - 1.5*halfwidth, 0]).astype(int)
-                end = np.max([ycen + 1.5*halfwidth, 1]).astype(int)
-                # Set core of each order to NaN.
-                working_profile[start:end] = np.nan
-    halfwidth += 2
-    # Find all outliers that are >3-sigma deviant from the mean.
-    start = int(ycens[0] + 2.5*halfwidth)
-    inds2 = np.where(
-        np.abs(working_profile[start:] - wing_mean[start:]) > 3*stddev_m)
-    # Mask outliers
-    working_profile[start:][inds2] = np.nan
-    # Mask edge of the detector.
-    working_profile[-3:] = np.nan
-    # Indices of all unmasked points in the contaminated wing.
-    inds3 = np.isfinite(working_profile)
-
-    # Fit with a 9th order polynomial.
-    # To ensure that the polynomial does not start turning up in the padded
-    # region, extend the linear fit to the edge of the pad to force the fit
-    # to continue decreasing.
-    ext_ax = np.arange(25) + np.max(axis[inds3]) + np.max([pad, 25])
-    ext_prof = pp[1] + pp[0] * ext_ax
-    # Concatenate right-hand profile with the extended linear trend.
-    fit_ax = np.concatenate([axis[inds3], ext_ax])
-    fit_prof = np.concatenate([working_profile[inds3], ext_prof])
-    # Use np.polyfit for a first estimate of the coefficients.
-    pp_r0 = np.polyfit(fit_ax, fit_prof, 9)
-    # Robust fit using the polyfit results as a starting point.
-    pp_r = utils.robust_polyfit(fit_ax, fit_prof, pp_r0)
-
-    # === Stitching ===
-    newprof = np.copy(profile)
-    # Interpolate contaminated regions.
-    if contamination is not None:
-        for order in contamination:
-            # Interpolate around the trace centroid.
-            start = np.max([ycens[order - 1]-1.5*halfwidth, ycens[0]+halfwidth]).astype(int)
-            if start >= dimy-1:
-                # If order is off of the detector.
-                continue
-            end = np.min([ycens[order - 1]+1.5*halfwidth, dimy-1]).astype(int)
-            # Join interpolations to the data.
-            newprof = np.concatenate([newprof[:start],
-                                      10**np.polyval(pp_r, axis)[start:end],
-                                      newprof[end:]])
-
-    # Interpolate nans and negatives with median of surrounding pixels.
-    for pixel in np.where(np.isnan(newprof))[0]:
-        minp = np.max([pixel-5, 0])
-        maxp = np.min([pixel+5, dimy])
-        newprof[pixel] = np.nanmedian(newprof[minp:maxp])
-
-    if smooth is True:
-        # Replace highly deviant pixels throughout the wings.
-        wing_fit = np.polyval(pp_r, axis[int(ycens[0] + 2.5*halfwidth):])
-        # Calculate the standard dev of unmasked points from the wing fit.
-        stddev_f = np.sqrt(np.nanmedian((np.log10(newprof[int(ycens[0] + 2.5*halfwidth):])-wing_fit)**2))
-        # Find all outliers that are >3-sigma deviant from the mean.
-        inds4 = np.where(np.abs(np.log10(newprof[int(ycens[0] + 2.5*halfwidth):])-wing_fit) > 3*stddev_f)
-        newprof[int(ycens[0] + 2.5*halfwidth):][inds4] = 10**wing_fit[inds4]
-
-    # Add padding - padding values are constant at the median of edge pixels.
-    padval_r = np.median(newprof[-8:-3])
-    padval_l = np.median(newprof[3:8])
-    newprof = np.concatenate([np.tile(padval_l, pad+4), newprof[4:-4],
-                              np.tile(padval_r, pad+4)])
-
-    # Do diagnostic plot if requested.
-    if verbose == 3:
-        plotting.plot_wing_reconstruction(profile, ycens, axis[inds3],
-                                          working_profile[inds3], pp_r,
-                                          newprof, pad, **kwargs)
-
-    return newprof
-
-
-def rescale_model(data, model, centroids, pad=0, verbose=0):
-    """Rescale a column normalized trace model to the flux level of an actual
-    observation. A multiplicative coefficient is determined via Chi^2
-    minimization independently for each column, such that the rescaled model
-    best matches the data.
-
-    Parameters
-    ----------
-    data : np.array
-        Observed dataframe.
-    model : np.array
-        Column normalized trace model.
-    centroids : dict
-        Centroids dictionary.
-    pad : int
-        Amount of padding on the spatial axis.
-    verbose : int
-        Level of verbosity.
-
-    Returns
-    -------
-    model_rescale : np.array
-        Trace model after rescaling.
-    """
-
-    # Determine first guess coefficients.
-    k0 = np.nanmax(data, axis=0)
-    ks = []
-    # Loop over all columns - surely there is a more vectorized way to do this
-    # whenever I try to minimize all of k at once I get nonsensical results?
-    disable = utils.verbose_to_bool(verbose)
-    for i in tqdm(range(data.shape[1]), disable=disable):
-        # Get region around centroid
-        ycen = int(round(centroids['order 1']['Y centroid'][i], 0)) + pad
-        start = ycen - 13
-        end = ycen + 14
-        # Minimize the Chi^2.
-        lik_args = (data[(start - pad):(end - pad), i], model[start:end, i])
-        k = minimize(utils.lik, k0[i], lik_args)
-        ks.append(k.x[0])
-
-    # Rescale the column normalized model.
-    ks = np.array(ks)
-    model_rescale = ks * model
-
-    return model_rescale
-
-
-def simulate_wings(w, psfs, halfwidth=12):
+def simulate_wings(w, psfs, halfwidth=12, verbose=0):
     """Extract the wings from a simulated WebbPSF 1D profile.
 
     Parameters
@@ -999,6 +607,8 @@ def simulate_wings(w, psfs, halfwidth=12):
         Array of simulated SOSS PSFs.
     halfwidth : int
         Half width of the SOSS trace.
+    verbose : int
+        Level of verbosity.
 
     Returns
     -------
@@ -1027,61 +637,6 @@ def simulate_wings(w, psfs, halfwidth=12):
     wing2 = stand[:ystart]
     pp = np.polyfit(ax[:ystart], np.log10(wing2), 9)
     wing2 = 10**np.polyval(pp, ax[:ystart])
-
-    return wing, wing2
-
-
-def simulate_wings_OLD(wavelength, width_coefs, halfwidth=12, verbose=0):
-    """Extract the spatial profile wings from a simulated SOSS PSF to
-    reconstruct the wings of the second order.
-
-    Parameters
-    ----------
-    wavelength : float
-        Wavelength for which to simulate wings.
-    width_coefs : np.array
-        Trace width polynomial coefficients.
-    halfwidth : int
-        Half width of a spatial profile along the spatial axis.
-    verbose : int
-        Level of verbosty.
-
-    Returns
-    -------
-    wing : np.array
-        Right wing fit.
-    wing2 : np.array
-        Left wing fit.
-    """
-
-    # Open a simulated PSF from which to steal some wings.
-    ref_profile = 'Ref_files/SOSS_PSFs/SOSS_os1_256x256_1.000000_0.fits'
-    try:
-        psf = fits.getdata(ref_profile, 0)
-    except FileNotFoundError:
-        # If the profile doesn't exist, create it and save it to disk.
-        _calibrations.loicpsf([1.0 * 1e-6], save_to_disk=True, oversampling=1,
-                              pixel=256, verbose=False, wfe_real=0)
-        psf = fits.getdata(ref_profile, 0)
-    stand = np.sum(psf, axis=0)
-    # Normalize the profile by its maximum.
-    max_val = np.nanmax(stand)
-    stand /= max_val
-    # Scale the profile width to match the current wavelength.
-    stand = chromescale(stand, 1, wavelength, 128, width_coefs)
-
-    # Define the edges of the profile 'core'.
-    ax = np.arange(256)
-    ystart = int(round(256 // 2 - halfwidth, 0))
-    yend = int(round(256 // 2 + halfwidth, 0))
-    # Get and fit the 'right' wing.
-    wing = stand[yend:]
-    pp = np.polyfit(ax[yend:], np.log10(wing), 7)
-    wing = 10**(np.polyval(pp, ax[yend:]))
-    # Get and fit the 'left' wing.
-    wing2 = stand[:ystart]
-    pp = np.polyfit(ax[:ystart], np.log10(wing2), 7)
-    wing2 = 10**(np.polyval(pp, ax[:ystart]))
 
     # Do diagnostic plot if necessary.
     if verbose == 3:
