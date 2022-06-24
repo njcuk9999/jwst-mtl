@@ -23,24 +23,24 @@ def generate_psfs(wave_increment=0.1, npix=400, verbose=0):
     Parameters
     ----------
     wave_increment : float
-        Wavelength step (in µm).
+        Wavelength step (in µm) for PSF simulation.
     npix : int
         Size (in native pixels) of the 1D PSFs.
     verbose : int
         Level of verbosity.
     Returns
     -------
-    psfs : np.recarray
+    psfs : array-like
         Array of 1D PSFs at specified wavelength increments.
     """
 
     # Calculate the number of PSFs to generate based on the SOSS wavelength
     # range and the chosen increment.
     nsteps = int((2.9 - 0.5) / wave_increment)
-    # Estimate time to completion assuming ~2.5s per PSF.
-    time_frame = (nsteps * 5) / 60
+    # Estimate time to completion assuming ~5s per PSF.
+    time_frame = int((nsteps * 5) / 60)
     if verbose != 0:
-        print('   Generating {0} PSFs. Expected to take about {1:.2f} mins.'.format(nsteps, time_frame))
+        print('   Generating {0} PSFs. Expected to take about {1} mins.'.format(nsteps, time_frame))
     wavelengths = np.linspace(0.5, 2.9, nsteps) * 1e-6
 
     # Set up WebbPSF simulation for NIRISS.
@@ -104,8 +104,8 @@ def get_wave_solution(order):
     return wavecal_x, wavecal_w
 
 
-def interpolate_profile(w, psfs):
-    """For efficiency, 1D SOSS PSFs were gennerated through WebbPSF at
+def interpolate_profile(w, wavelengths, psfs):
+    """For efficiency, 1D SOSS PSFs were generated through WebbPSF at
     discrete intervals. This function performs the linear interpolation to
     construct profiles at a specified wavelength.
 
@@ -113,6 +113,8 @@ def interpolate_profile(w, psfs):
     ----------
     w : float
         Wavelength at which to return a PSF (in µm).
+    wavelengths : array_like
+        Wavelengths (in µm) corresponding to the PSF array.
     psfs : array-like
         WebbPSF simulated 1D PSFs.
 
@@ -123,7 +125,6 @@ def interpolate_profile(w, psfs):
     """
 
     # Get the simulated PSF anchors for the interpolation.
-    wavelengths = psfs['Wave'][:, 0]
     low = np.where(wavelengths < w)[0][-1]
     up = np.where(wavelengths > w)[0][0]
     anch_low = wavelengths[low]
@@ -135,7 +136,7 @@ def interpolate_profile(w, psfs):
     weight_up = 1 - (anch_up - w) / 0.1
 
     # Linearly interpolate the anchor profiles to the wwavelength of interest.
-    profile = np.average(np.array([psfs['PSF'][low], psfs['PSF'][up]]),
+    profile = np.average(np.array([psfs[low], psfs[up]]),
                          weights=np.array([weight_low, weight_up]), axis=0)
 
     return profile

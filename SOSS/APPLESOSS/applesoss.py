@@ -636,10 +636,10 @@ def simulate_wings(w, psfs, halfwidth=12, verbose=0):
     ----------
     w : float
         Wavelength of interest (µm).
-    psfs : np.recarray
+    psfs : array-like
         Array of simulated SOSS PSFs.
     halfwidth : int
-        Half width of the SOSS trace.
+        Half-width of the SOSS trace.
     verbose : int
         Level of verbosity.
 
@@ -652,7 +652,7 @@ def simulate_wings(w, psfs, halfwidth=12, verbose=0):
     """
 
     # Get the simulated profile at the desired wavelength.
-    stand = utils.interpolate_profile(w, psfs)
+    stand = utils.interpolate_profile(w, psfs['Wave'][:, 0], psfs['PSF'])
     psf_size = np.shape(psfs['PSF'])[1]
     # Normalize to a max value of one to match the simulated profile.
     max_val = np.nanpercentile(stand, 99.5)
