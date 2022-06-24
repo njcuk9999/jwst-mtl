@@ -79,14 +79,14 @@ class EmpiricalProfile:
         self.order2 = None
         self.order3 = None
 
-    def build_empirical_profile(self):
+    def build_empirical_profile(self, wave_increment=0.1):
         """Run the empirical spatial profile construction module.
         """
 
         # Run the empirical spatial profile construction.
         o1, o2, o3 = build_empirical_profile(self.clear, self.subarray,
                                              self.pad, self.oversample,
-                                             self.verbose)
+                                             self.verbose, wave_increment)
         # Set any niggling negatives to zero (mostly for the bluest end of the
         # second order where things get skrewy).
         for o in [o1, o2, o3]:
@@ -133,7 +133,8 @@ class EmpiricalProfile:
         return utils.validate_inputs(self)
 
 
-def build_empirical_profile(clear, subarray, pad, oversample, verbose):
+def build_empirical_profile(clear, subarray, pad, oversample, verbose,
+                            wave_increment):
     """Main procedural function for the empirical spatial profile construction
     module. Calling this function will initialize and run all the required
     subroutines to produce a spatial profile for the first, second and third
@@ -214,39 +215,51 @@ def build_empirical_profile(clear, subarray, pad, oversample, verbose):
                               pad=5, ref_cols=[0, -1], replace=True)
 
     # ========= CONSTRUCT SPATIAL PROFILE MODELS =========
-    # Build a first estimate of the first and second order spatial profiles.
+    # Build a first estimate of the first, second, and third order spatial
+    # profiles. The cores can be mostly read off of the clear dataframe - it
+    # is just the wings that need reconstruction. For this, we will use
+    # WebbPSF.
+    # Generate WebbPSF 1D profiles across a range of wavelengths.
+    psfs = utils.generate_psfs(wave_increment=wave_increment, verbose=verbose)
+
+    # === First Order ===
     # Construct the first order profile.
     if verbose != 0:
         print('  Starting the first order model...', flush=True)
-    # Lazy method: no interpolation, no F277W. Just fit the wing of the first
-    # order for each wavelength. Relies on some fine tuning and the second
-    # order to be low level when it physically overlaps the first order.
-    psfs = utils.generate_psfs(wave_increment=0.1, verbose=verbose)
-    o1_uncontam, o1_native = construct_order23(clear, centroids, 1, psfs)
+    o1_uncontam, o1_native = reconstruct_order(clear, centroids, order=1,
+                                               psfs=psfs)
+    # Add padding to first order spatial axis if necessary.
+    if pad != 0:
+        o1_uncontam = np.pad(o1_uncontam, ((pad, pad), (0, 0)), mode='edge')
 
+    # === Second Order ===
     # Construct the second order profile.
     if verbose != 0:
         print('  Starting the second order trace...')
-    o2_out = construct_order23(clear - o1_native[pad:dimy + pad, :],
-                               centroids, 2, psfs, verbose=verbose, o1_prof=o1_native[pad:dimy + pad, :])
+    o2_out = reconstruct_order(clear - o1_native, centroids, order=2,
+                               psfs=psfs,
+                               o1_prof=o1_uncontam[pad:dimy + pad, :],
+                               verbose=verbose)
     o2_uncontam, o2_native = o2_out[0], o2_out[1]
-    # Add padding to the second order if necessary
+    # Add padding to the second order spatial axis if necessary.
     if pad != 0:
-        o2_uncontam = pad_order23(o2_uncontam, centroids, pad, order='2')
+        o2_uncontam = pad_order23(o2_uncontam, centroids, pad, order=2)
 
+    # === Third Order ===
     # Construct the third order profile.
     if verbose != 0:
         print('  Starting the third order trace...')
-    o3_out = construct_order23(clear - o1_native[pad:dimy + pad, :] - o2_native,
-                               centroids, 3, psfs, pivot=700,
-                               verbose=verbose, o2_prof=o2_uncontam)
+    o3_out = reconstruct_order(clear - o1_native - o2_native, centroids,
+                               order=3, psfs=psfs, pivot=700,
+                               o2_prof=o2_uncontam[pad:dimy + pad, :],
+                               verbose=verbose)
     o3_uncontam = o3_out[0]
-    # Add padding to the third order if necessary
+    # Add padding to the third order spatial axis if necessary.
     if pad != 0:
-        o3_uncontam = pad_order23(o3_uncontam, centroids, pad, order='3')
+        o3_uncontam = pad_order23(o3_uncontam, centroids, pad, order=3)
 
     # ========= FINAL TUNING =========
-    # Pad the spectral axis.
+    # Pad the spectral axes.
     if pad != 0:
         if verbose != 0:
             print(' Adding padding to the spectral axis...')
@@ -287,182 +300,7 @@ def build_empirical_profile(clear, subarray, pad, oversample, verbose):
     return o1_uncontam, o2_uncontam, o3_uncontam
 
 
-def construct_order23(residual, cen, order, psfs, pivot=750, halfwidth=12,
-                      o1_prof=None, o2_prof=None, verbose=0):
-    """Reconstruct the wings of the second or third orders after the first
-    order spatial profile has been modeled and subtracted off.
-
-    Parameters
-    ----------
-    residual : np.array
-        NIRISS/SOSS data frame residual map - either with o1, or both o1 and
-        o2 removed.
-    cen : dict
-        Centroids dictionary.
-    order : str
-        The order to reconstruct.
-    pivot : int
-        For order 2, minimum spectral pixel value for which a wing
-        reconstruction will be attempted. For order 3, the maximum pixel value.
-        For spectral pixels < or >pivot respectively, the profile at pivot will
-        be used.
-    halfwidth : int
-        Half width in pixels of the spatial profile core.
-    verbose : int
-        level of verbosity.
-
-    Returns
-    -------
-    new_frame : np.array
-        Model of the second order spatial profile with wings reconstructed.
-    new_frame_native : np.array
-        New frame, but at the native counts level.
-    """
-
-    # Initalize new data frame and get subarray dimensions.
-    dimy, dimx = np.shape(residual)
-    new_frame = np.zeros_like(residual)
-    new_frame_native = np.zeros_like(residual)
-
-    # Get wavelength calibration.
-    wavecal_x, wavecal_w = utils.get_wave_solution(order=order)
-
-    first_time = True
-    if order == 3:
-        maxi = pivot
-    else:
-        maxi = dimx
-    # Hard stop for profile reuse - will handle these via padding.
-    if order in [2, 3]:
-        stop = np.where(cen['order ' + str(order)]['Y centroid'] >= dimy)[0][0] + halfwidth
-    for i in range(dimx):
-        wave = wavecal_w[i]
-        # Skip over columns where the throughput is too low to get a good core
-        # and/or the order is buried within another.
-        if order == 2 and i < pivot:
-            continue
-        if order == 3 and i > pivot:
-            continue
-        # If the centroid is too close to the detector edge, make note of
-        # the column and deal with it later
-        cen_o = int(round(cen['order ' + str(order)]['Y centroid'][i], 0))
-        if cen_o + halfwidth > dimy:
-            if i < maxi:
-                maxi = i
-            continue
-
-        # Get a copy of the spatial profile, and normalize it by its max value.
-        working_prof = np.copy(residual[:, i])
-        max_val = np.nanpercentile(working_prof, 99.5)
-        working_prof /= max_val
-
-        # Simulate the wings.
-        if first_time is False:
-            verbose = 0
-        wing, wing2 = simulate_wings(wave, psfs, halfwidth=halfwidth,
-                                     verbose=verbose)
-        first_time = False
-        # Concatenate the wings onto the profile core.
-        end = int(round((cen_o + 1 * halfwidth), 0))
-        start = int(round((cen_o - 1 * halfwidth), 0))
-        stitch = np.concatenate([wing2, working_prof[start:end], wing])
-        # Rescale to native flux level.
-        stitch_native = stitch * max_val
-        # Shift the profile back to its correct centroid position
-        stitch = np.interp(np.arange(dimy), np.arange(400) - 400//2 + cen_o,
-                           stitch)
-        stitch_native = np.interp(np.arange(dimy),
-                                  np.arange(400) - 400//2 + cen_o,
-                                  stitch_native)
-        new_frame[:, i] = stitch
-        new_frame_native[:, i] = stitch_native
-
-    # For columns where the order 2 core is not distinguishable (due to the
-    # throughput dropping near 0, or it being buried in order 1) reuse the
-    # reddest reconstructed profile.
-    if order == 2:
-        wavecal_x_o1, wavecal_w_o1 = utils.get_wave_solution(order=1)
-        for i in range(pivot):
-            wave_o2 = wavecal_w[i]
-            up = np.where(wavecal_w_o1 > wave_o2)[0][-1]
-            low = np.where(wavecal_w_o1 < wave_o2)[0][0]
-            anch_low = wavecal_w_o1[low]
-            anch_up = wavecal_w_o1[up]
-
-            # Assume that the PSF varies linearly over the interval.
-            # Calculate the weighting coefficients for each anchor.
-            diff = np.abs(anch_up - anch_low)
-            weight_low = 1 - (wave_o2 - anch_low) / diff
-            weight_up = 1 - (anch_up - wave_o2) / diff
-
-            profile = np.average(np.array([o1_prof[:, low], o1_prof[:, up]]),
-                                 weights=np.array([weight_low, weight_up]),
-                                 axis=0)
-
-            co2 = cen['order 2']['Y centroid'][i]
-            co1_l = cen['order 1']['Y centroid'][low]
-            co1_u = cen['order 1']['Y centroid'][up]
-            co1 = np.mean([co1_l, co1_u])
-            working_prof = np.interp(np.arange(dimy), np.arange(dimy) - co1 + co2,
-                                     profile)
-
-            new_frame[:, i] = working_prof
-
-    # O3
-    if order == 3:
-        wavecal_x_o2, wavecal_w_o2 = utils.get_wave_solution(order=2)
-        for i in range(maxi, stop):
-            wave_o3 = wavecal_w[i]
-            up = np.where(wavecal_w_o2 > wave_o3)[0][-1]
-            low = np.where(wavecal_w_o2 < wave_o3)[0][0]
-            anch_low = wavecal_w_o2[low]
-            anch_up = wavecal_w_o2[up]
-
-            # Assume that the PSF varies linearly over the interval.
-            # Calculate the weighting coefficients for each anchor.
-            diff = np.abs(anch_up - anch_low)
-            weight_low = 1 - (wave_o3 - anch_low) / diff
-            weight_up = 1 - (anch_up - wave_o3) / diff
-
-            profile = np.average(
-                np.array([o2_prof[:, low], o2_prof[:, up]]),
-                weights=np.array([weight_low, weight_up]),
-                axis=0)
-
-            co3 = cen['order 3']['Y centroid'][i]
-            co2_l = cen['order 2']['Y centroid'][low]
-            co2_u = cen['order 2']['Y centroid'][up]
-            co2 = np.mean([co2_l, co2_u])
-            working_prof = np.interp(np.arange(dimy),
-                                     np.arange(dimy) - co2 + co3,
-                                     profile)
-
-            new_frame[:, i] = working_prof
-
-    # For columns where the centroid is off the detector, reuse the bluest
-    # reconstructed profile.
-    if order in [2]:
-        for i in range(maxi, stop):
-            anchor_prof = new_frame[:, maxi - 1]
-            anchor_prof_native = new_frame_native[:, maxi - 1]
-            sc = cen['order '+str(order)]['Y centroid'][maxi - 1]
-            ec = cen['order '+str(order)]['Y centroid'][i]
-            working_prof = np.interp(np.arange(dimy), np.arange(dimy) - sc + ec,
-                                     anchor_prof)
-            new_frame[:, i] = working_prof
-            working_prof_native = np.interp(np.arange(dimy),
-                                            np.arange(dimy) - sc + ec,
-                                            anchor_prof_native)
-            new_frame_native[:, i] = working_prof_native
-
-            # # Handle all rows after hard cut.
-            # new_frame = pad_order23(new_frame[halfwidth:-halfwidth], cen,
-            #                         pad=halfwidth, order=order)
-
-    return new_frame, new_frame_native
-
-
-def oversample_frame(dataframe, os=1):
+def oversample_frame(dataframe, os):
     """Oversample a dataframe by a specified amount.
 
     Parameters
@@ -503,7 +341,7 @@ def pad_order23(dataframe, cen, pad, order):
         Centroids dictionary.
     pad : int
         Amount of padding to add to the spatial axis.
-    order : str
+    order : int
         Order to pad.
 
     Returns
@@ -594,6 +432,183 @@ def pad_spectral_axis(frame, xcens, ycens, pad=0, ref_cols=None,
                                      frame[:, ref_cols[1]])
 
     return newframe
+
+
+def reconstruct_order(residual, cen, order, psfs, pivot=750, halfwidth=12,
+                      o1_prof=None, o2_prof=None, verbose=0):
+    """Reconstruct the wings of the second or third orders after the first
+    order spatial profile has been modeled and subtracted off.
+
+    Parameters
+    ----------
+    residual : np.array
+        NIRISS/SOSS data frame residual map - either with o1, or both o1 and
+        o2 removed.
+    cen : dict
+        Centroids dictionary.
+    order : int
+        The order to reconstruct.
+    pivot : int
+        For order 2, minimum spectral pixel value for which a wing
+        reconstruction will be attempted. For order 3, the maximum pixel value.
+        For spectral pixels < or >pivot respectively, the profile at pivot will
+        be used.
+    halfwidth : int
+        Half width in pixels of the spatial profile core.
+    verbose : int
+        level of verbosity.
+
+    Returns
+    -------
+    new_frame : np.array
+        Model of the second order spatial profile with wings reconstructed.
+    new_frame_native : np.array
+        New frame, but at the native counts level.
+    """
+
+    # Initalize new data frame and get subarray dimensions.
+    dimy, dimx = np.shape(residual)
+    new_frame = np.zeros_like(residual)
+    new_frame_native = np.zeros_like(residual)
+
+    # Get wavelength calibration.
+    wavecal_x, wavecal_w = utils.get_wave_solution(order=order)
+
+    first_time = True
+    if order == 3:
+        maxi = pivot
+    else:
+        maxi = dimx
+    # Hard stop for profile reuse - will handle these via padding.
+    if order in [2, 3]:
+        stop = np.where(cen['order ' + str(order)]['Y centroid'] >= dimy)[0][0] + halfwidth
+    for i in range(dimx):
+        wave = wavecal_w[i]
+        # Skip over columns where the throughput is too low to get a good core
+        # and/or the order is buried within another.
+        if order == 2 and i < pivot:
+            continue
+        if order == 3 and i > pivot:
+            continue
+        # If the centroid is too close to the detector edge, make note of
+        # the column and deal with it later
+        cen_o = int(round(cen['order ' + str(order)]['Y centroid'][i], 0))
+        if cen_o + halfwidth > dimy:
+            if i < maxi:
+                maxi = i
+            continue
+
+        # Get a copy of the spatial profile, and normalize it by its max value.
+        working_prof = np.copy(residual[:, i])
+        max_val = np.nanpercentile(working_prof, 99.5)
+        working_prof /= max_val
+
+        # Simulate the wings.
+        if first_time is False:
+            verbose = 0
+        wing, wing2 = simulate_wings(wave, psfs, halfwidth=halfwidth,
+                                     verbose=verbose)
+        first_time = False
+        # Concatenate the wings onto the profile core.
+        end = int(round((cen_o + 1 * halfwidth), 0))
+        start = int(round((cen_o - 1 * halfwidth), 0))
+        stitch = np.concatenate([wing2, working_prof[start:end], wing])
+        # Rescale to native flux level.
+        stitch_native = stitch * max_val
+        # Shift the profile back to its correct centroid position
+        psf_len = np.shape(psfs['PSF'])[1]
+        stitch = np.interp(np.arange(dimy),
+                           np.arange(psf_len) - psf_len//2 + cen_o,
+                           stitch)
+        stitch_native = np.interp(np.arange(dimy),
+                                  np.arange(psf_len) - psf_len//2 + cen_o,
+                                  stitch_native)
+        new_frame[:, i] = stitch
+        new_frame_native[:, i] = stitch_native
+
+    # For columns where the order 2 core is not distinguishable (due to the
+    # throughput dropping near 0, or it being buried in order 1) reuse the
+    # reddest reconstructed profile.
+    if order == 2:
+        wavecal_x_o1, wavecal_w_o1 = utils.get_wave_solution(order=1)
+        for i in range(pivot):
+            wave_o2 = wavecal_w[i]
+            up = np.where(wavecal_w_o1 > wave_o2)[0][-1]
+            low = np.where(wavecal_w_o1 < wave_o2)[0][0]
+            anch_low = wavecal_w_o1[low]
+            anch_up = wavecal_w_o1[up]
+
+            # Assume that the PSF varies linearly over the interval.
+            # Calculate the weighting coefficients for each anchor.
+            diff = np.abs(anch_up - anch_low)
+            weight_low = 1 - (wave_o2 - anch_low) / diff
+            weight_up = 1 - (anch_up - wave_o2) / diff
+
+            profile = np.average(np.array([o1_prof[:, low], o1_prof[:, up]]),
+                                 weights=np.array([weight_low, weight_up]),
+                                 axis=0)
+
+            co2 = cen['order 2']['Y centroid'][i]
+            co1_l = cen['order 1']['Y centroid'][low]
+            co1_u = cen['order 1']['Y centroid'][up]
+            co1 = np.mean([co1_l, co1_u])
+            working_prof = np.interp(np.arange(dimy), np.arange(dimy) - co1 + co2,
+                                     profile)
+
+            new_frame[:, i] = working_prof
+
+    # O3
+    if order == 3:
+        wavecal_x_o2, wavecal_w_o2 = utils.get_wave_solution(order=2)
+        for i in range(maxi, stop):
+            wave_o3 = wavecal_w[i]
+            up = np.where(wavecal_w_o2 > wave_o3)[0][-1]
+            low = np.where(wavecal_w_o2 < wave_o3)[0][0]
+            anch_low = wavecal_w_o2[low]
+            anch_up = wavecal_w_o2[up]
+
+            # Assume that the PSF varies linearly over the interval.
+            # Calculate the weighting coefficients for each anchor.
+            diff = np.abs(anch_up - anch_low)
+            weight_low = 1 - (wave_o3 - anch_low) / diff
+            weight_up = 1 - (anch_up - wave_o3) / diff
+
+            profile = np.average(
+                np.array([o2_prof[:, low], o2_prof[:, up]]),
+                weights=np.array([weight_low, weight_up]),
+                axis=0)
+
+            co3 = cen['order 3']['Y centroid'][i]
+            co2_l = cen['order 2']['Y centroid'][low]
+            co2_u = cen['order 2']['Y centroid'][up]
+            co2 = np.mean([co2_l, co2_u])
+            working_prof = np.interp(np.arange(dimy),
+                                     np.arange(dimy) - co2 + co3,
+                                     profile)
+
+            new_frame[:, i] = working_prof
+
+    # For columns where the centroid is off the detector, reuse the bluest
+    # reconstructed profile.
+    if order in [2]:
+        for i in range(maxi, stop):
+            anchor_prof = new_frame[:, maxi - 1]
+            anchor_prof_native = new_frame_native[:, maxi - 1]
+            sc = cen['order '+str(order)]['Y centroid'][maxi - 1]
+            ec = cen['order '+str(order)]['Y centroid'][i]
+            working_prof = np.interp(np.arange(dimy), np.arange(dimy) - sc + ec,
+                                     anchor_prof)
+            new_frame[:, i] = working_prof
+            working_prof_native = np.interp(np.arange(dimy),
+                                            np.arange(dimy) - sc + ec,
+                                            anchor_prof_native)
+            new_frame_native[:, i] = working_prof_native
+
+            # # Handle all rows after hard cut.
+            # new_frame = pad_order23(new_frame[halfwidth:-halfwidth], cen,
+            #                         pad=halfwidth, order=order)
+
+    return new_frame, new_frame_native
 
 
 def simulate_wings(w, psfs, halfwidth=12, verbose=0):
