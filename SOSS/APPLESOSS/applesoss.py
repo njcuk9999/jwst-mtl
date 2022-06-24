@@ -330,7 +330,7 @@ def build_empirical_profile(clear, f277w, subarray, pad,
         print('  Starting the third order trace...')
     o3_out = construct_order23(clear - o1_native[pad:dimy + pad, :] - o2_native,
                                centroids, 3, psfs, pivot=700,
-                               verbose=verbose)
+                               verbose=verbose, o2_prof=o2_uncontam)
     o3_uncontam = o3_out[0]
     # Add padding to the third order if necessary
     if pad != 0:
@@ -566,6 +566,37 @@ def construct_order23(residual, cen, order, psfs, pivot=750, halfwidth=12,
 
             new_frame[:, i] = working_prof
 
+    # O3
+    if order == 3:
+        wavecal_x_o2, wavecal_w_o2 = utils.get_wave_solution(order=2)
+        for i in range(maxi, stop):
+            wave_o3 = wavecal_w[i]
+            up = np.where(wavecal_w_o2 > wave_o3)[0][-1]
+            low = np.where(wavecal_w_o2 < wave_o3)[0][0]
+            anch_low = wavecal_w_o2[low]
+            anch_up = wavecal_w_o2[up]
+
+            # Assume that the PSF varies linearly over the interval.
+            # Calculate the weighting coefficients for each anchor.
+            diff = np.abs(anch_up - anch_low)
+            weight_low = 1 - (wave_o3 - anch_low) / diff
+            weight_up = 1 - (anch_up - wave_o3) / diff
+
+            profile = np.average(
+                np.array([o2_prof[:, low], o2_prof[:, up]]),
+                weights=np.array([weight_low, weight_up]),
+                axis=0)
+
+            co3 = cen['order 3']['Y centroid'][i]
+            co2_l = cen['order 2']['Y centroid'][low]
+            co2_u = cen['order 2']['Y centroid'][up]
+            co2 = np.mean([co2_l, co2_u])
+            working_prof = np.interp(np.arange(dimy),
+                                     np.arange(dimy) - co2 + co3,
+                                     profile)
+
+            new_frame[:, i] = working_prof
+
 
             # anchor_prof = new_frame[:, pivot]
             # anchor_prof_native = new_frame_native[:, pivot]
@@ -581,7 +612,7 @@ def construct_order23(residual, cen, order, psfs, pivot=750, halfwidth=12,
 
     # For columns where the centroid is off the detector, reuse the bluest
     # reconstructed profile.
-    if order in [2, 3]:
+    if order in [2]:
         for i in range(maxi, stop):
             anchor_prof = new_frame[:, maxi - 1]
             anchor_prof_native = new_frame_native[:, maxi - 1]
