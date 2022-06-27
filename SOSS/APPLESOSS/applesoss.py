@@ -476,7 +476,7 @@ def reconstruct_order(residual, cen, order, psfs, halfwidth, pad, pivot=750,
 
         # Get a copy of the spatial profile, and normalize it by its max value.
         working_prof = np.copy(residual[:, i])
-        max_val = np.nanpercentile(working_prof[(cen_o-halfwidth):(cen_o+halfwidth)], 99.5)
+        max_val = np.nanpercentile(working_prof[(cen_o-halfwidth):(cen_o+halfwidth)], 99.9)
         working_prof /= max_val
 
         # Simulate the wings.
@@ -484,11 +484,15 @@ def reconstruct_order(residual, cen, order, psfs, halfwidth, pad, pivot=750,
             verbose = 0
         wing, wing2 = simulate_wings(wave, psfs, halfwidth=halfwidth,
                                      verbose=verbose)
+        # Hack to shift left wing over by one pixel to account for the fact
+        # that it isn't lining up perfectly with the profile for some reason.
+        wing2 = np.pad(wing2, (1, 0), mode='edge')
         first_time = False
         # Concatenate the wings onto the profile core.
         end = int(round((cen_o + halfwidth), 0))
         start = int(round((cen_o - halfwidth), 0))
-        stitch = np.concatenate([wing2, working_prof[start:end], wing])
+
+        stitch = np.concatenate([wing2, working_prof[(start+1):end], wing])
         # Shift the profile back to its correct centroid position
         psf_len = np.shape(psfs['PSF'])[1]
         stitch = np.interp(np.arange(dimy+pad),
@@ -578,7 +582,7 @@ def simulate_wings(w, psfs, halfwidth, verbose=0):
                                       np.zeros_like(psfs['Wave'][:, 0]))
     psf_size = np.shape(psfs['PSF'])[1]
     # Normalize to a max value of one to match the simulated profile.
-    max_val = np.nanpercentile(stand, 99.5)
+    max_val = np.nanpercentile(stand, 99.9)
     stand /= max_val
 
     # Define the edges of the profile 'core'.
