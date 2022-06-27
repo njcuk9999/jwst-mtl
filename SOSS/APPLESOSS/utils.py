@@ -9,91 +9,68 @@ Miscellaneous utility functions for APPLESOSS.
 """
 
 from astropy.io import fits
-from datetime import datetime
 import numpy as np
 import pandas as pd
 from scipy.optimize import least_squares
 from tqdm import tqdm
 
-from SOSS.extract.applesoss import _calibrations
+from SOSS.APPLESOSS import _calibrations
+from SOSS.APPLESOSS import plotting
 
 
-def _gen_imagehdu_header(hdu, order, pad, oversample):
-    """Generate the appropriate fits header for reference file image HDUs.
-
-    Parameters
-    ----------
-    hdu : HDU object
-        Image HDU object.
-    order : int
-        Diffraction order.
-    pad : int
-        Amount of padding in native pixels.
-    oversample : int
-        Oversampling factor.
-
-    Returns
-    -------
-    hdu : HDU object
-        Image HDU object with appropriate header added.
-    """
-
-    hdu.header['ORDER'] = order
-    hdu.header.comments['ORDER'] = 'Spectral order'
-    hdu.header['OVERSAMP'] = oversample
-    hdu.header.comments['OVERSAMP'] = 'Pixel oversampling'
-    hdu.header['PADDING'] = pad
-    hdu.header.comments['PADDING'] = 'Native pixel-size padding around the image'
-    hdu.header['EXTNAME'] = 'ORDER   '
-    hdu.header['EXTVER'] = order
-
-    return hdu
-
-
-def _gen_primaryhdu_header(hdu, subarray, filename):
-    """Generate the appropriate header for the reference file primary HDU.
+def get_box_weights(centroid, n_pix, shape, cols=None):
+    """ Return the weights of a box aperture given the centroid and the width
+    of the box in pixels. All pixels will have the same weights except at the
+    ends of the box aperture.
+    Copy of the same function in soss_boxextract.py of the jwst pipeline to
+    circumvent package versioning issues...
 
     Parameters
     ----------
-    hdu : HDU object
-        Primary HDU object.
-    subarray : str
-        Subarray identifier.
-    filename : str
-        Output filename.
-
+    centroid : array[float]
+        Position of the centroid (in rows). Same shape as `cols`
+    n_pix : float
+        Width of the extraction box in pixels.
+    shape : Tuple(int, int)
+        Shape of the output image. (n_row, n_column)
+    cols : array[int]
+        Column indices of good columns. Used if the centroid is defined
+        for specific columns or a sub-range of columns.
     Returns
     -------
-    hdu : HDU object
-        Primary HDU object with appropriate header added.
+    weights : array[float]
+        An array of pixel weights to use with the box extraction.
     """
 
-    hdu.header['DATE'] = str(datetime.utcnow())
-    hdu.header.comments['DATE'] = 'Date this file was created (UTC)'
-    hdu.header['ORIGIN'] = 'SOSS Team MTL'
-    hdu.header.comments['ORIGIN'] = 'Organization responsible for creating file'
-    hdu.header['TELESCOP'] = 'JWST    '
-    hdu.header.comments['TELESCOP'] = 'Telescope used to acquire the data'
-    hdu.header['INSTRUME'] = 'NIRISS  '
-    hdu.header.comments['INSTRUME'] = 'Instrument used to acquire the data'
-    hdu.header['SUBARRAY'] = subarray
-    hdu.header.comments['SUBARRAY'] = 'Subarray used'
-    hdu.header['FILENAME'] = filename
-    hdu.header.comments['FILENAME'] = 'Name of the file'
-    hdu.header['REFTYPE'] = 'SPECPROFILE'
-    hdu.header.comments['REFTYPE'] = 'Reference file type'
-    hdu.header['PEDIGREE'] = 'GROUND  '
-    hdu.header.comments['PEDIGREE'] = 'The pedigree of the reference file'
-    hdu.header['DESCRIP'] = '2D trace profile'
-    hdu.header.comments['DESCRIP'] = 'Description of the reference file'
-    hdu.header['AUTHOR'] = 'Michael Radica'
-    hdu.header.comments['AUTHOR'] = 'Author of the reference file'
-    hdu.header['USEAFTER'] = '2000-01-01T00:00:00'
-    hdu.header.comments['USEAFTER'] = 'Use after date of the reference file'
-    hdu.header['EXP_TYPE'] = 'NIS_SOSS'
-    hdu.header.comments['EXP_TYPE'] = 'Type of data in the exposure'
+    nrows, ncols = shape
 
-    return hdu
+    # Use all columns if not specified
+    if cols is None:
+        cols = np.arange(ncols)
+
+    # Row centers of all pixels.
+    rows = np.indices((nrows, len(cols)))[0]
+
+    # Pixels that are entierly inside the box are set to one.
+    cond = (rows <= (centroid - 0.5 + n_pix / 2))
+    cond &= ((centroid + 0.5 - n_pix / 2) <= rows)
+    weights = cond.astype(float)
+
+    # Fractional weights at the upper bound.
+    cond = (centroid - 0.5 + n_pix / 2) < rows
+    cond &= (rows < (centroid + 0.5 + n_pix / 2))
+    weights[cond] = (centroid + n_pix / 2 - (rows - 0.5))[cond]
+
+    # Fractional weights at the lower bound.
+    cond = (rows < (centroid + 0.5 - n_pix / 2))
+    cond &= ((centroid - 0.5 - n_pix / 2) < rows)
+    weights[cond] = (rows + 0.5 - (centroid - n_pix / 2))[cond]
+
+    # Return with the specified shape with zeros where the box is not defined.
+    out = np.zeros(shape, dtype=float)
+    out[:, cols] = weights
+
+    return out
 
 
 def get_wave_solution(order):
@@ -229,61 +206,78 @@ def read_width_coefs(verbose=0):
     return wc
 
 
-def replace_badpix(clear, badpix_mask, fill_negatives=True, verbose=0):
-    """Replace all bad pixels with the median of the pixels values of a 5x5 box
+def replace_badpix(clear, thresh=5, box_size=10, verbose=0):
+    """Replace bad pixels with the median of the pixels values of a box
     centered on the bad pixel.
 
     Parameters
     ----------
     clear : np.array
-        Dataframe with bad pixels.
-    badpix_mask : np.array
-        Boolean array with the same dimensions as clear. Values of True
-        indicate a bad pixel.
-    fill_negatives : bool
-        If True, also interpolates all negatives values in the frame.
+        Data frame.
+    thresh : int
+        Threshold in standard deviations to flag a bad pixel.
+    box_size : int
+        Box side half-length to use.
     verbose : int
-        Level of verbosity.
+        level of verbosity.
 
     Returns
     -------
     clear_r : np.array
-        Input clear frame with bad pixels interpolated.
+        Data frame with bad pixels interpolated.
     """
 
-    # Get frame dimensions
+    # Initial setup of arrays and variables
+    disable = verbose_to_bool(verbose)
+    clear_r = clear.copy()
+    counts = 0
     dimy, dimx = np.shape(clear)
 
-    # Include all negative and zero pixels in the mask if necessary.
-    if fill_negatives is True:
-        mask = badpix_mask | (clear <= 0)
-    else:
-        mask = badpix_mask
+    def get_interp_box(data, box_size, i, j, dimx, dimy):
+        """ Get median and standard deviation of a box centered on a specified
+        pixel.
+        """
 
-    # Loop over all bad pixels.
-    clear_r = clear*1
-    ys, xs = np.where(mask)
+        # Get the box limits.
+        low_x = np.max([i - box_size, 0])
+        up_x = np.min([i + box_size, dimx - 1])
+        low_y = np.max([j - box_size, 0])
+        up_y = np.min([j + box_size, dimy - 1])
 
-    disable = verbose_to_bool(verbose)
-    for y, x in tqdm(zip(ys, xs), total=len(ys), disable=disable):
-        # Get coordinates of pixels in the 5x5 box.
-        starty = np.max([(y-2), 0])
-        endy = np.min([(y+3), dimy])
-        startx = np.max([0, (x-2)])
-        endx = np.min([dimx, (x+3)])
-        # calculate replacement value to be median of surround pixels.
-        rep_val = np.nanmedian(clear[starty:endy, startx:endx])
-        i = 1
-        # if the median value is still bad, widen the surrounding region
-        while np.isnan(rep_val) or rep_val <= 0:
-            starty = np.max([(y-2-i), 0])
-            endy = np.min([(y+3+i), dimy])
-            startx = np.max([0, (x-2-i)])
-            endx = np.min([dimx, (x+3-i)])
-            rep_val = np.nanmedian(clear[starty:endy, startx:endx])
-            i += 1
-        # Replace bad pixel with the new value.
-        clear_r[y, x] = rep_val
+        # Calculate median and std deviation of box.
+        median = np.nanmedian(data[low_y:up_y, low_x:up_x])
+        stddev = np.nanstd(data[low_y:up_y, low_x:up_x])
+
+        # Pack into array.
+        box_properties = np.array([median, stddev])
+
+        return box_properties
+
+    # Loop over all pixels and interpolate those that deviate by more than the
+    # threshold from the surrounding median.
+    for i in tqdm(range(dimx), disable=disable):
+        for j in range(dimy):
+            box_size_i = box_size
+            box_prop = get_interp_box(clear_r, box_size_i, i, j, dimx, dimy)
+
+            # Ensure that the median and std dev we extract are good.
+            # If not, increase the box size until they are.
+            while np.any(np.isnan(box_prop)) or np.any(box_prop < 0):
+                box_size_i += 1
+                box_prop = get_interp_box(clear_r, box_size_i, i, j, dimx,
+                                          dimy)
+            med, std = box_prop[0], box_prop[1]
+
+            # If central pixel is too deviant (or nan, or negative) replace it.
+            if np.abs(clear_r[j, i] - med) > thresh*std or np.isnan(clear_r[j, i]) or clear_r[j, i] < 0:
+                clear_r[j, i] = med
+                counts += 1
+
+    # Print statistics and show debugging plot if necessary.
+    if verbose != 0:
+        print('   {:.2f}% of pixels interpolated.'.format(counts/dimx/dimy*100))
+        if verbose == 3:
+            plotting.plot_badpix(clear, clear_r)
 
     return clear_r
 
@@ -360,17 +354,14 @@ def validate_inputs(etrace):
         dataframe.
     """
 
-    # Ensure F277 exposure has same shapse as CLEAR.
+    # Ensure F277W exposure has same shapse as CLEAR.
     if etrace.f277w is not None:
         if np.shape(etrace.f277w) != np.shape(etrace.clear):
             msg = 'F277W and CLEAR frames must be the same shape.'
             raise ValueError(msg)
-    # Ensure bad pixel mask and clear have the same dimensions.
-    if np.shape(etrace.clear) != np.shape(etrace.badpix_mask):
-        raise ValueError('Bad pixel mask must be the same shape as the data.')
     # Ensure padding and oversampling are integers.
-    if type(etrace.pad) != tuple and len(etrace.pad) != 2:
-        raise ValueError('Padding must be a length 2 tuple.')
+    if type(etrace.pad) != int:
+        raise ValueError('Padding must be an integer.')
     if type(etrace.oversample) != int:
         raise ValueError('Oversampling factor must be an integer.')
     # Ensure verbose is the correct format.
@@ -403,43 +394,3 @@ def verbose_to_bool(verbose):
         verbose_bool = True
 
     return verbose_bool
-
-
-def write_to_file(order1, order2, subarray, filename, pad, oversample):
-    """Utility function to write the 2D trace profile to disk. Data will be
-    saved as a multi-extension fits file.
-
-    Parameters
-    ----------
-    order1 : np.array (2D)
-        Uncontaminated first order data frame.
-    order2 : np.array (2D)
-        Uncontaminated first order data frame. Pass None to only write the
-        first order profile to file.
-    subarray : str
-        Subarray used.
-    filename : str
-        Name of the file to which to write the data.
-    pad : int
-        Amount of padding in native pixels.
-    oversample : int
-        Oversampling factor.
-    """
-
-    # Generate the primary HDU with appropriate header keywords.
-    hdu_p = fits.PrimaryHDU()
-    hdu_p = _gen_primaryhdu_header(hdu_p, subarray, filename)
-    hdulist = [hdu_p]
-    # Generate an ImageHDU for the first order profile.
-    hdu_1 = fits.ImageHDU(data=order1)
-    hdu_1 = _gen_imagehdu_header(hdu_1, 1, pad, oversample)
-    hdulist.append(hdu_1)
-    # Generate an ImageHDU for the second order profile.
-    if order2 is not None:
-        hdu_2 = fits.ImageHDU(data=order2)
-        hdu_2 = _gen_imagehdu_header(hdu_2, 2, pad, oversample)
-        hdulist.append(hdu_2)
-
-    # Write the file to disk.
-    hdu = fits.HDUList(hdulist)
-    hdu.writeto(filename, overwrite=True)
