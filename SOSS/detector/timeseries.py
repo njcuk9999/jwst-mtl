@@ -507,18 +507,6 @@ class TimeSeries(object):
 
         self.modif_str = self.modif_str + '_zodibackg'
 
-    def add_cosmic_rays(self):
-        # temps de lecture d"un read
-        # tframe = simPars.tframe ou qqchose
-        # gain = simPars.gain
-
-        # Read the background file.
-        #with fits.open(self.cosmicray_dir + os.path.basename(zodifile)) as hdu:
-        #    zodiimage = hdu[0].data  # [electrons/s]
-        # qqchose comme ca
-        #self.data = crsim(self.data, bla bla)
-        # pas ca: addCRs2Exposure.run(f, 'SUNMIN', OutputDir)
-
 
     def write_to_fits(self, filename=None):
         """Write to a .fits file the new header and data.

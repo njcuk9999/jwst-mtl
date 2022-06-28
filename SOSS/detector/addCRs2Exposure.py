@@ -17,6 +17,7 @@ def run(filein, ptype, outDir):
     #Fixing the saturation problem for FULL images
     subarray = hdr['SUBARRAY']
     
+    #TODO: Can be removed when the issue with FULL images is solved
     if subarray == 'FULL': 
 
         #Negative pixels
@@ -31,7 +32,7 @@ def run(filein, ptype, outDir):
 
     #NIRISS Detector 
     #noise files are in units of ADU so need gain to convert to electrons
-    gain=1.62
+    gain=1.6
     dataout, mask = crsim.addCRs(datain, tframe, ptype=ptype, f_ADC=gain) 
 
     #building output filename:

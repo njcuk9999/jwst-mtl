@@ -243,158 +243,212 @@ def invert_ipc_kernel(kern):
 flux_ds={'SUNMIN':4.8983, 'SUNMAX':1.7783, 'FLARES':3046.83}
 pxsize = 18e-4 #18 micron per pixel (in cm)
 
-def addCRs(cube, tframe, ptype='SUNMIN', f_ADC=1):
+def addCRs(cube, tframe, ptype='SUNMIN', f_ADC=1.6):
 
     #read in IPC convolution kernel
     #ipcreffile='/mnt/jwstdata/crds_cache/references/jwst/niriss/jwst_niriss_ipc_0008.fits'
     ipcreffile='/genesis/jwst/jwst-ref-soss/cosmicray/jwst_niriss_ipc_0008.fits'
     kernel = pyfits.getdata(ipcreffile)
     kernel = invert_ipc_kernel(kernel)
+    cube_tot = cube # The cube with the integrations
+    crmask_tot = np.zeros(cube.shape, dtype='int32')
 
-    #if data is 4D remove dimension for N_int - only adds CRs to first integration, could be adjusted to iterate over ints if needed
-    numdim=len(cube.shape)
-    if numdim>3:
-        cube=np.squeeze(cube[0,:,:,:])
+   
+
+    #Add cosmic rays on all iterations 
+    #numdim=len(cube.shape)
         
     #Get size of active pixel array for different FULL, SUBSCRIPT256 or SUBSCRIPT96
-    
+    cube=np.squeeze(cube_tot[0,:,:,:])
+
     if cube.shape[1] == 2048:
     
         l1 = cube.shape[2]-8  #There is 4 reference pixels around the full image
         l2 = cube.shape[1]-8
         print('FULL, Active pixels are', l1, 'x', l2)
-        crmask = np.zeros(cube.shape, dtype='int32')
-        cube=cube.astype('int32')
         
     elif cube.shape[1] == 512: 
         
         l1 = cube.shape[2]-8  #There is 4 reference pixels around the full image
-        l2 = cube.shape[1]-4  #The bottom doesn't have reference pixels for SUBSCRIPT96
-        print('SUBSCRIPT512, Active pixels are', l1, 'x', l2)
-        crmask = np.zeros(cube.shape, dtype='int32')
-        cube = cube.astype('int32')        
+        l2 = cube.shape[1]-4  #The bottom doesn't have reference pixels for SUBSCRIPT512
+        print('SUBSCRIPT512, Active pixels are', l1, 'x', l2)        
     
     elif cube.shape[1] == 256: 
         
         l1 = cube.shape[2]-8  #There is 4 reference pixels around the full image
         l2 = cube.shape[1]-4  #The bottom doesn't have reference pixels for SUBSCRIPT256
         print('SUBSCRIPT256, Active pixels are', l1, 'x', l2)
-        crmask = np.zeros(cube.shape, dtype='int32')
-        cube=cube.astype('int32')
     
     elif cube.shape[1] == 96: 
         
         l1 = cube.shape[2]-8  #There is 4 reference pixels around the full image
-        l2 = cube.shape[1]-4  #The bottom doesn't have reference pixels for SUBSCRIPT96
+        l2 = cube.shape[1]  #The bottom and top don't have reference pixels for SUBSCRIPT96
         print('SUBSCRIPT96, Active pixels are', l1, 'x', l2)
-        crmask = np.zeros(cube.shape, dtype='int32')
-        cube = cube.astype('int32')
-
+    
+    cube=cube.astype('int32')
     #compute average number of events per frame
     dsarea = (pxsize*l1)*(pxsize*l2)
     #CJW: Removed factor of 8.1 from line below due to 20180430 email from Giovanna saying it was a fudge factor to get to IPC affected level of 12% per ks, but SUNMIN hit rate is 1.6% per ks before IPC convolution
     n_average_events = flux_ds[ptype] * dsarea * tframe 
     #n_average_events = 8.1 *flux_ds[ptype] * dsarea * tframe #Cranking up the flux for testing purpposes by factor 7.5 -> N hits after 1,000 sec ~ 12-13%
-    print ('Events per frame: ',n_average_events)
-    print ('Adding events to cube...')
     ngroups = cube.shape[0]
-    print('The number of groups is:',ngroups)
-    #for i in range(2):
-    for i in range(ngroups):
-        #make tmpmask including reference pixels
-        
-        if cube.shape[1] == 2048:
-            tmpmask = np.zeros([(l2+8),(l1+8)], dtype='float')
-            
-        else: 
-            tmpmask = np.zeros([(l2+4),(l1+8)], dtype='float') 
-            
-            
-        nevents = np.random.poisson(n_average_events) #Chooses a random amount of events around the average
-        
-        #place cosmic rays randomly in active pixels only
-        icoors = np.random.randint(0, l1, size=nevents)+4
-        
-        if cube.shape[1] == 2048:
-            jcoors = np.random.randint(0, l2, size=nevents)+4
-            
-        else: 
-            jcoors = np.random.randint(0, l2, size=nevents)
+   
+    print ('Adding events to integrations...')
 
-        crarray = getCRs(nevents, ptype=ptype)  #An array with a bunch of 21x21 pixel events
-        #return an array with the requested number of CR events,
-        #extracted from the CR library by M. Robberto (in crlib/)
+    for integr in range(len(cube_tot)): 
 
-        #limits when adding CR arrays 
-        crars = int(crarraysize/2-0.5) #10
-        crare = int(crarraysize/2+0.5) #11
+        cube = np.squeeze(cube_tot[integr,:,:,:])     #The cube without the integrations
+        crmask = np.squeeze(crmask_tot[integr,:,:,:])  #The mask without the integrations
 
-        #each CR events is a 21x21 array which needs to be added to the
-        #frame array at the point of the CR hit
-        #for j in range(nevents):
-        for j in range(nevents):
-            x = icoors[j]
-            y = jcoors[j]
 
-            #dealing with edges            
-            xs, xe = crars, crare
-            ys, ye = crars, crare
-            xars, xare = 0, crarraysize
-            yars, yare = 0, crarraysize
-            if(x < crars):
-                xs = x
-                xars = crars - x
-            if(y < crars):
-                ys = y
-                yars = crars - y
-            if(x > 4+l1-crare):
-                xe = 4+l1-x
-                xare = crars + (4+l1-x)
-            if(y > 4+l2-crare):
-                ye = 4+l2-y
-                yare = crars + (4+l2-y)
+        for i in range(ngroups):
+            #make tmpmask including reference pixels
             
-            array2add = f_ADC * crarray[j, yars:yare, xars:xare] #Array of the noise to add 
-            
-            
-            #recording event in mask
-            tmpmask[y-ys:y+ye,x-xs:x+xe] = tmpmask[y-ys:y+ye,x-xs:x+xe]+array2add
-            #if ((x>1697)and(x<1717)and(y>642)and(y<662)):
-            #    print (i,ngroups,x,xs,xe,y,ys,ye,array2add.shape,array2add,tmpmask[652,1706])
-           
+            if cube.shape[1] == 2048:
+                tmpmask = np.zeros([(l2+8),(l1+8)], dtype='float')
                 
-        #Set all ref pixels to zero in case the odd one got a partial cr
-        tmpmask[:4,:]=0.0
-        tmpmask[2044:,:]=0.0
-        tmpmask[:,:4]=0.0
-        tmpmask[:,2044:]=0.0
+            elif cube.shape[1] == 96: 
+                tmpmask = np.zeros([(l2),(l1+8)], dtype='float')
 
-        #Convolve group with IPC
-        tmpmask=add_ipc(tmpmask, kernel)
-        #print (tmpmask[652,1706])
-
-        crmask[i, :,:] = tmpmask
-        #print (crmask[i,652,1706])
-        cube[i:ngroups,:,:] = cube[i:ngroups,:,:]+crmask[i,:,:]
+            else: 
+                tmpmask = np.zeros([(l2+4),(l1+8)], dtype='float') 
+                
+                
+            nevents = np.random.poisson(n_average_events) #Chooses a random amount of events around the average
             
-    del kernel
-    del tmpmask
-    #need to take care of saturation here
-    isat = np.where(cube > 65535)
-    cube[isat] = 65535
-    msat = np.where(crmask > 65535)
-    crmask[msat] = 65535
 
-    #casting to unsigned short (16 bits)
-    crmaskout = crmask.astype('ushort')
-    del crmask
-    cubeout = cube.astype('ushort')
-    #Add dimension for N_Int=4
-    if numdim>3:
-        cubeout = np.expand_dims(cubeout, axis=0)
+            #place cosmic rays randomly in active pixels only
+            icoors = np.random.randint(0, l1, size=nevents)+4
+            
+            if cube.shape[1] == 2048:
+                jcoors = np.random.randint(0, l2, size=nevents)+4
+                
+            else: 
+                jcoors = np.random.randint(0, l2, size=nevents)
+
+            crarray = getCRs(nevents, ptype=ptype)  #An array with a bunch of 21x21 pixel events
+            #return an array with the requested number of CR events,
+            #extracted from the CR library by M. Robberto (in crlib/)
+
+            #limits when adding CR arrays 
+            crars = int(crarraysize/2-0.5) #10
+            crare = int(crarraysize/2+0.5) #11
+            
+            #each CR events is a 21x21 array which needs to be added to the
+            #frame array at the point of the CR hit
+            #for j in range(nevents):
+            for j in range(nevents):
+                x = icoors[j]
+                y = jcoors[j]
+
+                if cube.shape[1] == 96: 
+
+                    #dealing with edges            
+                    xs, xe = crars, crare
+                    ys, ye = crars, crare
+                    xars, xare = 0, crarraysize
+                    yars, yare = 0, crarraysize
+                    if(x < crars):
+                        xs = x
+                        xars = crars - x
+                    if(y < crars):
+                        ys = y
+                        yars = crars - y
+                    if(x > 4+l1-crare):
+                        xe = 4+l1-x
+                        xare = crars + (4+l1-x)
+                    if(y > l2-crare):
+                        ye = l2-y
+                        yare = crars + (l2-y)
+                    
+                    array2add = f_ADC * crarray[j, yars:yare, xars:xare] #Array of the noise to add 
+                    
+                    
+                    #recording event in mask
+                    tmpmask[y-ys:y+ye,x-xs:x+xe] = tmpmask[y-ys:y+ye,x-xs:x+xe]+array2add   
+
+
+                else: 
+               
+                    #dealing with edges            
+                    xs, xe = crars, crare
+                    ys, ye = crars, crare
+                    xars, xare = 0, crarraysize
+                    yars, yare = 0, crarraysize
+                    if(x < crars):
+                        xs = x
+                        xars = crars - x
+                    if(y < crars):
+                        ys = y
+                        yars = crars - y
+                    if(x > 4+l1-crare):
+                        xe = 4+l1-x
+                        xare = crars + (4+l1-x)
+                    if(y > 4+l2-crare):
+                        ye = 4+l2-y
+                        yare = crars + (4+l2-y)
+                    
+                    array2add = f_ADC * crarray[j, yars:yare, xars:xare] #Array of the noise to add 
+                    
+                    
+                    #recording event in mask
+                    tmpmask[y-ys:y+ye,x-xs:x+xe] = tmpmask[y-ys:y+ye,x-xs:x+xe]+array2add
+            
+                    
+            #Set all ref pixels to zero in case the odd one got a partial cr
+            #y-axis
+            if tmpmask.shape[0] == 2048:
+                tmpmask[:4,:]=0.0
+                tmpmask[2044:,:]=0.0
+
+            elif tmpmask.shape[0] == 256:
+                tmpmask[252:,:]=0.0
+
+            elif tmpmask.shape[0] == 512:
+                tmpmask[508:,:]=0.0
+
+            #x-axis
+            tmpmask[:,:4]=0.0
+            tmpmask[:,2044:]=0.0
+
+            #Convolve group with IPC
+            tmpmask=add_ipc(tmpmask, kernel)
+            
+            #Adding events to mask
+            crmask[i:ngroups, :,:] = crmask[i:ngroups, :,:] + tmpmask
+            
+            #Adding events to group
+            cube[i:ngroups,:,:] = cube[i:ngroups,:,:]+crmask[i,:,:]
+                
+        
+        
+        #need to take care of saturation here
+        isat = np.where(cube > 65535)
+        cube[isat] = 65535
+        msat = np.where(crmask > 65535)
+        crmask[msat] = 65535
+
+        #casting to unsigned short (16 bits)
+        crmaskout = crmask.astype('ushort')
+        #del crmask
+        cubeout = cube.astype('ushort')
+        #Add dimension for N_Int=4
+    
+        #cubeout = np.expand_dims(cubeout, axis=0)
+        #crmaskout = np.expand_dims(crmaskout, axis=0)
+        
+        #Add the integration to the output
+        cubeout = np.expand_dims(cubeout, axis=0) #Reexpand the arrays to fit with integration
         crmaskout = np.expand_dims(crmaskout, axis=0)
-    print ('Done')
-    return [cubeout, crmaskout]
+
+        cube_tot[integr,:,:,:] = cubeout   
+        crmask_tot[integr,:,:,:] = crmaskout
+        print ('Done adding cosmic rays for int', integr+1)
+
+    print('The number of groups per integration is:',ngroups)
+    print ('Average events per group : ',n_average_events)
+
+    return [cube_tot, crmask_tot]
 
 
 ##########Here starts class & functions for `IRS2'###########
