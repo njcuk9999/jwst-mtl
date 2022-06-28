@@ -476,8 +476,7 @@ def reconstruct_order(residual, cen, order, psfs, halfwidth, pad, pivot=750,
 
         # Get a copy of the spatial profile, and normalize it by its max value.
         working_prof = np.copy(residual[:, i])
-        max_val = np.nanpercentile(working_prof[(cen_o-halfwidth):(cen_o+halfwidth)], 99.9)
-        working_prof /= max_val
+        max_val = np.nanpercentile(working_prof[(cen_o-halfwidth):(cen_o+halfwidth)], 99)
 
         # Simulate the wings.
         if first_time is False:
@@ -487,6 +486,8 @@ def reconstruct_order(residual, cen, order, psfs, halfwidth, pad, pivot=750,
         # Hack to shift left wing over by one pixel to account for the fact
         # that it isn't lining up perfectly with the profile for some reason.
         wing2 = np.pad(wing2, (1, 0), mode='edge')
+        wing *= max_val
+        wing2 *= max_val
         first_time = False
         # Concatenate the wings onto the profile core.
         end = int(round((cen_o + halfwidth), 0))
@@ -500,13 +501,13 @@ def reconstruct_order(residual, cen, order, psfs, halfwidth, pad, pivot=750,
                            stitch)
         new_frame[:, i] = stitch
         # Rescale to native flux level.
-        new_frame_native[:, i] = stitch[:dimy] * max_val
+        new_frame_native[:, i] = stitch[:dimy]
 
     # For columns where the order 2 core is not distinguishable (due to the
     # throughput dropping near 0, or it being buried in order 1) reuse a
     # profile from order 1 at the same wavelength. The shape of the PSF is
     # completely determined by the optics, and should thus be identical for a
-    # given wavelengths, irrrespective of the order. The differing
+    # given wavelength, irrrespective of the order. The differing
     # tilt/spectral resolution of order 1 vs 2 may have some effect here
     # though.
     if order == 2:
@@ -582,7 +583,7 @@ def simulate_wings(w, psfs, halfwidth, verbose=0):
                                       np.zeros_like(psfs['Wave'][:, 0]))
     psf_size = np.shape(psfs['PSF'])[1]
     # Normalize to a max value of one to match the simulated profile.
-    max_val = np.nanpercentile(stand, 99.9)
+    max_val = np.nanpercentile(stand, 99)
     stand /= max_val
 
     # Define the edges of the profile 'core'.
