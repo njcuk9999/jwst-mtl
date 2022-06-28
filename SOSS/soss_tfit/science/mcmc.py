@@ -10,20 +10,20 @@ Created on 2022-04-06
 @author: cook
 """
 from astropy.io import fits
-from astropy.table import Table
+from astropy.table import Table, vstack
 import numpy as np
+import bottleneck as bn
 import os
 import pickle
-import time
+import time as timemod
 from tqdm import tqdm
 from typing import Any, Dict, List, Optional, Tuple
 import warnings
 
-import transitfit5 as transit_fit
-
 from soss_tfit.core import base
 from soss_tfit.core import base_classes
 from soss_tfit.science import general
+from soss_tfit.utils import transitfit5 as transit_fit
 
 # =============================================================================
 # Define variables
@@ -53,7 +53,7 @@ TPP_ORDERED = ['T0', 'PERIOD', 'B', 'RPRS', 'SQRT_E_COSW', 'SQRT_E_SINW',
 # transit fit hyper parameters
 TPH_ORDERED = ['ERROR_SCALE', 'AMPLITUDE_SCALE', 'LENGTH_SCALE']
 # transit fit additional arguments
-TP_KWARGS = ['NTT', 'T_OBS', 'OMC']
+TP_KWARGS = ['NTT', 'T_OBS', 'OMC', 'NINTG']
 
 # These are the attributes of TransitFit that have the same length as x0
 X_ATTRIBUTES = ['x0', 'beta', 'x0pos']
@@ -73,6 +73,9 @@ class TransitFit:
     n_param: int
     # the number of photometric bandpasses we have
     n_phot: int
+    # the total number of valid points (number of photometric bandpasses for
+    #   each integration
+    npt: int
     # numpy array [n_param, n_phot] the initial value of each parameter
     p0: np.ndarray
     # numpy array [n_param] whether we are fitting each parameter [Bool]
@@ -83,6 +86,7 @@ class TransitFit:
     prior: List[Dict[str, Any]]
     # name of each parameter [n_param]
     pnames: List[str]
+    pfullnames: List[str]
     # additional arguments passed to mcmc
     pkwargs: Dict[str, Any]
     # the position in the flattened x array [n_param, n_phot]
@@ -106,6 +110,8 @@ class TransitFit:
     fluxerr: np.ndarray
     # the order array [n_phot, n_int]
     orders: np.ndarray
+    # the limits for each bin
+    bin_limits: np.ndarray
     # -------------------------------------------------------------------------
     # parameters that must have shape [n_x]
     # -------------------------------------------------------------------------
@@ -113,6 +119,7 @@ class TransitFit:
     x0: np.ndarray
     # name of the fitted params flattened [n_x]
     xnames: np.ndarray
+    xfullnames: np.ndarray
     # length of fitted params flattened [n_x]
     n_x: int
     # numpy array [n_param]
@@ -151,6 +158,7 @@ class TransitFit:
         self.prior = []
         # name of each parameter
         self.pnames = []
+        self.pfullnames = []
         # additional arguments passed to mcmc
         self.pkwargs = dict()
         # the position in the flattened x array [n_param, n_phot]
@@ -172,6 +180,8 @@ class TransitFit:
         self.fluxerr = np.array([])
         # the order array [n_phot, n_int]
         self.orders = np.array([])
+        # the bin limits in micron [n_phot, 2]   (start,end)
+        self.bin_limits = np.array([])
         # -------------------------------------------------------------------------
         # parameters that must have shape [n_x]
         # -------------------------------------------------------------------------
@@ -179,6 +189,7 @@ class TransitFit:
         self.x0 = np.array([])
         # name of the fitted params flattened [n_x]
         self.xnames = np.array([])
+        self.xfullnames = np.array([])
         # length of fitted params flattened [n_x]
         self.n_x = 0
         # numpy array [n_param]
@@ -199,6 +210,9 @@ class TransitFit:
         # the rejection [rejected, parameter number]   where rejected = 0 for
         #   accepted and rejected = 1 for rejected
         self.ac = []
+        # define a dictionary to store the 2D positions of all x0 variables
+        #   (for use when updating a single x variable)
+        self.x0_to_p0 = dict()
 
     def __getstate__(self) -> dict:
         """
@@ -234,6 +248,9 @@ class TransitFit:
         new.n_param = self.n_param
         # the number of photometric bandpasses we have
         new.n_phot = self.n_phot
+        # the total number of valid points (number of photometric bandpasses for
+        #   each integration
+        new.npt = self.npt
         # numpy array [n_param, n_phot] the initial value of each parameter
         new.p0 = np.array(self.p0)
         # numpy array [n_param] whether we are fitting each parameter [Bool]
@@ -264,6 +281,8 @@ class TransitFit:
         new.fluxerr = self.fluxerr
         # the order array [n_phot, n_int]
         new.orders = self.orders
+        # the bin limits in micron [n_phot, 2]   (start,end)
+        new.bin_limits = self.bin_limits
         # ---------------------------------------------------------------------
         # parameters that must have shape [n_x]
         # ---------------------------------------------------------------------
@@ -271,6 +290,7 @@ class TransitFit:
         new.x0 = np.array(self.x0)
         # name of the fitted params flattened [n_x]
         new.xnames = self.xnames
+        new.xfullnames = self.xfullnames
         # length of fitted params flattened [n_x]
         new.n_x = self.n_x
         # numpy array [n_param]
@@ -289,6 +309,9 @@ class TransitFit:
         #   accepted and rejected = 1 for rejected
         new.ac = []
         # ---------------------------------------------------------------------
+        # the x0 to p0 translation dictionary
+        new.x0_to_p0 = self.x0_to_p0
+
         return new
 
     def get_fitted_params(self):
@@ -302,6 +325,7 @@ class TransitFit:
         # set up storage
         x0 = []
         xnames = []
+        xfullnames = []
         # position of x in p
         p0pos = np.zeros_like(self.p0)
         x0pos = []
@@ -319,6 +343,7 @@ class TransitFit:
             if self.wmask[it]:
                 x0 += list(self.p0[it])
                 xnames += [self.pnames[it]] * self.n_phot
+                xfullnames += [self.pfullnames[it]] * self.n_phot
                 xbetas += [self.pbetas[it]] * self.n_phot
                 # add to the positions so we can recover p0 from x0
                 p0pos[it] = np.arange(count_x, count_x + self.n_phot)
@@ -331,6 +356,7 @@ class TransitFit:
             else:
                 x0 += [self.p0[it][0]]
                 xnames += [self.pnames[it]]
+                xfullnames += [self.pfullnames[it]]
                 xbetas += [self.pbetas[it]]
                 # add to the positions so we can recover p0 from x0
                 p0pos[it] = np.full(self.n_phot, count_x)
@@ -338,13 +364,24 @@ class TransitFit:
                 count_x += 1
                 # update the x positions
                 x0pos += [(it, 0)]
-        # set values
+        # ---------------------------------------------------------------------
+        # define a new x0 to p0 translation dictionary
+        x0_to_p0 = dict()
+        # loop around the parameters in x and return the index positions of
+        #   each p0 position (for each x)
+        for it in range(self.n_x):
+            # assign each x value
+            x0_to_p0[it] = (self.p0pos == it).nonzero()
+        # ---------------------------------------------------------------------
+        # set values in class
         self.x0 = np.array(x0)
         self.xnames = np.array(xnames)
+        self.xfullnames = np.array(xfullnames)
         self.n_x = len(x0)
         self.p0pos = np.array(p0pos, dtype=int)
         self.x0pos = np.array(x0pos)
         self.xbeta = np.array(xbetas)
+        self.x0_to_p0 = x0_to_p0
 
     def update_p0_from_x0(self):
         """
@@ -355,10 +392,13 @@ class TransitFit:
         """
         # loop around all parameters
         for it in range(self.n_x):
-            # find all places where it is valid
-            mask = it == self.p0pos
-            # update p0 with x0 value
-            self.p0[mask] = self.x0[it]
+            # update the value of p0 from the translated value
+            #     (in x0_to_p0 dict)
+            self.p0[self.x0_to_p0[it]] = self.x0[it]
+            # # find all places where it is valid
+            # mask = it == self.p0pos
+            # # update p0 with x0 value
+            # self.p0[mask] = self.x0[it]
 
     def update_x0_from_p0(self):
         """
@@ -369,7 +409,7 @@ class TransitFit:
         """
         for it in range(self.n_x):
             # push the value into x
-            self.x0[it] = self.p0[tuple(self.x0pos)]
+            self.x0[it] = self.p0[tuple(self.x0pos[it])]
 
     def generate_gibbs_sample(self, beta: np.ndarray):
         # choose random parameter to vary
@@ -379,8 +419,9 @@ class TransitFit:
         # update the choosen value by a random number drawn from a gaussian
         #   with centre = 0 and fwhm = beta
         self.x0[param_it] += np.random.normal(0.0, beta[param_it])
-        # update full solution
-        self.update_p0_from_x0()
+        # update just this parameter of the full solution
+        self.p0[self.x0_to_p0[param_it]] = self.x0[param_it]
+        # self.update_p0_from_x0()
 
     def generate_demcmc_sample(self, buffer, corbeta: float):
         # get the length of the buffer
@@ -495,24 +536,51 @@ class TransitFit:
 # =============================================================================
 # Define prior functions
 #     Must have arguments value, **kwargs
-#     Must return True if passed, False otherwise
+#     Must return a float to add to the log prior
+#     Must add prior functions to PRIOR_FUNC (below the function definitions)
 # =============================================================================
-def tophat_prior(value: float, minimum: float, maximum: float) -> bool:
+def uniform_prior(value: float, minimum: float, maximum: float) -> float:
     """
-    Simple tophat proir
-    :param value:
-    :param minimum:
-    :param maximum:
+    Simple uniform prior (return 0 if within bounds and BADLPR -np.inf
+    otherwise)
+
+    :param value: float, parameter value (passed in)
+    :param minimum: float, the minimum allowed value
+                    (below which lnprior is -np.inf)
+    :param maximum: float, the maximum allowed value
+                    (above which lnprior is -np.inf)
     :return:
     """
     # test whether condition is less than the minimum of the prior
     if value < minimum:
-        return False
+        return BADLPR
     # test whether condition is greater than the maximum of the prior
     if value > maximum:
-        return False
-    # if we get to here we have passed this priors conditions
-    return True
+        return BADLPR
+    # if we get to here we have passed this priors conditions -> return 1
+    return 0.0
+
+
+def gaussian_prior(value: float, mu: float, sigma: float) -> float:
+    """
+    Simple gaussian prior (in log space)
+
+    :param value:
+    :param mu:
+    :param sigma:
+    :return:
+    """
+    return -(value - mu)**2 / sigma ** 2
+
+
+# Must add all prior functions to this dictionary for it to work
+#    they key can then be used in the yaml
+#    parameter:
+#       prior:
+#           func: key
+PRIOR_FUNC = dict()
+PRIOR_FUNC['uniform'] = uniform_prior
+PRIOR_FUNC['gaussian'] = gaussian_prior
 
 
 # =============================================================================
@@ -542,6 +610,7 @@ def setup_params_mcmc(params: ParamDict, data: InputData) -> TransitFit:
     transit_wmask = np.zeros(n_param, dtype=bool)
     transit_prior = []
     transit_pnames = []
+    transit_pfullnames = []
     transit_pbetas = []
     # -------------------------------------------------------------------------
     # get the transit fit stellar params
@@ -557,6 +626,7 @@ def setup_params_mcmc(params: ParamDict, data: InputData) -> TransitFit:
         transit_wmask[pnum] = wmask
         transit_prior.append(prior)
         transit_pnames.append(pname)
+        transit_pfullnames.append(key)
         transit_pbetas.append(pbeta)
         # add to the parameter number
         pnum += 1
@@ -584,6 +654,7 @@ def setup_params_mcmc(params: ParamDict, data: InputData) -> TransitFit:
             transit_wmask[pnum] = wmask
             transit_prior.append(prior)
             transit_pnames.append(f'{pname}{nplanet}')
+            transit_pfullnames.append(f'{key}_{nplanet}')
             transit_pbetas.append(pbeta)
             # add to the parameter number
             pnum += 1
@@ -595,15 +666,13 @@ def setup_params_mcmc(params: ParamDict, data: InputData) -> TransitFit:
         pout = __assign_pvalue(key, params, n_phot, func_name)
         p0, fmask, wmask, prior, pname, pbeta = pout
         # hyper parameters are set to zero if not in fit mode
-        if not fmask:
-            transit_p0[pnum] = np.zeros(n_phot)
-        else:
-            transit_p0[pnum] = p0
+        transit_p0[pnum] = p0
         # add other values to storage
         transit_fmask[pnum] = fmask
         transit_wmask[pnum] = wmask
         transit_prior.append(prior)
         transit_pnames.append(pname)
+        transit_pfullnames.append(key)
         transit_pbetas.append(pbeta)
         # add to the parameter number
         pnum += 1
@@ -618,12 +687,14 @@ def setup_params_mcmc(params: ParamDict, data: InputData) -> TransitFit:
     tfit.flux = data.phot['FLUX']
     tfit.fluxerr = data.phot['FLUX_ERROR']
     tfit.orders = data.phot['ORDERS']
+    tfit.bin_limits = data.phot['BIN_LIMITS']
     # add the parameters
     tfit.p0 = transit_p0
     tfit.fmask = transit_fmask
     tfit.wmask = transit_wmask
     tfit.prior = transit_prior
     tfit.pnames = np.array(transit_pnames)
+    tfit.pfullnames = np.array(transit_pfullnames)
     tfit.pbetas = np.array(transit_pbetas)
     # set the number of params
     tfit.n_param = len(transit_p0)
@@ -631,6 +702,10 @@ def setup_params_mcmc(params: ParamDict, data: InputData) -> TransitFit:
     tfit.n_phot = int(data.n_phot)
     # set the number of integrations
     tfit.n_int = int(data.n_int)
+    # set the total number of valid points (number of photometric
+    #   bandpasses for each integration)
+    # TODO: if we have a data mask must not count invalid points
+    tfit.npt = tfit.time.size
     # -------------------------------------------------------------------------
     # set additional arguments
     # -------------------------------------------------------------------------
@@ -672,7 +747,7 @@ def lnpriors(tfit) -> float:
     :return: float, either 1 (if good) or -np.inf (if bad)
     """
     # set initial value of loglikelihood
-    logl = 1.0
+    lnprior = 1.0
     # the number of band passes
     n_phot = tfit.n_phot
     # the number of parameters
@@ -690,19 +765,30 @@ def lnpriors(tfit) -> float:
         if not fmask[param_it]:
             continue
         # get this parameters priors
-        prior = tfit.get(names[param_it], 'prior')
+        prior = dict(tfit.get(names[param_it], 'prior'))
+        # check that prior func condition is valid
+        if 'func' in prior:
+            if prior['func'] not in PRIOR_FUNC:
+                emsg = (f'prior.func is defined for {names[param_it]}, '
+                        f'thus it must be one of the following:')
+                for pfkey in list(PRIOR_FUNC.keys()):
+                    emsg += f'\n\t{pfkey}'
+                raise base_classes.TransitFitExcept(emsg)
+        # priors add in log space
+        func = PRIOR_FUNC[prior.get('func', 'uniform')]
+        # remove 'func' from prior (we don't want it in the function call)
+        if 'func' in prior:
+            del prior['func']
         # loop around band passes
         for phot_it in range(n_phot):
-            # TODO: change to allow different function
-            #       this may not be True/False
-            # get prior function - default prior is a tophat function
-            func = prior.get('func', tophat_prior)
+            # add to the lnprior probability
+            lnprior += func(sol[param_it, phot_it], **prior)
             # function returns True if pass prior condition
-            if not func(sol[param_it, phot_it], **prior):
+            if not (lnprior > BADLPR):
                 return BADLPR
     # if we have got to here we return the good loglikelihood (all priors have
     #    passed)
-    return logl
+    return lnprior
 
 
 def lnprob(tfit: TransitFit) -> float:
@@ -740,6 +826,7 @@ def lnprob(tfit: TransitFit) -> float:
     ntt = tfit.pkwargs['NTT']
     tobs = tfit.pkwargs['T_OBS']
     omc = tfit.pkwargs['OMC']
+    nintg = tfit.pkwargs['NINTG']
     # trial solution
     sol = np.array(tfit.p0)
     # -------------------------------------------------------------------------
@@ -783,7 +870,8 @@ def lnprob(tfit: TransitFit) -> float:
             return BADLPR
         # get transit for current parameters
         tkwargs = dict(sol=sol[:, phot_it], time=time[phot_it],
-                       itime=itime[phot_it], ntt=ntt, tobs=tobs, omc=omc)
+                       itime=itime[phot_it], ntt=ntt, tobs=tobs, omc=omc,
+                       nintg=nintg)
         # get and plot the model
         model = transit_fit.transitmodel(**tkwargs)
         # check for NaNs -- we don't want these.
@@ -793,9 +881,9 @@ def lnprob(tfit: TransitFit) -> float:
             # non-correlated noise-model
             if model_type == 0:
                 log1 = np.log(fluxerr[phot_it] ** 2 * dscale[phot_it] ** 2)
-                sum1 = np.sum(log1)
+                sum1 = bn.nansum(log1)
                 sqrdiff = (flux[phot_it] - model)**2
-                sum2 = np.sum(sqrdiff / (fluxerr**2 * dscale[phot_it]**2))
+                sum2 = bn.nansum(sqrdiff / (fluxerr[phot_it]**2 * dscale[phot_it]**2))
                 logl += -0.5 * (sum1 + sum2)
         # else we return our bad log likelihood
         else:
@@ -821,10 +909,11 @@ def mhg_mcmc(tfit: TransitFit, loglikelihood: Any, beta: np.ndarray,
 
     :return:
     """
-    # we do not use bugger and corbeta here (used for de_mhg_mcmc)
+    # we do not use buffer and corbeta here (used for de_mhg_mcmc)
     _ = buffer, corbeta
-    # copy fit
-    tfit0 = tfit.copy()
+    # copy initial parameters (ready for a reset if rejected)
+    p0 = tfit.p0.copy()
+    x0 = tfit.x0.copy()
     # -------------------------------------------------------------------------
     # Step 1: Generate trial state
     # -------------------------------------------------------------------------
@@ -847,16 +936,12 @@ def mhg_mcmc(tfit: TransitFit, loglikelihood: Any, beta: np.ndarray,
     test = np.random.rand()
     # if test is less than our acceptance level accept new trial
     if test <= alpha:
-        tfit.x0 = np.array(tfit.x0)
         tfit.llx = float(llxt)
         tfit.ac = [0, tfit.n_tmp]
-        # update full solution
-        tfit.update_p0_from_x0()
-        tfit.p0 = np.array(tfit.p0)
     # else we reject and start from previous point (tfit0)
     else:
-        tfit.x0 = np.array(tfit0.x0)
-        tfit.p0 = np.array(tfit0.p0)
+        tfit.x0 = x0
+        tfit.p0 = p0
         tfit.ac = [1, tfit.n_tmp]
     # return tfit instance
     return tfit
@@ -883,8 +968,9 @@ def de_mhg_mcmc(tfit: TransitFit, loglikelihood: Any, beta: np.ndarray,
     if buffer is None and corbeta is None:
         emsg = 'buffer and corbeta must not be None for de_mhg_mcmc()'
         raise base_classes.TransitFitExcept(emsg)
-    # copy fit
-    tfit0 = tfit.copy()
+    # copy initial parameters (ready for a reset if rejected)
+    p0 = tfit.p0.copy()
+    x0 = tfit.x0.copy()
     # draw a random number to decide which sampler to use
     rsamp = np.random.rand()
     # -------------------------------------------------------------------------
@@ -912,16 +998,12 @@ def de_mhg_mcmc(tfit: TransitFit, loglikelihood: Any, beta: np.ndarray,
     test = np.random.rand()
     # if test is less than our acceptance level accept new trial
     if test <= alpha:
-        tfit.x0 = np.array(tfit.x0)
         tfit.llx = float(llxt)
         tfit.ac = [0, tfit.n_tmp]
-        # update full solution
-        tfit.update_p0_from_x0()
-        tfit.p0 = np.array(tfit.p0)
     # else we reject and start from previous point (tfit0)
     else:
-        tfit.x0 = np.array(tfit0.x0)
-        tfit.p0 = np.array(tfit0.p0)
+        tfit.x0 = x0
+        tfit.p0 = p0
         tfit.ac = [1, tfit.n_tmp]
     # return tfit instance
     return tfit
@@ -1102,6 +1184,12 @@ def genchain(tfit: TransitFit, niter: int, beta: np.ndarray,
                     as a buffer (mcmcfunc=deMCMC only)
     :param progress: bool, if True uses tqdm to print progress of the
                      MCMC chain
+    :param nwalker: int, the number of walkers for printout (if not set assumes
+                    we are running in single mode - not in parallel)
+                    just modifies printout
+    :param ngroup: int, the number of groups for printout (if not set assumes
+                    we are running in single mode - not in paralell)
+                    just modifies printout
 
     :return: tuple, 1. chains (numpy array [n_iter, n_x])
                     2. rejects (numpy array [n_iter, 2]
@@ -1116,10 +1204,11 @@ def genchain(tfit: TransitFit, niter: int, beta: np.ndarray,
     chains = [np.array(tfit.x0)]
     # Track our acceptance rate - and set the first one to (0, 0)
     #    note reject=(rejected 1 or 0, parameter changed)
-    rejections = [(0, 0)]
+    rejections = [np.array([0, 0])]
     # -------------------------------------------------------------------------
     # pre-compute the first log-likelihood
     tfit.llx = loglikelihood(tfit)
+
     # -------------------------------------------------------------------------
     # inner loop to save repeating code
     def inner_loop_code(tfitloop: TransitFit):
@@ -1145,10 +1234,10 @@ def genchain(tfit: TransitFit, niter: int, beta: np.ndarray,
                        f'iteration={n_it}/{niter}'
                        f' ({np.mean(timings):.3f} s/it)')
             # start time
-            start = time.time()
+            start = timemod.time()
             tfit = inner_loop_code(tfit)
             # add to timings
-            timings.append(time.time() - start)
+            timings.append(timemod.time() - start)
         # print timing
         cprint(f'\tGroup={ngroup} walker={nwalker} {niter} in '
                f'{np.sum(timings):.3f} s', level='warning')
@@ -1328,6 +1417,7 @@ class Sampler:
     """
     wchains: Dict[int, np.ndarray]
     wrejects: Dict[int, np.ndarray]
+    grtest: np.ndarray
     chains: np.ndarray
     reject: np.ndarray
     acc_dict: Dict[int, float]
@@ -1338,11 +1428,15 @@ class Sampler:
         self.mode = mode
         self.wchains = dict()
         self.wrejects = dict()
+        # gr test (shape: n_x)
+        self.grtest = np.array([])
+        # final combined chains
         self.chain = np.array([])
         self.reject = np.array([])
         self.acc_dict = dict()
         # added manually if required
         self.data = None
+        self.results_table = Table()
         # set up storage of chainns
         for nwalker in range(self.params['WALKERS']):
             self.wchains[nwalker] = np.array([])
@@ -1354,7 +1448,8 @@ class Sampler:
         Run the MCMC using a correction scale of beta previously
         calculated by betarescale)
 
-        :param corscale: numpy array [n_param]
+        :param corscale: numpy array [n_param] - the beta scale modifier for
+                         each parameter
         :param loglikelihood: log likelihood function
                 - arguments: tfit: TransitFit
         :param mcmcfunc: MCMC function
@@ -1373,16 +1468,6 @@ class Sampler:
         nloopsmax = self.params['NLOOPMAX'][self.mode]
         # get the number of steps for the MCMC for this mode
         nsteps = self.params['NSTEPS'][self.mode]
-        # set number of walkers
-        nwalkers = self.params['WALKERS']
-        # set the burnin parameter
-        burninf = self.params['BURNINF'][self.mode]
-        # convergence criteria for buffer
-        buf_converge_crit = self.params['BUFFER_COVERGE_CRIT']
-        # the number of steps we add on next loop (if convergence not met)
-        nsteps_inc = self.params['NSTEPS_INC'][self.mode]
-        # correction to beta term for deMCMC
-        corbeta = self.params['CORBETA'][self.mode]
         # ---------------------------------------------------------------------
         # deal with having a trial sampler
         in_sampler = trial
@@ -1396,79 +1481,154 @@ class Sampler:
         #     number of loops exceeded
         # ---------------------------------------------------------------------
         while nloop < nloopsmax:
-            # set the constant genchain parameters
-            gkwargs = dict(niter=nsteps, beta=self.tfit.beta * corscale,
-                           loglikelihood=loglikelihood, mcmcfunc=mcmcfunc,
-                           corbeta=corbeta)
-            # print progress
-            cprint(f'MCMC Loop {nloop} [{self.mode}]', level='info')
-            # -----------------------------------------------------------------
-            # loop around walkers
-            # -----------------------------------------------------------------
-            # print progress
-            cprint(f'\tGetting chains for {nwalkers} walkers', level='info')
-            # get the chains in a parallel way
-            wchains, wrejects = _multi_process_pool(self, in_sampler,
-                                                    nwalkers, gkwargs)
-            # push chains/rejects into Sampler
-            self.wchains = wchains
-            self.wrejects = wrejects
-
-            # -----------------------------------------------------------------
-            # Calculate the Gelman-Rubin Convergence
-            # -----------------------------------------------------------------
-            # print progress
-            cprint('\tGelman-Rubin Convergence.', level='info')
-            # get number of chains to burn (using burn in fraction)
-            burnin = int(self.wchains[0].shape[0] * burninf)
-            # calculate the rc factor
-            grtest = gelman_rubin_convergence(self.wchains, burnin=burnin,
-                                              npt=self.tfit.n_phot)
-            # print the factors
-            cprint('\tRc param:')
-            for param_it in range(self.tfit.n_x):
-                # print Rc parameter
-                pargs = [param_it, self.tfit.xnames[param_it],
-                         grtest[param_it]]
-                cprint('\t\t{0:3d} {1:3s}: {2:.4f}'.format(*pargs))
-            # update the full chains
-            self.chain, self.reject = join_chains(self, burnin)
-
-            # -----------------------------------------------------------------
-            # Calculate acceptance rate
-            # -----------------------------------------------------------------
-            # print progress
-            cprint('\tCalculate acceptance rate', level='info')
-            # deal with differences between trial and full run
-            if self.mode == 'trial':
-                rejects = self.wrejects[0]
-                burnin_full = int(self.wchains[0].shape[0] * burninf)
-            else:
-                rejects = self.reject
-                burnin_full = int(self.chain.shape[0] * burninf)
-
-            # calculate acceptance for chain1
-            self.acc_dict = calculate_acceptance_rates(rejects,
-                                                       burnin=burnin_full)
-
-            # -----------------------------------------------------------------
-            # Test criteria for success
-            # -----------------------------------------------------------------
-            # criteria for accepting mcmc chains
-            #   all parameters grtest greater than or equal to
-            #   buf_converge_crit
-            # Question: Is this the same thing?
-            #  previously sum(grtest[accept_mask] / grtest[accept_mask])
-            if np.sum(grtest < buf_converge_crit) == len(grtest):
+            # set up the args that go into single loop
+            sargs = [corscale, loglikelihood, mcmcfunc, in_sampler, nsteps,
+                     nloop]
+            # run a single loop
+            cond, in_sampler, nsteps, nloop = self.single_loop(*sargs)
+            # deal with condition met
+            if cond:
                 break
-            else:
-                # add to the number of steps (for next loop)
-                nsteps += nsteps_inc
-                # add to the loop iteration
-                nloop += 1
-                # deal with chain update for next loop
-                if self.mode == 'full':
-                    in_sampler = self
+
+    SingleLoopReturn = Tuple[bool, 'Sampler', int, int]
+
+    def single_loop(self, corscale: np.ndarray, loglikelihood, mcmcfunc,
+                    in_sampler: Optional['Sampler']  = None,
+                    nsteps: Optional[int] = None,
+                    nloop: Optional[int] = None) -> SingleLoopReturn:
+        """
+        Run a single instance of the while loop
+
+        :param corscale: numpy array [n_param] - the beta scale modifier for
+                         each parameter
+        :param loglikelihood: log likelihood function
+                - arguments: tfit: TransitFit
+        :param mcmcfunc: MCMC function
+                - arguments: tfit: TransitFit,
+                             loglikelihood: Any,
+                             beta: np.ndarray,
+                             buffer: np.ndarray, corbeta: float
+        :param in_sampler: Previous sampler (if given) for a "trial" run this
+                           can be None, if a "full" run, the first time this
+                           is run it should be the "trial" otherwise it should
+                           be the sampler from the previous loop
+        :param nsteps: int, can be None, the number of steps to run,
+                       the first time this should be None
+                       (and thus taken from the parameters file) after this,
+                       this should be taken from the outputs of the previous
+                       "single_loop" call
+        :param nloop: int, can be None, the loop number (mostly for print out)
+                       the first time this should be None (and is thus set to
+                       1) after this, the should be taken from the outputs of
+                       the previous "single_loop" call
+
+        :return: tuple,
+                 1. cond: bool, True if single loop converged and we should
+                    not to any more loops, False otherwise.
+                 2. sampler: Sampler, the end state of the sampler, for
+                    passing to the next call of "single_loop" - in trial mode
+                    this will be None, in full mode this will be "self"
+                 3. nsteps: int, the number of steps to use for next call of
+                    "single_loop"
+                 4. nloop: int, the loop number to use for the next call of
+                    "single_loop"
+        """
+        # ---------------------------------------------------------------------
+        # get parameters from params
+        # ---------------------------------------------------------------------
+        # get the number of steps for the MCMC for this mode
+        if nsteps is None:
+            nsteps = self.params['NSTEPS'][self.mode]
+        # set number of walkers
+        nwalkers = self.params['WALKERS']
+        # set the burnin parameter
+        burninf = self.params['BURNINF'][self.mode]
+        # convergence criteria for buffer
+        buf_converge_crit = self.params['BUFFER_COVERGE_CRIT']
+        # the number of steps we add on next loop (if convergence not met)
+        nsteps_inc = self.params['NSTEPS_INC'][self.mode]
+        # correction to beta term for deMCMC
+        corbeta = self.params['CORBETA'][self.mode]
+        # ---------------------------------------------------------------------
+        # start loop counter
+        if nloop is None:
+            nloop = 1
+        # ---------------------------------------------------------------------
+        # set the constant genchain parameters
+        gkwargs = dict(niter=nsteps, beta=self.tfit.beta * corscale,
+                       loglikelihood=loglikelihood, mcmcfunc=mcmcfunc,
+                       corbeta=corbeta)
+        # print progress
+        cprint(f'MCMC Loop {nloop} [{self.mode}]', level='info')
+        # -----------------------------------------------------------------
+        # loop around walkers
+        # -----------------------------------------------------------------
+        # print progress
+        cprint(f'\tGetting chains for {nwalkers} walkers', level='info')
+        # get the chains in a parallel way
+        wchains, wrejects = _multi_process_pool(self, in_sampler,
+                                                nwalkers, gkwargs)
+        # push chains/rejects into Sampler
+        self.wchains = wchains
+        self.wrejects = wrejects
+
+        # -----------------------------------------------------------------
+        # Calculate the Gelman-Rubin Convergence
+        # -----------------------------------------------------------------
+        # print progress
+        cprint('\tGelman-Rubin Convergence.', level='info')
+        # get number of chains to burn (using burn in fraction)
+        burnin = int(self.wchains[0].shape[0] * burninf)
+        # calculate the rc factor, npt is the number of total points
+        self.grtest = gelman_rubin_convergence(self.wchains, burnin=burnin,
+                                               npt=self.tfit.npt)
+        # print the factors
+        cprint('\tRc param:')
+        for param_it in range(self.tfit.n_x):
+            # print Rc parameter
+            pargs = [param_it, self.tfit.xnames[param_it],
+                     self.grtest[param_it]]
+            cprint('\t\t{0:3d} {1:3s}: {2:.4f}'.format(*pargs))
+        # update the full chains
+        self.chain, self.reject = join_chains(self, burnin)
+
+        # -----------------------------------------------------------------
+        # Calculate acceptance rate
+        # -----------------------------------------------------------------
+        # print progress
+        cprint('\tCalculate acceptance rate', level='info')
+        # deal with differences between trial and full run
+        if self.mode == 'trial':
+            rejects = self.wrejects[0]
+            burnin_full = int(self.wchains[0].shape[0] * burninf)
+        else:
+            rejects = self.reject
+            burnin_full = int(self.chain.shape[0] * burninf)
+
+        # calculate acceptance for chain1
+        self.acc_dict = calculate_acceptance_rates(rejects,
+                                                   burnin=burnin_full)
+
+        # -----------------------------------------------------------------
+        # Test criteria for success
+        # -----------------------------------------------------------------
+        # criteria for accepting mcmc chains
+        #   all parameters grtest greater than or equal to
+        #   buf_converge_crit
+        # Question: Is this the same thing?
+        #  previously sum(grtest[accept_mask] / grtest[accept_mask])
+        if np.sum(self.grtest < buf_converge_crit) == len(self.grtest):
+            return True, in_sampler, nsteps, nloop
+        else:
+            # add to the number of steps (for next loop)
+            nsteps += nsteps_inc
+            # add to the loop iteration
+            nloop += 1
+            # deal with chain update for next loop
+            if self.mode == 'full':
+                in_sampler = self
+
+            return False, in_sampler, nsteps, nloop
 
     def posterior_print(self):
 
@@ -1490,10 +1650,15 @@ class Sampler:
 
         :return: astropy table of the results
         """
+        # get which results we want
+        result_mode = self.params['RESULT_MODE']
+        # get number of samples for transit depth
+        tdepth_samples = self.params['TRANSIT_DEPTH_NSAMPLES']
         # get length
         n_x = self.tfit.n_x
         # get the names
         xnames = self.tfit.xnames
+        xfullnames = self.tfit.xfullnames
         # -----------------------------------------------------------------
         # get the p50, p16 and p84
         pvalues = general.sigma_percentiles()
@@ -1504,61 +1669,157 @@ class Sampler:
         # create table
         table = Table()
         # add columns
-        table['NAME'] = xnames
-        table['MODE'] = np.zeros(n_x, dtype=float)
-        table['MODE_UPPER'] = np.zeros(n_x, dtype=float)
-        table['MODE_LOWER'] = np.zeros(n_x, dtype=float)
+        # TODO: Add Name + Shortname
+        table['NAME'] = xfullnames
+        table['SHORTNAME'] = xnames
+        table['WAVE_CENT'] = np.full(n_x, np.nan)
+        # if it is a fitted parameter
+        if result_mode in ['mode', 'all']:
+            table['MODE'] = np.zeros(n_x, dtype=float)
+            table['MODE_UPPER'] = np.zeros(n_x, dtype=float)
+            table['MODE_LOWER'] = np.zeros(n_x, dtype=float)
         # P50, P16, P84
-        table['P50'] = np.zeros(n_x, dtype=float)
-        table[label_p16] = np.zeros(n_x, dtype=float)
-        table[label_p84] = np.zeros(n_x, dtype=float)
-        table['P50_UPPER'] = np.zeros(n_x, dtype=float)
-        table['P50_LOWER'] = np.zeros(n_x, dtype=float)
-
+        if result_mode in ['percentile', 'all']:
+            table['P50'] = np.zeros(n_x, dtype=float)
+            table[label_p16] = np.zeros(n_x, dtype=float)
+            table[label_p84] = np.zeros(n_x, dtype=float)
+            table['P50_UPPER'] = np.zeros(n_x, dtype=float)
+            table['P50_LOWER'] = np.zeros(n_x, dtype=float)
+        # -----------------------------------------------------------------
+        # get the average wave center of all integrations for each bandpass
+        wave_cent = np.mean(self.tfit.wavelength, axis=1)
         # -----------------------------------------------------------------
         # loop around fitted parameters
         for x_it in range(n_x):
-            cprint(f'\t Calculating results for {xnames[x_it]}')
+            # if it is a fitted parameter
+            if self.tfit.get(xnames[x_it], 'wmask'):
+                # get the wave center value for this x0 parameter
+                wave_cent_it = wave_cent[self.tfit.x0pos[x_it, 1]]
+                table['WAVE_CENT'][x_it] = wave_cent_it
+                # print
+                cprint(f'\t Calculating results for {xnames[x_it]} '
+                       f'{wave_cent_it:.3f} um')
+            else:
+                # print
+                cprint(f'\t Calculating results for {xnames[x_it]}')
             # get the parameter chain
             pchain = self.chain[::start_chain, x_it]
             # -----------------------------------------------------------------
-            # get the mode
-            mode, x_eval, kde1 = transit_fit.modekdestimate(pchain, 0)
-            # calculate the mode percentile value
-            perc1 = transit_fit.intperc(mode, x_eval, kde1)
-            # get the mode low and mode high values
-            mode_upper = np.abs(perc1[1] - mode)
-            mode_lower = np.abs(mode - perc1[0])
+            # deal with result mode
+            if result_mode in ['mode', 'all']:
+                # get the mode
+                mode, x_eval, kde1 = transit_fit.modekdestimate(pchain, 0)
+                # calculate the mode percentile value
+                perc1 = transit_fit.intperc(mode, x_eval, kde1)
+                # get the mode low and mode high values
+                mode_upper = np.abs(perc1[1] - mode)
+                mode_lower = np.abs(mode - perc1[0])
+                # push into table
+                table['MODE'][x_it] = mode
+                table['MODE_LOWER'][x_it] = mode_lower
+                table['MODE_UPPER'][x_it] = mode_upper
             # -----------------------------------------------------------------
-            # calculate the percentile values
-            percentiles = np.percentile(pchain, pvalues)
-            # -----------------------------------------------------------------
-            # push into table
-            table['MODE'][x_it] = mode
-            table['MODE_LOWER'][x_it] = mode_lower
-            table['MODE_UPPER'][x_it] = mode_upper
-            table['P50'][x_it] = percentiles[1]
-            table[label_p16][x_it] = percentiles[0]
-            table[label_p84][x_it] = percentiles[2]
+            # deal with result mode
+            if result_mode in ['percentile', 'all']:
+                # calculate the percentile values
+                percentiles = np.percentile(pchain, pvalues)
+                # -------------------------------------------------------------
+                table['P50'][x_it] = percentiles[1]
+                table[label_p16][x_it] = percentiles[0]
+                table[label_p84][x_it] = percentiles[2]
+                # -------------------------------------------------------------
+                # tabulate P50 lower and upper bounds
+                table['P50_UPPER'] = table[label_p84] - table['P50']
+                table['P50_LOWER'] = table['P50'] - table[label_p16]
         # ---------------------------------------------------------------------
-        # tabulate P50 lower and upper bounds
-        table['P50_UPPER'] = table[label_p84] - table['P50']
-        table['P50_LOWER'] = table['P50'] - table[label_p16]
+        # add in transit depth (new table stacked)
+        # ---------------------------------------------------------------------
+        depth_table = Table()
+        depth_table['NAME'] = ['transit_depth'] * self.tfit.n_phot
+        depth_table['SHORTNAME'] = ['TD'] * self.tfit.n_phot
+        depth_table['WAVE_CENT'] = self.tfit.wavelength[:, 0]
+        # ---------------------------------------------------------------------
+        # deal with result mode
+        if result_mode in ['mode', 'all']:
+            # push into table
+            depth_table['MODE'] = np.full(self.tfit.n_phot, np.nan)
+            depth_table['MODE_LOWER'] = np.full(self.tfit.n_phot, np.nan)
+            depth_table['MODE_UPPER'] = np.full(self.tfit.n_phot, np.nan)
+        # ---------------------------------------------------------------------
+        # deal with result mode
+        if result_mode in ['percentile', 'all']:
+            # get depth
+            # TODO: add n_samples to yaml n_samples=10000
+            dout = self.results_tdepth(n_samples=tdepth_samples)
+            # push into table
+            depth_table['P50'] = dout[0]
+            depth_table[label_p16] = dout[1]
+            depth_table[label_p84] = dout[2]
+            depth_table['P50_UPPER'] = dout[4]
+            depth_table['P50_LOWER'] = dout[3]
+        # stack the table to add the depth table
+        out_table = vstack([table, depth_table])
         # ---------------------------------------------------------------------
         # save the results table
-        self.results_table = table
+        # ---------------------------------------------------------------------
+        self.results_table = out_table
+
+    def results_tdepth(self, n_samples: int = 10000):
+        """
+        Calculate the transit depth parameter by taking random samples
+        of the chains and calculating the transit model
+
+        :param n_samples:
+        :return:
+        """
+        # get the p50, p16 and p84
+        pvalues = general.sigma_percentiles()
+        # randomly pick sample indices in the chain
+        csample = np.arange(self.chain.shape[0])
+        chain_samples_idx = np.random.choice(csample, n_samples, replace=False)
+        # to store the depths at mid-transit
+        depth = np.zeros((n_samples, self.tfit.n_phot))
+        # index of EP1 in p axis 0
+        time_idx_p = (self.tfit.pnames == 'EP1').nonzero()[0]
+        # loop over the samples in the chain
+        for n_it in range(n_samples):
+            # copy tfit
+            tfit_tmp = self.tfit.copy()
+            # get the fitted parameters values for this sample
+            tfit_tmp.x0 = self.chain[chain_samples_idx[n_it], :]
+            # update p with parameters values from that sample
+            tfit_tmp.update_p0_from_x0()
+            ptmp = tfit_tmp.p0
+            # loop over band passes and calculate depth
+            for bp in range(self.tfit.n_phot):
+                # define kwargs for transit_fit
+                tkwargs = dict(sol=ptmp[:, bp], time=ptmp[time_idx_p, bp],
+                               itime=1.e-5,  # put ~1 sec here, in units of days
+                               ntt=self.tfit.pkwargs['NTT'],
+                               tobs=self.tfit.pkwargs['T_OBS'],
+                               omc=self.tfit.pkwargs['OMC'],
+                               nintg=self.tfit.pkwargs['NINTG'])
+                # call transit model and evaluate at time EP1 (middle transit)
+                depth[n_it, bp] = 1.0 - transit_fit.transitmodel(**tkwargs)
+        # get the depths 16th, 50th and 86th
+        d16, d50, d84 = np.percentile(depth, pvalues, axis=0)
+        d_elo = d50 - d16
+        d_ehi = d84 - d50
+        # get depth 50th + and - values
+        return d50, d16, d84, d_elo, d_ehi
 
     def print_results(self, pkind: str = 'mode',
                       key: Optional[str] = None):
         """
         Print the results to screen for pkind = "mode" or "percentile"
 
-        :param results: astropy table, the results Table (from self.results)
         :param pkind: str, either "mode" or "percentile"
         :param key: str or None, if set filters the printout by this key
 
         :return: None, prints to standard output
         """
+        # get which results we want
+        result_mode = self.params['RESULT_MODE']
         # get results table
         results = self.results_table
         # check key is valid
@@ -1573,14 +1834,16 @@ class Sampler:
                 if results['NAME'][row] != key:
                     continue
             # get print arguments
-            if pkind == 'mode':
+            if pkind == 'mode' and result_mode in ['mode', 'all']:
                 pargs = [results['NAME'][row], results['MODE'][row],
                          results['MODE_UPPER'][row], results['MODE_LOWER'][row]]
-            else:
+                # print values
+                cprint('\t{0:3s}={1:.8f}+{2:.8f}-{3:.8f}'.format(*pargs))
+            elif pkind == 'percentile' and result_mode in ['percentile', 'all']:
                 pargs = [results['NAME'][row], results['P50'][row],
                          results['P50_UPPER'][row], results['P50_LOWER'][row]]
-            # print values
-            cprint('\t{0:3s}={1:.8f}+{2:.8f}-{3:.8f}'.format(*pargs))
+                # print values
+                cprint('\t{0:3s}={1:.8f}+{2:.8f}-{3:.8f}'.format(*pargs))
 
     def save_results(self):
         # get results table
@@ -1950,10 +2213,6 @@ def _linear_process(sampler: Sampler, in_sampler: Sampler,
     :param nwalker: int, the walker number
     :param gkwargs: dictionary, constant args to pass to the linear process
     :param ngroup: int, the group number
-    :param return_dict: the multiprocessing return dictionary (acts like
-                        normal dictionary)
-    :param loglikelihood: function: loglikelihood function
-    :param mcmcfunc: function: mcmcfunc function
 
     :return: tuple, 1. the chains, 2. the rejects
     """

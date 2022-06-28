@@ -56,18 +56,13 @@ if __name__ == "__main__":
 
     # -------------------------------------------------------------------------
     # apply spectral binning
-    cprint('Applying spectral binning')
+    cprint('Applying spectral binning and removing bins')
     data.apply_spectral_binning(params)
 
     # -------------------------------------------------------------------------
     # apply normalization (normalize by mean out-of-transit)
     cprint('Normalizing by out-of-transit flux for each wavelength')
     data.normalize_by_out_of_transit_flux(params)
-
-    # -------------------------------------------------------------------------
-    # remove any bins user wishes to remove
-    cprint('Remove bins from order')
-    data.remove_bins(params)
 
     # -------------------------------------------------------------------------
     # create the photospectra dictionary (data.phot)
@@ -115,20 +110,32 @@ if __name__ == "__main__":
     sampler2 = mcmc.Sampler(params, tfit, mode='full')
     sampler2.run_mcmc(corscale, mcmc.lnprob, mcmc.mhg_mcmc,
                       trial=sampler1)
+    # add data to sampler2 (for dump and plotting)
+    sampler2.data = data
     # print result
     sampler2.posterior_print()
     # plot a specific chain
     plot.plot_chain(params, sampler2.chain, chain_num=-1)
+
+    # example to run a single loop after the fact
+    #   Note nsteps and nloop should be set based on the finishing
+    #   state of run_mcmc
+    # sampler2.single_loop(corscale, mcmc.lnprob, mcmc.mhg_mcmc,
+    #                      in_sampler=sampler2, nsteps=len(sampler2.chain),
+    #                      nloop=4)
+
     # -------------------------------------------------------------------------
     # update tfit
     tfit_final = mcmc.update_x0_p0_from_chain(tfit, sampler2.wchains[0], -1)
+    # add tfit to sampler
+    sampler2.tfit = tfit_final
     # -------------------------------------------------------------------------
     # plot transit
-    plot.plot_transit_fit(params, tfit_final)
+    plot.plot_transit_fit(params, tfit_final, bandpass=1)
     # plot the chains
-    plot.plot_chains(params, sampler2.chain, 0, tfit_final.xnames)
+    # plot.plot_chains(params, sampler2.chain, 0, tfit_final.xnames)
     # quick check of posterior
-    plot.plot_hist(params, tfit_final, sampler2.chain[::10], param_num=None)
+    # plot.plot_hist(params, tfit_final, sampler2.chain[::10], param_num=None)
 
     # -------------------------------------------------------------------------
     # Step 6: generate statistics
@@ -164,9 +171,9 @@ if __name__ == "__main__":
     sampler2.save_chains()
 
     # dump the sampler class to disk so it can be loaded later
-    #   we add data and tfit_final (as tfit)
+    #   this can be BIG - may want to disable for large runs
     cprint('Dumping sampler to pickle file')
-    sampler2.dump(tfit=tfit_final, data=data)
+    sampler2.dump()
 
     # -------------------------------------------------------------------------
     # Step 8: plot spectrum - using sampler only so we can load from file

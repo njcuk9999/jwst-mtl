@@ -15,11 +15,10 @@ import numpy as np
 import os
 from typing import Dict, Optional
 
-import transitfit5 as transit_fit
-
 from soss_tfit.core import base_classes
 from soss_tfit.science import general
 from soss_tfit.science import mcmc
+from soss_tfit.utils import transitfit5 as transit_fit
 
 # =============================================================================
 # Define variables
@@ -91,14 +90,17 @@ def end_plot(params: ParamDict, name: str):
 # =============================================================================
 # Define plot functions
 # =============================================================================
-def plot_flux(params: ParamDict, data: InputData):
+def plot_flux(params: ParamDict, data: InputData, return_object: bool = False):
     """
     Plot the flux data for each wavelength
 
     :param params: ParamDict, parameter dictionary of constants
     :param data: InputData instance
+    :param return_object: bool, if True does not show/save or close and
+                          returns the matplotlib figure and axis
 
-    :return: None, plots graph
+    :return: None, plots graph (unless return_object, then returns tuple,
+             [fig, axes] where fig, axes = plt.subplots(...)
     """
     # set plot name
     plot_name = 'plot_flux'
@@ -120,19 +122,26 @@ def plot_flux(params: ParamDict, data: InputData):
     plt.subplots_adjust(hspace=0, left=0.05, right=0.975, top=0.975,
                         bottom=0.05)
     # end plot
-    end_plot(params, name=plot_name)
+    if return_object:
+        return fig, frame
+    else:
+        end_plot(params, name=plot_name)
 
 
 def plot_transit_fit(params: ParamDict, tfit: TransitFit,
-                     bandpass: Optional[int] = None):
+                     bandpass: Optional[int] = None,
+                     return_object: bool = False):
     """
     Plot the current parameter transit model fit along with the data
 
     :param params: ParamDict, parameter dictionary of constants
     :param tfit: TransFit data class, storage of transit params and data
-    :param bandpass:
+    :param bandpass: int or None, if defined only plot one bandpass
+    :param return_object: bool, if True does not show/save or close and
+                          returns the matplotlib figure and axis
 
-    :return: None, plots graph
+    :return: None, plots graph (unless return_object, then returns tuple,
+             [fig, axes] where fig, axes = plt.subplots(...)
     """
     # set plot name
     plot_name = 'plot_transit_fit'
@@ -159,7 +168,7 @@ def plot_transit_fit(params: ParamDict, tfit: TransitFit,
         frames = [frame]
     else:
         fig, frames = plt.subplots(ncols=1, nrows=len(bandpasses), sharex='all',
-                                   figsize=(16, 2*len(bandpasses)))
+                                   figsize=(16, 2 * len(bandpasses)))
 
     # loop around bandpasses
     for b_it in range(len(bandpasses)):
@@ -168,10 +177,11 @@ def plot_transit_fit(params: ParamDict, tfit: TransitFit,
         # get the frame for this bandpass
         frame = frames[b_it]
         # get transit for current parameters
-        tkwargs = dict(sol=tfit.p0, time=tfit.time[bpass],
+        tkwargs = dict(sol=tfit.p0[:, bpass], time=tfit.time[bpass],
                        itime=tfit.itime[bpass],
                        ntt=tfit.pkwargs['NTT'], tobs=tfit.pkwargs['T_OBS'],
-                       omc=tfit.pkwargs['OMC'])
+                       omc=tfit.pkwargs['OMC'],
+                       nintg=tfit.pkwargs['NINTG'])
         # set colour based on order
         order = int(np.mean(tfit.orders[bpass]))
         color = ORDER_COLORS[order]
@@ -191,10 +201,14 @@ def plot_transit_fit(params: ParamDict, tfit: TransitFit,
     plt.subplots_adjust(hspace=0, left=0.05, right=0.975, top=0.975,
                         bottom=0.05)
     # end plot
-    end_plot(params, name=plot_name)
+    if return_object:
+        return fig, frames
+    else:
+        end_plot(params, name=plot_name)
 
 
-def plot_chain(params: ParamDict, chain: np.ndarray, chain_num: int):
+def plot_chain(params: ParamDict, chain: np.ndarray, chain_num: int,
+               return_object: bool = False):
     """
     Plot a single chain
 
@@ -202,8 +216,11 @@ def plot_chain(params: ParamDict, chain: np.ndarray, chain_num: int):
     :param chain: np.ndarray, the chain [n_steps, x_n]
     :param chain_num: int, the position in chain to get (positive to count
                       from start, negative to count from end)
+    :param return_object: bool, if True does not show/save or close and
+                          returns the matplotlib figure and axis
 
-    :return: None, plots graph
+    :return: None, plots graph (unless return_object, then returns tuple,
+             [fig, axes] where fig, axes = plt.subplots(...)
     """
     # set plot name
     plot_name = 'plot_chain'
@@ -215,11 +232,14 @@ def plot_chain(params: ParamDict, chain: np.ndarray, chain_num: int):
     # plot chain
     frame.plot(chain[:, chain_num])
     # end plot
-    end_plot(params, name=plot_name)
+    if return_object:
+        return fig, frame
+    else:
+        end_plot(params, name=plot_name)
 
 
 def plot_chains(params: ParamDict, chain: np.ndarray, burnin: int,
-                labels: np.ndarray):
+                labels: np.ndarray, return_object: bool = False):
     """
     Plot the full set of chains
 
@@ -227,8 +247,11 @@ def plot_chains(params: ParamDict, chain: np.ndarray, burnin: int,
     :param chain: np.ndarray, the chain [n_steps, x_n]
     :param burnin: int, the number of chains to burn (ignore) at start
     :param labels: np.ndarray, the array of names of fitted params [x_n]
+    :param return_object: bool, if True does not show/save or close and
+                          returns the matplotlib figure and axis
 
-    :return: None, plots graph
+    :return: None, plots graph (unless return_object, then returns tuple,
+             [fig, axes] where fig, axes = plt.subplots(...)
     """
     # set plot name
     plot_name = 'plot_chains'
@@ -252,11 +275,14 @@ def plot_chains(params: ParamDict, chain: np.ndarray, burnin: int,
         if param_it + 1 < n_param:
             frames[param_it].set_xticklabels([])
     # end plot
-    end_plot(params, name=plot_name)
+    if return_object:
+        return fig, frames
+    else:
+        end_plot(params, name=plot_name)
 
 
 def plot_hist(params: ParamDict, tfit: TransitFit, chain: np.ndarray,
-              param_num: Optional[int] = None):
+              param_num: Optional[int] = None, return_object: bool = False):
     """
     Plot the histogram for chains for one parameter or all parameters
     (if param_num is unset)
@@ -266,8 +292,11 @@ def plot_hist(params: ParamDict, tfit: TransitFit, chain: np.ndarray,
     :param chain: np.ndarray the chains [n_steps, n_param]
     :param param_num: int, either 0 to n_param or None - if set only plots
                       one parameter, otherwise plots them all
+    :param return_object: bool, if True does not show/save or close and
+                          returns the matplotlib figure and axis
 
-    :return: None, plots graph
+    :return: None, plots graph (unless return_object, then returns tuple,
+             [fig, axes] where fig, axes = plt.subplots(...)
     """
     # set plot name
     plot_name = 'plot_hist'
@@ -278,17 +307,19 @@ def plot_hist(params: ParamDict, tfit: TransitFit, chain: np.ndarray,
     #   then grid is NxM where NxM >= tfit.n_x
     if param_num is None:
         xnames = tfit.xnames
+        xchain = chain.T
         # get the number of rows and columns (try to make it a square grid)
         nrows = int(np.sqrt(tfit.n_x))
         ncols = (tfit.n_x // nrows) + 1
         # set up figure
         fig, frames = plt.subplots(ncols=ncols, nrows=nrows,
-                                   figsize=(2*ncols, 2*nrows))
+                                   figsize=(2 * ncols, 2 * nrows))
         # get all positions within the grid
         ijarr = [(i, j) for i in range(nrows) for j in range(ncols)]
     # else we have one plot - the grid is (1x1) and the plotting is easy
     else:
-        xnames = tfit.xnames[param_num]
+        xnames = [tfit.xnames[param_num]]
+        xchain = [chain[:, param_num]]
         # set up figure
         fig, frame = plt.subplots(ncols=1, nrows=1, figsize=(10, 10))
         # we only have one frame but want to use a 1x1 grid
@@ -300,21 +331,26 @@ def plot_hist(params: ParamDict, tfit: TransitFit, chain: np.ndarray,
         frame = frames[ij]
         # only plot those for which we have values (the grid may have some
         #   empty space)
-        if kt < len(xnames) - 1:
+        if kt < len(xnames) - 1 or param_num is not None:
             # plot the histogram
-            frame.hist(chain[:, kt])
+            frame.hist(xchain[kt])
             # set title
             frame.set_title(xnames[kt], y=1.0, pad=-14)
         else:
             frame.axis('off')
     # end plot
-    end_plot(params, name=plot_name)
+    if return_object:
+        return fig, frames
+    else:
+        end_plot(params, name=plot_name)
 
 
 def plot_spectrum(params: ParamDict, data: InputData, results: Table,
                   key: str = 'RD1', model: Optional[Dict[int, Table]] = None,
                   binkey: str = 'RPRS', pkind: str = 'mode',
-                  fullmodel: Optional[Table] = None):
+                  fullmodel: Optional[Table] = None,
+                  return_object: bool = False,
+                  plot_label: str = None):
     """
     Plots the parameter against wavelength
 
@@ -328,9 +364,17 @@ def plot_spectrum(params: ParamDict, data: InputData, results: Table,
     :param pkind: str, either mode or median (for the correct stats)
     :param fullmodel: Table or None, if given the full unbinned model for
                       comparison
+    :param return_object: bool, if True does not show/save or close and
+                          returns the matplotlib figure and axis
+    :param plot_label: str, if key is not "RD1" you must define this,
+                       this is the y axis label for plotting
+                       (latex is supported) for RD1 this is r'$R_{p}/R_{\star}$'
 
-    :return: None, plots graph
+    :return: None, plots graph (unless return_object, then returns tuple,
+             [fig, axes] where fig, axes = plt.subplots(...)
     """
+    # get which results we want
+    result_mode = params['RESULT_MODE']
     # set plot name
     plot_name = f'plot_spectrum_{pkind}'
     # start plot
@@ -338,23 +382,33 @@ def plot_spectrum(params: ParamDict, data: InputData, results: Table,
         return
     # set up figure
     fig, frame = plt.subplots(ncols=1, nrows=1, figsize=(16, 12))
+
+    # -------------------------------------------------------------------------
+    # deal with key
+    if key == 'RD1' and plot_label is None:
+        plot_label = r'$R_{p}/R_{\star}$'
+    elif plot_label is None:
+        raise ValueError('plotlabel argument is required when key != "RD1"')
     # -------------------------------------------------------------------------
     # get the results for binkey
-    rmask = results['NAME'] == key
+    rmask = results['SHORTNAME'] == key
+    rmask |= results['NAME'] == key
     # get the arrays
     wave = data.phot['WAVELENGTH'][:, 0]
     # -------------------------------------------------------------------------
     # get results for mode / percentile
-    if pkind == 'mode':
+    if pkind == 'mode' and result_mode in ['mode', 'all']:
         yvalue = results['MODE'][rmask]
         yupper = results['MODE_UPPER'][rmask]
         ylower = results['MODE_LOWER'][rmask]
         title = 'Mode'
-    else:
+    elif pkind == 'percentile' and result_mode in ['percentile', 'all']:
         yvalue = results['P50'][rmask]
         yupper = results['P50_UPPER'][rmask]
         ylower = results['P50_LOWER'][rmask]
         title = 'Percentile'
+    else:
+        return
     # -------------------------------------------------------------------------
     # plot the full model
     if fullmodel is not None:
@@ -379,11 +433,14 @@ def plot_spectrum(params: ParamDict, data: InputData, results: Table,
                        label=f'Fit Order {order}')
     # -------------------------------------------------------------------------
     # set labels and limits
-    frame.set(xlabel=r'Wavelength ($\mu$m)', ylabel=r'$R_{p}/R_{\star}$',
+    frame.set(xlabel=r'Wavelength ($\mu$m)', ylabel=plot_label,
               xlim=[0.6, 3.0], title=title)
     frame.legend(loc=0)
     # end plot
-    end_plot(params, name=plot_name)
+    if return_object:
+        return fig, frame
+    else:
+        end_plot(params, name=plot_name)
 
 
 # =============================================================================

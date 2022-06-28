@@ -18,6 +18,61 @@ from SOSS.APPLESOSS import _calibrations
 from SOSS.APPLESOSS import plotting
 
 
+def get_box_weights(centroid, n_pix, shape, cols=None):
+    """ Return the weights of a box aperture given the centroid and the width
+    of the box in pixels. All pixels will have the same weights except at the
+    ends of the box aperture.
+    Copy of the same function in soss_boxextract.py of the jwst pipeline to
+    circumvent package versioning issues...
+
+    Parameters
+    ----------
+    centroid : array[float]
+        Position of the centroid (in rows). Same shape as `cols`
+    n_pix : float
+        Width of the extraction box in pixels.
+    shape : Tuple(int, int)
+        Shape of the output image. (n_row, n_column)
+    cols : array[int]
+        Column indices of good columns. Used if the centroid is defined
+        for specific columns or a sub-range of columns.
+    Returns
+    -------
+    weights : array[float]
+        An array of pixel weights to use with the box extraction.
+    """
+
+    nrows, ncols = shape
+
+    # Use all columns if not specified
+    if cols is None:
+        cols = np.arange(ncols)
+
+    # Row centers of all pixels.
+    rows = np.indices((nrows, len(cols)))[0]
+
+    # Pixels that are entierly inside the box are set to one.
+    cond = (rows <= (centroid - 0.5 + n_pix / 2))
+    cond &= ((centroid + 0.5 - n_pix / 2) <= rows)
+    weights = cond.astype(float)
+
+    # Fractional weights at the upper bound.
+    cond = (centroid - 0.5 + n_pix / 2) < rows
+    cond &= (rows < (centroid + 0.5 + n_pix / 2))
+    weights[cond] = (centroid + n_pix / 2 - (rows - 0.5))[cond]
+
+    # Fractional weights at the lower bound.
+    cond = (rows < (centroid + 0.5 - n_pix / 2))
+    cond &= ((centroid - 0.5 - n_pix / 2) < rows)
+    weights[cond] = (rows + 0.5 - (centroid - n_pix / 2))[cond]
+
+    # Return with the specified shape with zeros where the box is not defined.
+    out = np.zeros(shape, dtype=float)
+    out[:, cols] = weights
+
+    return out
+
+
 def get_wave_solution(order):
     """Extract wavelength calibration information from the wavelength solution
     reference file.
