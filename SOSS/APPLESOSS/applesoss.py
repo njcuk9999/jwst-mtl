@@ -336,7 +336,7 @@ def oversample_frame(dataframe, os):
     y, y_os = np.arange(dimy), np.arange(dimy * os) / os
 
     # Interpolate onto the oversampled grid.
-    pp = interp2d(x, y, dataframe)
+    pp = interp2d(x, y, dataframe, kind='cubic')
     data_os = pp(x_os, y_os)
 
     return data_os
