@@ -401,7 +401,7 @@ def pad_spectral_axis(frame, xcens, ycens, pad=0, ref_cols=None,
 
 
 def reconstruct_order(residual, cen, order, psfs, halfwidth, pad, pivot=750,
-                      o1_prof=None, o2_prof=None, verbose=0):
+                      o1_prof=None, o2_prof=None, os_factor=10, verbose=0):
     """Reconstruct the wings of the the spatial profiles using simulated
     WebbPSF PSFs. Will also add padding to the spatial axes of orders 2 and 3,
     where the trace touches the top edge of the detector.
@@ -432,8 +432,8 @@ def reconstruct_order(residual, cen, order, psfs, halfwidth, pad, pivot=750,
     o2_prof : array_like
         Uncontaminated order 2 spatial profile. Only necessary for
         reconstruction of order 3.
-    halfwidth : int
-        Half width in pixels of the spatial profile core.
+    os_factor : int
+        Oversampling factor for re-centroiding.
     verbose : int
         level of verbosity.
 
@@ -468,15 +468,19 @@ def reconstruct_order(residual, cen, order, psfs, halfwidth, pad, pivot=750,
             continue
         # If the centroid is too close to the detector edge, make note of
         # the column and deal with it later
-        cen_o = int(round(cen['order ' + str(order)]['Y centroid'][i], 0))
-        if cen_o + halfwidth > dimy:
+        cen_o = int(round(cen['order '+str(order)]['Y centroid'][i]*os_factor, 0))
+        if cen_o/os_factor + halfwidth > dimy:
             if i < maxi:
                 maxi = i
             continue
 
         # Get a copy of the spatial profile, and normalize it by its max value.
         working_prof = np.copy(residual[:, i])
-        max_val = np.nanpercentile(working_prof[(cen_o-halfwidth):(cen_o+halfwidth)], 99)
+        lwp = len(working_prof)
+        working_prof_os = np.interp(np.linspace(0, (os_factor*lwp-1)/os_factor,
+                                                (os_factor*lwp-1)+1),
+                                    np.arange(lwp), working_prof)
+        max_val = np.nanpercentile(working_prof[(cen_o//os_factor-halfwidth):(cen_o//os_factor+halfwidth)], 99)
 
         # Simulate the wings.
         if first_time is False:
@@ -487,17 +491,32 @@ def reconstruct_order(residual, cen, order, psfs, halfwidth, pad, pivot=750,
         # that it isn't lining up perfectly with the profile for some reason.
         wing2 = np.pad(wing2, (1, 0), mode='edge')
         wing *= max_val
+        lw = len(wing)
+        wing_os = np.interp(np.linspace(0, (os_factor*lw-1)/os_factor,
+                                        (os_factor*lw-1)+1), np.arange(lw),
+                            wing)
         wing2 *= max_val
+        lw2 = len(wing2)
+        wing2_os = np.interp(np.linspace(0, (os_factor*lw2-1)/os_factor,
+                                         (os_factor*lw2-1)+1), np.arange(lw2),
+                             wing2)
         first_time = False
         # Concatenate the wings onto the profile core.
-        end = int(round((cen_o + halfwidth), 0))
-        start = int(round((cen_o - halfwidth), 0))
+        end = int(round((cen_o + halfwidth*os_factor), 0))
+        start = int(round((cen_o - halfwidth*os_factor), 0))
 
-        stitch = np.concatenate([wing2, working_prof[(start+1):end], wing])
+        stitch = np.concatenate([wing2_os,
+                                 working_prof_os[(start+os_factor):end],
+                                 wing_os])
         # Shift the profile back to its correct centroid position
-        psf_len = np.shape(psfs['PSF'])[1]
-        stitch = np.interp(np.arange(dimy+pad),
+        psf_len = np.shape(psfs['PSF'])[1]*os_factor
+        stitch = np.interp(np.arange((dimy+pad)*os_factor),
                            np.arange(psf_len) - psf_len//2 + cen_o,
+                           stitch)
+        # Interpolate back to native pixel sampling.
+        stitch = np.interp(np.arange(dimy+pad),
+                           np.linspace(0, (os_factor*(dimy+pad)-1)/os_factor,
+                                       (os_factor*(dimy+pad)-1)+1),
                            stitch)
         new_frame[:, i] = stitch
         # Rescale to native flux level.
@@ -518,7 +537,7 @@ def reconstruct_order(residual, cen, order, psfs, halfwidth, pad, pivot=750,
             co2 = cen['order 2']['Y centroid'][i]
             working_prof = utils.interpolate_profile(wave_o2, co2,
                                                      wavecal_w_o1, o1_prof.T,
-                                                     co1)
+                                                     co1, os_factor=os_factor)
             new_frame[:, i] = working_prof
 
         # For columns where the centroid is off the detector, reuse the bluest
@@ -550,7 +569,7 @@ def reconstruct_order(residual, cen, order, psfs, halfwidth, pad, pivot=750,
             co3 = cen['order 3']['Y centroid'][i]
             working_prof = utils.interpolate_profile(wave_o3, co3,
                                                      wavecal_w_o2, o2_prof.T,
-                                                     co2)
+                                                     co2, os_factor=os_factor)
             new_frame[:, i] = working_prof
 
     return new_frame, new_frame_native

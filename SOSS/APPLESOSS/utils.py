@@ -104,7 +104,7 @@ def get_wave_solution(order):
     return wavecal_x, wavecal_w
 
 
-def interpolate_profile(w, w_cen, wavelengths, psfs, psfs_cen):
+def interpolate_profile(w, w_cen, wavelengths, psfs, psfs_cen, os_factor=10):
     """For efficiency, 1D SOSS PSFs were generated through WebbPSF at
     discrete intervals. This function performs the linear interpolation to
     construct profiles at a specified wavelength.
@@ -121,6 +121,8 @@ def interpolate_profile(w, w_cen, wavelengths, psfs, psfs_cen):
         WebbPSF simulated 1D PSFs.
     psfs_cen : array_like
         Array of centroid positions for the profiles in psfs.
+    os_factor : int
+        Oversampling factor for recentroiding.
 
     Returns
     -------
@@ -137,12 +139,27 @@ def interpolate_profile(w, w_cen, wavelengths, psfs, psfs_cen):
     # Shift the anchor profiles to the centroid position of the wavelength of
     # interest.
     len_psf = np.shape(psfs)[1]
-    psf_up = np.interp(np.arange(len_psf),
-                       np.arange(len_psf) - psfs_cen[up] + w_cen,
-                       psfs[up])
-    psf_low = np.interp(np.arange(len_psf),
-                        np.arange(len_psf) - psfs_cen[low] + w_cen,
-                        psfs[low])
+    # Oversample
+    psf_up = np.interp(np.linspace(0, (os_factor*len_psf - 1)/os_factor,
+                                   (os_factor*len_psf - 1) + 1),
+                       np.arange(len_psf), psfs[up])
+    psf_low = np.interp(np.linspace(0, (os_factor*len_psf - 1)/os_factor,
+                                   (os_factor*len_psf - 1) + 1),
+                        np.arange(len_psf), psfs[low])
+    # Shift the profiles to the correct cenntroid
+    psf_up = np.interp(np.arange(len_psf*os_factor),
+                       np.arange(len_psf*os_factor) - psfs_cen[up]*os_factor + w_cen*os_factor,
+                       psf_up)
+    psf_low = np.interp(np.arange(len_psf*os_factor),
+                        np.arange(len_psf*os_factor) - psfs_cen[low]*os_factor + w_cen*os_factor,
+                        psf_low)
+    # Resample to the native pixel sampling.
+    psf_up = np.interp(np.arange(len_psf), np.linspace(0, (os_factor*len_psf-1)/os_factor,
+                                                       (os_factor*len_psf-1)+1),
+                       psf_up)
+    psf_low = np.interp(np.arange(len_psf), np.linspace(0, (os_factor*len_psf-1)/os_factor,
+                                                        (os_factor*len_psf-1)+1),
+                        psf_low)
 
     # Assume that the PSF varies linearly over the interval.
     # Calculate the weighting coefficients for each anchor.
