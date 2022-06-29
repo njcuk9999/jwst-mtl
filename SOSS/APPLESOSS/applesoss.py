@@ -35,7 +35,8 @@ class EmpiricalProfile:
     clear : array-like
         SOSS CLEAR exposure data frame.
     subarray : str
-        NIRISS SOSS subarray identifier. One of 'SUBSTRIP256', or 'FULL'.
+        NIRISS SOSS subarray identifier. One of 'SUBSTRIP256', 'SUBSTRIP96',
+        or 'FULL'.
     pad : int
         Amount of padding to include (in native pixels) in the spatial and
         spectral directions.
@@ -112,7 +113,7 @@ class EmpiricalProfile:
         Parameters
         ----------
         subarray : str
-            SOSS subarray, either FULL, SUBSTRIP256 or SUBSTRIP96
+            SOSS subarray, either 'FULL', 'SUBSTRIP256', or 'SUBSTRIP96'
         filename : str
             Name of reference file.
         """
@@ -156,7 +157,8 @@ def build_empirical_profile(clear, subarray, pad, oversample, wave_increment,
     clear : array-like
         SOSS CLEAR exposure data frame.
     subarray : str
-        NIRISS SOSS subarray identifier. One of 'SUBSTRIP256', or 'FULL'.
+        NIRISS SOSS subarray identifier. One of 'SUBSTRIP256', 'SUBSTRIP96',
+        or 'FULL'.
     pad : int
         Amount of padding to include (in native pixels) in the spatial and
         spectral directions.
@@ -245,32 +247,40 @@ def build_empirical_profile(clear, subarray, pad, oversample, wave_increment,
     if pad != 0:
         o1_uncontam = np.pad(o1_uncontam, ((pad, pad), (0, 0)), mode='edge')
 
-    # === Second Order ===
-    # Construct the second order profile.
-    if verbose != 0:
-        print('  Starting the second order trace...')
-    o2_out = reconstruct_order(clear - o1_native, centroids, order=2,
-                               psfs=psfs, halfwidth=halfwidth, pad=pad,
-                               o1_prof=o1_uncontam[pad:, :],
-                               verbose=verbose)
-    o2_uncontam, o2_native = o2_out[0], o2_out[1]
-    # Add padding to the lower edge of spatial axis if necessary.
-    if pad != 0:
-        o2_uncontam = np.pad(o2_uncontam, ((pad, 0), (0, 0)), mode='edge')
+    # If the subarray is SUBSTRIP96, this is all we can do. However, for
+    # SUBSTRIP256 we can reconstruct the second and third orders as well.
+    if subarray != 'SUBSTRIP96':
+        # === Second Order ===
+        # Construct the second order profile.
+        if verbose != 0:
+            print('  Starting the second order trace...')
+        o2_out = reconstruct_order(clear - o1_native, centroids, order=2,
+                                   psfs=psfs, halfwidth=halfwidth, pad=pad,
+                                   o1_prof=o1_uncontam[pad:, :],
+                                   verbose=verbose)
+        o2_uncontam, o2_native = o2_out[0], o2_out[1]
+        # Add padding to the lower edge of spatial axis if necessary.
+        if pad != 0:
+            o2_uncontam = np.pad(o2_uncontam, ((pad, 0), (0, 0)), mode='edge')
 
-    # === Third Order ===
-    # Construct the third order profile.
-    if verbose != 0:
-        print('  Starting the third order trace...')
-    o3_out = reconstruct_order(clear - o1_native - o2_native, centroids,
-                               order=3, psfs=psfs, pivot=700,
-                               halfwidth=halfwidth, pad=pad,
-                               o2_prof=o2_uncontam[pad:, :],
-                               verbose=verbose)
-    o3_uncontam = o3_out[0]
-    # Add padding to the lower edge of the spatial axis if necessary.
-    if pad != 0:
-        o3_uncontam = np.pad(o3_uncontam, ((pad, 0), (0, 0)), mode='edge')
+        # === Third Order ===
+        # Construct the third order profile.
+        if verbose != 0:
+            print('  Starting the third order trace...')
+        o3_out = reconstruct_order(clear - o1_native - o2_native, centroids,
+                                   order=3, psfs=psfs, pivot=700,
+                                   halfwidth=halfwidth, pad=pad,
+                                   o2_prof=o2_uncontam[pad:, :],
+                                   verbose=verbose)
+        o3_uncontam = o3_out[0]
+        # Add padding to the lower edge of the spatial axis if necessary.
+        if pad != 0:
+            o3_uncontam = np.pad(o3_uncontam, ((pad, 0), (0, 0)), mode='edge')
+    else:
+        msg = 'Only order 1 can be reconstructed for SUBSTRIP96.'
+        warnings.warn(msg)
+        o2_uncontam = np.ones_like(o1_uncontam)
+        o3_uncontam = np.ones_like(o1_uncontam)
 
     # ========= FINAL TUNING =========
     # Pad the spectral axes.

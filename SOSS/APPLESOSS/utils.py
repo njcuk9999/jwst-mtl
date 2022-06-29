@@ -275,9 +275,7 @@ def validate_inputs(etrace):
     # Determine correct subarray dimensions.
     dimy, dimx = np.shape(etrace.clear)
     if dimy == 96:
-        # Fail if user wants to use a SUBSTRIP96 exposure
-        msg = 'SUBSTRIP96 is currently not supported.'
-        raise NotImplementedError(msg)
+        subarray = 'SUBSTRIP96'
     elif dimy == 256:
         subarray = 'SUBSTRIP256'
     elif dimy == 2048:
