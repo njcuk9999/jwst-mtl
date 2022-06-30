@@ -365,14 +365,6 @@ class TransitFit:
                 # update the x positions
                 x0pos += [(it, 0)]
         # ---------------------------------------------------------------------
-        # define a new x0 to p0 translation dictionary
-        x0_to_p0 = dict()
-        # loop around the parameters in x and return the index positions of
-        #   each p0 position (for each x)
-        for it in range(self.n_x):
-            # assign each x value
-            x0_to_p0[it] = (self.p0pos == it).nonzero()
-        # ---------------------------------------------------------------------
         # set values in class
         self.x0 = np.array(x0)
         self.xnames = np.array(xnames)
@@ -381,6 +373,14 @@ class TransitFit:
         self.p0pos = np.array(p0pos, dtype=int)
         self.x0pos = np.array(x0pos)
         self.xbeta = np.array(xbetas)
+        # ---------------------------------------------------------------------
+        # define a new x0 to p0 translation dictionary
+        x0_to_p0 = dict()
+        # loop around the parameters in x and return the index positions of
+        #   each p0 position (for each x)
+        for it in range(len(x0)):
+            # assign each x value
+            x0_to_p0[it] = (self.p0pos == it).nonzero()
         self.x0_to_p0 = x0_to_p0
 
     def update_p0_from_x0(self):
