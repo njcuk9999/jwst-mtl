@@ -24,6 +24,7 @@ from soss_tfit.core import base
 from soss_tfit.core import base_classes
 from soss_tfit.science import general
 from soss_tfit.utils import transitfit5 as transit_fit
+from soss_tfit.utils import tfit5
 
 # =============================================================================
 # Define variables
@@ -746,46 +747,36 @@ def lnpriors(tfit) -> float:
 
     :return: float, either 1 (if good) or -np.inf (if bad)
     """
+    # name of parameters
+    xnames = tfit.xnames
     # set initial value of loglikelihood
     lnprior = 1.0
-    # the number of band passes
-    n_phot = tfit.n_phot
-    # the number of parameters
-    n_param = tfit.n_param
-    # name of parameters
-    names = tfit.pnames
-    # whether parameters are fitted or fixed
-    fmask = tfit.fmask
-    # trial solution
-    sol = np.array(tfit.p0)
-    # -------------------------------------------------------------------------
-    # loop around all parameters and test priors
-    for param_it in range(n_param):
-        # skip fixed terms (we don't care about the priors for these parameters)
-        if not fmask[param_it]:
-            continue
-        # get this parameters priors
-        prior = dict(tfit.get(names[param_it], 'prior'))
-        # check that prior func condition is valid
+    # loop around all fitted parameters and test priors
+    for x_it in range(tfit.n_x):
+        # get the prior value for this parameter
+        prior = tfit.prior[tfit.x0_to_p0[x_it][0][0]].copy()
+        # deal with having a func defined
         if 'func' in prior:
             if prior['func'] not in PRIOR_FUNC:
-                emsg = (f'prior.func is defined for {names[param_it]}, '
+                emsg = (f'prior.func is defined for {xnames[x_it]}, '
                         f'thus it must be one of the following:')
                 for pfkey in list(PRIOR_FUNC.keys()):
                     emsg += f'\n\t{pfkey}'
                 raise base_classes.TransitFitExcept(emsg)
-        # priors add in log space
-        func = PRIOR_FUNC[prior.get('func', 'uniform')]
-        # remove 'func' from prior (we don't want it in the function call)
-        if 'func' in prior:
+            # set the prior function
+            func = PRIOR_FUNC[prior['func']]
+            # remove 'func' from prior (we don't want it in the function call)
             del prior['func']
-        # loop around band passes
-        for phot_it in range(n_phot):
-            # add to the lnprior probability
-            lnprior += func(sol[param_it, phot_it], **prior)
-            # function returns True if pass prior condition
-            if not (lnprior > BADLPR):
-                return BADLPR
+            # prior={k:prior[k] for k in prior if k!='func'}
+        else:
+            func = PRIOR_FUNC['uniform']
+
+        # priors add in log space
+        lnprior += func(tfit.x0[x_it], **prior)
+        # function returns True if pass prior condition
+        if not (lnprior > BADLPR):
+            return BADLPR
+
     # if we have got to here we return the good loglikelihood (all priors have
     #    passed)
     return lnprior
@@ -829,6 +820,8 @@ def lnprob(tfit: TransitFit) -> float:
     nintg = tfit.pkwargs['NINTG']
     # trial solution
     sol = np.array(tfit.p0)
+
+    nplanets = tfit.params['N_PLANETS']
     # -------------------------------------------------------------------------
     # the hyper parameters
     # photometric error scale (DSC) for this bandpass
@@ -850,6 +843,7 @@ def lnprob(tfit: TransitFit) -> float:
     # -------------------------------------------------------------------------
     # check priors
     logl = lnpriors(tfit)
+
     # if out of limits return here
     if not (logl > BADLPR):
         return BADLPR
@@ -859,32 +853,26 @@ def lnprob(tfit: TransitFit) -> float:
     # QUESTION: Can we parallelize this?
     # QUESTION: If one phot_it is found to be inf, we can skip rest?
     # loop around band passes
+    # initialize array that will contain model for each tfit5.transitmodel call
+    model = np.empty(tfit.n_int)
     for phot_it in range(n_phot):
-        # check dscale, ascale and lscale hyper parameters
-        #    (they must be positive)
-        if (dscale[phot_it] <= 0.0) and fit_error_scale:
-            return BADLPR
-        if (ascale[phot_it] <= 0.0) and fit_amplitude_scale:
-            return BADLPR
-        if (lscale[phot_it] <= 0.0) and fit_length_scale:
-            return BADLPR
+
         # get transit for current parameters
-        tkwargs = dict(sol=sol[:, phot_it], time=time[phot_it],
-                       itime=itime[phot_it], ntt=ntt, tobs=tobs, omc=omc,
-                       nintg=nintg)
-        # get and plot the model
-        model = transit_fit.transitmodel(**tkwargs)
+        =x
+        # TODO: FIX THIS MULTIPLE THINGS NOT DEFINED
+        tfit5.transitmodel(tfit.n_planets, sol[:, phot_it], time[phot_it],
+                           itime[phot_it], tfit.tt_n, tfit.tt_tobs,
+                           tfit.tt_omc, model, tfit.tmodel_dtype, nintg)
+
+        # Question: What about the GP model, currently it does not update logl
+        # non-correlated noise-model
+        if model_type == 0:
+            sqrerr = np.square(fluxerr[phot_it] * dscale[phot_it])
+            sqrdiff = np.square(flux[phot_it] - model)
+            sumtot = -0.5 * bn.nansum(np.log(sqrerr) + sqrdiff / sqrerr)
         # check for NaNs -- we don't want these.
-        if np.isfinite(model.sum()):
-            # Question: What about the GP model, currently it does not update
-            #           logl
-            # non-correlated noise-model
-            if model_type == 0:
-                log1 = np.log(fluxerr[phot_it] ** 2 * dscale[phot_it] ** 2)
-                sum1 = bn.nansum(log1)
-                sqrdiff = (flux[phot_it] - model)**2
-                sum2 = bn.nansum(sqrdiff / (fluxerr[phot_it]**2 * dscale[phot_it]**2))
-                logl += -0.5 * (sum1 + sum2)
+        if np.isfinite(sumtot):
+            logl += sumtot
         # else we return our bad log likelihood
         else:
             return BADLPR
@@ -2045,12 +2033,10 @@ def start_from_previous_chains(current: Sampler, tfit: TransitFit,
     # get buffer (by joining chains)
     buffer, _ = join_chains(previous, burnin)
     # loop around walkers in the trial
-    for _ in previous.wchains:
+    for walker in previous.wchains:
         # get start point for this chain (the last chain
         #    from trial sampler)
-        # Question: do you mean to start x1, x2 and x3 from chain1?
-        #           if so change [0] to [walker]
-        update_x0_p0_from_chain(tfit, previous.wchains[0], -1)
+        update_x0_p0_from_chain(tfit, previous.wchains[walker], -1)
 
     # return the buffer (
     return buffer, tfit

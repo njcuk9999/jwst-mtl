@@ -359,8 +359,9 @@ class InputData:
                 bin_time = np.mean(time1[:, start:end], axis=1)
                 bin_flux = np.mean(flux1[:, start:end], axis=1)
                 # sqrt of the mean squared values
-                mean_flux2_err = np.mean(flux_err1[:, start:end]**2, axis=1)
-                bin_flux_err = np.sqrt(mean_flux2_err)
+                bin_flux_errsq = np.sum(flux_err1[:, start:end]**2, axis=1)
+                bin_flux_errsq = bin_flux_errsq / (end - start)**2
+                bin_flux_err = np.sqrt(bin_flux_errsq)
                 # work out bin limits
                 wave_start = wavelength1[0, start]
                 wave_end = wavelength1[0, end-1]
