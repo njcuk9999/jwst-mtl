@@ -143,6 +143,8 @@ class TransitFit:
     ac: List[int]
 
     def __init__(self):
+        # number of planets
+        self.n_planets = 0
         # the number of integrations we have
         self.n_int = 0
         # the number of parameters we have
@@ -214,6 +216,14 @@ class TransitFit:
         # define a dictionary to store the 2D positions of all x0 variables
         #   (for use when updating a single x variable)
         self.x0_to_p0 = dict()
+       # numpy array [n_planet]
+        self.tt_n = np.array([])
+        # numpy array [nplanet, len(time)]
+        self.tt_tobs = np.array([])
+        # numpy array [nplanet, len(time)]
+        self.tt_omc = np.array([])
+        # numpy array [len(time)]
+        self.tmodel_dtype = np.array([])
 
     def __getstate__(self) -> dict:
         """
@@ -243,6 +253,8 @@ class TransitFit:
         :return:
         """
         new = TransitFit()
+        # number of planets
+        new.n_planets = self.n_planets
         # the number of integrations we have
         new.n_int = self.n_int
         # the number of parameters we have
@@ -312,6 +324,11 @@ class TransitFit:
         # ---------------------------------------------------------------------
         # the x0 to p0 translation dictionary
         new.x0_to_p0 = self.x0_to_p0
+        new.tt_n = self.tt_n
+        new.tt_tobs = self.tt_tobs
+        new.tt_omc = self.tt_omc
+
+        new.tmodel_dtype = self.tmodel_dtype
 
         return new
 
@@ -379,7 +396,7 @@ class TransitFit:
         x0_to_p0 = dict()
         # loop around the parameters in x and return the index positions of
         #   each p0 position (for each x)
-        for it in range(len(x0)):
+        for it in range(self.n_x):
             # assign each x value
             x0_to_p0[it] = (self.p0pos == it).nonzero()
         self.x0_to_p0 = x0_to_p0
@@ -571,7 +588,7 @@ def gaussian_prior(value: float, mu: float, sigma: float) -> float:
     :param sigma:
     :return:
     """
-    return -(value - mu)**2 / sigma ** 2
+    return -(value - mu) ** 2 / sigma ** 2
 
 
 # Must add all prior functions to this dictionary for it to work
@@ -690,6 +707,7 @@ def setup_params_mcmc(params: ParamDict, data: InputData) -> TransitFit:
     tfit.orders = data.phot['ORDERS']
     tfit.bin_limits = data.phot['BIN_LIMITS']
     # add the parameters
+    tfit.n_planets = n_planets
     tfit.p0 = transit_p0
     tfit.fmask = transit_fmask
     tfit.wmask = transit_wmask
@@ -723,6 +741,15 @@ def setup_params_mcmc(params: ParamDict, data: InputData) -> TransitFit:
     tfit.get_fitted_params()
     # start of beta
     tfit.beta = np.zeros_like(tfit.x0)
+
+    # deal with transit timing
+    tfit.tt_n = np.zeros(n_planets, dtype=int)
+    tfit.tt_tobs = np.zeros((n_planets, tfit.n_int))
+    tfit.tt_omc = np.zeros((n_planets, tfit.n_int))
+
+    # transit model data type
+    tfit.tmodel_dtype = np.zeros(tfit.n_int, dtype=int)
+
     # -------------------------------------------------------------------------
     # return the transit fit class
     # -------------------------------------------------------------------------
@@ -814,14 +841,12 @@ def lnprob(tfit: TransitFit) -> float:
     # -------------------------------------------------------------------------
     # other parameters
     n_phot = tfit.n_phot
-    ntt = tfit.pkwargs['NTT']
-    tobs = tfit.pkwargs['T_OBS']
-    omc = tfit.pkwargs['OMC']
+    #     ntt = tfit.pkwargs['NTT']
+    #     tobs = tfit.pkwargs['T_OBS']
+    #     omc = tfit.pkwargs['OMC']
     nintg = tfit.pkwargs['NINTG']
     # trial solution
     sol = np.array(tfit.p0)
-
-    nplanets = tfit.params['N_PLANETS']
     # -------------------------------------------------------------------------
     # the hyper parameters
     # photometric error scale (DSC) for this bandpass
@@ -858,8 +883,6 @@ def lnprob(tfit: TransitFit) -> float:
     for phot_it in range(n_phot):
 
         # get transit for current parameters
-        =x
-        # TODO: FIX THIS MULTIPLE THINGS NOT DEFINED
         tfit5.transitmodel(tfit.n_planets, sol[:, phot_it], time[phot_it],
                            itime[phot_it], tfit.tt_n, tfit.tt_tobs,
                            tfit.tt_omc, model, tfit.tmodel_dtype, nintg)
@@ -1117,7 +1140,7 @@ def beta_rescale(params: ParamDict, tfit: TransitFit,
         # calculate correction scale (only for a_fix = True)
         part1 = 0.75 * (ac_rate_sub[a_fix] + delta)
         part2 = 0.25 * (1.0 - ac_rate_sub[a_fix] + delta)
-        corscale[a_fix] = np.abs(corscale[a_fix] * (part1/part2)**0.25)
+        corscale[a_fix] = np.abs(corscale[a_fix] * (part1 / part2) ** 0.25)
         # ---------------------------------------------------------------------
         # print current acceptance
         cprint(f'Beta Rescale: Loop {nloop}, Current Acceptance: ')
@@ -1481,7 +1504,7 @@ class Sampler:
     SingleLoopReturn = Tuple[bool, 'Sampler', int, int]
 
     def single_loop(self, corscale: np.ndarray, loglikelihood, mcmcfunc,
-                    in_sampler: Optional['Sampler']  = None,
+                    in_sampler: Optional['Sampler'] = None,
                     nsteps: Optional[int] = None,
                     nloop: Optional[int] = None) -> SingleLoopReturn:
         """
@@ -1778,17 +1801,20 @@ class Sampler:
             # update p with parameters values from that sample
             tfit_tmp.update_p0_from_x0()
             ptmp = tfit_tmp.p0
+            # get nintg
+            nintg = self.tfit.pkwargs['NINTG']
+            # initial the model value
+            model = 0
             # loop over band passes and calculate depth
             for bp in range(self.tfit.n_phot):
-                # define kwargs for transit_fit
-                tkwargs = dict(sol=ptmp[:, bp], time=ptmp[time_idx_p, bp],
-                               itime=1.e-5,  # put ~1 sec here, in units of days
-                               ntt=self.tfit.pkwargs['NTT'],
-                               tobs=self.tfit.pkwargs['T_OBS'],
-                               omc=self.tfit.pkwargs['OMC'],
-                               nintg=self.tfit.pkwargs['NINTG'])
                 # call transit model and evaluate at time EP1 (middle transit)
-                depth[n_it, bp] = 1.0 - transit_fit.transitmodel(**tkwargs)
+                tfit5.transitmodel(tfit_tmp.n_planets, ptmp[:, bp],
+                                   ptmp[time_idx_p, bp], 1.e-5, tfit_tmp.tt_n,
+                                   tfit_tmp.tt_tobs[:, time_idx_p],
+                                   tfit_tmp.tt_omc[:, time_idx_p],
+                                   model, tfit_tmp.tmodel_dtype[time_idx_p],
+                                   nintg)
+                depth[n_it, bp] = 1.0 - model
         # get the depths 16th, 50th and 86th
         d16, d50, d84 = np.percentile(depth, pvalues, axis=0)
         d_elo = d50 - d16
