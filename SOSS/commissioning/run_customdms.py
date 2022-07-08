@@ -229,7 +229,8 @@ def run_stage2(rateints, contamination_mask=None, skip_atoca=False):
 if __name__ == "__main__":
     ################ MAIN ###############
 
-    if False:
+    # Wavelength calibration
+    if True:
         if (hostname == 'iiwi.sf.umontreal.ca') or (hostname == 'iiwi.local') :
             dir = '/Users/albert/NIRISS/Commissioning/analysis/SOSSwavecal/'
         elif hostname == 'genesis':
@@ -271,7 +272,7 @@ if __name__ == "__main__":
 
 
     # HATP14b
-    if True:
+    if False:
         if (hostname == 'iiwi.sf.umontreal.ca') or (hostname == 'iiwi.local'):
             dir = '/Users/albert/NIRISS/Commissioning/analysis/HATP14b/'
             contmask = None
