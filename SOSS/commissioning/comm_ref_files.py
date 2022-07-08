@@ -41,12 +41,33 @@ def run_iteration1(dataset='nis18obs02', wavecaldataset=None):
 
     # Read the SOSS total throughput as a function of wavelength.
     tab, hdr = fits.getdata(throughput_file, ext=1, header=True)
+    #if dataset == 'commrevA':
+    if True:
+        # Read the measured throughputs (from Kevin Volk) - wave units of microns, value units of 0 to 1
+        tab1 = ascii.read('files/throughput_o1_commrevA.txt')
+        tab2 = ascii.read('files/throughput_o2_commrevA.txt')
+        tab3 = ascii.read('files/throughput_o3_commrevA.txt')
+        # Interpolate to the reference wavelength grid.
+        throughput = np.zeros((nwave, 3))
+        throughput[:, 0] = np.interp(wave_grid, tab1['col1'], tab1['col2'])
+        throughput[:, 1] = np.interp(wave_grid, tab2['col1'], tab2['col2'])
+        throughput[:, 2] = np.interp(wave_grid, tab3['col1'], tab3['col2'])
+    else:
+        # Interpolate to the reference wavelength grid.
+        throughput = np.zeros((nwave, 3))
+        throughput[:, 0] = np.interp(wave_grid, tab[0]['LAMBDA'] / 1e3, tab[0]['SOSS_ORDER1'])
+        throughput[:, 1] = np.interp(wave_grid, tab[0]['LAMBDA'] / 1e3, tab[0]['SOSS_ORDER2'])
+        throughput[:, 2] = np.interp(wave_grid, tab[0]['LAMBDA'] / 1e3, tab[0]['SOSS_ORDER3'])
 
-    # Interpolate to the reference wavelength grid.
-    throughput = np.zeros((nwave, 3))
-    throughput[:, 0] = np.interp(wave_grid, tab[0]['LAMBDA'] / 1e3, tab[0]['SOSS_ORDER1'])
-    throughput[:, 1] = np.interp(wave_grid, tab[0]['LAMBDA'] / 1e3, tab[0]['SOSS_ORDER2'])
-    throughput[:, 2] = np.interp(wave_grid, tab[0]['LAMBDA'] / 1e3, tab[0]['SOSS_ORDER3'])
+    fig = plt.figure(figsize=(8,6))
+    plt.plot(wave_grid, throughput[:,0], color='black', label='Order 1 Measured')
+    plt.plot(wave_grid, throughput[:,1], color='blue', label='Order 2 Measured')
+    plt.plot(wave_grid, throughput[:,2], color='red', label='Order 3 Measured')
+    plt.legend()
+    plt.ylabel('Throughput')
+    plt.xlabel('Wavelength')
+    plt.show()
+
 
     # Fix small negative throughput values.
     throughput = np.where(throughput < 0, 0, throughput)
@@ -66,28 +87,29 @@ def run_iteration1(dataset='nis18obs02', wavecaldataset=None):
     ##################
 
     # Read the trace positions
-    if wavecaldataset == None:
+    #if wavecaldataset == None:
+    if True:
         o1 = ascii.read('files/centroids_o1_substrip256_'+dataset+'.txt')
-        x_o1, y_o1 = np.array(o1['col2']), np.array(o1['col3'])
+        x_o1, y_o1 = np.array(o1['x']), np.array(o1['y'])
         o2 = ascii.read('files/centroids_o2_substrip256_'+dataset+'.txt')
-        x_o2, y_o2 = np.array(o2['col2']), np.array(o2['col3'])
+        x_o2, y_o2 = np.array(o2['x']), np.array(o2['y'])
         o3 = ascii.read('files/centroids_o3_substrip256_'+dataset+'.txt')
-        x_o3, y_o3 = np.array(o3['col2']), np.array(o3['col3'])
-    else:
+        x_o3, y_o3 = np.array(o3['x']), np.array(o3['y'])
+    if False:
         o1 = ascii.read('files/centroids_o1_substrip256_'+wavecaldataset+'.txt')
-        x_o1, y_o1 = np.array(o1['col2']), np.array(o1['col3'])
+        x_o1, y_o1 = np.array(o1['x']), np.array(o1['y'])
         o2 = ascii.read('files/centroids_o2_substrip256_'+wavecaldataset+'.txt')
-        x_o2, y_o2 = np.array(o2['col2']), np.array(o2['col3'])
+        x_o2, y_o2 = np.array(o2['x']), np.array(o2['y'])
         o3 = ascii.read('files/centroids_o3_substrip256_'+wavecaldataset+'.txt')
-        x_o3, y_o3 = np.array(o3['col2']), np.array(o3['col3'])
+        x_o3, y_o3 = np.array(o3['x']), np.array(o3['y'])
 
     # CUSTOM wavecal order 1
     # Read the wavelength calibration files
     if wavecaldataset == None:
-        wcal_o1 = ascii.read('files/wavecal_o1_substrip256_'+dataset+'.txt')
+        wcal_o1 = ascii.read('files/wavecal_o1_'+dataset+'.txt')
         w_o1 = np.array(wcal_o1['wavelength'])
     else:
-        wcal_o1 = ascii.read('files/wavecal_o1_substrip256_'+wavecaldataset+'.txt')
+        wcal_o1 = ascii.read('files/wavecal_o1_'+wavecaldataset+'.txt')
         w_o1 = np.array(wcal_o1['wavelength'])
     # Resample to the desired wavelength sampling
     #ind = np.argsort(w_o1) # needs an increasing w_o1 grid or it fails
@@ -96,17 +118,31 @@ def run_iteration1(dataset='nis18obs02', wavecaldataset=None):
     xtrace_order1 = extrapolate_to_wavegrid(wave_grid, w_o1, x_o1)
     ytrace_order1 = extrapolate_to_wavegrid(wave_grid, w_o1, y_o1)
 
+    # CUSTOM wavecal order 2
+    # Read the wavelength calibration files
+    if wavecaldataset == None:
+        wcal_o2 = ascii.read('files/wavecal_o2_' + dataset + '.txt')
+        w_o2 = np.array(wcal_o2['wavelength'])
+    else:
+        wcal_o2 = ascii.read('files/wavecal_o2_' + wavecaldataset + '.txt')
+        w_o2 = np.array(wcal_o2['wavelength'])
+    w_o2_tmp = np.array(wcal_o2['wavelength'])
+    w_o2 = np.zeros(2048)*np.nan
+    w_o2[:1783] = w_o2_tmp
+    # Fill for column > 1783 with linear extrapolation
+    m = w_o2[1782] - w_o2[1781]
+    dx = np.arange(2048-1783)+1
+    w_o2[1783:] = w_o2[1782] + m * dx
+    xtrace_order2 = extrapolate_to_wavegrid(wave_grid, w_o2, x_o2)
+    ytrace_order2 = extrapolate_to_wavegrid(wave_grid, w_o2, y_o2)
 
-
-    #wcal_o2 = ascii.read('files/wavecal_o2_substrip256_nis18obs01.txt')
-    #w_o2 = wcal_o2['col1']
 
     # CUSTOM wavecal order 3
     # only 800 columns in wavecal_o3
     if wavecaldataset == None:
-        wcal_o3 = ascii.read('files/wavecal_o3_substrip256_'+dataset+'.txt')
+        wcal_o3 = ascii.read('files/wavecal_o3_'+dataset+'.txt')
     else:
-        wcal_o3 = ascii.read('files/wavecal_o3_substrip256_' + wavecaldataset + '.txt')
+        wcal_o3 = ascii.read('files/wavecal_o3_' + wavecaldataset + '.txt')
     w_o3_tmp = np.array(wcal_o3['wavelength'])
     w_o3 = np.zeros(2048)*np.nan
     w_o3[:800] = w_o3_tmp
@@ -120,12 +156,12 @@ def run_iteration1(dataset='nis18obs02', wavecaldataset=None):
     # Temporarily fill orders2 and 3 with past wavelength calib
     ############################################################
     # Read the trace position parameters.
-    tracepars = tracepol.get_tracepars('../trace/NIRISS_GR700_trace_extended.csv')
-    xtrace_order2, ytrace_order2, mask = tracepol.wavelength_to_pix(wave_grid, tracepars, m=2, frame='dms',
-                                                                    subarray='SUBSTRIP256')
-    xtrace_order2 = np.where(mask, xtrace_order2, np.nan)
+    #tracepars = tracepol.get_tracepars('../trace/NIRISS_GR700_trace_extended.csv')
+    #xtrace_order2, ytrace_order2, mask = tracepol.wavelength_to_pix(wave_grid, tracepars, m=2, frame='dms',
+    #                                                                subarray='SUBSTRIP256')
+    #xtrace_order2 = np.where(mask, xtrace_order2, np.nan)
     # Use the measured y position on 2048 columns and interpolate it at the same sampling as xtrace_order2
-    ytrace_order2 = np.interp(xtrace_order2, np.arange(2048), y_o2)
+    #ytrace_order2 = np.interp(xtrace_order2, np.arange(2048), y_o2)
 
     #xtrace_order3, ytrace_order3, mask = tracepol.wavelength_to_pix(wave_grid, tracepars, m=3, frame='dms',
     #                                                                subarray='SUBSTRIP256')
@@ -137,8 +173,8 @@ def run_iteration1(dataset='nis18obs02', wavecaldataset=None):
     fig = plt.figure(figsize=(6,4))
     plt.scatter(x_o1, w_o1, marker='.', color='black', label='Order 1 Measured')
     plt.plot(xtrace_order1, wave_grid, color='red', label='Order 1 Extrapolated and Resampled')
-    #plt.scatter(x_o2, w_o2, marker='.', color='blue', label='Order 2 Measured')
-    #plt.plot(xtrace_order2, wave_grid, color='red', label='Order 2 Extrapolated and Resampled')
+    plt.scatter(x_o2, w_o2, marker='.', color='blue', label='Order 2 Measured')
+    plt.plot(xtrace_order2, wave_grid, color='red', label='Order 2 Extrapolated and Resampled')
     plt.scatter(x_o3, w_o3, marker='.', color='green', label='Order 3 Measured')
     plt.plot(xtrace_order3, wave_grid, color='red', label='Order 3 Extrapolated and Resampled')
     plt.legend()
@@ -164,7 +200,7 @@ def run_iteration1(dataset='nis18obs02', wavecaldataset=None):
 
     # If necessary manual changes and additions can be made here, before saving the file.
     #filename = hdul[0].header['FILENAME']
-    if dataset == 'nis18_obs02':
+    if dataset == 'nis18obs02':
         trace_file = '/Users/albert/NIRISS/Commissioning/analysis/SOSSwavecal/ref_files/'+hdul[0].header['FILENAME']
     elif dataset == 'nis17':
         trace_file = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/ref_files/'+hdul[0].header['FILENAME']
@@ -212,7 +248,7 @@ def run_iteration1(dataset='nis18obs02', wavecaldataset=None):
     hdul = init_wave_map(wave_map_2d, oversample, padding, 'SUBSTRIP256')
 
     # If necessary manual changes and additions can be made here, before saving the file.
-    if dataset == 'nis18_obs02':
+    if dataset == 'nis18obs02':
         filename = '/Users/albert/NIRISS/Commissioning/analysis/SOSSwavecal/ref_files/'+hdul[0].header['FILENAME']
     elif dataset == 'nis17':
         filename = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/ref_files/'+hdul[0].header['FILENAME']
@@ -228,11 +264,11 @@ def run_iteration1(dataset='nis18obs02', wavecaldataset=None):
 
     # We will use the following sources for this reference file. These can be modified as needed.
     if dataset == 'nis18obs01':
-        profile_file = '/Users/albert/NIRISS/Commissioning/analysis/SOSSwavecal/michael_trace/SOSS_2D_profile_SUBSTRIP256_os=1_pad=20.fits'
+        profile_file = '/Users/albert/NIRISS/Commissioning/analysis/SOSSwavecal/michael_trace/applesoss_traceprofile.fits'
     if dataset == 'nis18obs02':
         profile_file = '/Users/albert/NIRISS/Commissioning/analysis/SOSSwavecal/michael_trace/applesoss_traceprofile.fits'
     if dataset == 'nis17':
-        profile_file = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/michael/'
+        profile_file = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/michael_trace/applesoss_traceprofile.fits'
     if dataset == 'nis34':
         profile_file = '/Users/albert/NIRISS/Commissioning/analysis/HATP14b/michael_trace/applesoss_traceprofile.fits'
 
@@ -321,21 +357,13 @@ if __name__ == "__main__":
     #check_2dwave_map(refdir+'jwst_niriss_wavemap_0014.fits')
     #check_profile_map(refdir+'jwst_niriss_specprofile_0017.fits')
 
-    if False:
-        refdir = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/ref_files/'
-        run_iteration1(dataset='nis17')
-        check_spec_trace(refdir+'SOSS_ref_trace_table_SUBSTRIP256.fits')
-        check_2dwave_map(refdir+'SOSS_ref_2D_wave_SUBSTRIP256.fits')
-        check_profile_map(refdir+'SOSS_ref_2D_profile_SUBSTRIP256.fits')
-    if False:
-        refdir = '/Users/albert/NIRISS/Commissioning/analysis/SOSSwavecal/ref_files/'
-        run_iteration1(dataset='nis18obs02')
-        check_spec_trace(refdir+'SOSS_ref_trace_table_SUBSTRIP256.fits')
-        check_2dwave_map(refdir+'SOSS_ref_2D_wave_SUBSTRIP256.fits')
-        check_profile_map(refdir+'SOSS_ref_2D_profile_SUBSTRIP256.fits')
     if True:
+        #refdir = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/ref_files/'
+        #refdir = '/Users/albert/NIRISS/Commissioning/analysis/SOSSwavecal/ref_files/'
         refdir = '/Users/albert/NIRISS/Commissioning/analysis/HATP14b/ref_files/'
-        run_iteration1(dataset='nis34', wavecaldataset='nis18obs02')
+        #run_iteration1(dataset='nis17', wavecaldataset='commrevA')
+        #run_iteration1(dataset='nis18obs02', wavecaldataset='commrevA')
+        run_iteration1(dataset='nis34', wavecaldataset='commrevA')
         check_spec_trace(refdir+'SOSS_ref_trace_table_SUBSTRIP256.fits')
         check_2dwave_map(refdir+'SOSS_ref_2D_wave_SUBSTRIP256.fits')
         check_profile_map(refdir+'SOSS_ref_2D_profile_SUBSTRIP256.fits')

@@ -54,6 +54,24 @@ SPECPROFILE = 'SOSS_ref_2D_profile_SUBSTRIP256.fits'
 
 def run_stage1(exposurename, outlier_map=None):
 
+    '''
+    These are the default DMS steps for stage 1.
+    Default pipeline.calwebb_detector1 steps
+
+            input = self.group_scale(input)
+            input = self.dq_init(input)
+            input = self.saturation(input)
+            input = self.ipc(input)
+            input = self.superbias(input)
+            input = self.refpix(input)
+            input = self.linearity(input)
+            input = self.dark_current(input)
+            input = self.jump(input)
+            input = self.ramp_fit(input)
+            input = self.gain_scale(input)
+    '''
+
+
     # Define input/output
     calwebb_input = exposurename
     outdir = os.path.dirname(exposurename)
@@ -61,7 +79,9 @@ def run_stage1(exposurename, outlier_map=None):
     basename = basename.split('_nis')[0]+'_nis'
 
     # Step by step DMS processing
-    result = calwebb_detector1.dq_init_step.DQInitStep.call(calwebb_input, output_dir=outdir, save_results=False)#,
+    result = calwebb_detector1.group_scale_step.GroupScaleStep.call(calwebb_input, output_dir=outdir, save_results=False)
+
+    result = calwebb_detector1.dq_init_step.DQInitStep.call(result, output_dir=outdir, save_results=False)#,
                                                             #override_mask=CALIBRATION_DIR+BADPIX)
 
     result = calwebb_detector1.saturation_step.SaturationStep.call(result, output_dir=outdir, save_results=False)
@@ -80,6 +100,8 @@ def run_stage1(exposurename, outlier_map=None):
     #result = calwebb_detector1.dark_current_step.DarkCurrentStep.call(result, output_dir=outdir, save_results=True)#,
                                                                       #override_dark=CALIBRATION_DIR+DARK)
 
+    result = calwebb_detector1.jump_step.JumpStep.call(result, output_dir=outdir, save_results=False)
+
     stackresult, result = calwebb_detector1.ramp_fit_step.RampFitStep.call(result, output_dir=outdir, save_results=False)
 
     result = calwebb_detector1.gain_scale_step.GainScaleStep.call(result, output_dir=outdir, save_results=False)
@@ -97,6 +119,15 @@ def run_stage1(exposurename, outlier_map=None):
 
 
 def run_stage2(rateints, contamination_mask=None, skip_atoca=False):
+    '''
+    These are the default DMS steps for Stage 2.
+        input = self.assign_wcs(input)
+        input = self.flat_field(input)
+        input = self.
+        input = self.extract_1d(input)
+        input = self.photom(input)
+
+    '''
 
     calwebb_input = rateints
     outdir = os.path.dirname(rateints)
@@ -219,7 +250,7 @@ if __name__ == "__main__":
         datalist = ['jw01092010001_03101_00001_nis'] # SS256 CLEAR 20 ints
 
     # Flux Calibration
-    if True:
+    if False:
         if (hostname == 'iiwi.sf.umontreal.ca') or (hostname == 'iiwi.local'):
             dir = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/'
             #contmask = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/mask_contamination.fits'
@@ -240,7 +271,7 @@ if __name__ == "__main__":
 
 
     # HATP14b
-    if False:
+    if True:
         if (hostname == 'iiwi.sf.umontreal.ca') or (hostname == 'iiwi.local'):
             dir = '/Users/albert/NIRISS/Commissioning/analysis/HATP14b/'
             contmask = None
@@ -260,11 +291,11 @@ if __name__ == "__main__":
 
     for dataset in datalist:
         print()
-        #run_stage1(dir+dataset+'_uncal.fits', outlier_map=dir+dataset+'_outliers.fits')
-        #run_stage2(dir+dataset+'_customrateints.fits', contamination_mask=contmask, skip_atoca=True)
-        #run_stage1(dir+dataset+'_uncal.fits', outlier_map=dir+dataset+'_outliers.fits')
-        #run_stage2(dir+dataset+'_customrateints.fits', contamination_mask=contmask)
-        run_stage2(dir+dataset+'_rateints.fits')
+        run_stage1(dir+dataset+'_uncal.fits', outlier_map=dir+dataset+'_outliers.fits')
+        run_stage2(dir+dataset+'_customrateints.fits', contamination_mask=contmask, skip_atoca=True)
+        run_stage1(dir+dataset+'_uncal.fits', outlier_map=dir+dataset+'_outliers.fits')
+        run_stage2(dir+dataset+'_customrateints.fits', contamination_mask=contmask)
+        run_stage2(dir+dataset+'_customrateints.fits')
 
     for dataset in datalist:
         # Additional diagnostics

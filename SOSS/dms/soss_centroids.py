@@ -716,7 +716,7 @@ def build_mask_order2_uncontaminated(ytrace_o1, ytrace_o3, subarray='SUBSTRIP256
                                      xlims=None, point1=None, point2=None,
                                      apex_order1=None):
     """Build a mask that isolates the uncontaminated part of the order 2 trace.
-    This is done by masking the order 1 trace and averything below, the order
+    This is done by masking the order 1 trace and everything below, the order
     2 trace and everything above, all pixels outside of the range defined by xlims
     and all pixels below the line defined by point 1 and point 2.
 
@@ -876,6 +876,7 @@ def build_mask_order3(subarray='SUBSTRIP256', xlim=None, point1=None, point2=Non
 
         # If no points were given use default values.
         point1 = [0, 132]  # Assuming SUBSTRIP256.
+        point1 = [0, 122] # for the Commissioning A0 flux cal
         point2 = [1000, 163]  # Assuming SUBSTRIP256.
 
         if subarray == 'FULL':
@@ -1064,7 +1065,8 @@ def calibrate_widths(width_o1, width_o2=None, width_o3=None, subarray='SUBSTRIP2
 
 def get_soss_centroids(image, mask=None, subarray='SUBSTRIP256', halfwidth=2,
                        poly_orders=None, apex_order1=None,
-                       calibrate=True, verbose=False, outdir=None):
+                       calibrate=True, verbose=False, outdir=None,
+                       xlim_order3=700):
     """Determine the traces positions on a real image (native size) with as few
     assumptions as possible using the 'edge trigger' method.
 
@@ -1112,17 +1114,23 @@ def get_soss_centroids(image, mask=None, subarray='SUBSTRIP256', halfwidth=2,
     # Build a mask that restricts the analysis to a SUBSTRIP256-like region centered on the target trace.
     mask_256 = build_mask_256(subarray=subarray, apex_order1=apex_order1)
 
+    # Build a mask that masks all pixels above y=100
+    mask_above = build_mask_sloped((256,2048), [0,100], [2047,100], mask_above=True)
+    mask_256 = mask_256 | mask_above
+
     # Combine the subsection mask with the user specified mask.
-    if mask is not None:
-        mask_256 = mask_256 | mask
+    if mask is None:
+        mask_order1 = mask_256 | mask_above
+    else:
+        mask_order1 = mask_256 | mask_above | mask
 
     if verbose & (outdir is not None):
         hdu = fits.PrimaryHDU()
-        hdu.data = np.where(mask_256, np.nan, image)
-        hdu.writeto(outdir+'/mask_256.fits', overwrite=True)
+        hdu.data = np.where(mask_order1, np.nan, image)
+        hdu.writeto(outdir+'/mask_order1.fits', overwrite=True)
 
     # Get the order 1 trace position.
-    result = get_centroids_edgetrigger(image, mask=mask_256,
+    result = get_centroids_edgetrigger(image, mask=mask_order1,
                                        poly_order=default_orders['order 1'],
                                        halfwidth=halfwidth, mode='combined',
                                        verbose=verbose, outdir=outdir)
@@ -1151,7 +1159,7 @@ def get_soss_centroids(image, mask=None, subarray='SUBSTRIP256', halfwidth=2,
     apex_order1 = np.nanmin(y_o1)
 
     # Make a mask to isolate the order 3 trace and combine it with the user-specified mask.
-    mask_o3 = build_mask_order3(subarray=subarray, apex_order1=apex_order1)
+    mask_o3 = build_mask_order3(subarray=subarray, apex_order1=apex_order1, xlim=xlim_order3)
 
     if mask is not None:
         mask_o3 = mask_o3 | mask

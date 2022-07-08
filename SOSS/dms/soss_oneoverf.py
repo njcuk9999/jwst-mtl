@@ -77,29 +77,30 @@ def applycorrection(uncal_rampmodel, output_dir=None, save_results=False, outlie
     print('Applying the 1/f correction.')
     dcmap = np.copy(uncal_rampmodel.data)
     subcorr = np.copy(uncal_rampmodel.data)
+    sub = np.copy(uncal_rampmodel.data)
     for i in range(nint):
-        sub = uncal_rampmodel.data[i] - deepstack
+        sub[i] = uncal_rampmodel.data[i] - deepstack
         for g in range(ngroup):
-            sub[g,:,:] = sub[g, :, :] * outliers[i]
+            sub[i, g, :, :] = sub[i, g, :, :] * outliers[i]
             # Make sure to not subtract an overall bias
-            sub[g,:,:] = sub[g, :, :] - np.nanmedian(sub[g,:,:])
-        if save_results == True:
-            hdu = fits.PrimaryHDU(sub)
-            hdu.writeto(output_supp+'/sub.fits', overwrite=True)
+            sub[i,g,:,:] = sub[i,g, :, :] - np.nanmedian(sub[i,g,:,:])
+        #if save_results == True:
+        #    hdu = fits.PrimaryHDU(sub)
+        #    hdu.writeto(output_supp+'/sub.fits', overwrite=True)
         if uncal_rampmodel.meta.subarray.name == 'SUBSTRIP256':
-            dc = np.nansum(w * sub, axis=1) / np.nansum(w, axis=1)
+            dc = np.nansum(w * sub[i], axis=1) / np.nansum(w, axis=1)
             # make sure no NaN will corrupt the whole column
             dc = np.where(np.isfinite(dc), dc, 0)
             # dc is 2-dimensional - expand to the 3rd (columns) dimension
             dcmap[i, :, :, :] = np.repeat(dc, 256).reshape((ngroup, 2048, 256)).swapaxes(1,2)
-            subcorr[i, :, :, :] = sub - dcmap[i, :, :, :]
+            subcorr[i, :, :, :] = sub[i, :, :, :] - dcmap[i, :, :, :]
         elif uncal_rampmodel.meta.subarray.name == 'SUBSTRIP96':
-            dc = np.nansum(w * sub, axis=1) / np.nansum(w, axis=1)
+            dc = np.nansum(w * sub[i], axis=1) / np.nansum(w, axis=1)
             # make sure no NaN will corrupt the whole column
             dc = np.where(np.isfinite(dc), dc, 0)
             # dc is 2-dimensional - expand to the 3rd (columns) dimension
             dcmap[i,:,:,:] = np.repeat(dc, 256).reshape((ngroup, 2048, 256)).swapaxes(1,2)
-            subcorr[i, :, :, :] = sub - dcmap[i, :, :, :]
+            subcorr[i, :, :, :] = sub[i, :, :, :] - dcmap[i, :, :, :]
         elif uncal_rampmodel.meta.subarray.name == 'FULL':
             for amp in range(4):
                 yo = amp*512
@@ -108,7 +109,7 @@ def applycorrection(uncal_rampmodel, output_dir=None, save_results=False, outlie
                 dc = np.where(np.isfinite(dc), dc, 0)
                 # dc is 2-dimensional - expand to the 3rd (columns) dimension
                 dcmap[i, :, yo:yo+512, :] = np.repeat(dc, 512).reshape((ngroup, 2048, 512)).swapaxes(1,2)
-                subcorr[i, :, yo:yo+512, :] = sub[:, yo:yo+512, :] - dcmap[i, :, yo:yo+512, :]
+                subcorr[i, :, yo:yo+512, :] = sub[i, :, yo:yo+512, :] - dcmap[i, :, yo:yo+512, :]
 
     # Make sure no nan is in DC map
     dcmap = np.where(np.isfinite(dcmap), dcmap, 0)
@@ -118,6 +119,8 @@ def applycorrection(uncal_rampmodel, output_dir=None, save_results=False, outlie
     rampmodel_corr.data = uncal_rampmodel.data - dcmap
 
     if save_results == True:
+        hdu = fits.PrimaryHDU(sub)
+        hdu.writeto(output_supp+'/sub.fits', overwrite=True)
         hdu = fits.PrimaryHDU(subcorr)
         hdu.writeto(output_supp+'/subcorr.fits', overwrite=True)
         hdu = fits.PrimaryHDU(dcmap)

@@ -563,6 +563,25 @@ def make_mask_nis17():
 
     return
 
+def make_mask_nis18obs2():
+
+    stackname = '/Users/albert/NIRISS/Commissioning/analysis/SOSSwavecal/stack_clear_reobservation.fits'
+    checkname = '/Users/albert/NIRISS/Commissioning/analysis/SOSSwavecal/check.fits'
+    maskname = '/Users/albert/NIRISS/Commissioning/analysis/SOSSwavecal/mask_contamination.fits'
+    stack = fits.getdata(stackname)
+
+    #mask = build_mask_contamination(0, 1376, 111)
+    #mask += build_mask_contamination(0, 1867, 75)
+    mask = build_mask_contamination(1, 60, 136)
+    mask += build_mask_contamination(0, 1839, 220)
+
+    hdu = fits.PrimaryHDU([stack, mask])
+    hdu.writeto(checkname, overwrite=True)
+
+    hdu = fits.PrimaryHDU(mask)
+    hdu.writeto(maskname, overwrite=True)
+
+    return
 
 def combine_segments(prefix):
     print()
@@ -654,6 +673,8 @@ def combine_timeseries(wildcard, outputname):
 
 if __name__ == "__main__":
     #a = make_mask_nis17()
+    a = make_mask_nis18obs2()
+    sys.exit()
     outdir = '/Users/albert/NIRISS/Commissioning/analysis/HATP14b/'
     wildcard = outdir+'supplemental_jw01541001001_04101_00001-seg00?_nis/timeseries_greyscale_rawflux.fits'
     a = combined_timeseries(wildcard, outdir)
