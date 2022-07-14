@@ -270,7 +270,7 @@ if __name__ == "__main__":
             print('Iteration 2 uses that outlier map to better suppress the 1/f noise.')
             use_atoca = True
             run_stage1(dir+dataset+'_uncal.fits', outlier_map=dir+dataset+'_outliers.fits')
-            run_stage2(dir+dataset+'_customrateints.fits', contamination_mask=contmask, skip_atoca=True)
+            run_stage2(dir+dataset+'_customrateints.fits', contamination_mask=contmask, use_atoca=False)
             run_stage1(dir+dataset+'_uncal.fits', outlier_map=dir+dataset+'_outliers.fits')
             run_stage2(dir+dataset+'_customrateints.fits', contamination_mask=contmask, passnumber=2, use_atoca=use_atoca)
 
