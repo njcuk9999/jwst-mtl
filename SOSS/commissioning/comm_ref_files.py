@@ -25,7 +25,7 @@ import matplotlib.pyplot as plt
 
 import sys
 
-def run_iteration1(dataset='nis18obs02', wavecaldataset=None):
+def run_iteration1(dataset='nis18obs02', wavecaldataset=None, subarray='SUBSTRIP256'):
 
     ######################## spectrace #########################
 
@@ -194,9 +194,20 @@ def run_iteration1(dataset='nis18obs02', wavecaldataset=None):
     ytrace[:, 1] = ytrace_order2
     ytrace[:, 2] = ytrace_order3
 
+    # Massage inputs according to requested output subarray
+    if subarray == 'SUBSTRIP96':
+        ytrace[:, 0] = ytrace[:, 0] - 10
+        ytrace[:, 1] = ytrace[:, 1] - 10
+        ytrace[:, 2] = ytrace[:, 2] - 10
+        #print('Actually do nothing. soss_ref_files.py handles it')
+    elif subarray == 'FULL':
+        ytrace[:, 0] = ytrace[:, 0] + (2048-256)
+        ytrace[:, 1] = ytrace[:, 1] + (2048-256)
+        ytrace[:, 2] = ytrace[:, 2] + (2048-256)
+
+
     # Call init_spec_trace with the cleaned input data. This will perform checks on the input and built the fits file structure.
-    hdul = init_spec_trace(wave_grid, xtrace, ytrace, tilt, throughput, 'SUBSTRIP256')#,
-                           #filename='/Users/albert/NIRISS/Commissioning/analysis/SOSSwavecal/')
+    hdul = init_spec_trace(wave_grid, xtrace, ytrace, tilt, throughput, subarray) #'SUBSTRIP256')
 
     # If necessary manual changes and additions can be made here, before saving the file.
     #filename = hdul[0].header['FILENAME']
@@ -245,7 +256,7 @@ def run_iteration1(dataset='nis18obs02', wavecaldataset=None):
     wave_map_2d[:, :, 2] = calc_2d_wave_map(data['WAVELENGTH'], data['X'], data['Y'], data['TILT'],
                                             oversample=oversample, padding=padding)
 
-    hdul = init_wave_map(wave_map_2d, oversample, padding, 'SUBSTRIP256')
+    hdul = init_wave_map(wave_map_2d, oversample, padding, subarray)#'SUBSTRIP256')
 
     # If necessary manual changes and additions can be made here, before saving the file.
     if dataset == 'nis18obs02':
@@ -300,7 +311,7 @@ def run_iteration1(dataset='nis18obs02', wavecaldataset=None):
     profile_2d = tmp
 
     # Call init_spec_profile with the prepared input data.
-    hdul = init_spec_profile(profile_2d, oversample, padding, 'SUBSTRIP256')
+    hdul = init_spec_profile(profile_2d, oversample, padding, subarray)
 
     # If necessary manual changes and additions can be made here, before saving the file.
     filename = '/Users/albert/NIRISS/Commissioning/analysis/SOSSwavecal/ref_files/'+hdul[0].header['FILENAME']
@@ -358,12 +369,19 @@ if __name__ == "__main__":
     #check_profile_map(refdir+'jwst_niriss_specprofile_0017.fits')
 
     if True:
-        #refdir = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/ref_files/'
-        #refdir = '/Users/albert/NIRISS/Commissioning/analysis/SOSSwavecal/ref_files/'
-        refdir = '/Users/albert/NIRISS/Commissioning/analysis/HATP14b/ref_files/'
-        #run_iteration1(dataset='nis17', wavecaldataset='commrevA')
-        #run_iteration1(dataset='nis18obs02', wavecaldataset='commrevA')
-        run_iteration1(dataset='nis34', wavecaldataset='commrevA')
-        check_spec_trace(refdir+'SOSS_ref_trace_table_SUBSTRIP256.fits')
-        check_2dwave_map(refdir+'SOSS_ref_2D_wave_SUBSTRIP256.fits')
-        check_profile_map(refdir+'SOSS_ref_2D_profile_SUBSTRIP256.fits')
+        subarray_list = ['FULL', 'SUBSTRIP256', 'SUBSTRIP96']
+        for subarray in subarray_list:
+        #if True:
+            #subarray = 'FULL'
+            if False:
+                refdir = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/ref_files/'
+                run_iteration1(dataset='nis17', wavecaldataset='commrevA', subarray=subarray)
+            if False:
+                refdir = '/Users/albert/NIRISS/Commissioning/analysis/SOSSwavecal/ref_files/'
+                run_iteration1(dataset='nis18obs02', wavecaldataset='commrevA', subarray=subarray)
+            if True:
+                refdir = '/Users/albert/NIRISS/Commissioning/analysis/HATP14b/ref_files/'
+                run_iteration1(dataset='nis34', wavecaldataset='commrevA', subarray=subarray)
+            check_spec_trace(refdir+'SOSS_ref_trace_table_'+subarray+'.fits')
+            check_2dwave_map(refdir+'SOSS_ref_2D_wave_'+subarray+'.fits')
+            check_profile_map(refdir+'SOSS_ref_2D_profile_'+subarray+'.fits')
