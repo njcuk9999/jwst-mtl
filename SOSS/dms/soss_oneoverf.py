@@ -1,155 +1,201 @@
-import numpy as np
 from astropy.io import fits
+import bottleneck as bn
 from jwst import datamodels
+import numpy as np
 import os
+from tqdm import tqdm
+import warnings
+
 
 def stack(cube): #, outlier_map=None):
 
     #if outlier_map is None:
-    deepstack = np.nanmedian(cube, axis=0)
-    rms = np.nanstd(cube, axis=0)
+    deepstack = bn.nanmedian(cube, axis=0)
+    rms = bn.nanstd(cube, axis=0)
     #else:
     #    deepstack = np.nanmedian(cube * outlier_map, axis=0)
     #    rms = np.nanstd(cube * outlier_map, axis=0)
 
     return deepstack, rms
 
+
 def makemask(stack, rms):
     # Exact strategy TBD
 
     return
 
-def applycorrection(uncal_rampmodel, output_dir=None, save_results=False, outlier_map=None):
 
-    '''
-    uncal_rampmodel is a 4D ramp (not a rate)
-    '''
+def applycorrection(datafiles, output_dir=None, save_results=False,
+                    outlier_map=None):
+    """Custom 1/f correction routine to be applied at the group level.
 
-    print('Custom 1/f correction step. Generating a deep stack for each frame using all integrations...')
+    Parameters
+    ----------
+    datafiles : list[str]
+        List of paths to data files for each segment of the TSO. Should be 4D
+        ramps and not rate files.
+    output_dir : str
+        Directory to which to save results.
+    save_results : bool
+        If True, save results to disk.
+    outlier_map :
 
-    # Forge output directory where data may be written
-    basename = os.path.splitext(uncal_rampmodel.meta.filename)[0]
-    basename = basename.split('_nis')[0]+'_nis'
-    print('basename {:}'.format(basename))
-    if output_dir == None:
-        output_dir = os.path.curdir+'/'
-    if not os.path.exists(output_dir):
-        if save_results == True: os.makedirs(output_dir)
-    output_supp = output_dir+'/supplemental_'+basename+'/'
-    if not os.path.exists(output_supp):
-        if save_results == True: os.makedirs(output_supp)
+    Returns
+    -------
+    corrected_rampmodels : list
+        Ramp models for each segment corrected for 1/f noise.
+    """
 
-    # The readout setup
-    ngroup = uncal_rampmodel.meta.exposure.ngroups
-    #nint = uncal_rampmodel.meta.exposure.nints # does not work on segments
-    nint = np.shape(uncal_rampmodel.data)[0]
-    dimx = np.shape(uncal_rampmodel.data)[-1]
+    print('Starting UdeM custom 1/f correction step.')
 
-    # Generate the deep stack and rms of it. Both 3D (ngroup, dimy, dimx)
-    deepstack, rms = stack(uncal_rampmodel.data)
+    # Output directory formatting.
+    if output_dir is not None:
+        if output_dir[-1] != '/':
+            output_dir += '/'
 
-    # Write these on disk in a sub folder
-    if save_results == True:
-        hdu = fits.PrimaryHDU(deepstack)
-        print(output_supp+'/deepstack1.fits')
-        hdu.writeto(output_supp+'/deepstack1.fits', overwrite=True)
-        hdu = fits.PrimaryHDU(rms)
-        hdu.writeto(output_supp+'/rms1.fits', overwrite=True)
+    datafiles = np.atleast_1d(datafiles)
+    data, fileroots = [], []
+    # Load in datamodels from all segments.
+    for i, file in enumerate(datafiles):
+        currentfile = datamodels.open(file)
+        data.append(currentfile)
+        # Hack to get filename root.
+        filename_split = file.split('/')[-1].split('_')
+        fileroot = ''
+        for seg, segment in enumerate(filename_split):
+            if seg == len(filename_split) - 1:
+                break
+            segment += '_'
+            fileroot += segment
+        fileroots.append(fileroot)
 
-    # Weighted average to determine the 1/F DC level
-    w = 1/rms # weight
-    print(np.shape(w))
-    print(np.shape(w * uncal_rampmodel.data[0]))
+        # To create the deepstack, join all segments together.
+        if i == 0:
+            cube = currentfile.data
+        else:
+            cube = np.concatenate([cube, currentfile.data], axis=0)
 
-    # Read in the outlier map -- a (nints, dimy, dimx) 3D cube
-    print('outlier_map = {:}'.format(outlier_map))
-    print('is None', (outlier_map == None))
-    print('is not a file?', (not os.path.isfile(outlier_map)))
-    if (outlier_map == None) | (not os.path.isfile(outlier_map)):
-        print('Warning - the outlier map passed as input does not exist on disk - no outlier map used!')
-        outliers = np.zeros((nint, np.shape(uncal_rampmodel.data)[-2], dimx))
+    # Get total file root, with no segment info.
+    working_name = fileroots[0]
+    if 'seg' in working_name:
+        parts = working_name.split('seg')
+        part1, part2 = parts[0][:-1], parts[1][3:]
+        fileroot_noseg = part1+part2
     else:
-        print('Using an existing cosmic ray outlier map named {:}'.format(outlier_map))
-        outliers = fits.getdata(outlier_map)
-    # The outlier is 0 where good and >0 otherwise
-    outliers = np.where(outliers == 0, 1, np.nan)
+        fileroot_noseg = fileroots[0]
 
-    print('Applying the 1/f correction.')
-    dcmap = np.copy(uncal_rampmodel.data)
-    subcorr = np.copy(uncal_rampmodel.data)
-    sub = np.copy(uncal_rampmodel.data)
-    for i in range(nint):
-        sub[i] = uncal_rampmodel.data[i] - deepstack
-        for g in range(ngroup):
-            sub[i, g, :, :] = sub[i, g, :, :] * outliers[i]
-            # Make sure to not subtract an overall bias
-            sub[i,g,:,:] = sub[i,g, :, :] - np.nanmedian(sub[i,g,:,:])
-        #if save_results == True:
-        #    hdu = fits.PrimaryHDU(sub)
-        #    hdu.writeto(output_supp+'/sub.fits', overwrite=True)
-        if uncal_rampmodel.meta.subarray.name == 'SUBSTRIP256':
-            dc = np.nansum(w * sub[i], axis=1) / np.nansum(w, axis=1)
-            # make sure no NaN will corrupt the whole column
-            dc = np.where(np.isfinite(dc), dc, 0)
-            # dc is 2-dimensional - expand to the 3rd (columns) dimension
-            dcmap[i, :, :, :] = np.repeat(dc, 256).reshape((ngroup, 2048, 256)).swapaxes(1,2)
-            subcorr[i, :, :, :] = sub[i, :, :, :] - dcmap[i, :, :, :]
-        elif uncal_rampmodel.meta.subarray.name == 'SUBSTRIP96':
-            dc = np.nansum(w * sub[i], axis=1) / np.nansum(w, axis=1)
-            # make sure no NaN will corrupt the whole column
-            dc = np.where(np.isfinite(dc), dc, 0)
-            # dc is 2-dimensional - expand to the 3rd (columns) dimension
-            dcmap[i,:,:,:] = np.repeat(dc, 256).reshape((ngroup, 2048, 256)).swapaxes(1,2)
-            subcorr[i, :, :, :] = sub[i, :, :, :] - dcmap[i, :, :, :]
-        elif uncal_rampmodel.meta.subarray.name == 'FULL':
-            for amp in range(4):
-                yo = amp*512
-                dc = np.nansum(w[:, :, yo:yo+512, :] * sub[:, :, yo:yo+512, :], axis=1) / np.nansum(w[:, :, yo:yo+512, :], axis=1)
+    # Generate the deep stack and rms of it. Both 3D (ngroup, dimy, dimx).
+    print('Generating a deep stack for each frame using all integrations...')
+    deepstack, rms = stack(cube)
+    # Save these to disk if requested.
+    if save_results is True:
+        hdu = fits.PrimaryHDU(deepstack)
+        hdu.writeto(output_dir+fileroot_noseg+'deepstack.fits', overwrite=True)
+        hdu = fits.PrimaryHDU(rms)
+        hdu.writeto(output_dir+fileroot_noseg+'rms.fits', overwrite=True)
+
+    corrected_rampmodels = []
+    for n, datamodel in enumerate(data):
+        print('Starting segment {} of {}.'.format(n + 1, len(data)))
+
+        # The readout setup
+        ngroup = datamodel.meta.exposure.ngroups
+        nint = np.shape(datamodel.data)[0]
+        dimx = np.shape(datamodel.data)[-1]
+
+        # Weighted average to determine the 1/f DC level
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore', category=RuntimeWarning)
+            w = 1 / rms
+
+        # Read in the outlier map -- a (nints, dimy, dimx) 3D cube
+        # print('outlier_map = {}'.format(outlier_map))
+        # print('is None', (outlier_map == None))
+        # print('is not a file?', (not os.path.isfile(outlier_map)))
+        if outlier_map is not None:
+            if not os.path.isfile(outlier_map):
+                msg = 'the outlier map passed as input does not exist on ' \
+                      'disk - no outlier map used!'
+                warnings.warn(msg)
+                outliers = np.zeros((nint, np.shape(datamodel.data)[-2], dimx))
+            else:
+                print('Using cosmic ray outlier map {}'.format(outlier_map))
+                outliers = fits.getdata(outlier_map)
+        else:
+            outliers = np.zeros((nint, np.shape(datamodel.data)[-2], dimx))
+        # The outlier is 0 where good and >0 otherwise. As this will be
+        # applied multiplicatively, replace 0s with 1s and others with NaNs.
+        outliers = np.where(outliers == 0, 1, np.nan)
+
+        dcmap = np.copy(datamodel.data)
+        subcorr = np.copy(datamodel.data)
+        sub = np.copy(datamodel.data)
+        for i in tqdm(range(nint)):
+            sub[i] = datamodel.data[i] - deepstack
+            for g in range(ngroup):
+                sub[i, g, :, :] *= outliers[i]
+                # Make sure to not subtract an overall bias
+                sub[i, g, :, :] -= np.nanmedian(sub[i, g, :, :])
+            if datamodel.meta.subarray.name == 'SUBSTRIP256':
+                with warnings.catch_warnings():
+                    warnings.simplefilter('ignore', category=RuntimeWarning)
+                    dc = np.nansum(w * sub[i], axis=1) / np.nansum(w, axis=1)
                 # make sure no NaN will corrupt the whole column
                 dc = np.where(np.isfinite(dc), dc, 0)
-                # dc is 2-dimensional - expand to the 3rd (columns) dimension
-                dcmap[i, :, yo:yo+512, :] = np.repeat(dc, 512).reshape((ngroup, 2048, 512)).swapaxes(1,2)
-                subcorr[i, :, yo:yo+512, :] = sub[i, :, yo:yo+512, :] - dcmap[i, :, yo:yo+512, :]
+                # dc is 2D - expand to the 3rd (columns) dimension
+                dcmap[i, :, :, :] = np.repeat(dc, 256).reshape((ngroup, 2048, 256)).swapaxes(1, 2)
+                subcorr[i, :, :, :] = sub[i, :, :, :] - dcmap[i, :, :, :]
+            elif datamodel.meta.subarray.name == 'SUBSTRIP96':
+                dc = np.nansum(w * sub[i], axis=1) / np.nansum(w, axis=1)
+                # make sure no NaN will corrupt the whole column
+                dc = np.where(np.isfinite(dc), dc, 0)
+                # dc is 2D - expand to the 3rd (columns) dimension
+                dcmap[i, :, :, :] = np.repeat(dc, 256).reshape((ngroup, 2048, 256)).swapaxes(1, 2)
+                subcorr[i, :, :, :] = sub[i, :, :, :] - dcmap[i, :, :, :]
+            elif datamodel.meta.subarray.name == 'FULL':
+                for amp in range(4):
+                    yo = amp*512
+                    dc = np.nansum(w[:, :, yo:yo+512, :] * sub[:, :, yo:yo+512, :], axis=1) / np.nansum(w[:, :, yo:yo+512, :], axis=1)
+                    # make sure no NaN will corrupt the whole column
+                    dc = np.where(np.isfinite(dc), dc, 0)
+                    # dc is 2D - expand to the 3rd (columns) dimension
+                    dcmap[i, :, yo:yo+512, :] = np.repeat(dc, 512).reshape((ngroup, 2048, 512)).swapaxes(1, 2)
+                    subcorr[i, :, yo:yo+512, :] = sub[i, :, yo:yo+512, :] - dcmap[i, :, yo:yo+512, :]
 
-    # Make sure no nan is in DC map
-    dcmap = np.where(np.isfinite(dcmap), dcmap, 0)
+        # Make sure no NaNs are in the DC map
+        dcmap = np.where(np.isfinite(dcmap), dcmap, 0)
 
-    # Subtract the DC map from a copy of the data model
-    rampmodel_corr = uncal_rampmodel.copy()
-    rampmodel_corr.data = uncal_rampmodel.data - dcmap
+        # Subtract the DC map from a copy of the data model
+        rampmodel_corr = datamodel.copy()
+        rampmodel_corr.data = datamodel.data - dcmap
 
-    if save_results == True:
-        hdu = fits.PrimaryHDU(sub)
-        hdu.writeto(output_supp+'/sub.fits', overwrite=True)
-        hdu = fits.PrimaryHDU(subcorr)
-        hdu.writeto(output_supp+'/subcorr.fits', overwrite=True)
-        hdu = fits.PrimaryHDU(dcmap)
-        hdu.writeto(output_supp+'/noisemap.fits', overwrite=True)
-        hdu = fits.PrimaryHDU(rampmodel_corr.data)
-        hdu.writeto(output_supp+'/corrected.fits', overwrite=True)
+        # Save results to disk if requested.
+        if save_results is True:
+            hdu = fits.PrimaryHDU(sub)
+            hdu.writeto(output_dir + fileroots[n] + 'diffim.fits',
+                        overwrite=True)
+            hdu = fits.PrimaryHDU(subcorr)
+            hdu.writeto(output_dir + fileroots[n] + 'diffimcorr.fits',
+                        overwrite=True)
+            hdu = fits.PrimaryHDU(dcmap)
+            hdu.writeto(output_dir + fileroots[n] + 'noisemap.fits',
+                        overwrite=True)
 
-    if save_results == True:
-        print('Custom 1/f output name: {:}'.format(output_dir+'/'+basename+'_custom1overf.fits'))
-        rampmodel_corr.write(output_dir+'/'+basename+'_custom1overf.fits')
+            corrected_rampmodels.append(rampmodel_corr)
+            rampmodel_corr.write(output_dir + fileroots[n] + 'udem1overfstep.fits')
 
-    rampmodel_corr.meta.filename = uncal_rampmodel.meta.filename
+        datamodel.close()
 
-    return rampmodel_corr
+    return corrected_rampmodels
 
 
 if __name__ == "__main__":
-    ################ MAIN ###############
     # Open the uncal time series that needs 1/f correction
     exposurename = '/genesis/jwst/userland-soss/loic_review/GTO/wasp52b/IDTSOSS_clear_noisy.fits'
     outdir = '/genesis/jwst/userland-soss/loic_review/oneoverf/'
-    uncal_datamodel = datamodels.open(exposurename)
 
     # Run the 1/f correction step
-    #map = applycorrection(uncal_datamodel, exposurename)
-    map = applycorrection(uncal_datamodel, output_dir=outdir, save_results=True)
-
-    # Free up the input time series
-    uncal_datamodel.close()
+    map = applycorrection([exposurename], output_dir=outdir, save_results=True)[0]
 
     # Write down the output corrected time series
     map.write('/genesis/jwst/userland-soss/loic_review/oneoverf/uncal_corrected.fits')
