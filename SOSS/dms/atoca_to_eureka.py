@@ -4,6 +4,8 @@
 Created on Wed Jul 13 10:37 2022
 @author: MCR
 Routines to convert ATOCA output to match the Eureka! Stage 3 file formats.
+Requires the astraeus package for xarray functionality. Installation
+insctructions are here: https://kevin218.github.io/Astraeus/
 """
 
 from astraeus import xarrayIO as xrio
