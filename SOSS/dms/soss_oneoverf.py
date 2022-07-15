@@ -90,9 +90,11 @@ def applycorrection(datafiles, output_dir=None, save_results=False,
     # Save these to disk if requested.
     if save_results is True:
         hdu = fits.PrimaryHDU(deepstack)
-        hdu.writeto(output_dir+fileroot_noseg+'deepstack.fits', overwrite=True)
+        hdu.writeto(output_dir+fileroot_noseg+'udem1overfstep_deepstack.fits',
+                    overwrite=True)
         hdu = fits.PrimaryHDU(rms)
-        hdu.writeto(output_dir+fileroot_noseg+'rms.fits', overwrite=True)
+        hdu.writeto(output_dir+fileroot_noseg+'udem1overfstep_rms.fits',
+                    overwrite=True)
 
     corrected_rampmodels = []
     for n, datamodel in enumerate(data):
@@ -172,13 +174,13 @@ def applycorrection(datafiles, output_dir=None, save_results=False,
         # Save results to disk if requested.
         if save_results is True:
             hdu = fits.PrimaryHDU(sub)
-            hdu.writeto(output_dir + fileroots[n] + 'diffim.fits',
+            hdu.writeto(output_dir + fileroots[n] + 'udem1overfstep_diffim.fits',
                         overwrite=True)
             hdu = fits.PrimaryHDU(subcorr)
-            hdu.writeto(output_dir + fileroots[n] + 'diffimcorr.fits',
+            hdu.writeto(output_dir + fileroots[n] + 'udem1overfstep_diffimcorr.fits',
                         overwrite=True)
             hdu = fits.PrimaryHDU(dcmap)
-            hdu.writeto(output_dir + fileroots[n] + 'noisemap.fits',
+            hdu.writeto(output_dir + fileroots[n] + 'udem1overfstep_noisemap.fits',
                         overwrite=True)
 
             corrected_rampmodels.append(rampmodel_corr)
