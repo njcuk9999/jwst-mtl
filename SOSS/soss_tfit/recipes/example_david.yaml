@@ -20,14 +20,12 @@ global_params:
     - 2
   # Number of planets (use for N planets) [INT]
   nplanets: 1
+
   # Orders to use (list of orders)
   orders:
     - 1
     - 2
-  # Number of bins used for each order for spectral binning (set to None for no binning)
-  order_bins:
-    1: 30
-    2: 15
+
   # The normalization value before and after transit [days from start of observation]
   #    setting None for before or after does not normalize by this region
   #    setting both to None does not normalize
@@ -35,15 +33,55 @@ global_params:
     before: 0.05
     after: 0.135
 
-  # remove bins from orders (list bin indices to remove)
-  #   list per order or set to None to skip removal
-  remove_bins:
-    1: None
-    2:
-      - 0
-      - 1
-      - 2
-      - 3
+  # Define the number of subdivisions when solving the long-integration problems
+  # Must be between 1 and 41 and odd
+  nintg: 1
+
+  # Define which way to calculate the results
+  #    current options are 'percentile', 'mode', 'all'
+  result-mode: percentile
+
+  # Define the number of samples to use for transit depth calculation
+  transit_depth_nsamples: 10000
+
+  # ---------------------------------------------------------------------------
+  # binning parameters
+  # ---------------------------------------------------------------------------
+  binning:
+    # binning mode should either be 'simple' or 'const_R'
+    mode: const_R
+    # parameters for simple binning (divide each order into N chunks)
+    simple:
+      # Number of bins used for each order for spectral binning (set to None for no binning)
+      order_bins:
+        1: 30
+        2: 15
+      # remove bins from orders (list bin indices to remove)
+      #   list per order or set to None to skip removal
+      remove_bins:
+        1: None
+        2:
+          - 0
+          - 1
+          - 2
+          - 3
+    # parameters for binning by const R (divide into bins of equal resolution)
+    const_R:
+      # Resolution to bin at
+      #   Must define for each value of "global_params.orders"
+      bin_R:
+        1: 100
+        2: 100
+      # minimum wavelength in micron to keep for each order (use None for no limit)
+      #   Must define for each value of "global_params.orders"
+      bin_wave_min:
+        1: None
+        2: 0.6
+      # maximum wavelength in micron to keep for each order (use None for no limit)
+      #   Must define for each value of "global_params.orders"
+      bin_wave_max:
+        1: None
+        2: 0.9
 
   # ---------------------------------------------------------------------------
   # Input/Output parameters
@@ -51,7 +89,7 @@ global_params:
   # input extracted spctrum - aboslute path (must be set)
   inspectrum: /data/jwst-soss/data/jwst-mtl-user/wasp52b/substrip256_extract1d_extract1dstep.fits
   # output directory for results (created if doesn't exist)
-  outdir: /data/jwst-soss/data/jwst-mtl-user/wasp52b/outputs
+  outdir: /data/jwst-soss/data/jwst-mtl-user/wasp52b/outputs/david_test_const_R/
   # output results filename (without extension)
   outname: wasp52b
   # model file path - absolute path (set None to not plot model)
@@ -123,7 +161,7 @@ mcmc_params:
     trial: 0.5
     full: 0.5
   # Maximum number of times to try the MCMC (if convergence not met on a loop)
-  nloopmaximum:
+  nloopmax:
     trial: 3
     full: 3
   # Convergence criteria
@@ -144,7 +182,7 @@ mcmc_params:
     # Number of fit threads per chain
     #    Currently this does not work, use export OMP_NUM_THREADS=N
     #    before running! OMP_NUM_THREADS=N_fit_threads
-    N_fit_threads: 8
+    N_fit_threads: 7
 
 
 # =============================================================================

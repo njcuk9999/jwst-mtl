@@ -47,12 +47,7 @@ order_bins = dict()
 for onum in params['ORDERS']:
     order_bins[onum] = None
 
-# Number of bins used for each order for spectral binning
-#       (set to None for no binning)
-params.set(key='ORDER_BINS', value=order_bins, source=__NAME__,
-           desc='Number of bins used for each order for spectral binning '
-                '(set to None for no binning)',
-           dtype=dict, path='global_params.order_bins')
+
 
 # The normalization value before and after transit [days from start of observation]
 #    setting None for before or after does not normalize by this region
@@ -63,13 +58,6 @@ params.set(key='TNORM', value=dict(before=None, after=None), source=__NAME__,
                 'or after does not normalize by this region \n\t setting both '
                 'to None does not normalize',
            dtype=dict, path='global_params.tnorm')
-
-# remove bins from orders (list bin indices to remove)
-#   list per order or set to None to skip removal
-params.set(key='REMOVE_BINS', value=order_bins, source=__NAME__,
-           desc='remove bins from orders (list bin indices to remove) '
-                'list per order or set to None to skip removal',
-           dtype=dict, path='global_params.remove_bins')
 
 # input extracted spctrum - aboslute path (must be set)
 params.set(key='INSPECTRUM', value=None, source=__NAME__,
@@ -219,6 +207,71 @@ params.set(key='T_OBS', value=0.0, source=__NAME__,
 params.set(key='OMC', value=0.0, source=__NAME__,
            desc='O-C values for each transit',
            dtype=float, path='global_params.omc')
+
+# Define the number of subdivisions when solving the long-integration problems
+# Must be between 1 and 41 and odd
+params.set(key='NINTG', value=1, source=__NAME__,
+           desc='the number of subdivisions when solving the long-integration '
+                'problems. Must be between 1 and 41 and odd',
+           dtype=int, path='global_params.nintg')
+
+# Define which way to calculate the results
+#    current options are 'percentile', 'mode', 'all'
+params.set(key='RESULT_MODE', value='percentile', source=__NAME__,
+           options=['percentile', 'mode', 'all'],
+           desc='which way to calculate the results  current options are '
+                '"percentile", "mode", "all"',
+           dtype=str, path='global_params.result-mode')
+
+# Define the number of samples to use for transit depth calculation
+params.set(key='TRANSIT_DEPTH_NSAMPLES', value=None, not_none=True,
+           source=__NAME__,
+           desc='the number of samples to use for transit depth calculation',
+           dtype=int, path='global_params.transit_depth_nsamples')
+
+# =============================================================================
+# Define binning parameters
+# =============================================================================
+# define which binning mode to use (simple or const_R)
+params.set(key='BINNING_MODE', value='simple', source=__NAME__,
+           desc='define which binning mode to use (simple or const_R)',
+           dtype=str, path='global_params.binning.mode')
+
+# Number of bins used for each order for spectral binning
+#       (set to None for no binning)
+params.set(key='ORDER_BINS', value=order_bins, source=__NAME__,
+           desc='Number of bins used for each order for spectral binning '
+                '(set to None for no binning)',
+           dtype=dict, path='global_params.binning.simple.order_bins')
+
+# remove bins from orders (list bin indices to remove)
+#   list per order or set to None to skip removal
+params.set(key='REMOVE_BINS', value=order_bins, source=__NAME__,
+           desc='remove bins from orders (list bin indices to remove) '
+                'list per order or set to None to skip removal',
+           dtype=dict, path='global_params.binning.simple.remove_bins')
+
+# Resolution to bin at (one value per order) - None for no binning
+params.set(key='BIN_RESOLUTION', value=order_bins, source=__NAME__,
+           desc='Resolution to bin at (one value per order) - '
+                'None for no binning',
+           dtype=dict, path='global_params.binning.const_R.bin_R')
+
+# minimum wavelength in micron to keep for each order (use None for no limit)
+#   Must define for each value of "global_params.orders"
+params.set(key='BIN_WAVE_MIN', value=order_bins, source=__NAME__,
+           desc='minimum wavelength in micron to keep for each order '
+                '(use None for no limit) Must define for each value of '
+                '"global_params.orders',
+           dtype=dict, path='global_params.binning.const_R.bin_wave_min')
+
+# maximum wavelength in micron to keep for each order (use None for no limit)
+#   Must define for each value of "global_params.orders"
+params.set(key='BIN_WAVE_MAX', value=order_bins, source=__NAME__,
+           desc='maximum wavelength in micron to keep for each order '
+                '(use None for no limit) Must define for each value of '
+                '"global_params.orders"',
+           dtype=dict, path='global_params.binning.const_R.bin_wave_max')
 
 # =============================================================================
 # Define star parameters

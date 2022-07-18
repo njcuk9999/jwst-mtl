@@ -35,7 +35,7 @@ if __name__ == "__main__":
 
     # config file (set manually)
     config_file = ('/data/jwst-soss/bin/jwst-mtl-soss/SOSS/soss_tfit/recipes/'
-                   'example_david_change_in_code.yaml')
+                   'example_jason.yaml')
 
     # -------------------------------------------------------------------------
     # Step 1: load parameter file into our parameter class
@@ -63,7 +63,7 @@ if __name__ == "__main__":
 
     # -------------------------------------------------------------------------
     # apply spectral binning
-    cprint('Applying spectral binning')
+    cprint('Applying spectral binning and removing bins')
     data.apply_spectral_binning(params)
 
     # -------------------------------------------------------------------------
@@ -83,21 +83,6 @@ if __name__ == "__main__":
               title=f'Order {order} wave bin: {ibin}')
     plt.show()
     plt.close()
-
-    # -------------------------------------------------------------------------
-    # TODO: remove
-    # # remove a few lambdas from order 2 (S/N) too low
-    # order = 2
-    # imin = 1   # david uses 4 for bins = [30, 15]
-    # # loop around each quantity
-    # for quantity in data.spec[order]:
-    #     data.spec[order][quantity] = data.spec[order][quantity][:, imin:]
-    # # update nwave
-    # data.n_wav[order] = data.spec[order]['WAVELENGTH'].shape[1]
-
-    # remove any bins user wishes to remove
-    cprint('Remove bins from order')
-    data.remove_bins(params)
 
     # -------------------------------------------------------------------------
     # create the photospectra dictionary (data.phot)
@@ -185,6 +170,8 @@ if __name__ == "__main__":
     sampler2 = mcmc.Sampler(params, tfit, mode='full')
     sampler2.run_mcmc(corscale, mcmc.lnprob, mcmc.mhg_mcmc,
                       trial=sampler1)
+    # add data to sampler2 (for dump and plotting)
+    sampler2.data = data
     # print result
     sampler2.posterior_print()
     # plot a specific chain
@@ -192,6 +179,8 @@ if __name__ == "__main__":
     # -------------------------------------------------------------------------
     # update tfit
     tfit_final = mcmc.update_x0_p0_from_chain(tfit, sampler2.wchains[0], -1)
+    # add tfit to sampler
+    sampler2.tfit = tfit_final
     # -------------------------------------------------------------------------
     # plot transit
     plot.plot_transit_fit(params, tfit_final)
@@ -234,8 +223,9 @@ if __name__ == "__main__":
     sampler2.save_chains()
 
     # dump the sampler class to disk so it can be loaded later
+    #   this can be BIG - may want to disable for large runs
     cprint('Dumping sampler to pickle file')
-    sampler2.dump(data=data)
+    sampler2.dump()
 
     # -------------------------------------------------------------------------
     # Step 8: plot spectrum - using sampler only so we can load from file
