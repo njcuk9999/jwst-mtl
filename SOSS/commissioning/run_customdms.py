@@ -148,10 +148,16 @@ def run_stage2(rateints, contamination_mask=None, use_atoca=False, passnumber=1)
     #                                          override_background=CALIBRATION_DIR+BACKGROUND, applyonintegrations=False,
     #                                          contamination_mask=contamination_mask)
 
+    # Subtract a local background below order 1 close to the trace
+
+
     # Custom - Check that no NaNs is in the rateints data
     result = commutils.remove_nans(result)
     print(result.meta.filename)
     #result.write('/Users/albert/NIRISS/Commissioning/analysis/SOSSwavecal/custom_preextract1d.fits')
+
+
+
 
     #aaa = result.copy()
     #aaa.write(outdir+'/toto.fits')
@@ -181,7 +187,7 @@ def run_stage2(rateints, contamination_mask=None, use_atoca=False, passnumber=1)
         # soss_atoca=False --> box extraction only
         # carefull to not turn it on. Woul dif soss_bad_pix='model' or soss_modelname=set_to_something
         result = calwebb_spec2.extract_1d_step.Extract1dStep.call(result, output_dir=outdir, save_results=True,
-                                                                  #soss_transform=[0, 0, 0],
+                                                                  soss_transform=[0, 0, 0],
                                                                   soss_atoca=False,
                                                                   subtract_background=False,
                                                                   soss_bad_pix='masking',

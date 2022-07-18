@@ -9,6 +9,8 @@ import glob
 
 from astropy.io import fits
 
+from scipy.stats import sigmaclip
+
 from jwst import datamodels
 
 import SOSS.dms.soss_centroids as soss_centroids
@@ -132,8 +134,18 @@ def build_mask_contamination(order, x, y, halfwidth=15, subarray='SUBSTRIP256'):
 
     return mask_trace
 
+def box_extract(datamodel, trace_ref_file):
+
+    '''
+    For development purposes. Instead of using atoca's box extraction, have this which allows to play with
+    the recipe (e.g. a background subtraction from pixels near the trace)
+    '''
 
 
+
+
+
+    return
 
 def aperture_from_scratch(datamodel, norders=3, aphalfwidth=[30,20,20], outdir=None, datamodel_isfits=False,
                           verbose=False):
@@ -227,6 +239,15 @@ def aperture_from_scratch(datamodel, norders=3, aphalfwidth=[30,20,20], outdir=N
 
 
 
+def interp_badpix(modelin):
+
+    nint, dimy, dimx = np.shape(modelin.data)
+    for i in range(nint):
+        tmp = np.copy(modelin[i])
+        ind = (~np.isfinite(tmp.data)) | (~np.isfinite(tmp.err))
+
+
+
 
 def remove_nans(datamodel):
     # Checks that the JWST Data Model does not contains NaNs
@@ -240,6 +261,13 @@ def remove_nans(datamodel):
     modelout.data[ind] = 0
     modelout.err[ind] = np.nanmedian(datamodel.err)*10
     modelout.dq[ind] += 1
+
+    # Replace occasional outlier by the median of the TSO at that pixel
+
+
+    # Interpolate remaining bad pixels with surrounding pixels
+    modelout = interp_badpix(modelout, ind)
+
 
     # Check that the exposure type is NIS_SOSS
     modelout.meta.exposure.type = 'NIS_SOSS'
@@ -664,15 +692,45 @@ def combine_timeseries(wildcard, outputname):
     return
 
 
+def greyscale_rms(ts_greyscale, title=''):
+    '''
+    Removes outliers form the greayscale and perform standard deviation
+    '''
+
+    #a = fits.getdata('/Users/albert/NIRISS/Commissioning/analysis/HATP14b/timeseries_combined_1f_ap25_20220711.fits.gz')
+    #a = fits.getdata('/Users/albert/NIRISS/Commissioning/analysis/HATP14b/timeseries_combined_1f_ap25_atoca_20220713.fits.gz')
+    #a = fits.getdata('/Users/albert/NIRISS/Commissioning/analysis/HATP14b/timeseries_combined_20220610.fits')
+    a = fits.getdata(ts_greyscale)
+    norder, nint, dimx = np.shape(a)
 
 
+    rms = np.zeros((norder, dimx)) * np.nan
+    for m in range(3):
+        for x in range(dimx-8):
+            col = a[m, :, x+4]
+            colnonan = col[np.where(np.isfinite(col))[0]]
+            colclipped, low, high = sigmaclip(colnonan, low=3, high=3)
+            rms[m, x+4] = np.std(colclipped)
 
-
+        plt.plot(1/rms[m,:], label='Order {:}'.format(m+1))
+    plt.legend()
+    plt.xlabel('Column (pixels)')
+    plt.ylabel('signal / rms')
+    plt.ylim((0,500))
+    plt.title(title)
+    plt.grid()
+    plt.show()
+    return
 
 
 
 if __name__ == "__main__":
-    #a = make_mask_nis17()
+
+    #greyscale_rms('/Users/albert/NIRISS/Commissioning/analysis/HATP14b/timeseries_combined_20220610.fits', title='No 1/f correction')
+    #greyscale_rms('/Users/albert/NIRISS/Commissioning/analysis/HATP14b/timeseries_combined_1f_ap25_20220711.fits.gz', title='With Loic 1/f correction')
+    greyscale_rms('/Users/albert/NIRISS/Commissioning/analysis/HATP14b/timeseries_combined_1f_ap25_atoca_20220713.fits.gz', title='With Loic 1/f correction and atoca modelling')
+    sys.exit()
+    a = make_mask_nis17()
     a = make_mask_nis18obs2()
     sys.exit()
     outdir = '/Users/albert/NIRISS/Commissioning/analysis/HATP14b/'
