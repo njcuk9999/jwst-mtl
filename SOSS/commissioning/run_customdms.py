@@ -140,16 +140,19 @@ def run_stage2(rateints, contamination_mask=None, use_atoca=False, passnumber=1)
 
     # Custom - Outlier flagging
     if passnumber == 1:
-        result = soss_outliers.flag_outliers(result, window_size=(7,7), n_sig=9, verbose=True, outdir=outdir, save_diagnostic=True)
+        result = soss_outliers.flag_outliers(result, window_size=(3,11), n_sig=9, verbose=True, outdir=outdir, save_diagnostic=True)
 
     # Still non-optimal
     # Custom - Background subtraction step
-    #result = commutils.background_subtraction(result, aphalfwidth=[30,20,20], outdir=outdir, verbose=False,
-    #                                          override_background=CALIBRATION_DIR+BACKGROUND, applyonintegrations=False,
-    #                                          contamination_mask=contamination_mask)
+    result = commutils.background_subtraction(result, aphalfwidth=[30,20,20], outdir=outdir, verbose=False,
+                                              override_background=CALIBRATION_DIR+BACKGROUND, applyonintegrations=True,
+                                              contamination_mask=contamination_mask)
+
+    # Clean the outlier and bad pixels based on a deep stack
+    result = commutils.soss_interp_badpix(result)
 
     # Subtract a local background below order 1 close to the trace
-
+    #result = commutils.localbackground_subtraction(result, ATOCAREF_DIR+SPECTRACE, width=9, back_offset=-25)
 
     # Custom - Check that no NaNs is in the rateints data
     result = commutils.remove_nans(result)
@@ -274,24 +277,25 @@ if __name__ == "__main__":
             print('Running twice through the stage 1 + stage 2 steps.')
             print('Iteration 1 will produce an outlier map at stage 2.')
             print('Iteration 2 uses that outlier map to better suppress the 1/f noise.')
-            use_atoca = True
+            use_atoca = False
+            custom_or_not = '_customrateints' #'_rateints'
+            #run_stage1(dir+dataset+'_uncal.fits', outlier_map=dir+dataset+'_outliers.fits')
+            run_stage2(dir+dataset+custom_or_not+'.fits', contamination_mask=contmask, use_atoca=False)
             run_stage1(dir+dataset+'_uncal.fits', outlier_map=dir+dataset+'_outliers.fits')
-            run_stage2(dir+dataset+'_customrateints.fits', contamination_mask=contmask, use_atoca=False)
-            run_stage1(dir+dataset+'_uncal.fits', outlier_map=dir+dataset+'_outliers.fits')
-            run_stage2(dir+dataset+'_customrateints.fits', contamination_mask=contmask, passnumber=2, use_atoca=use_atoca)
+            run_stage2(dir+dataset+custom_or_not+'.fits', contamination_mask=contmask, passnumber=2, use_atoca=use_atoca)
 
         # Post processing analysis
         for dataset in datalist:
             # Additional diagnostics - Subtracting the ATOCA model from the images
             if use_atoca:
-                commutils.check_atoca_residuals(dir+dataset+'_customrateints.fits', dir+dataset+'_atoca_model_SossExtractModel.fits')
-                spectrum_file = dir+dataset+'_customrateints_extract1dstep.fits'
-                a = commutils.plot_timeseries(spectrum_file, norder=3)
+                commutils.check_atoca_residuals(dir+dataset+custom_or_not+'.fits', dir+dataset+'_atoca_model_SossExtractModel.fits')
 
         # Combining segments and creating timeseries greyscales
         if True:
+            spectrum_file = dir+dataset+custom_or_not+'_extract1dstep.fits'
+            a = commutils.plot_timeseries(spectrum_file, norder=3)
             outdir = '/Users/albert/NIRISS/Commissioning/analysis/HATP14b/'
             wildcard = outdir+'supplemental_jw01541001001_04101_00001-seg00?_nis/timeseries_greyscale_rawflux.fits'
             a = commutils.combine_timeseries(wildcard, outdir+'timeseries_greyscale.fits')
-            wildcard = outdir+'jw01541001001_04101_00001-seg00?_nis_customrateints_extract1dstep.fits'
+            wildcard = outdir+'jw01541001001_04101_00001-seg00?_nis'+custom_or_not+'_extract1dstep.fits'
             a = commutils.combine_multi_spec(wildcard, outdir+'extracted_spectrum.fits')

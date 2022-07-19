@@ -17,6 +17,12 @@ import SOSS.dms.soss_centroids as soss_centroids
 
 import sys
 
+from jwst import datamodels
+
+from astropy.nddata.bitmask import bitfield_to_boolean_mask
+
+from jwst.datamodels import dqflags
+
 import SOSS.trace.tracepol as tracepol
 
 def stack_rateints(rateints, outdir=None):
@@ -57,9 +63,44 @@ def stack_rateints(rateints, outdir=None):
 
 def stack_datamodel(datamodel):
 
+    '''
+    Stack a time series.
+    First put all non-zero DQ pixels to NaNs.
+    Nan median and nan std along integrations axis.
+    Remaining NaNs on the stack really are common bad pixels for all integrations.
+    '''
 
-    deepstack = np.nanmedian(cube, axis=0)
-    rms = np.nanstd(cube, axis=0)
+    from astropy.nddata.bitmask import bitfield_to_boolean_mask
+
+    from jwst.datamodels import dqflags
+
+    #import matplotlib.pyplot as plt
+
+
+    # Mask pixels that have the DO_NOT_USE data quality flag set, EXCEPT the saturated pixels (because the ramp
+    # fitting algorithm handles saturation).
+    donotuse = bitfield_to_boolean_mask(datamodel.dq, ignore_flags=dqflags.pixel['DO_NOT_USE'], flip_bits=True)
+    #saturated = bitfield_to_boolean_mask(datamodel.dq, ignore_flags=dqflags.pixel['SATURATED'], flip_bits=True)
+    #mask = donotuse & ~saturated
+    mask = donotuse # Just this is enough to not flag the saturated pixels in the trace
+    datamodel.data[mask] = np.nan
+
+    hdu = fits.PrimaryHDU(datamodel.data)
+    hdu.writeto('/Users/albert/NIRISS/Commissioning/analysis/HATP14b/test_masked.fits', overwrite=True)
+
+    #plt.imshow(donotuse[8])
+    #plt.show()
+    #plt.imshow(saturated[8])
+    #plt.show()
+    #plt.imshow(mask[8])
+    #plt.show()
+
+    deepstack = np.nanmedian(datamodel.data, axis=0)
+    rms = np.nanstd(datamodel.data, axis=0)
+
+    #hdu = fits.PrimaryHDU(deepstack)
+    #hdu.writeto('/Users/albert/NIRISS/Commissioning/analysis/HATP14b/test_pre_interpbadpstack.fits', overwrite=True)
+
     return deepstack, rms
 
 
@@ -134,18 +175,74 @@ def build_mask_contamination(order, x, y, halfwidth=15, subarray='SUBSTRIP256'):
 
     return mask_trace
 
-def box_extract(datamodel, trace_ref_file):
+def localbackground_subtraction(datamodel, trace_table_ref_file_name, width=25, back_offset=-25):
 
     '''
     For development purposes. Instead of using atoca's box extraction, have this which allows to play with
     the recipe (e.g. a background subtraction from pixels near the trace)
     '''
+    from jwst.extract_1d.soss_extract.soss_boxextract import get_box_weights, box_extract
 
+    print('Subtracting a nearby sky value from the data... Only order 1 but order 2 will be affected.')
 
+    # Prepare the output data model
+    # The background will be applied on the image pixels to then easily run the rest of the pipeline
+    # as before instead of having to recreate extracted timeseries.
+    #result = np.copy(datamodel)
 
+    nintegrations, dimy, dimx = np.shape(datamodel.data)
 
+    # Read the trace table reference file for this data set
+    ref = fits.open(trace_table_ref_file_name)
+    x_o1, y_o1, w_o1 = np.array(ref[1].data['X']), np.array(ref[1].data['Y']), np.array(ref[1].data['WAVELENGTH'])
+    x_o2, y_o2, w_o2 = np.array(ref[2].data['X']), np.array(ref[2].data['Y']), np.array(ref[2].data['WAVELENGTH'])
+    x_o3, y_o3, w_o3 = np.array(ref[3].data['X']), np.array(ref[3].data['Y']), np.array(ref[3].data['WAVELENGTH'])
+    # Assumption is made later that x are integers from 0 to 2047
+    x = np.arange(2048)
+    sorted = np.argsort(x_o1)
+    x_o1, y_o1, w_o1 = x_o1[sorted], y_o1[sorted], w_o1[sorted]
+    y_o1 = np.interp(x, x_o1, y_o1)
+    w_o1 = np.interp(x, x_o1, w_o1)
+    x_o1 = x
 
-    return
+    # Create an aperture mask based on those positions
+    subarray_shape = (dimy, dimx)
+    aper = get_box_weights(y_o1, width, subarray_shape, cols=x_o1)
+
+    # Create a background aperture
+    # the back_offset is how much in y the aperture is move relative to the center of the trace
+    backap = get_box_weights(y_o1 + back_offset, width, subarray_shape, cols=x_o1)
+
+    # Loop over images.
+    for i in range(nintegrations):
+        scidata = np.copy(datamodel.data[i])
+        scierr = np.copy(datamodel.err[i])
+        scimask = datamodel.dq[i] > 0
+        # Measure the flux in the aperture
+        cols, flux, flux_err, npix = box_extract(scidata, scierr, scimask, aper, cols = x_o1)
+        # Measure the flux in the background aperture
+        bcols, bflux, bflux_err, bnpix = box_extract(scidata, scierr, scimask, backap, cols = x_o1)
+
+        #print(i, npix, bnpix)
+        #plt.plot(npix)
+        #plt.plot(bnpix)
+        #plt.show()
+
+        # Subtract background from aperture
+        bflux_perpix = (bflux / bnpix)
+        flux_corr = flux - npix * bflux_perpix
+
+        #plt.plot(x_o1, flux)
+        #plt.plot(x_o1, flux_corr)
+        #plt.plot(x_o1, bflux)
+        #plt.show()
+
+        # To simplify the test for now, subtract the image pixels directly
+        backdc = np.tile(bflux_perpix, dimy).reshape((dimy, dimx))
+        #print(np.shape(datamodel.data))
+        datamodel.data[i] = datamodel.data[i] - backdc
+
+    return datamodel
 
 def aperture_from_scratch(datamodel, norders=3, aphalfwidth=[30,20,20], outdir=None, datamodel_isfits=False,
                           verbose=False):
@@ -238,15 +335,84 @@ def aperture_from_scratch(datamodel, norders=3, aphalfwidth=[30,20,20], outdir=N
     return maskcube
 
 
+def interp_badpix(image, noise):
+    '''
+    Interpolates bad pixels of soss for a single image (e.g. a deepstack for instance)
+    Define a rectangle as the kernel to determine the interpolating value from.
+    '''
 
-def interp_badpix(modelin):
+    kx, ky = 3, 1 # semi widths (rectangle size = 2*kx+1, 2*ky+1)
+    #kernel = np.ones((2*ky+1, 2*kx+1))
 
+    # Use only light sensitive pixels
+    dimy, dimx = np.shape(image)
+    if dimy == 96:
+        ymin, ymax = 0, 96
+    elif dimy == 2048:
+        ymin, ymax = 5, 2043
+    else:
+        ymin, ymax = 0, 251
+    x, y = np.meshgrid(np.arange(dimx), np.arange(dimy))
+    notrefpix = ~((x <= 5) | (x >=2043) | (y <= ymin) | (y >= ymax))
+    #plt.imshow(refpix)
+    #plt.show()
+
+    # Positions of the bad pixels
+    bady, badx = np.where(~np.isfinite(image) & notrefpix)
+    nbad = np.size(badx)
+    for i in range(nbad):
+        image[bady[i], badx[i]] = np.nanmedian(image[bady[i]-ky:bady[i]+ky+1, badx[i]-kx:badx[i]+kx+1])
+        # error is the standard deviations of pixels that were used in the median. Not division by sqrt(n).
+        noise[bady[i], badx[i]] = np.nanstd(image[bady[i]-ky:bady[i]+ky+1, badx[i]-kx:badx[i]+kx+1])
+
+    return image, noise
+
+
+def soss_interp_badpix(modelin):
+
+    # Create a deep stack from the time series.
+    # Interpolate on that deep stack.
+    # Then use the deepstack as pixel replacement values in single integrations.
+
+    # Create a deep stack from the time series
+    stack, stackrms = stack_datamodel(modelin)
+    hdu = fits.PrimaryHDU(stack)
+    hdu.writeto('/Users/albert/NIRISS/Commissioning/analysis/HATP14b/test_pre_interpbadpstack.fits', overwrite=True)
+
+    # Interpolate the deep stack
+    clean_stack, stack_noise = interp_badpix(stack, stackrms)
+    hdu = fits.PrimaryHDU(stack)
+    hdu.writeto('/Users/albert/NIRISS/Commissioning/analysis/HATP14b/test_post_interpbadpstack.fits', overwrite=True)
+
+    # Apply clean stack pixel values to each integration's bad pixels
+    #
+    # Use only light sensitive pixels
     nint, dimy, dimx = np.shape(modelin.data)
+    if dimy == 96:
+        ymin, ymax = 0, 96
+    elif dimy == 2048:
+        ymin, ymax = 5, 2043
+    else:
+        ymin, ymax = 0, 251
+    x, y = np.meshgrid(np.arange(dimx), np.arange(dimy))
+    notrefpix = ~((x <= 5) | (x >=2043) | (y <= ymin) | (y >= ymax))
+    #
+    # Loop over all integrations
     for i in range(nint):
-        tmp = np.copy(modelin[i])
-        ind = (~np.isfinite(tmp.data)) | (~np.isfinite(tmp.err))
+        # Mask pixels that have the DO_NOT_USE data quality flag set
+        donotuse = bitfield_to_boolean_mask(modelin.dq[i], ignore_flags=dqflags.pixel['DO_NOT_USE'], flip_bits=True)
+        ind = notrefpix & ((~np.isfinite(modelin.data[i])) | (~np.isfinite(modelin.err[i])) | donotuse)
+        # Replace bad pixel here by the clean stack value
+        modelin.data[i][ind] = np.copy(clean_stack[ind])
+        modelin.err[i][ind] = np.copy(stack_noise[ind])
+        # Set the DQ map to good for all pixels except NaNs
+        # TODO: this should be more clever so that ATOCA has knowledge of interpolated pixels
+        modelin.dq[i][notrefpix] = 0
 
+    hdu = fits.PrimaryHDU(modelin.data)
+    hdu.writeto('/Users/albert/NIRISS/Commissioning/analysis/HATP14b/test_interpolated_segment.fits', overwrite=True)
 
+    return modelin
 
 
 def remove_nans(datamodel):
@@ -266,7 +432,7 @@ def remove_nans(datamodel):
 
 
     # Interpolate remaining bad pixels with surrounding pixels
-    modelout = interp_badpix(modelout, ind)
+    #modelout = interp_badpix(modelout, ind)
 
 
     # Check that the exposure type is NIS_SOSS
@@ -277,6 +443,8 @@ def remove_nans(datamodel):
 
 def background_subtraction(datamodel, aphalfwidth=[30,30,30], outdir=None, verbose=False, override_background=None,
                            applyonintegrations=False, contamination_mask=None):
+
+    nint, dimy, dimx = np.shape(datamodel.data)
 
     basename = os.path.splitext(datamodel.meta.filename)[0]
     if outdir == None:
@@ -319,16 +487,17 @@ def background_subtraction(datamodel, aphalfwidth=[30,30,30], outdir=None, verbo
     # Bottom portion not usable in the FULL mode and skews levels estimates
     if datamodel.meta.subarray.name == 'FULL': maskeddata[:, 0:1024, :] = np.nan
 
-    # Identify pixels free of astrophysical signal (e.g. 25th percentile)
+    # Identify pixels free of astrophysical signal (e.g. 15th percentile)
     if applyonintegrations == True:
         # Measure level on each integration
-        levels = np.nanpercentile(maskeddata, 25, axis=1)
-        nlevels = 1
+        levels = np.nanpercentile(maskeddata, 15, axis=1)
+        print('levels shape', np.shape(levels))
+        nlevels = nint
     else:
         # Measure level on deep stack of all integrations (default)
         maskeddata = np.nanmedian(maskeddata, axis=0)
-        levels = np.nanpercentile(maskeddata, 25, axis=0)
-        nlevels = datamodel.meta.exposure.nints
+        levels = np.nanpercentile(maskeddata, 15, axis=0)
+        nlevels = 1
 
     # Open the reference background image
     if override_background is None:
@@ -359,6 +528,7 @@ def background_subtraction(datamodel, aphalfwidth=[30,30,30], outdir=None, verbo
     # Scaling to apply to the ref level to bring it to that measured
     corrscale = np.nanmedian(levels / reflevel, axis=-1)
     print('Scaling of the ref background (should not be negative):', corrscale)
+    print('Background correction scale shape ', np.shape(corrscale))
 
     # plot the measured background levels and ref level
     if applyonintegrations == True:
@@ -393,7 +563,9 @@ def background_subtraction(datamodel, aphalfwidth=[30,30,30], outdir=None, verbo
         else:
             print('Warning. The background scaling was not performed because it was negative.')
 
-    output.write(outdir+'/'+basename+'_backsubtracted.fits', overwrite=True)
+    #output.write(outdir+'/'+basename+'_backsubtracted.fits', overwrite=True)
+    hdu = fits.PrimaryHDU(output.data)
+    hdu.writeto(outdir+'/'+basename+'_backsubtracted.fits', overwrite=True)
 
     return output
 
@@ -725,6 +897,12 @@ def greyscale_rms(ts_greyscale, title=''):
 
 
 if __name__ == "__main__":
+    datamodel = datamodels.open('/Users/albert/NIRISS/Commissioning/analysis/HATP14b/jw01541001001_04101_00001-seg003_nis_customrateints_flatfieldstep.fits')
+    trace_table_ref_file_name = '/Users/albert/NIRISS/Commissioning/analysis/HATP14b/ref_files/SOSS_ref_trace_table_SUBSTRIP256.fits'
+    #datamodel = commutils.remove_nans(datamodel)
+    rien = localbackground_subtraction(datamodel, trace_table_ref_file_name, width=25, back_offset=-25)
+
+    sys.exit()
 
     #greyscale_rms('/Users/albert/NIRISS/Commissioning/analysis/HATP14b/timeseries_combined_20220610.fits', title='No 1/f correction')
     #greyscale_rms('/Users/albert/NIRISS/Commissioning/analysis/HATP14b/timeseries_combined_1f_ap25_20220711.fits.gz', title='With Loic 1/f correction')
