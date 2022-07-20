@@ -117,7 +117,7 @@ def run_stage1(exposurename, outlier_map=None):
     return
 
 
-def run_stage2(rateints, contamination_mask=None, use_atoca=False, passnumber=1):
+def run_stage2(rateints, contamination_mask=None, use_atoca=False, run_outliers=True):
     '''
     These are the default DMS steps for Stage 2.
         input = self.assign_wcs(input)
@@ -139,7 +139,7 @@ def run_stage2(rateints, contamination_mask=None, use_atoca=False, passnumber=1)
                                                               #override_flat=CALIBRATION_DIR+FLAT)
 
     # Custom - Outlier flagging
-    if passnumber == 1:
+    if run_outliers == True:
         result = soss_outliers.flag_outliers(result, window_size=(3,11), n_sig=9, verbose=True, outdir=outdir, save_diagnostic=True)
 
     # Still non-optimal
@@ -175,7 +175,7 @@ def run_stage2(rateints, contamination_mask=None, use_atoca=False, passnumber=1)
 
     if use_atoca:
         result = calwebb_spec2.extract_1d_step.Extract1dStep.call(result, output_dir=outdir, save_results=True,
-                                                                  #soss_transform=[0, 0, 0],
+                                                                  soss_transform=[0, 0, 0],
                                                                   soss_atoca = True,
                                                                   #soss_transform=[None, 0, None],
                                                                   subtract_background=False,
@@ -219,9 +219,10 @@ if __name__ == "__main__":
     ################ MAIN ###############
 
     # data set to process:
-    #datasetname = 'wavecal'
-    #datasetname = 'fluxcal'
+    #datasetname = 'SOSSwavecal'
+    #datasetname = 'SOSSfluxcal'
     datasetname = 'HATP14b'
+    #datasetname = 'T1'
 
     # Wavelength calibration
     if datasetname == 'wavecal':
@@ -235,7 +236,7 @@ if __name__ == "__main__":
         datalist = ['jw01092010001_03101_00001_nis'] # SS256 CLEAR 20 ints
 
     # Flux Calibration
-    if datasetname == 'fluxcal':
+    if datasetname == 'SOSSfluxcal':
         if (hostname == 'iiwi.sf.umontreal.ca') or (hostname == 'iiwi.local'):
             dir = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/'
             #contmask = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/mask_contamination.fits'
@@ -271,31 +272,51 @@ if __name__ == "__main__":
             'jw01541001001_04101_00001-seg002_nis',
             'jw01541001001_04101_00001-seg003_nis'
         ]
+        dataset_string = 'jw01541001001_04101_00001'
 
-        # Run the 2 iteration process
-        for dataset in datalist:
-            print('Running twice through the stage 1 + stage 2 steps.')
-            print('Iteration 1 will produce an outlier map at stage 2.')
-            print('Iteration 2 uses that outlier map to better suppress the 1/f noise.')
-            use_atoca = False
-            custom_or_not = '_customrateints' #'_rateints'
-            #run_stage1(dir+dataset+'_uncal.fits', outlier_map=dir+dataset+'_outliers.fits')
-            run_stage2(dir+dataset+custom_or_not+'.fits', contamination_mask=contmask, use_atoca=False)
-            run_stage1(dir+dataset+'_uncal.fits', outlier_map=dir+dataset+'_outliers.fits')
-            run_stage2(dir+dataset+custom_or_not+'.fits', contamination_mask=contmask, passnumber=2, use_atoca=use_atoca)
+    # T1
+    if datasetname == 'T1':
+        if (hostname == 'iiwi.sf.umontreal.ca') or (hostname == 'iiwi.local'):
+            dir = '/Users/albert/NIRISS/Commissioning/analysis/T1/'
+            ATOCAREF_DIR = '/Users/albert/NIRISS/Commissioning/analysis/HATP14b/ref_files/'
+            contmask = None
+        elif hostname == 'genesis':
+            dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/T1/'
+            contmask = None
+        else:
+            sys.exit()
 
-        # Post processing analysis
-        for dataset in datalist:
-            # Additional diagnostics - Subtracting the ATOCA model from the images
-            if use_atoca:
-                commutils.check_atoca_residuals(dir+dataset+custom_or_not+'.fits', dir+dataset+'_atoca_model_SossExtractModel.fits')
+        datalist = [
+            'jw02589001001_04101_00001-seg001_nis',
+            'jw02589001001_04101_00001-seg002_nis'
+        ]
+        dataset_string = 'jw02589001001_04101_00001'
 
-        # Combining segments and creating timeseries greyscales
-        if True:
-            spectrum_file = dir+dataset+custom_or_not+'_extract1dstep.fits'
-            a = commutils.plot_timeseries(spectrum_file, norder=3)
-            outdir = '/Users/albert/NIRISS/Commissioning/analysis/HATP14b/'
-            wildcard = outdir+'supplemental_jw01541001001_04101_00001-seg00?_nis/timeseries_greyscale_rawflux.fits'
-            a = commutils.combine_timeseries(wildcard, outdir+'timeseries_greyscale.fits')
-            wildcard = outdir+'jw01541001001_04101_00001-seg00?_nis'+custom_or_not+'_extract1dstep.fits'
-            a = commutils.combine_multi_spec(wildcard, outdir+'extracted_spectrum.fits')
+    # Run the 2 iteration process
+    for dataset in datalist:
+        print('Running twice through the stage 1 + stage 2 steps.')
+        print('Iteration 1 will produce an outlier map at stage 2.')
+        print('Iteration 2 uses that outlier map to better suppress the 1/f noise.')
+        use_atoca = False
+        custom_or_not = '_customrateints' #'_rateints'
+        #run_stage1(dir+dataset+'_uncal.fits', outlier_map=dir+dataset+'_outliers.fits')
+        #run_stage2(dir+dataset+custom_or_not+'.fits', contamination_mask=contmask, use_atoca=False)
+        #run_stage1(dir+dataset+'_uncal.fits', outlier_map=dir+dataset+'_outliers.fits')
+        #run_stage2(dir+dataset+custom_or_not+'.fits', contamination_mask=contmask, run_outliers=False, use_atoca=use_atoca)
+
+    # Post processing analysis
+    for dataset in datalist:
+        # Additional diagnostics - Subtracting the ATOCA model from the images
+        if use_atoca:
+            commutils.check_atoca_residuals(dir+dataset+custom_or_not+'.fits', dir+dataset+'_atoca_model_SossExtractModel.fits')
+        spectrum_file = dir+dataset+custom_or_not+'_extract1dstep.fits'
+        a = commutils.plot_timeseries(spectrum_file, norder=3)
+
+    # Combining segments and creating timeseries greyscales
+    outdir = '/Users/albert/NIRISS/Commissioning/analysis/'+datasetname+'/'
+    wildcard = outdir+'supplemental_'+dataset_string+'-seg00?_nis/timeseries_greyscale_rawflux.fits'
+    a = commutils.combine_timeseries(wildcard, outdir+'timeseries_greyscale.fits')
+    a = commutils.greyscale_rms(outdir+'timeseries_greyscale.fits', title='')
+    wildcard = outdir+dataset_string+'-seg00?_nis'+custom_or_not+'_extract1dstep.fits'
+    print(wildcard)
+    a = commutils.combine_multi_spec(wildcard, outdir+'extracted_spectrum.fits')

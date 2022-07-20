@@ -891,22 +891,24 @@ def greyscale_rms(ts_greyscale, title=''):
     plt.ylim((0,500))
     plt.title(title)
     plt.grid()
+    plt.savefig('')
     plt.show()
     return
 
 
 
 if __name__ == "__main__":
-    datamodel = datamodels.open('/Users/albert/NIRISS/Commissioning/analysis/HATP14b/jw01541001001_04101_00001-seg003_nis_customrateints_flatfieldstep.fits')
-    trace_table_ref_file_name = '/Users/albert/NIRISS/Commissioning/analysis/HATP14b/ref_files/SOSS_ref_trace_table_SUBSTRIP256.fits'
+    #datamodel = datamodels.open('/Users/albert/NIRISS/Commissioning/analysis/HATP14b/jw01541001001_04101_00001-seg003_nis_customrateints_flatfieldstep.fits')
+    #trace_table_ref_file_name = '/Users/albert/NIRISS/Commissioning/analysis/HATP14b/ref_files/SOSS_ref_trace_table_SUBSTRIP256.fits'
     #datamodel = commutils.remove_nans(datamodel)
-    rien = localbackground_subtraction(datamodel, trace_table_ref_file_name, width=25, back_offset=-25)
-
-    sys.exit()
+    #rien = localbackground_subtraction(datamodel, trace_table_ref_file_name, width=25, back_offset=-25)
+    #sys.exit()
 
     #greyscale_rms('/Users/albert/NIRISS/Commissioning/analysis/HATP14b/timeseries_combined_20220610.fits', title='No 1/f correction')
     #greyscale_rms('/Users/albert/NIRISS/Commissioning/analysis/HATP14b/timeseries_combined_1f_ap25_20220711.fits.gz', title='With Loic 1/f correction')
-    greyscale_rms('/Users/albert/NIRISS/Commissioning/analysis/HATP14b/timeseries_combined_1f_ap25_atoca_20220713.fits.gz', title='With Loic 1/f correction and atoca modelling')
+    #greyscale_rms('/Users/albert/NIRISS/Commissioning/analysis/HATP14b/timeseries_combined_1f_ap25_atoca_20220713.fits.gz', title='With Loic 1/f correction and atoca modelling')
+    greyscale_rms('/Users/albert/NIRISS/Commissioning/analysis/HATP14b/timeseries_greyscale.fits', title='20220719_1937')
+
     sys.exit()
     a = make_mask_nis17()
     a = make_mask_nis18obs2()
