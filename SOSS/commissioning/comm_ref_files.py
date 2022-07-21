@@ -217,7 +217,10 @@ def run_iteration1(dataset='nis18obs02', wavecaldataset=None, subarray='SUBSTRIP
         trace_file = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/ref_files/'+hdul[0].header['FILENAME']
     elif dataset == 'nis34':
         trace_file = '/Users/albert/NIRISS/Commissioning/analysis/HATP14b/ref_files/'+hdul[0].header['FILENAME']
-
+    elif dataset == '02589_obs001':
+        trace_file = '/Users/albert/NIRISS/Commissioning/analysis/T1/ref_files/'+hdul[0].header['FILENAME']
+    elif dataset == '02589_obs002':
+        trace_file = '/Users/albert/NIRISS/Commissioning/analysis/T1_2/ref_files/'+hdul[0].header['FILENAME']
     hdul.writeto(trace_file, overwrite=True)
     #hdul.writeto(trace_file + '.gz', overwrite=True)
 
@@ -265,7 +268,10 @@ def run_iteration1(dataset='nis18obs02', wavecaldataset=None, subarray='SUBSTRIP
         filename = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/ref_files/'+hdul[0].header['FILENAME']
     elif dataset == 'nis34':
         filename = '/Users/albert/NIRISS/Commissioning/analysis/HATP14b/ref_files/'+hdul[0].header['FILENAME']
-
+    elif dataset == '02589_obs001':
+        filename = '/Users/albert/NIRISS/Commissioning/analysis/T1/ref_files/'+hdul[0].header['FILENAME']
+    elif dataset == '02589_obs002':
+        filename = '/Users/albert/NIRISS/Commissioning/analysis/T1_2/ref_files/'+hdul[0].header['FILENAME']
     hdul.writeto(filename, overwrite=True)
     #hdul.writeto(filename + '.gz', overwrite=True)
 
@@ -282,6 +288,10 @@ def run_iteration1(dataset='nis18obs02', wavecaldataset=None, subarray='SUBSTRIP
         profile_file = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/michael_trace/applesoss_traceprofile.fits'
     if dataset == 'nis34':
         profile_file = '/Users/albert/NIRISS/Commissioning/analysis/HATP14b/michael_trace/applesoss_traceprofile.fits'
+    if dataset == '02589_obs001':
+        profile_file = '/Users/albert/NIRISS/Commissioning/analysis/T1/michael_trace/applesoss_traceprofile.fits'
+    if dataset == '02589_obs002':
+        profile_file = '/Users/albert/NIRISS/Commissioning/analysis/T1_2/michael_trace/applesoss_traceprofile.fits'
 
     # Read the profile file provided by Loïc.
     #profile_2d = fits.getdata(profile_file, ext=0)
@@ -321,6 +331,10 @@ def run_iteration1(dataset='nis18obs02', wavecaldataset=None, subarray='SUBSTRIP
         filename = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/ref_files/'+hdul[0].header['FILENAME']
     elif dataset == 'nis34':
         filename = '/Users/albert/NIRISS/Commissioning/analysis/HATP14b/ref_files/'+hdul[0].header['FILENAME']
+    elif dataset == '02589_obs001':
+        filename = '/Users/albert/NIRISS/Commissioning/analysis/T1/ref_files/'+hdul[0].header['FILENAME']
+    elif dataset == '02589_obs002':
+        filename = '/Users/albert/NIRISS/Commissioning/analysis/T1_2/ref_files/'+hdul[0].header['FILENAME']
 
     hdul.writeto(filename, overwrite=True)
     #hdul.writeto(filename + '.gz', overwrite=True)
@@ -369,19 +383,21 @@ if __name__ == "__main__":
     #check_profile_map(refdir+'jwst_niriss_specprofile_0017.fits')
 
     if True:
+        dataset, dataset_dirname = '02589_obs001', 'T1'
+        dataset, dataset_dirname = '02589_obs002', 'T1_2'
         subarray_list = ['FULL', 'SUBSTRIP256', 'SUBSTRIP96']
         for subarray in subarray_list:
         #if True:
             #subarray = 'FULL'
             if False:
-                refdir = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/ref_files/'
+                refdir = '/Users/albert/NIRISS/Commissioning/analysis/'+dataset_dirname+'/ref_files/'
                 run_iteration1(dataset='nis17', wavecaldataset='commrevA', subarray=subarray)
             if False:
-                refdir = '/Users/albert/NIRISS/Commissioning/analysis/SOSSwavecal/ref_files/'
+                refdir = '/Users/albert/NIRISS/Commissioning/analysis/'+dataset_dirname+'/ref_files/'
                 run_iteration1(dataset='nis18obs02', wavecaldataset='commrevA', subarray=subarray)
             if True:
-                refdir = '/Users/albert/NIRISS/Commissioning/analysis/HATP14b/ref_files/'
-                run_iteration1(dataset='nis34', wavecaldataset='commrevA', subarray=subarray)
+                refdir = '/Users/albert/NIRISS/Commissioning/analysis/'+dataset_dirname+'/ref_files/'
+                run_iteration1(dataset=dataset, wavecaldataset='commrevA', subarray=subarray)
             check_spec_trace(refdir+'SOSS_ref_trace_table_'+subarray+'.fits')
             check_2dwave_map(refdir+'SOSS_ref_2D_wave_'+subarray+'.fits')
             check_profile_map(refdir+'SOSS_ref_2D_profile_'+subarray+'.fits')

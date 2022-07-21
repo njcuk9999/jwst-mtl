@@ -244,8 +244,8 @@ def localbackground_subtraction(datamodel, trace_table_ref_file_name, width=25, 
 
     return datamodel
 
-def aperture_from_scratch(datamodel, norders=3, aphalfwidth=[30,20,20], outdir=None, datamodel_isfits=False,
-                          verbose=False):
+def aperture_from_scratch(datamodel, norders=3, aphalfwidth=[40,20,20], outdir=None, datamodel_isfits=False,
+                          verbose=False, trace_table_ref=None):
     '''Builds a mask centered on the traces from scratch using the edge centroid and build_mask_trace
 
     INPUT : a jwst datamodel. Or, if datamodel_isfits==True: 3D rateints or CDS, or a 2D high SNR stack
@@ -282,47 +282,70 @@ def aperture_from_scratch(datamodel, norders=3, aphalfwidth=[30,20,20], outdir=N
         print('ERROR. Use a datamodel with 2 or 3 dimensions.')
         sys.exit()
 
-    centroids = soss_centroids.get_soss_centroids(stack, mask=None, subarray=subarray, halfwidth=2,
+    if trace_table_ref == None:
+        # If no trace position reference file is passed then determine those using soss_centroids
+        centroids = soss_centroids.get_soss_centroids(stack, mask=None, subarray=subarray, halfwidth=2,
                                                   poly_orders=None, apex_order1=None, calibrate=True, verbose=verbose,
                                                   outdir=outdir)
+        x_o1, y_o1 = centroids['order 1']['X centroid'], centroids['order 1']['Y centroid']
+        x_o2, y_o2 = centroids['order 2']['X centroid'], centroids['order 2']['Y centroid']
+        x_o3, y_o3 = centroids['order 3']['X centroid'], centroids['order 3']['Y centroid']
+        #w_o1 = centroids['order 1']['trace widths']
+        #w_o2 = centroids['order 2']['trace widths']
+        #w_o3 = centroids['order 3']['trace widths']
+    else:
+        # We assume that a valid trace table reference file was passed. Read it.
+        ref = fits.open(trace_table_ref)
+        x_o1, y_o1, wv_o1 = np.array(ref[1].data['X']), np.array(ref[1].data['Y']), np.array(ref[1].data['WAVELENGTH'])
+        x_o2, y_o2, wv_o2 = np.array(ref[2].data['X']), np.array(ref[2].data['Y']), np.array(ref[2].data['WAVELENGTH'])
+        x_o3, y_o3, wv_o3 = np.array(ref[3].data['X']), np.array(ref[3].data['Y']), np.array(ref[3].data['WAVELENGTH'])
+        # Assumption is made later that x are integers from 0 to 2047
+        # sort order 1
+        x = np.arange(2048)
+        sorted = np.argsort(x_o1)
+        x_o1, y_o1, wv_o1 = x_o1[sorted], y_o1[sorted], wv_o1[sorted]
+        y_o1 = np.interp(x, x_o1, y_o1)
+        wv_o1 = np.interp(x, x_o1, wv_o1)
+        x_o1 = x
+        # sort order 2
+        x = np.arange(2048)
+        sorted = np.argsort(x_o2)
+        x_o2, y_o2, wv_o2 = x_o2[sorted], y_o2[sorted], wv_o2[sorted]
+        y_o2 = np.interp(x, x_o2, y_o2)
+        w_o2 = np.interp(x, x_o2, wv_o2)
+        x_o2 = x
+        # sort order 3
+        x = np.arange(2048)
+        sorted = np.argsort(x_o3)
+        x_o3, y_o3, w_o3 = x_o3[sorted], y_o3[sorted], wv_o3[sorted]
+        y_o3 = np.interp(x, x_o3, y_o3)
+        wv_o3 = np.interp(x, x_o3, wv_o3)
+        x_o3 = x
 
-    # exemple of the dictionnary: x_o2 = centroids['order 1']['X centroid']
-    #o2_dict['X centroid'] = x_o2
-    #o2_dict['Y centroid'] = y_o2
-    #o2_dict['trace widths'] = w_o2
-    #o2_dict['poly coefs'] = par_o2
-    #centroids['order 2'] = o2_dict
-    x_o1, y_o1 = centroids['order 1']['X centroid'], centroids['order 1']['Y centroid']
-    x_o2, y_o2 = centroids['order 2']['X centroid'], centroids['order 2']['Y centroid']
-    x_o3, y_o3 = centroids['order 3']['X centroid'], centroids['order 3']['Y centroid']
-    w_o1 = centroids['order 1']['trace widths']
-    w_o2 = centroids['order 2']['trace widths']
-    w_o3 = centroids['order 3']['trace widths']
 
-
-    with open(outdir+'centroids_o1.txt', 'w') as the_file:
-        the_file.write('Order, x, y, width\n')
-        for i in range(len(x_o1)):
-            the_file.write('{:} {:} {:} {:}\n'.format(1, x_o1[i], y_o1[i], w_o1[i]))
-    with open(outdir+'centroids_o2.txt', 'w') as the_file:
-        the_file.write('Order, x, y, width\n')
-        for i in range(len(x_o2)):
-            the_file.write('{:} {:} {:} {:}\n'.format(2, x_o2[i], y_o2[i], w_o2[i]))
-    with open(outdir+'centroids_o3.txt', 'w') as the_file:
-        the_file.write('Order, x, y, width\n')
-        for i in range(len(x_o3)):
-            the_file.write('{:} {:} {:} {:}\n'.format(3, x_o3[i], y_o3[i], w_o3[i]))
+    #with open(outdir+'centroids_o1.txt', 'w') as the_file:
+    #    the_file.write('Order, x, y, width\n')
+    #    for i in range(len(x_o1)):
+    #        the_file.write('{:} {:} {:} {:}\n'.format(1, x_o1[i], y_o1[i], w_o1[i]))
+    #with open(outdir+'centroids_o2.txt', 'w') as the_file:
+    #    the_file.write('Order, x, y, width\n')
+    #    for i in range(len(x_o2)):
+    #        the_file.write('{:} {:} {:} {:}\n'.format(2, x_o2[i], y_o2[i], w_o2[i]))
+    #with open(outdir+'centroids_o3.txt', 'w') as the_file:
+    #    the_file.write('Order, x, y, width\n')
+    #    for i in range(len(x_o3)):
+    #        the_file.write('{:} {:} {:} {:}\n'.format(3, x_o3[i], y_o3[i], w_o3[i]))
 
 
     # Create a cube containing the mask for all orders
     maskcube = np.zeros((norders,dims[-2],dims[-1]))
 
     for m in range(norders):
-        if m == 0: ordercen = centroids['order 1']
-        if m == 1: ordercen = centroids['order 2']
-        if m == 2: ordercen = centroids['order 3']
+        if m == 0: ordercen = np.copy(y_o1)
+        if m == 1: ordercen = np.copy(y_o2)
+        if m == 2: ordercen = np.copy(y_o3)
 
-        mask_trace = soss_centroids.build_mask_trace(ordercen['Y centroid'], subarray=subarray,
+        mask_trace = soss_centroids.build_mask_trace(ordercen, subarray=subarray,
                                                      halfwidth=aphalfwidth[m], extend_below=False, extend_above=False)
         mask = np.zeros(np.shape(mask_trace))
         mask[mask_trace == True] = 1
@@ -368,7 +391,7 @@ def interp_badpix(image, noise):
     return image, noise
 
 
-def soss_interp_badpix(modelin):
+def soss_interp_badpix(modelin, outdir):
 
     # Create a deep stack from the time series.
     # Interpolate on that deep stack.
@@ -377,12 +400,12 @@ def soss_interp_badpix(modelin):
     # Create a deep stack from the time series
     stack, stackrms = stack_datamodel(modelin)
     hdu = fits.PrimaryHDU(stack)
-    hdu.writeto('/Users/albert/NIRISS/Commissioning/analysis/HATP14b/test_pre_interpbadpstack.fits', overwrite=True)
+    hdu.writeto(outdir+'/test_pre_interpbadpstack.fits', overwrite=True)
 
     # Interpolate the deep stack
     clean_stack, stack_noise = interp_badpix(stack, stackrms)
     hdu = fits.PrimaryHDU(stack)
-    hdu.writeto('/Users/albert/NIRISS/Commissioning/analysis/HATP14b/test_post_interpbadpstack.fits', overwrite=True)
+    hdu.writeto(outdir+'/test_post_interpbadpstack.fits', overwrite=True)
 
     # Apply clean stack pixel values to each integration's bad pixels
     #
@@ -410,7 +433,7 @@ def soss_interp_badpix(modelin):
         modelin.dq[i][notrefpix] = 0
 
     hdu = fits.PrimaryHDU(modelin.data)
-    hdu.writeto('/Users/albert/NIRISS/Commissioning/analysis/HATP14b/test_interpolated_segment.fits', overwrite=True)
+    hdu.writeto(outdir+'/test_interpolated_segment.fits', overwrite=True)
 
     return modelin
 
@@ -441,8 +464,9 @@ def remove_nans(datamodel):
     return modelout
 
 
-def background_subtraction(datamodel, aphalfwidth=[30,30,30], outdir=None, verbose=False, override_background=None,
-                           applyonintegrations=False, contamination_mask=None):
+def background_subtraction(datamodel, aphalfwidth=[30,30,30], outdir=None, verbose=False,
+                           applyonintegrations=False, contamination_mask=None, override_background=None,
+                           trace_table_ref=None):
 
     nint, dimy, dimx = np.shape(datamodel.data)
 
@@ -460,21 +484,31 @@ def background_subtraction(datamodel, aphalfwidth=[30,30,30], outdir=None, verbo
 
     print('Hello')
 
-    if contamination_mask is not None:
-        contmask = fits.getdata(contamination_mask)
-        contmask = np.where(contmask >= 1, 1, 0)
-        print(np.shape(contmask))
-        maskeddata[:, contmask] = np.nan
-        print(np.shape(maskeddata[:, contmask]))
-        # do_not_use (apply to input and return as output)
-        datamodel.dq = datamodel.dq[:, contmask] + 1
-        print('Allo')
+    if False:
+        if contamination_mask is not None:
+            contmask = fits.getdata(contamination_mask)
+            contmask = np.where(contmask >= 1, 1, 0)
+            print('contmask shape: ', np.shape(contmask))
+            maskeddata[:, contmask] = np.nan
+            print(np.shape(maskeddata[:, contmask]))
+            # mark contamination masked as do not use
+            # do_not_use (apply to input and return as output)
+            for i in range(nint):
+                tmp = datamodel.dq[i]
+                tmp[contmask] = tmp[contmask] + 1
+                datamodel.dq[i] = np.copy(tmp)
+            print('Allo')
     # Apply bad pixel masking to the input data
     maskeddata[datamodel.dq != 0] = np.nan
+    # add the contamintion masked pixels
+    contpix = contmask >= 1
+    for i in range(nint):
+        maskeddata[i][contmask] = np.nan
 
     print('Hi')
     # Make a mask of the traces
-    maskcube = aperture_from_scratch(datamodel, aphalfwidth=aphalfwidth, outdir=cntrdir, verbose=verbose)
+    maskcube = aperture_from_scratch(datamodel, aphalfwidth=aphalfwidth, outdir=cntrdir, verbose=verbose,
+                                     trace_table_ref=trace_table_ref)
 
     print('Ni Hao')
     # Crunch the cube (one order per slice) to a 2D mask
@@ -506,6 +540,19 @@ def background_subtraction(datamodel, aphalfwidth=[30,30,30], outdir=None, verbo
         sys.exit()
     else:
         backref = fits.getdata(override_background)
+
+    # Check that the backref is 2048x2048
+    bdimy, bdimx = np.shape(backref)
+    if bdimy == 256:
+        backref_full = np.zeros((2048,2048)) * np.nan
+        backref_full[-256:, :] = np.copy(backref)
+        backref = np.copy(backref_full)
+    elif bdimy == 2048:
+        # nothing to do
+        print('')
+    else:
+        print('ERROR: the override_background passed as input is not of 256x2048 nor 2048x2048!')
+        sysy.exit()
 
     # Find the single scale that best matches the reference background
     if datamodel.meta.subarray.name == 'FULL':
@@ -783,6 +830,32 @@ def make_mask_nis18obs2():
 
     return
 
+def make_mask_02589_obs001():
+    # T1 obs 1 contamination mask
+
+    stackname = '/Users/albert/NIRISS/Commissioning/analysis/T1/stack_t1obs1.fits'
+    checkname = '/Users/albert/NIRISS/Commissioning/analysis/T1/check.fits'
+    maskname = '/Users/albert/NIRISS/Commissioning/analysis/T1/mask_contamination.fits'
+    stack = fits.getdata(stackname)
+
+    mask = build_mask_contamination(2, -900, -140)
+    mask += build_mask_contamination(0, 866, 175)
+    mask += build_mask_contamination(0, 1003, 204)
+    mask += build_mask_contamination(0, 1034, 79)
+    mask += build_mask_contamination(0, 840, 12)
+    mask += build_mask_contamination(0, 1363, 74)
+    mask += build_mask_contamination(0, 1519, 210)
+    mask += build_mask_contamination(0, 1795, 192)
+
+    hdu = fits.PrimaryHDU([stack, mask])
+    hdu.writeto(checkname, overwrite=True)
+
+    hdu = fits.PrimaryHDU(mask)
+    hdu.writeto(maskname, overwrite=True)
+
+
+    return
+
 def combine_segments(prefix):
     print()
     return
@@ -869,6 +942,11 @@ def greyscale_rms(ts_greyscale, title=''):
     Removes outliers form the greayscale and perform standard deviation
     '''
 
+    outdir = os.path.dirname(ts_greyscale)
+    #basename = os.path.basename(os.path.splitext(ts_greyscale)[0])
+    #basename = basename.split('_nis')[0]+'_nis'
+    #stackbasename = basename+'_stack'
+
     #a = fits.getdata('/Users/albert/NIRISS/Commissioning/analysis/HATP14b/timeseries_combined_1f_ap25_20220711.fits.gz')
     #a = fits.getdata('/Users/albert/NIRISS/Commissioning/analysis/HATP14b/timeseries_combined_1f_ap25_atoca_20220713.fits.gz')
     #a = fits.getdata('/Users/albert/NIRISS/Commissioning/analysis/HATP14b/timeseries_combined_20220610.fits')
@@ -877,6 +955,7 @@ def greyscale_rms(ts_greyscale, title=''):
 
 
     rms = np.zeros((norder, dimx)) * np.nan
+    fig = plt.figure(figsize=(8,5))
     for m in range(3):
         for x in range(dimx-8):
             col = a[m, :, x+4]
@@ -887,17 +966,19 @@ def greyscale_rms(ts_greyscale, title=''):
         plt.plot(1/rms[m,:], label='Order {:}'.format(m+1))
     plt.legend()
     plt.xlabel('Column (pixels)')
-    plt.ylabel('signal / rms')
+    plt.ylabel('RMS noise (ppm)')
     plt.ylim((0,500))
     plt.title(title)
     plt.grid()
-    plt.savefig('')
-    plt.show()
+    plt.savefig(outdir+'/greyscale_rms.png')
+    #plt.show()
     return
 
 
 
 if __name__ == "__main__":
+    a = make_mask_02589_obs001()
+    sys.exit()
     #datamodel = datamodels.open('/Users/albert/NIRISS/Commissioning/analysis/HATP14b/jw01541001001_04101_00001-seg003_nis_customrateints_flatfieldstep.fits')
     #trace_table_ref_file_name = '/Users/albert/NIRISS/Commissioning/analysis/HATP14b/ref_files/SOSS_ref_trace_table_SUBSTRIP256.fits'
     #datamodel = commutils.remove_nans(datamodel)

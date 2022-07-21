@@ -42,7 +42,8 @@ FLAT = 'jwst_niriss_flat_0190.fits'
 SUPERBIAS = 'jwst_niriss_superbias_0181.fits'
 DARK = 'jwst_niriss_dark_0171.fits'
 BADPIX = 'jwst_niriss_mask_0015.fits'
-BACKGROUND = 'jwst_niriss_background_custom.fits'
+#BACKGROUND = 'jwst_niriss_background_custom.fits'
+BACKGROUND = 'model_background256.fits'  # Nestor's
 SPECTRACE = 'SOSS_ref_trace_table_SUBSTRIP256.fits'
 WAVEMAP = 'SOSS_ref_2D_wave_SUBSTRIP256.fits'
 SPECPROFILE = 'SOSS_ref_2D_profile_SUBSTRIP256.fits'
@@ -144,15 +145,15 @@ def run_stage2(rateints, contamination_mask=None, use_atoca=False, run_outliers=
 
     # Still non-optimal
     # Custom - Background subtraction step
-    result = commutils.background_subtraction(result, aphalfwidth=[30,20,20], outdir=outdir, verbose=False,
+    result = commutils.background_subtraction(result, aphalfwidth=[40,20,20], outdir=outdir, verbose=False,
                                               override_background=CALIBRATION_DIR+BACKGROUND, applyonintegrations=True,
-                                              contamination_mask=contamination_mask)
+                                              contamination_mask=contamination_mask, trace_table_ref=ATOCAREF_DIR+SPECTRACE)
 
     # Clean the outlier and bad pixels based on a deep stack
-    result = commutils.soss_interp_badpix(result)
+    result = commutils.soss_interp_badpix(result, outdir)
 
     # Subtract a local background below order 1 close to the trace
-    #result = commutils.localbackground_subtraction(result, ATOCAREF_DIR+SPECTRACE, width=9, back_offset=-25)
+    # result = commutils.localbackground_subtraction(result, ATOCAREF_DIR+SPECTRACE, width=9, back_offset=-25)
 
     # Custom - Check that no NaNs is in the rateints data
     result = commutils.remove_nans(result)
@@ -221,8 +222,9 @@ if __name__ == "__main__":
     # data set to process:
     #datasetname = 'SOSSwavecal'
     #datasetname = 'SOSSfluxcal'
-    datasetname = 'HATP14b'
-    #datasetname = 'T1'
+    #datasetname = 'HATP14b'
+    datasetname = 'T1'
+    #datasetname = 'T1_2'
 
     # Wavelength calibration
     if datasetname == 'wavecal':
@@ -278,8 +280,8 @@ if __name__ == "__main__":
     if datasetname == 'T1':
         if (hostname == 'iiwi.sf.umontreal.ca') or (hostname == 'iiwi.local'):
             dir = '/Users/albert/NIRISS/Commissioning/analysis/T1/'
-            ATOCAREF_DIR = '/Users/albert/NIRISS/Commissioning/analysis/HATP14b/ref_files/'
-            contmask = None
+            ATOCAREF_DIR = '/Users/albert/NIRISS/Commissioning/analysis/T1/ref_files/'
+            contmask = '/Users/albert/NIRISS/Commissioning/analysis/T1/mask_contamination.fits'
         elif hostname == 'genesis':
             dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/T1/'
             contmask = None
@@ -292,6 +294,24 @@ if __name__ == "__main__":
         ]
         dataset_string = 'jw02589001001_04101_00001'
 
+    # T1_2
+    if datasetname == 'T1_2':
+        if (hostname == 'iiwi.sf.umontreal.ca') or (hostname == 'iiwi.local'):
+            dir = '/Users/albert/NIRISS/Commissioning/analysis/T1_2/'
+            ATOCAREF_DIR = '/Users/albert/NIRISS/Commissioning/analysis/T1_2/ref_files/'
+            contmask = None
+        elif hostname == 'genesis':
+            dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/T1_2/'
+            contmask = None
+        else:
+            sys.exit()
+
+        datalist = [
+            'jw02589002001_04101_00001-seg001_nis',
+            'jw02589002001_04101_00001-seg002_nis'
+        ]
+        dataset_string = 'jw02589002001_04101_00001'
+
     # Run the 2 iteration process
     for dataset in datalist:
         print('Running twice through the stage 1 + stage 2 steps.')
@@ -302,7 +322,7 @@ if __name__ == "__main__":
         #run_stage1(dir+dataset+'_uncal.fits', outlier_map=dir+dataset+'_outliers.fits')
         #run_stage2(dir+dataset+custom_or_not+'.fits', contamination_mask=contmask, use_atoca=False)
         #run_stage1(dir+dataset+'_uncal.fits', outlier_map=dir+dataset+'_outliers.fits')
-        #run_stage2(dir+dataset+custom_or_not+'.fits', contamination_mask=contmask, run_outliers=False, use_atoca=use_atoca)
+        run_stage2(dir+dataset+custom_or_not+'.fits', contamination_mask=contmask, run_outliers=False, use_atoca=use_atoca)
 
     # Post processing analysis
     for dataset in datalist:
