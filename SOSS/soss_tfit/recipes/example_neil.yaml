@@ -48,7 +48,7 @@ global_params:
   # ---------------------------------------------------------------------------
   binning:
     # binning mode should either be 'simple' or 'const_R'
-    mode: const_R
+    mode: simple
     # parameters for simple binning (divide each order into N chunks)
     simple:
       # Number of bins used for each order for spectral binning (set to None for no binning)
@@ -84,7 +84,7 @@ global_params:
   # input extracted spctrum - aboslute path (must be set)
   inspectrum: /data/jwst-soss/data/jwst-mtl-user/wasp52b/substrip256_extract1d_extract1dstep.fits
   # output directory for results (created if doesn't exist)
-  outdir: /data/jwst-soss/data/jwst-mtl-user/wasp52b/outputs
+  outdir: /data/jwst-soss/data/jwst-mtl-user/wasp52b/outputs/neil-test
   # output results filename (without extension)
   outname: wasp52b
   # model file path - absolute path (set None to not plot model)
