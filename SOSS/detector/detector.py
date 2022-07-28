@@ -11,14 +11,14 @@ Introduce the detector response in the simulated images
 import argparse
 
 #import timeseries
-from . import timeseries
+import timeseries
 
 
 
 
 
-def add_noise(filelist, noisefiles_path, photon=True, zodibackg=True, flatfield=True, darkcurrent=True, nonlinearity=True,
-              superbias=True, readout=True, oneoverf=True, cosmicray = False, zodi_ref=None, flat_ref=None, dark_ref=None,
+def add_noise(filelist, ralist, declist, APAlist, noisefiles_dir='/genesis/jwst/jwst-ref-soss/noise_files/', photon=True, zodibackg=True, flatfield=True, darkcurrent=True, nonlinearity=True,
+              superbias=True, readout=True, oneoverf=True, cosmicray = False, field_stars = False, zodi_ref=None, flat_ref=None, dark_ref=None,
               nlcoeff_ref=None, superbias_ref=None, outputfilename=None, full_well=72000):
 
     """
@@ -26,7 +26,10 @@ def add_noise(filelist, noisefiles_path, photon=True, zodibackg=True, flatfield=
     It is assumed that the input exposure is in ***** electrons, not adu *****.
 
     :param filelist: list of string, the list of files to process
-    :param noisefiles_path: where reference detector noise files can be found
+    :param ralist: list of string, the list of right ascension of targets in order
+    :param declist: list of string, the list of declinaison of targets in order
+    :param APAlist: list of string, the list of the APA of the observations in order
+    :param noisefiles_dir: where reference detector noise files can be found
     :param normalize: DEPRECATED bool, renormalize the simulation, default False. USE DEPRECATED
     :param photon: bool, turn on or off photon noise for the science target flux
     :param zodibackg: bool, include the effect of the zodiacal background, default True.
@@ -56,17 +59,36 @@ def add_noise(filelist, noisefiles_path, photon=True, zodibackg=True, flatfield=
     :return:
     """
 
-    # Check that the input is a string (a single filename) or a list (of filenames)
+    # Check that the input file is a string (a single filename) or a list (of filenames)
     if isinstance(filelist,str) == True:
         filelist_checked = [filelist]
     else:
         filelist_checked = filelist
+        
+
+    # Check that the input ra is a string (a single ra) or a list (of ra)
+    if isinstance(ralist,str) == True:
+        ralist_checked = [ralist]
+    else:
+        ralist_checked = ralist
+
+    # Check that the input dec is a string (a single dec) or a list (of dec)
+    if isinstance(declist,str) == True:
+        declist_checked = [declist]
+    else:
+        declist_checked = declist
+
+    # Check that the input APA is a string (a single APA) or a list (of APA)
+    if isinstance(APAlist,int) == True:
+        APAlist_checked = [APAlist]
+    else:
+        APAlist_checked = APAlist
 
     normfactor = None
 
-    for filename in filelist_checked:
+    for target in range(len(filelist_checked)): 
 
-        tso = timeseries.TimeSeries(filename, noisefiles_path=noisefiles_path)
+        tso = timeseries.TimeSeries(filelist_checked[target], ralist_checked[target], declist_checked[target], APA = APAlist_checked[target],  noisefiles_dir=noisefiles_dir)
 
         #if normalize:
         #
@@ -77,6 +99,19 @@ def add_noise(filelist, noisefiles_path, photon=True, zodibackg=True, flatfield=
         #    tso.apply_normfactor
 
         # TODO: change frame time in write_dmsready_fits
+
+        
+        if tso.subarray == "FULL":  #TODO: Can be removed when the issue with FULL images is solved
+            print('Fixing FULL image...')
+            tso.FULL_fix()
+
+        if field_stars:
+            print('Add field stars')
+            tso.add_field_stars()
+
+        if cosmicray:
+            print('Add cosmic rays')
+            tso.add_cosmic_rays(sun_activity="SUNMIN")
 
         if zodibackg:
             print('Add zodiacal background')
@@ -94,10 +129,6 @@ def add_noise(filelist, noisefiles_path, photon=True, zodibackg=True, flatfield=
             #TODO: have better dark ref files. ref files for darks are very noisy with 1/f noise and rms of order 50% of the dark at read 50.
             print('Add dark current')
             tso.add_dark(darkfile=dark_ref)
-
-        if cosmicray:
-            #TODO: add cosmic ray capability
-            print('Cosmic rays noise source was requested but is not implemented yet')
 
         if nonlinearity:
             print('Add non linearity (delinearize)')

@@ -5,6 +5,7 @@ Created on Sun Jan 26 16:39:05 2020
 
 TimeSeries objects for simulations of SOSS observations
 """
+from cmath import nan
 import sys
 
 # General imports.
@@ -26,7 +27,10 @@ import astropy.io.fits as pyfits
 import hxrg
 
 #Cosmic rays import
-import addCRs2Exposure
+import crsim
+
+#Field stars import
+from addFieldStars import *
 
 
 # Plotting.
@@ -41,12 +45,12 @@ from time import sleep
 # TODO header section which files and values were used.
 
 
-def download_ref_files(noisefiles_path, fitsname,
+def download_ref_files(noisefiles_dir, fitsname,
                        crds_http='https://jwst-crds.stsci.edu/unchecked_get/references/jwst/'):
                        #crds_http='https://jwst-crds.stsci.edu/browse/'):
     """One by one, check that the ref files are already in the noisefile_path and download if necessary"""
 
-    local_name = os.path.join(noisefiles_path, fitsname)
+    local_name = os.path.join(noisefiles_dir, fitsname)
     http_name = os.path.join(crds_http, fitsname)
     if os.path.isfile(local_name) is False:
         print('Attempting to download from CRDS ',http_name)
@@ -66,10 +70,15 @@ def download_ref_files(noisefiles_path, fitsname,
 
 class TimeSeries(object):
 
-    def __init__(self, ima_path, noisefiles_path, gain=1.6221, dark_value=0.0414, full_well=72000, ):
+    def __init__(self, ima_path, ra, dec, noisefiles_dir, gain=1.6221, dark_value=0.0414, full_well=72000, APA=0, ):
         """Make a TimeSeries object from a series of synthetic images."""
 
         self.ima_path = ima_path
+        
+        self.ra = ra #Coordinates of the target
+        self.dec = dec 
+
+        self.APA = APA #APA of the observation
 
         hdu_ideal = fits.open(ima_path)  # read in fits file
         header = hdu_ideal[1].header
@@ -91,7 +100,7 @@ class TimeSeries(object):
         # /genesis/jwst/jwst-mtl-user/jwst-mtl_configpath.txt 
         # NOISE_FILES is the parameter in that file
         #self.noisefiles_dir = '/genesis/jwst/jwst-ref-soss/noise_files/' # PATH where reference detector noise files can be found.
-        self.noisefiles_dir = noisefiles_path
+        self.noisefiles_dir = noisefiles_dir
         # Same here, we need to pass this or read it from teh config path
         # USER_PATH is the parameter in that file
         self.output_path = '/genesis/jwst/userland-soss/'
@@ -491,6 +500,10 @@ class TimeSeries(object):
 
         subzodi = zodiimage[slc, :]
 
+        #Fixing negative pixels for FULL images #TODO: Why is there negative values on this file
+        ineg = np.where(subzodi<0)
+        subzodi[ineg] = 0
+
         # Scale to the exposure time, and match shape to integrations.
         subzodi = subzodi*self.tgroup  # [electrons]
         subzodi = np.tile(subzodi[np.newaxis, :, :], (self.ngroups, 1, 1))
@@ -693,14 +706,51 @@ class TimeSeries(object):
             print ('sun_activity = ', sun_activity, ' is not supported... exiting')
             sys.exit()
 
-        filesin = [self.ima_path] #The file on which we wanna run the code
+        #NIRISS Detector 
+        #noise files are in units of ADU so need gain to convert to electrons
+        self.data, mask = crsim.addCRs(self.data, self.tgroup, refDir=self.noisefiles_dir, ptype=sun_activity, f_ADC=self.gain) 
 
-        #np.random.seed(13578) #so we have always the same results
+        self.modif_str = self.modif_str + '_CRs'
 
-        #addCRs2Exposure.run(InputDir+filesin[0], 'SUNMIN', OutputDir)
+    def add_field_stars(self): 
 
-        for f in filesin:
-            addCRs2Exposure.run(f, sun_activity, self.output_path)
+        Ninter = self.data.shape[0] # Number of integrations
+        Ngroups = self.data.shape[1] # Number of groups
+        dimY = self.data.shape[2] #Choose the right subscript
+        
+        #Fetching the field star spectra
+        field_stars_cube = sossFieldSim(self.ra, self.dec, APA=self.APA, refDir=self.noisefiles_dir , dimY=dimY) 
+        field_stars_cube = np.expand_dims(field_stars_cube, axis=(0,1)) #Adding Inter and Group dimensions
+
+        #Add groups and integrations to the noise file
+        for inter in range(Ninter): 
+
+            for group in range(Ngroups): 
+                field_stars_group = field_stars_cube*(1+group) #Increasing the luminosity at each group
+                self.data[inter, group,:,:] += field_stars_group[0,0,:,:] #Adding the field stars at each frame
+
+        #Dealing with saturation 
+        isat = np.where(self.data > 65535)
+        self.data[isat] = 65535
+        
+        self.modif_str = self.modif_str + '_fieldStars'
+
+    def FULL_fix(self): 
+
+        #TODO: Can be removed when the issue with FULL images is solved
+
+        #Negative pixels
+        ineg = np.where(self.data < 0)
+        self.data[ineg] = np.abs(self.data[ineg]) 
+    
+        #Normalize
+        self.data = self.data/(np.max(self.data))
+    
+        #Gain 
+        self.data = self.data * 50000
+
+
+
 
 
 

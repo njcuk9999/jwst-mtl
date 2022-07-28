@@ -1,13 +1,12 @@
 import sys
 import astropy.io.fits as pyfits
 import numpy as np
-sys.path.append('/genesis/jwst/jwst-ref-soss/cosmicray/')
 
 
 #np.random.seed(13578) #so we have always the same results
 #This needs to be taken out in case of MC simulations..
 
-rootname = "/genesis/jwst/jwst-ref-soss/cosmicray/CRs_MCD5.5_"
+rootname = "CRs_MCD5.5_"
 crarraysize = 21
 crarraysize = 21
 
@@ -19,27 +18,27 @@ tot_nevents = nfiles*eventspf
 crsloaded = False
 events = np.empty((tot_nevents, crarraysize, crarraysize))
 
-def getCRs(nevents, ptype='SUNMIN'):
+def getCRs(nevents, refDir, ptype='SUNMIN'):
     if((ptype  != 'SUNMIN') and (ptype != 'SUNMAX') and (ptype != 'FLARES')):
        print ('ptype = ', ptype, ' is not supported... exiting')
        sys.exit()
 
     global crsloaded, events
     if(not crsloaded): 
-        events = loadAllEvents(ptype='SUNMIN')
+        events = loadAllEvents(refDir=refDir, ptype='SUNMIN')
 
     #randomly select requested number of events
     icr = np.random.randint(0, tot_nevents, size=nevents)
     return events[icr,:,:]
 
-def loadAllEvents(ptype='SUNMIN'):
+def loadAllEvents(refDir, ptype='SUNMIN'):
     global crsloaded, events
 
     #load all events
     filelst = []    
     for j in range(nfiles-1):
         ind = 1+j
-        filename = rootname+ptype+'_0'+str(ind)+'.fits'
+        filename = refDir+rootname+ptype+'_0'+str(ind)+'.fits'
         datain = pyfits.getdata(filename)
         st = j*eventspf
         en = (j+1)*eventspf
@@ -48,7 +47,7 @@ def loadAllEvents(ptype='SUNMIN'):
     crsloaded=True    
     return events
 
-print(events)
+#print(events)
 #This old version of getCRs loads only the necessary number of events
 #in sequence. It is faster, as it opens only the necessary files, but
 #always loads the same events, rather than a random selection of evnts...
@@ -243,11 +242,23 @@ def invert_ipc_kernel(kern):
 flux_ds={'SUNMIN':4.8983, 'SUNMAX':1.7783, 'FLARES':3046.83}
 pxsize = 18e-4 #18 micron per pixel (in cm)
 
-def addCRs(cube, tframe, ptype='SUNMIN', f_ADC=1.6):
+def addCRs(cube, tframe, refDir, ptype='SUNMIN', f_ADC=1.6):
+
+    """   
+    Adds the cosmic rays on detector
+
+    ## Parameters
+    **cube**: Cube on which we add the CRs
+    **tframe**: Time it takes to take a frame
+    **refDir**: Reference files directory
+    **ptype**: Type of solar activity
+    **f_ADC**: Gain
+
+    """
 
     #read in IPC convolution kernel
     #ipcreffile='/mnt/jwstdata/crds_cache/references/jwst/niriss/jwst_niriss_ipc_0008.fits'
-    ipcreffile='/genesis/jwst/jwst-ref-soss/cosmicray/jwst_niriss_ipc_0008.fits'
+    ipcreffile=refDir+'jwst_niriss_ipc_0008.fits'
     kernel = pyfits.getdata(ipcreffile)
     kernel = invert_ipc_kernel(kernel)
     cube_tot = cube # The cube with the integrations
@@ -265,25 +276,25 @@ def addCRs(cube, tframe, ptype='SUNMIN', f_ADC=1.6):
     
         l1 = cube.shape[2]-8  #There is 4 reference pixels around the full image
         l2 = cube.shape[1]-8
-        print('FULL, Active pixels are', l1, 'x', l2)
+        #print('FULL, Active pixels are', l1, 'x', l2)
         
     elif cube.shape[1] == 512: 
         
         l1 = cube.shape[2]-8  #There is 4 reference pixels around the full image
         l2 = cube.shape[1]-4  #The bottom doesn't have reference pixels for SUBSCRIPT512
-        print('SUBSCRIPT512, Active pixels are', l1, 'x', l2)        
+        #print('SUBSCRIPT512, Active pixels are', l1, 'x', l2)        
     
     elif cube.shape[1] == 256: 
         
         l1 = cube.shape[2]-8  #There is 4 reference pixels around the full image
         l2 = cube.shape[1]-4  #The bottom doesn't have reference pixels for SUBSCRIPT256
-        print('SUBSCRIPT256, Active pixels are', l1, 'x', l2)
+        #print('SUBSCRIPT256, Active pixels are', l1, 'x', l2)
     
     elif cube.shape[1] == 96: 
         
         l1 = cube.shape[2]-8  #There is 4 reference pixels around the full image
         l2 = cube.shape[1]  #The bottom and top don't have reference pixels for SUBSCRIPT96
-        print('SUBSCRIPT96, Active pixels are', l1, 'x', l2)
+        #print('SUBSCRIPT96, Active pixels are', l1, 'x', l2)
     
     cube=cube.astype('int32')
     #compute average number of events per frame
@@ -293,7 +304,7 @@ def addCRs(cube, tframe, ptype='SUNMIN', f_ADC=1.6):
     #n_average_events = 8.1 *flux_ds[ptype] * dsarea * tframe #Cranking up the flux for testing purpposes by factor 7.5 -> N hits after 1,000 sec ~ 12-13%
     ngroups = cube.shape[0]
    
-    print ('Adding events to integrations...')
+    #print ('Adding events to integrations...')
 
     for integr in range(len(cube_tot)): 
 
@@ -326,7 +337,7 @@ def addCRs(cube, tframe, ptype='SUNMIN', f_ADC=1.6):
             else: 
                 jcoors = np.random.randint(0, l2, size=nevents)
 
-            crarray = getCRs(nevents, ptype=ptype)  #An array with a bunch of 21x21 pixel events
+            crarray = getCRs(nevents, refDir=refDir, ptype=ptype)  #An array with a bunch of 21x21 pixel events
             #return an array with the requested number of CR events,
             #extracted from the CR library by M. Robberto (in crlib/)
 
@@ -443,10 +454,10 @@ def addCRs(cube, tframe, ptype='SUNMIN', f_ADC=1.6):
 
         cube_tot[integr,:,:,:] = cubeout   
         crmask_tot[integr,:,:,:] = crmaskout
-        print ('Done adding cosmic rays for int', integr+1)
+        #print ('Done adding cosmic rays for int', integr+1)
 
-    print('The number of groups per integration is:',ngroups)
-    print ('Average events per group : ',n_average_events)
+    #print('The number of groups per integration is:',ngroups)
+    #print ('Average events per group : ',n_average_events)
 
     return [cube_tot, crmask_tot]
 
