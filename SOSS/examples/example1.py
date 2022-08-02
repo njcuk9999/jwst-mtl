@@ -190,6 +190,7 @@ if skip_sim is False:
 
     # Generate or read the star atmosphere model
     starmodel_angstrom, starmodel_flambda, ld_coeff = soss.starmodel(simuPars, pathPars, tracePars, throughput)
+    # TODO: Check what are the units of flambda. At the surface of the star?
 
     #plt.figure()
     #plt.plot(starmodel_angstrom, starmodel_flambda)
@@ -199,6 +200,8 @@ if skip_sim is False:
     # Anchor star spectrum on a photometric band magnitude
     starmodel_flambda = smag.anchor_spectrum(starmodel_angstrom/10000., starmodel_flambda, simuPars.filtername,
                                         simuPars.magnitude, pathPars.path_filtertransmission, verbose=True)
+
+    #TODO: Check that starmodel_flambda is indeed in W/m2/um (received at Earth)
 
     if False:
         plt.figure()
@@ -216,7 +219,7 @@ if skip_sim is False:
         planetmodel_angstrom, planetmodel_rprs = spgen.readplanetmodel(pathPars.path_planetmodelatm+simuPars.pmodelfile[0],
                                                                        simuPars.pmodeltype[0])
     else:
-        planetmodel_angstrom, planetmodel_rprs = soss.readplanetmodel(
+        planetmodel_angstrom, planetmodel_rprs, planetmodel_thermal = soss.readplanetmodel(
             os.path.join(pathPars.path_planetmodelatm, simuPars.pmodelfile[0]))
 
     # create a flat 1% transit depth
@@ -252,6 +255,7 @@ if skip_sim is False:
         # The cube has all spectral orders in separate slices.
         # The list of such fits cube file names is returned.
         if True:
+            #TODO: add planetmodel_thermal in the arguments
             imagelist = soss.generate_traces(pathPars.path_userland+'tmp/clear',
                                              pathPars, simuPars, tracePars, throughput,
                                              starmodel_angstrom, starmodel_flambda, ld_coeff,

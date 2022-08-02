@@ -164,8 +164,10 @@ def readplanetmodel(planet_model_csvfile):
     planetmodel_angstrom = np.array(t['wave']) * 1e+4
     # Rp/Rstar from depth in ppm
     planetmodel_rprs = np.sqrt(np.array(t['dppm']) / 1e+6)
+    # Thermal emission (W/m2/micron)
+    planetmodel_thermal = np.array(t['thermal'])
 
-    return planetmodel_angstrom, planetmodel_rprs
+    return planetmodel_angstrom, planetmodel_rprs, planetmodel_thermal
 
 
 def starlimbdarkening(wave_angstrom, ld_type='flat'):
@@ -891,7 +893,10 @@ def loictrace(simuPars, response, bin_models_wv, bin_starmodel_flux, bin_ld_coef
         #limb darkening description. You need to either work with those or convert them to 2-param
         #if that is what your modeling function uses.
     elif transitmodelname == 'Eclipse'
-        # Louis-Philippe Coulombre could introduce something here to handle eclipses.
+        # Louis-Philippe Coulombe could introduce something here to handle eclipses.
+        # call spgen.transitmodel() probablement sans les ld_coeff[],
+        #  - rdr_array sera constant plutot que chromatique
+        # bin_models_flux = bin_starmodel_flux + bin_planet_flux (a calculer) * resultat de transitmodel
     else:
         print('ERROR!!!')
         sys.exit()
@@ -1280,6 +1285,7 @@ def generate_traces(savingprefix, pathPars, simuPars, tracePars, throughput,
                 pixels_t=np.copy(pixels.T)
             else:
                 print('     Seeding flux onto a narrow trace on a 2D image')
+                #TODO: add thermal in the argument list
                 pixels_t = loictrace(simuPars, throughput, star_angstrom_bin, star_flux_bin,
                                      ld_coeff_bin, planet_rprs_bin,
                                      currenttime, exposetime, solin, spectral_order, tracePars,

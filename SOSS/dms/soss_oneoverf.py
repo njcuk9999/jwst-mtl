@@ -101,6 +101,13 @@ def applycorrection(uncal_rampmodel, output_dir=None, save_results=False, outlie
             # dc is 2-dimensional - expand to the 3rd (columns) dimension
             dcmap[i,:,:,:] = np.repeat(dc, 256).reshape((ngroup, 2048, 256)).swapaxes(1,2)
             subcorr[i, :, :, :] = sub[i, :, :, :] - dcmap[i, :, :, :]
+        elif uncal_rampmodel.meta.subarray.name == 'SUB80':
+            dc = np.nansum(w * sub[i], axis=1) / np.nansum(w, axis=1)
+            # make sure no NaN will corrupt the whole column
+            dc = np.where(np.isfinite(dc), dc, 0)
+            # dc is 2-dimensional - expand to the 3rd (columns) dimension
+            dcmap[i,:,:,:] = np.repeat(dc, 80).reshape((ngroup, 80, 80)).swapaxes(1,2)
+            subcorr[i, :, :, :] = sub[i, :, :, :] - dcmap[i, :, :, :]
         elif uncal_rampmodel.meta.subarray.name == 'FULL':
             for amp in range(4):
                 yo = amp*512

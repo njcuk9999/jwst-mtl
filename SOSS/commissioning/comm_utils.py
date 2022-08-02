@@ -464,7 +464,151 @@ def remove_nans(datamodel):
     return modelout
 
 
-def background_subtraction(datamodel, aphalfwidth=[30,30,30], outdir=None, verbose=False,
+
+def background_subtraction(datamodel, aphalfwidth=[40,30,30], outdir=None, verbose=False,
+                           applyonintegrations=False, contamination_mask=None, override_background=None,
+                           trace_table_ref=None):
+
+    nint, dimy, dimx = np.shape(datamodel.data)
+
+    basename = os.path.splitext(datamodel.meta.filename)[0]
+    if outdir == None:
+        outdir = './'
+        cntrdir = './backgroundsub_'+basename+'/'
+    else:
+        cntrdir = outdir+'/backgroundsub_'+basename+'/'
+    if not os.path.exists(outdir):
+        os.makedirs(outdir)
+    if not os.path.exists(cntrdir):
+        os.makedirs(cntrdir)
+    maskeddata = np.copy(datamodel.data)
+
+    print('New background subtraction algorithm (as of July 22 2022) - scaling Nestor model')
+
+    # Apply bad pixel masking to the input data
+    print('Masking the bad pixels !=0 in the DQ map')
+    maskeddata[datamodel.dq != 0] = np.nan
+    if contamination_mask is not None:
+        print('Masking the contaminating traces from field stars (orders 0 to 2) using the passed mask.')
+        contmask = fits.getdata(contamination_mask)
+        contmask = np.where(contmask >= 1, 1, 0)
+        # add the contamintion masked pixels
+        contpix = contmask == 1
+        maskeddata[:, contpix] = np.nan
+
+    # Make a mask of the traces
+    print('Masking the spectral traces')
+    maskcube = aperture_from_scratch(datamodel, aphalfwidth=aphalfwidth, outdir=cntrdir, verbose=verbose,
+                                     trace_table_ref=trace_table_ref)
+
+    # Crunch the cube (one order per slice) to a 2D mask
+    mask = np.sum(maskcube, axis=0, dtype='bool')
+    # Apply aperture masking to the input data
+    maskeddata[:, mask] = np.nan
+    hdu = fits.PrimaryHDU(maskeddata)
+    print('Saving the mask used for background estimation as background_mask')
+    hdu.writeto(cntrdir+'background_mask.fits', overwrite=True)
+
+    # Bottom portion not usable in the FULL mode and skews levels estimates
+    if datamodel.meta.subarray.name == 'FULL': maskeddata[:, 0:1024, :] = np.nan
+
+    # Identify pixels free of astrophysical signal (e.g. 15th percentile)
+    if applyonintegrations == True:
+        # Measure level on each integration
+        levels = np.nanpercentile(maskeddata, 25, axis=1)
+        print('levels shape', np.shape(levels))
+        nlevels = nint
+    else:
+        # Measure level on deep stack of all integrations (default)
+        maskeddata = np.nanmedian(maskeddata, axis=0)
+        levels = np.nanpercentile(maskeddata, 25, axis=0)
+        nlevels = 1
+
+    # Open the reference background image
+    if override_background is None:
+        ### need to handle default background downlaoded from CRDS, eventually
+        print('ERROR: no background specified. Crash!')
+        sys.exit()
+    else:
+        backref = fits.getdata(override_background)
+
+    # Check that the backref is 2048x2048
+    bdimy, bdimx = np.shape(backref)
+    if bdimy == 256:
+        backref_full = np.zeros((2048,2048)) * np.nan
+        backref_full[-256:, :] = np.copy(backref)
+        backref = np.copy(backref_full)
+    elif bdimy == 2048:
+        # nothing to do
+        print('')
+    else:
+        print('ERROR: the override_background passed as input is not of 256x2048 nor 2048x2048!')
+        sysy.exit()
+
+    # Find the single scale that best matches the reference background
+    if datamodel.meta.subarray.name == 'FULL':
+        rows = slice(0, 2048) #not all contain background!
+        maskrows = slice(1024, 2048)
+    elif datamodel.meta.subarray.name == 'SUBSTRIP256':
+        rows = slice(1792, 2048)
+        maskrows = slice(1792, 2048)
+    elif datamodel.meta.subarray.name == 'SUBSTRIP96':
+        rows = slice(1802, 1898)
+        maskrows = slice(1802, 1898)
+    else:
+        raise ValueError('SUBARRAY must be one of SUBSTRIP96, SUBSTRIP256 or FULL')
+
+    # stablish the reference background level when crunched into a single row
+    reflevel = np.nanmedian(backref[maskrows, :], axis=0)
+    reflevel[0:5] = np.nan
+    reflevel[2044:2048] = np.nan
+
+    # Scaling to apply to the ref level to bring it to that measured
+    corrscale = np.nanmedian(levels / reflevel, axis=-1)
+    print('Scaling of the ref background (should not be negative):', corrscale)
+    print('Background correction scale shape ', np.shape(corrscale))
+
+    # plot the measured background levels and ref level
+    if applyonintegrations == True:
+        for i in range(nlevels):
+            plt.scatter(np.arange(2048), levels[i,:], marker='.')
+            plt.plot(np.arange(2048), reflevel * corrscale[i], color='red', ls='dotted')
+        plt.plot(np.arange(2048), reflevel, color='black', label='Background Ref File')
+
+    else:
+        plt.scatter(np.arange(2048), levels, marker='.', label='Observed background')
+        plt.plot(np.arange(2048), reflevel, color='black', label='Background Ref File')
+        plt.plot(np.arange(2048), reflevel*corrscale, color='red', ls='dotted', label='Ref scaled to fit Obs')
+
+    plt.legend()
+    plt.title('Background fitting')
+    #plt.show()
+    plt.savefig(cntrdir+'background_fitting.png', overwrite=True)
+
+    # Construct the backgroud subarray from the reference file
+    backtosub = backref[rows, :]
+    # Perform the subtraction on the output data model
+    output = datamodel.copy()
+    if applyonintegrations == True:
+        for i in range(nlevels):
+            if corrscale[i] > 0:
+                output.data[i, :, :] = datamodel.data[i, :, :] - corrscale[i] * backtosub
+            else:
+                print('Warning. The background scaling was not performed because it was negative. For integration ', i+1)
+    else:
+        if corrscale > 0:
+            output.data = datamodel.data - corrscale * backtosub
+        else:
+            print('Warning. The background scaling was not performed because it was negative.')
+
+    #output.write(outdir+'/'+basename+'_backsubtracted.fits', overwrite=True)
+    hdu = fits.PrimaryHDU(output.data)
+    hdu.writeto(outdir+'/'+basename+'_backsubtracted.fits', overwrite=True)
+
+    return output
+
+
+def background_subtraction_v1(datamodel, aphalfwidth=[30,30,30], outdir=None, verbose=False,
                            applyonintegrations=False, contamination_mask=None, override_background=None,
                            trace_table_ref=None):
 
@@ -973,6 +1117,50 @@ def greyscale_rms(ts_greyscale, title=''):
     plt.savefig(outdir+'/greyscale_rms.png')
     #plt.show()
     return
+
+def test_backgrounds():
+    from astropy.io import fits, ascii
+    import numpy as np
+    import matplotlib.pyplot as plt
+
+    hdu = fits.open('jw02589001001_04101_00001-seg002_nis_rate.fits')
+    clear = hdu[1].data
+    hdu = fits.open('jw02589001001_04102_00001-seg001_nis_rate.fits')
+    f277 = hdu[1].data
+
+    slice_c = np.percentile(clear, 20, axis=0)
+    slice_f = np.percentile(f277, 20, axis=0)
+
+    scale = slice_c / slice_f
+    av_scale = np.median(scale)
+    nestor = fits.getdata('/Users/albert/NIRISS/Commissioning/analysis/pipelineprep/calibrations/model_background256.fits')
+    slice_n = np.median(nestor, axis=0)
+    nestor_scale = slice_c / slice_n
+    av_scale_nestor = np.nanmedian(nestor_scale)
+    red_scale_nestor = np.nanmedian(nestor_scale[0:650])
+    blue_scale_nestor = np.nanmedian(nestor_scale[750:])
+
+    slice_n_red = slice_n * red_scale_nestor
+    slice_n_blue = slice_n * blue_scale_nestor
+
+
+    plt.plot(slice_c, label='clear')
+    plt.plot(slice_f, label='f277w')
+    plt.plot(slice_f * av_scale, label='scaled f277w')
+    plt.plot(slice_n, label='Nestor model')
+    plt.plot(slice_n * av_scale_nestor, label='scaled Nestor')
+    plt.plot(slice_n_red[0:750], color='brown', label='scaled Nestor - red only')
+    plt.plot(np.arange(2048)[650:], slice_n_blue[650:], color='black', label='scaled Nestor - blue only')
+    plt.legend()
+    plt.grid()
+    plt.xlabel('Detector column (pixels)')
+    plt.ylabel('Counts (e-/sec)')
+    plt.title('T1 obs1 Background versus its F277W observation and Nestors model')
+    plt.show()
+
+    return
+
+#a = test_backgrounds()
 
 
 
