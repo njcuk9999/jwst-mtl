@@ -31,9 +31,9 @@ import time as clocktimer
 from tqdm.notebook import tqdm as tqdm_notebook
 
 import sys
-#sys.path.insert(0, '/genesis/jwst/github/jwst-mtl/')
-import specgen.spgen as spgen
-import trace.tracepol as tp
+sys.path.insert(0, '/genesis/jwst/github/jwst-mtl/')
+import spgen as spgen
+import tracepol as tp
 import csv
 
 
@@ -164,8 +164,11 @@ def readplanetmodel(planet_model_csvfile):
     planetmodel_angstrom = np.array(t['wave']) * 1e+4
     # Rp/Rstar from depth in ppm
     planetmodel_rprs = np.sqrt(np.array(t['dppm']) / 1e+6)
+    # Thermal emission (W/m2/micron)
+    planetmodel_thermal = np.array(t['thermal'])
 
-    return planetmodel_angstrom, planetmodel_rprs
+    return planetmodel_angstrom, planetmodel_rprs, planetmodel_thermal
+
 
 
 def starlimbdarkening(wave_angstrom, ld_type='flat'):
@@ -489,7 +492,7 @@ def constantR_samples(wavelength_start, wavelength_end, resolving_power=100000):
     return wavelength, delta_wavelength
 
 def resample_models(star_angstrom, star_flux, ld_coeff,
-                    planet_angstrom, planet_rprs, simuPars, tracePars,
+                    planet_angstrom, planet_rprs, planet_thermal, simuPars, tracePars,
                     gridtype='planet', wavelength_start=None,
                     wavelength_end=None, resolving_power=None,
                     dispersion=None):
@@ -536,6 +539,7 @@ def resample_models(star_angstrom, star_flux, ld_coeff,
         bin_starmodel_wv = np.copy(planet_angstrom)
         bin_planetmodel_wv = np.copy(planet_angstrom)
         bin_planetmodel_rprs = np.copy(planet_rprs)
+        bin_planetmodel_thermal = np.copy(planet_thermal)
         bin_ld_coeff = bin_limb_darkening(star_angstrom, ld_coeff, x_grid, dx_grid)
 
     elif gridtype == 'constant_dispersion':
@@ -550,6 +554,7 @@ def resample_models(star_angstrom, star_flux, ld_coeff,
         bin_starmodel_wv = np.copy(x_grid)
         bin_planetmodel_wv = np.copy(x_grid)
         bin_planetmodel_rprs = bin_array_conv(planet_angstrom, planet_rprs, x_grid, dx_grid)
+        bin_planetmodel_thermal = bin_array_conv(planet_angstrom, planet_thermal, x_grid, dx_grid)
         bin_ld_coeff = bin_limb_darkening(star_angstrom, ld_coeff, x_grid, dx_grid)
 
     elif gridtype == 'constant_R':
@@ -561,12 +566,13 @@ def resample_models(star_angstrom, star_flux, ld_coeff,
         bin_starmodel_wv = np.copy(x_grid)
         bin_planetmodel_wv = np.copy(x_grid)
         bin_planetmodel_rprs = bin_array_conv(planet_angstrom, planet_rprs, x_grid, dx_grid)
+        bin_planetmodel_thermal = bin_array_conv(planet_angstrom, planet_thermal, x_grid, dx_grid)
         bin_ld_coeff = bin_limb_darkening(star_angstrom, ld_coeff, x_grid, dx_grid)
     else:
         print('Possible resample_models gridtype are: planet. constant_dispersion or constant_R.')
         sys.exit()
 
-    return bin_starmodel_wv, bin_starmodel_flux, bin_ld_coeff, bin_planetmodel_wv, bin_planetmodel_rprs
+    return bin_starmodel_wv, bin_starmodel_flux, bin_ld_coeff, bin_planetmodel_wv, bin_planetmodel_rprs, bin_planetmodel_thermal
 
 
 def bin_limb_darkening(x, ld_coeff, x_grid, dx_grid):
@@ -836,7 +842,7 @@ def seed_trace_geometry(simuPars, tracePars, spectral_order, models_grid_wv,
 
 
 def loictrace(simuPars, response, bin_models_wv, bin_starmodel_flux, bin_ld_coeff,
-              bin_planetmodel_rprs, time, itime, solin, spectral_order, tracePars,
+              bin_planetmodel_rprs, bin_planetmodel_thermal, time, itime, solin, spectral_order, tracePars,
               specpix_trace_offset=0, spatpix_trace_offset=0):
     '''
     :param simuPars:
@@ -874,26 +880,32 @@ def loictrace(simuPars, response, bin_models_wv, bin_starmodel_flux, bin_ld_coef
     time_array = np.ones(npt) * time  # Transit model expects array
     itime_array = np.ones(npt) * itime  # Transit model expects array
     rdr_array = np.ones((1, npt)) * bin_planetmodel_rprs  # r/R* -- can be multi-planet
-    tedarray = np.zeros((1, npt))  # secondary eclipse -- can be multi-planet
+    tedarray = np.ones((1, npt)) * bin_starmodel_flux/(bin_starmodel_flux + bin_planetmodel_thermal) # secondary eclipse -- can be multi-planet
 
-    #### replace by your favorite transit model or eclpise model or whatevah
+    #### replace by your favorite transit model or eclipse model or whatevah
     transitmodelname = None # default
     if transitmodelname == None:
         planet_flux_ratio = spgen.transitmodel(solin, time_array, \
                                      bin_ld_coeff[:, 0], bin_ld_coeff[:, 1], bin_ld_coeff[:, 2], bin_ld_coeff[:, 3], \
-                                     rdr_array, tedarray, itime=itime_array)
-
+                                    rdr_array, tedarray, itime=itime_array)
+        print("planet_flux_ratio = ", planet_flux_ratio)
         # spectrum to seed on detector = planet Rp/Rs * stellar flux * instrument response * detector Quantum yield
         bin_models_flux = planet_flux_ratio * bin_starmodel_flux * bin_response * bin_quantum_yield
+        print("bin_models_flux = ", bin_models_flux)
     elif transitmodelname == 'KSint':
+        sys.exit()
         #bin_models_flux has to be generated with your own function
         #Be reminded that the starmodel_flux passed on to this part of the code uses a 4-param
         #limb darkening description. You need to either work with those or convert them to 2-param
         #if that is what your modeling function uses.
-    elif transitmodelname == 'Eclipse'
-        # Louis-Philippe Coulombre could introduce something here to handle eclipses.
+    elif transitmodelname == 'Eclipse': #Activate to simulate an eclipse, got to fill "RP" and "DIST" in simpars
+        planet_flux_ratio = spgen.transitmodel(solin, time_array, \
+                                     bin_ld_coeff[:, 0], bin_ld_coeff[:, 1], bin_ld_coeff[:, 2], bin_ld_coeff[:, 3], \
+                                     rdr_array, tedarray, itime=itime_array)
+
+        bin_models_flux = (bin_starmodel_flux + bin_planetmodel_thermal *  planet_flux_ratio) * bin_response * bin_quantum_yield
     else:
-        print('ERROR!!!')
+        print('ERROR!!! No model named:', transitmodelname)
         sys.exit()
     ####
 
@@ -905,6 +917,9 @@ def loictrace(simuPars, response, bin_models_wv, bin_starmodel_flux, bin_ld_coef
     pixelflux = bin_array(bin_models_wv, bin_models_flux, w, dw, debug=False)
     # Make sure that all flux are finite, or make Nans, zero
     pixelflux[~np.isfinite(pixelflux)] = 0.0
+    #negative pixels (???)
+    ineg = np.where(pixelflux<0)
+    pixelflux[ineg] = 0.0
 
     if False:
         plt.figure()
@@ -1133,7 +1148,7 @@ def readmonochromatickernels(psfdir, wls=0.5, wle=5.2, dwl=0.05, os=4, wfe=0):
 
 def generate_traces(savingprefix, pathPars, simuPars, tracePars, throughput,
                     star_angstrom, star_flux, ld_coeff,
-                    planet_angstrom, planet_rprs,
+                    planet_angstrom, planet_rprs, planet_thermal,
                     timesteps, granularitytime,
                     specpix_trace_offset=0.0, spatpix_trace_offset=0.0):
     '''
@@ -1168,8 +1183,8 @@ def generate_traces(savingprefix, pathPars, simuPars, tracePars, throughput,
     #        spgen.resample_models(dw, star_angstrom, star_flux, ld_coeff, planet_angstrom, planet_rprs, simuPars,
     #        tracePars)
     # New rewritten function for resampling - dispersion in angstrom/pixel (0.1 was used for most sims)
-    star_angstrom_bin, star_flux_bin, ld_coeff_bin, planet_angstrom_bin, planet_rprs_bin = resample_models(
-        star_angstrom, star_flux, ld_coeff, planet_angstrom, planet_rprs, simuPars,
+    star_angstrom_bin, star_flux_bin, ld_coeff_bin, planet_angstrom_bin, planet_rprs_bin, planet_thermal_bin = resample_models(
+        star_angstrom, star_flux, ld_coeff, planet_angstrom, planet_rprs, planet_thermal, simuPars,
         tracePars, gridtype='constant_dispersion', dispersion = 0.1, wavelength_start=5000, wavelength_end=55000)
     # April 4 2022 - playing with the binning to see if it explains the 400 ppm offset in the extracted
     # transit spectrum extracted by Michael Radica.
@@ -1183,16 +1198,26 @@ def generate_traces(savingprefix, pathPars, simuPars, tracePars, throughput,
     # plt.show()
 
     # Convert star_flux to photon flux (which is what's expected for addflux2pix in gen_unconv_image)
-    print('Converting F_lambda to photon fluxes (e-/s/m2/ang)')
+    print('Converting F_lambda of the star to photon fluxes (e-/s/m2/ang)')
     h = sc_cst.Planck
     c = sc_cst.speed_of_light
     photon_energy = h * c / (star_angstrom_bin * 1e-10)
     star_flux_bin = star_flux_bin / photon_energy
 
-    # plt.figure()
-    # plt.scatter(star_angstrom_bin, star_flux_bin)
-    # plt.show()
-    # sys.exit()
+    # Initialize secondary eclipses parameters
+    simuPars.rp = (simuPars.rp * 6.371e6)/3.086e16 # R_earth to parsecs
+    dilution_factor = (simuPars.rp/simuPars.dist)**2 # transform flux TOA to flux on earth
+    planet_thermal_bin = planet_thermal_bin*dilution_factor 
+
+    # Convert planet_thermal to photon flux (which is what's expected for addflux2pix in gen_unconv_image)
+    print('Converting F_lambda of the planet to photon fluxes (e-/s/m2/ang)')
+    photon_energy = h * c / (planet_angstrom_bin * 1e-10)
+    planet_thermal_bin = planet_thermal_bin / photon_energy
+
+    #plt.figure()
+    #plt.scatter(planet_angstrom_bin, planet_thermal_bin)
+    #plt.show()
+    #sys.exit()
 
     # Transit model
     print('Setting up Transit Model Parameters')
@@ -1281,7 +1306,7 @@ def generate_traces(savingprefix, pathPars, simuPars, tracePars, throughput,
             else:
                 print('     Seeding flux onto a narrow trace on a 2D image')
                 pixels_t = loictrace(simuPars, throughput, star_angstrom_bin, star_flux_bin,
-                                     ld_coeff_bin, planet_rprs_bin,
+                                     ld_coeff_bin, planet_rprs_bin, planet_thermal_bin,
                                      currenttime, exposetime, solin, spectral_order, tracePars,
                                      specpix_trace_offset=specpix_offset_array[t],
                                      spatpix_trace_offset=spatpix_offset_array[t])
