@@ -33,6 +33,8 @@ STARMODEL    lte05000-4.50-0.0.PHOENIX-ACES-AGSS-COND-2011.JWST-RF.simu-SOSS.dat
 #STARMODEL    CUSTOM
 #CUSTOMSTARMODEL /path/where/your/star/mode/is/ # format a[1].data['wavelength'] a[1].data['flam']
 STARTYPE     2             # Model type.  2 = ATLAS + non-linear limb-darkening
+RA           00:00:00      # Right ascension of the target
+DEC          00:00:00      # Declinaison of the target
 BBTEFF       4000          # Effetive temperature if STARMODEL == 'BLACKBODY'
 VSINI        3.6           # Projected rotation velocity [km/s]
 MAGNITUDE    10.588        # Magnitude to anchor in absolute flux (AB or Vega depends on filter chosen) #MUST
@@ -59,6 +61,8 @@ RV1           42.5         # Radial velocity semi-amplitude [m/s]
 AL1           0.0          # Geometric albedo (needs emission model)
 EL1           0.0          # Ellipsoidal variations (applied to star model)
 TTVFILE1      null         # File with transit timing offsets (null==None) 
+RP            14.24        # Radius of planet (R_earth), only needed for eclipse simulation
+DIST          140          # Distance of star from earth (parsecs), only needed for eclipse simulation
 
 ####################
 # Image Parameters #
@@ -73,6 +77,7 @@ YPADDING      10            # Same for the spatial axis
 OVERSAMPLE    4             # Oversampling used to generate simulation
 GAIN          1.6           # e- per adu of the detector
 NGROUP        15            # Number of samples up ramp #MUST
+APA           0             # The angle of the observation
 
 ###########################################
 # Noise sources and noise reference files #
@@ -85,7 +90,8 @@ FLATFIELD     True
 NONLINEARITY  True
 ONEOVERF      True
 DARKCURRENT   True
-COSMICRAY     False
+COSMICRAY     True
+FIELD_STARS   True
 ZODI_REF      None
 SUPERBIAS_REF None          # test.fits
 FLAT_REF      None

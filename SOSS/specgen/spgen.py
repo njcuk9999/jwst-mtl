@@ -24,7 +24,7 @@ def boolString_to_Bool(true_false_string):
         return False
     else:
         print('Problem in parsing the simpars input file, fields should have True or False string but have something else.')
-        stop
+        sys.exit()
 
 class ModelPars:
     """Default Model Parameters
@@ -47,6 +47,8 @@ class ModelPars:
         self.pmodeltype = [None] * self.nplanetmax  # Type of planet file
         self.emisfile = [None] * self.nplanetmax  # file with emission spectrum
         self.ttvfile = [None] * self.nplanetmax  # file with O-C measurements
+        self.rp = 0.0 # Radius of planet (R_earth), only needed for eclipse simulation
+        self.dist = 0.0 # Distance of star from earth (parsecs), only needed for eclipse simulation
         # nplanet is tracked by pmodelfile. 
         self.nplanet = 0  # number of planets -- default is no planets - you will get staronly sim.
         self.sol = np.zeros(self.nplanetmax * 8 + 1)
@@ -62,6 +64,7 @@ class ModelPars:
         self.gain = 1.6  # electronic gain [e-/adu]
         self.saturation = 65536.0  # saturation
         self.ngroup = 1  # samples up ramp
+        self.APA = 0 #Angle of observation
         self.pid = 1  # programID
         self.onum = 1  # observation number
         self.vnum = 1  # visit number
@@ -79,6 +82,8 @@ class ModelPars:
         self.nint = np.nan  # not selectable in the config file. Will be filled in the code.
         self.nintf277 = np.nan
         self.magnitude = 10.0
+        self.RA = '00:00:00'
+        self.DEC = '00:00:00'
         self.filtername = 'J'
         self.f277wcal = True
         self.flatthroughput = False
@@ -98,7 +103,8 @@ class ModelPars:
         self.nonlinearity = True
         self.oneoverf = True
         self.darkcurrent = True
-        self.cosmicray = False
+        self.cosmicray = True
+        self.field_stars = True
         self.xytheta_file_clear = 'IDTSOSS_xytheta_offsets_clear.txt'
         self.xytheta_file_f277 = 'IDTSOSS_xytheta_offsets_f277.txt'
         self.x_rms = 0.0
@@ -223,12 +229,18 @@ class ModelPars:
                             self.vsini = np.float(columns[1])
                         elif command == 'magnitude':
                             self.magnitude = np.float(columns[1])
+                        elif command == 'ra':
+                            self.RA = columns[1]
+                        elif command == 'dec':
+                            self.DEC = columns[1]
                         elif command == 'filter':
                             self.filtername = str(columns[1])
                         elif command == 'f277wcal':
                             self.f277wcal = boolString_to_Bool(columns[1])
                         elif command == 'subarray':
                             self.subarray = columns[1]
+                        elif command == 'apa':
+                            self.APA = int(columns[1])
                         elif command == 'flatthroughput':
                             self.flatthroughput = boolString_to_Bool(columns[1])
                         elif command == 'flatquantumyield':
@@ -324,6 +336,8 @@ class ModelPars:
                             self.darkcurrent = boolString_to_Bool(columns[1])
                         elif command == 'cosmicray':
                             self.cosmicray = boolString_to_Bool(columns[1])
+                        elif command == 'field_stars':
+                            self.field_stars = boolString_to_Bool(columns[1])
                         elif command == 'gain':
                             self.gain = np.float(columns[1])
                         elif command == 'saturation':
@@ -410,6 +424,13 @@ class ModelPars:
                                 else:
                                     print('Error: Planet number is Invalid ', npl)
                                     print('Linenumber: ', linenumber)
+                        
+                        elif command == 'rp':
+                            self.rp = np.float(columns[1])
+
+                        elif command == 'dist':
+                            self.dist = np.float(columns[1])
+
                         elif command[0:nlcom - 1] == 'ep':
                             npl = int(np.float(command[nlcom - 1]))
                             if (npl <= self.nplanetmax) & (npl > 0):

@@ -119,7 +119,7 @@ def sossFieldSim(ra, dec , APA, refDir, binComp=None, pmInfo=None, dimY=256):
     for key,val in _.items(): stars[key]=val
    
     # Initialize final fits cube that contains the modelled traces with contamination
-    simuCube=np.zeros([dimY, dimX])  # cube of trace simulation at every degree of field rotation
+    simuCube=np.zeros([dimY, dimX])  # cube of trace 
     
     #Model image of the traces 
     #FieldStars_model = '/home/plamontagne/ongenesis/userland-soss/neighbour_star_noise/star_model_image/new_field_models.fits'
@@ -236,6 +236,22 @@ def sossFieldSim(ra, dec , APA, refDir, binComp=None, pmInfo=None, dimY=256):
             
             #Adding the field stars to the image
             simuCube[y0:y0+my1-my0, x0:x0+mx1-mx0] += model_field_final[k, my0:my1, mx0:mx1] * fluxscale
+
+            #Set all ref pixels to zero in case the odd one got a partial cr
+            #y-axis
+            if simuCube.shape[0] == 2048:
+                simuCube[:4,:]=0.0
+                simuCube[2044:,:]=0.0
+
+            elif simuCube.shape[0] == 256:
+                simuCube[252:,:]=0.0
+
+            elif simuCube.shape[0] == 512:
+                simuCube[508:,:]=0.0
+
+            #x-axis
+            simuCube[:,:4]=0.0
+            simuCube[:,2044:]=0.0
                 
     return simuCube
 

@@ -28,7 +28,7 @@ def add_noise(filelist, ralist, declist, APAlist, noisefiles_dir='/genesis/jwst/
     :param filelist: list of string, the list of files to process
     :param ralist: list of string, the list of right ascension of targets in order
     :param declist: list of string, the list of declinaison of targets in order
-    :param APAlist: list of string, the list of the APA of the observations in order
+    :param APAlist: list of int, the list of the APA of the observations in order
     :param noisefiles_dir: where reference detector noise files can be found
     :param normalize: DEPRECATED bool, renormalize the simulation, default False. USE DEPRECATED
     :param photon: bool, turn on or off photon noise for the science target flux
