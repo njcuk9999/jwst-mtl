@@ -3,13 +3,14 @@ import os.path
 import matplotlib.pyplot as plt
 
 import numpy as np
+
 import scipy.interpolate
 
 import glob
 
 from astropy.io import fits
 
-from scipy.stats import sigmaclip
+from astropy.stats import sigma_clip
 
 from jwst import datamodels
 
@@ -20,6 +21,12 @@ import sys
 from jwst import datamodels
 
 from astropy.nddata.bitmask import bitfield_to_boolean_mask
+
+from scipy.ndimage import rotate
+
+from scipy.signal import savgol_filter
+
+from scipy.signal import medfilt
 
 from jwst.datamodels import dqflags
 
@@ -466,8 +473,7 @@ def remove_nans(datamodel):
 
 
 def background_subtraction(datamodel, aphalfwidth=[40,30,30], outdir=None, verbose=False,
-                           applyonintegrations=False, contamination_mask=None, override_background=None,
-                           trace_table_ref=None):
+                           contamination_mask=None, trace_table_ref=None):
 
     nint, dimy, dimx = np.shape(datamodel.data)
 
@@ -483,7 +489,7 @@ def background_subtraction(datamodel, aphalfwidth=[40,30,30], outdir=None, verbo
         os.makedirs(cntrdir)
     maskeddata = np.copy(datamodel.data)
 
-    print('New background subtraction algorithm (as of July 22 2022) - scaling Nestor model')
+    print('New background subtraction algorithm (as of Aug 4 2022) - Modelling the 1D profile')
 
     # Apply bad pixel masking to the input data
     print('Masking the bad pixels !=0 in the DQ map')
@@ -509,99 +515,15 @@ def background_subtraction(datamodel, aphalfwidth=[40,30,30], outdir=None, verbo
     print('Saving the mask used for background estimation as background_mask')
     hdu.writeto(cntrdir+'background_mask.fits', overwrite=True)
 
-    # Bottom portion not usable in the FULL mode and skews levels estimates
-    if datamodel.meta.subarray.name == 'FULL': maskeddata[:, 0:1024, :] = np.nan
+    # Construct the background fit
+    background_model = construct_background(maskeddata, tilt=-1.8, isafitsfile=False, metric='10pct',
+                               savetest=True, outdir=cntrdir)
 
-    # Identify pixels free of astrophysical signal (e.g. 15th percentile)
-    if applyonintegrations == True:
-        # Measure level on each integration
-        levels = np.nanpercentile(maskeddata, 25, axis=1)
-        print('levels shape', np.shape(levels))
-        nlevels = nint
-    else:
-        # Measure level on deep stack of all integrations (default)
-        maskeddata = np.nanmedian(maskeddata, axis=0)
-        levels = np.nanpercentile(maskeddata, 25, axis=0)
-        nlevels = 1
 
-    # Open the reference background image
-    if override_background is None:
-        ### need to handle default background downlaoded from CRDS, eventually
-        print('ERROR: no background specified. Crash!')
-        sys.exit()
-    else:
-        backref = fits.getdata(override_background)
-
-    # Check that the backref is 2048x2048
-    bdimy, bdimx = np.shape(backref)
-    if bdimy == 256:
-        backref_full = np.zeros((2048,2048)) * np.nan
-        backref_full[-256:, :] = np.copy(backref)
-        backref = np.copy(backref_full)
-    elif bdimy == 2048:
-        # nothing to do
-        print('')
-    else:
-        print('ERROR: the override_background passed as input is not of 256x2048 nor 2048x2048!')
-        sysy.exit()
-
-    # Find the single scale that best matches the reference background
-    if datamodel.meta.subarray.name == 'FULL':
-        rows = slice(0, 2048) #not all contain background!
-        maskrows = slice(1024, 2048)
-    elif datamodel.meta.subarray.name == 'SUBSTRIP256':
-        rows = slice(1792, 2048)
-        maskrows = slice(1792, 2048)
-    elif datamodel.meta.subarray.name == 'SUBSTRIP96':
-        rows = slice(1802, 1898)
-        maskrows = slice(1802, 1898)
-    else:
-        raise ValueError('SUBARRAY must be one of SUBSTRIP96, SUBSTRIP256 or FULL')
-
-    # stablish the reference background level when crunched into a single row
-    reflevel = np.nanmedian(backref[maskrows, :], axis=0)
-    reflevel[0:5] = np.nan
-    reflevel[2044:2048] = np.nan
-
-    # Scaling to apply to the ref level to bring it to that measured
-    corrscale = np.nanmedian(levels / reflevel, axis=-1)
-    print('Scaling of the ref background (should not be negative):', corrscale)
-    print('Background correction scale shape ', np.shape(corrscale))
-
-    # plot the measured background levels and ref level
-    if applyonintegrations == True:
-        for i in range(nlevels):
-            plt.scatter(np.arange(2048), levels[i,:], marker='.')
-            plt.plot(np.arange(2048), reflevel * corrscale[i], color='red', ls='dotted')
-        plt.plot(np.arange(2048), reflevel, color='black', label='Background Ref File')
-
-    else:
-        plt.scatter(np.arange(2048), levels, marker='.', label='Observed background')
-        plt.plot(np.arange(2048), reflevel, color='black', label='Background Ref File')
-        plt.plot(np.arange(2048), reflevel*corrscale, color='red', ls='dotted', label='Ref scaled to fit Obs')
-
-    plt.legend()
-    plt.title('Background fitting')
-    #plt.show()
-    plt.savefig(cntrdir+'background_fitting.png', overwrite=True)
-
-    # Construct the backgroud subarray from the reference file
-    backtosub = backref[rows, :]
     # Perform the subtraction on the output data model
     output = datamodel.copy()
-    if applyonintegrations == True:
-        for i in range(nlevels):
-            if corrscale[i] > 0:
-                output.data[i, :, :] = datamodel.data[i, :, :] - corrscale[i] * backtosub
-            else:
-                print('Warning. The background scaling was not performed because it was negative. For integration ', i+1)
-    else:
-        if corrscale > 0:
-            output.data = datamodel.data - corrscale * backtosub
-        else:
-            print('Warning. The background scaling was not performed because it was negative.')
+    output.data = datamodel.data - background_model
 
-    #output.write(outdir+'/'+basename+'_backsubtracted.fits', overwrite=True)
     hdu = fits.PrimaryHDU(output.data)
     hdu.writeto(outdir+'/'+basename+'_backsubtracted.fits', overwrite=True)
 
@@ -1083,39 +1005,53 @@ def combine_timeseries(wildcard, outputname):
 
 def greyscale_rms(ts_greyscale, title=''):
     '''
-    Removes outliers form the greayscale and perform standard deviation
+    Removes outliers form the greyscale and perform standard deviation
     '''
 
     outdir = os.path.dirname(ts_greyscale)
-    #basename = os.path.basename(os.path.splitext(ts_greyscale)[0])
-    #basename = basename.split('_nis')[0]+'_nis'
-    #stackbasename = basename+'_stack'
-
-    #a = fits.getdata('/Users/albert/NIRISS/Commissioning/analysis/HATP14b/timeseries_combined_1f_ap25_20220711.fits.gz')
-    #a = fits.getdata('/Users/albert/NIRISS/Commissioning/analysis/HATP14b/timeseries_combined_1f_ap25_atoca_20220713.fits.gz')
-    #a = fits.getdata('/Users/albert/NIRISS/Commissioning/analysis/HATP14b/timeseries_combined_20220610.fits')
     a = fits.getdata(ts_greyscale)
     norder, nint, dimx = np.shape(a)
 
-
     rms = np.zeros((norder, dimx)) * np.nan
-    fig = plt.figure(figsize=(8,5))
+    plt.figure(figsize=(8,5))
     for m in range(3):
-        for x in range(dimx-8):
-            col = a[m, :, x+4]
-            colnonan = col[np.where(np.isfinite(col))[0]]
-            colclipped, low, high = sigmaclip(colnonan, low=3, high=3)
-            rms[m, x+4] = np.std(colclipped)
-
+        # For each order, generate the median profile (to account for the transit)
+        transit_profile = np.nanmedian(a[m, :, :], axis=-1)
+        for x in range(dimx):
+            # Measured column
+            col = a[m, :, x]
+            # Skip columns that only contain NaNs
+            if any(np.isfinite(col)):
+                # Measured column with transit signal removed
+                colnotransit = col - transit_profile
+                colnotransitnonan = colnotransit[np.where(np.isfinite(colnotransit))[0]]
+                sigmaclipping = sigma_clip(colnotransitnonan, sigma=3)
+                maskgood = sigmaclipping.mask == False
+                rms[m, x] = np.std(colnotransitnonan[maskgood])
         plt.plot(1/rms[m,:], label='Order {:}'.format(m+1))
     plt.legend()
     plt.xlabel('Column (pixels)')
-    plt.ylabel('RMS noise (ppm)')
-    plt.ylim((0,500))
+    plt.ylabel('SNR')
+    plt.ylim((0, 750))
     plt.title(title)
     plt.grid()
     plt.savefig(outdir+'/greyscale_rms.png')
     #plt.show()
+    plt.close()
+
+    for m in range(3):
+        # White light
+        white = np.nanmedian(a[m, :, :], axis=-1)
+        dev = white[1:] - white[:-1]
+        plt.figure(figsize=(8, 5))
+        #plt.plot(dev, label='Order {:}'.format(m+1))
+        plt.plot(white, label='Order {:}'.format(m+1))
+        plt.legend()
+        plt.title(title)
+        #plt.ylim((0.95,1.05))
+        plt.savefig(outdir+'/whitelight_order{:}.png'.format(m+1))
+        plt.close()
+
     return
 
 def test_backgrounds():
@@ -1162,9 +1098,476 @@ def test_backgrounds():
 
 #a = test_backgrounds()
 
+def measure_background_tilt(input_image, isafitsfile=True, method='stackgradients'):
+#def measure_background_tilt(isafitsfile=True, method='stackprofiles'):
+
+    if isafitsfile == True:
+        input_image = '/Users/albert/NIRISS/Commissioning/analysis/T1/backgroundsub_jw02589001001_04101_00001-seg001_nis_customrateints_flatfieldstep/background_mask.fits'
+        input_image = '/Users/albert/NIRISS/Commissioning/analysis/T1_2/backgroundsub_jw02589002001_04101_00001-seg001_nis_customrateints_flatfieldstep/background_mask.fits'
+        image = fits.getdata(input_image)
+    else:
+        image = np.copy(input_image)
+
+    # if it is a cube, stack it
+    if np.size(image.shape) == 3:
+            image = np.nanmedian(image, axis=0)
+
+    #hdu = fits.PrimaryHDU(image)
+    #hdu.writeto('/Users/albert/NIRISS/Commissioning/analysis/documenting_steps/T1_masked_stacked.fits')
+
+    if method == 'stackgradients':
+        # The gradient is computed for all pixels of each angle.
+        # For each angle, the result is crunched into a 1D slice.
+        # Whose maximum is measured.
+        # The best fit tilt is the angle producing maximum measurement.
+
+        # Columns and angles to explore
+        cmin, cmax = 650, 730
+        rowmin, rowmax = 1100, 2044
+        thetalist = np.linspace(-2.5, -0.5, 101)
+
+        # Obtain the derivative along the columns
+        subim = image[rowmin:rowmax, cmin:cmax]
+        dimy, dimx = np.shape(subim)
+        dfdx = np.gradient(subim, axis=1)
+        #hdu = fits.PrimaryHDU(dfdx)
+        #hdu.writeto('/Users/albert/NIRISS/Commissioning/analysis/documenting_steps/dfdx.fits', overwrite=True)
+        # fill nans with zero
+        dfdx = np.where(np.isfinite(dfdx), dfdx, 0)
+
+        # Initialize output arrays
+        dfdxcube = np.zeros((np.size(thetalist), dimy, dimx))
+        tmax = np.zeros(np.size(thetalist))
+
+        # Loop over angles
+        for theta in range(np.size(thetalist)):
+            dfdxrot = rotate(dfdx, thetalist[theta], axes=(1, 0), reshape=False)
+            #hdu = fits.PrimaryHDU(dfdxrot)
+            #hdu.writeto('/Users/albert/NIRISS/Commissioning/analysis/documenting_steps/dfdxrot.fits', overwrite=True)
+            dfdxcube[theta,:,:] = np.copy(dfdxrot)
+
+            # Crunch as a single slice and measure max
+            # mask zeros back to nan
+            dfdxrot[dfdxrot < 1e-6] = np.nan
+            # crunch as a slice
+            trace = np.nanmedian(dfdxrot, axis=0)
+            tmax[theta] = np.max(medfilt(trace,5))
+            if theta % 3 == 0:
+                plt.plot(trace+0.01*theta)
+                plt.plot(medfilt(trace+0.01*theta,5))
+        plt.grid()
+        plt.show()
+        print(thetalist, tmax)
+
+        # Optimal angle is
+        #tilt = thetalist[np.argmax(medfilt(tmax,3))]
+        tilt = thetalist[np.argmax(tmax)]
+
+        print('Tilt angle is ', tilt)
+
+        plt.plot(thetalist, tmax)
+        #plt.plot(thetalist, medfilt(tmax,3))
+        plt.grid()
+        plt.show()
+
+        #hdu = fits.PrimaryHDU(dfdxcube)
+        #hdu.writeto('/Users/albert/NIRISS/Commissioning/analysis/documenting_steps/dfdxrot_cube.fits', overwrite=True)
+
+    if method == 'stackprofiles':
+        # For each angle, the image is crunched into a 1D slice.
+        # On that 1D profile, the gradient is measured.
+        # The best fit tilt is the angle producing maximum measurement.
+
+        # Columns and angles to explore
+        cmin, cmax = 650, 730
+        rowmin, rowmax = 850, 2044
+        thetalist = np.linspace(-3, -0.5, 51)
+
+        # xtract a sub image
+        subim = image[rowmin:rowmax, cmin:cmax]
+        dimy, dimx = np.shape(subim)
+
+        # fill nans with zero
+        subim = np.where(np.isfinite(subim), subim, 0)
+        #hdu = fits.PrimaryHDU(subim)
+        #hdu.writeto('/Users/albert/NIRISS/Commissioning/analysis/GR700XD_background/test.fits', overwrite=True)
+
+        # Initialize output arrays
+        subimcube = np.zeros((np.size(thetalist), dimy, dimx))
+        gradientmap = np.zeros((np.size(thetalist),dimx))
+        tmax = np.zeros(np.size(thetalist))
+
+        # Loop over angles
+        for theta in range(np.size(thetalist)):
+            subimrot = rotate(subim, thetalist[theta], axes=(1, 0), reshape=False)
+            hdu = fits.PrimaryHDU(subimrot)
+            hdu.writeto('/Users/albert/NIRISS/Commissioning/analysis/documenting_steps/subimrot.fits', overwrite=True)
+            subimcube[theta, :, :] = np.copy(subimrot)
+
+            # Crunch as a single slice and measure max
+            # mask zeros back to nan
+            subimrot[subimrot < 1e-6] = np.nan
+            # crunch as a slice
+            trace = np.nanmedian(subimrot, axis=0)
+            # Obtain the gradient
+            gradient = np.gradient(trace)
+            # insert in the gradient map
+            gradientmap[theta,:] = np.copy(gradient)
+            # Identify the maximum gradient for that angle
+            tmax[theta] = np.max(gradient)
+            if theta % 5 == 0:
+                plt.plot(gradient)
+        plt.grid()
+        plt.show()
+        print(thetalist, tmax)
+
+        # Optimal angle is
+        # tilt = thetalist[np.argmax(medfilt(tmax,3))]
+        tilt = thetalist[np.argmax(tmax)]
+
+        print('Tilt angle is ', tilt)
+
+        plt.plot(thetalist, tmax)
+        # plt.plot(thetalist, medfilt(tmax,3))
+        plt.grid()
+        plt.show()
+
+        hdu = fits.PrimaryHDU(subimcube)
+        hdu.writeto('/Users/albert/NIRISS/Commissioning/analysis/documenting_steps/subimrot_cube.fits', overwrite=True)
+        hdu = fits.PrimaryHDU(gradientmap)
+        hdu.writeto('/Users/albert/NIRISS/Commissioning/analysis/documenting_steps/gradientmap.fits', overwrite=True)
+
+    return tilt
+
+#a = measure_background_tilt()
+
+
+
+def construct_background(input_image, tilt=-1.8, isafitsfile=False, metric='10pct',
+                         savetest=False, outdir=None):
+
+    if isafitsfile == True:
+        imagein = fits.getdata(input_image)
+        if outdir == None:
+            outdir = os.path.dirname(input_image)
+    else:
+        imagein = np.copy(input_image)
+
+    # if it is a cube, stack it
+    if np.size(imagein.shape) == 3:
+            imagein = np.nanmedian(imagein, axis=0)
+
+    if (savetest == True) & (outdir == None):
+        print('WARNING. To save the test plots/files, outdir must be set. No saving will occur.')
+
+    dimy, dimx = np.shape(imagein)
+
+    # Handle the masked pixels during rotation by rotating the mask
+    mask = ~np.isfinite(imagein)
+    badmap = imagein*0
+    badmap[mask] = 1.0
+    badmaprot = rotate(badmap, tilt, axes=(1, 0), reshape=False, order=1, cval=1)
+    if (savetest == True) & (outdir != None):
+        hdu = fits.PrimaryHDU(badmaprot)
+        hdu.writeto(outdir+'/badmap_rotated.fits', overwrite=True)
+    mask = badmaprot > 0.05 # the smaller the threshold, the largest the mask
+
+    # Rotate the image cleaned of nans then put them back in based on above mask
+    image = np.where(np.isfinite(imagein), imagein, 0)
+    imrot = rotate(image, tilt, axes=(1, 0), order=1, reshape=False)
+    imrot[mask] = np.nan
+    if (savetest == True) & (outdir != None):
+        hdu = fits.PrimaryHDU(imrot)
+        hdu.writeto(outdir+'/image_rotated.fits', overwrite=True)
+
+    # profile of the background - the plain median
+    bgd1d_plainmedian = np.nanmedian(imrot, axis=0)
+
+    # profile of the background - 20th percentile
+    bgd1d_10pct = np.nanpercentile(imrot, 10, axis=0)
+    bgd1d_20pct = np.nanpercentile(imrot, 20, axis=0)
+    bgd1d_30pct = np.nanpercentile(imrot, 30, axis=0)
+
+    # profile of the background - only the top of the image
+    bgd1d_mediantop = np.nanmedian(imrot[-50:,:], axis=0)
+
+    # Smooth the profile
+    #bgd1d_savgolfit = savgol_filter(bgd1d_20pct, 100, 4)#, deriv=0, delta=1.0, axis=- 1, mode='interp', cval=0.0
+
+    # Polynomial fitting - Use the below version of the background
+    if metric == '10pct':
+        background = bgd1d_10pct
+    elif metric == '20pct':
+        background = bgd1d_20pct
+    elif metric == '30pct':
+        background = bgd1d_30pct
+    elif metric == 'median':
+        background = bgd1d_plainmedian
+    elif metric == 'mediantop':
+        background = bgd1d_mediantop
+    else:
+        print('ERROR - metric does not exist: ', metric)
+        sys.exit()
+    #x = np.arange(dimx)
+    #masknan = np.isfinite(background)
+    #pars = np.polyfit(x[masknan], background[masknan], 15)
+    #bgd1d_polyfit = np.polyval(pars, x)
+
+    # 3-segment fit (on each side of the step)
+    padding = 50
+    xpad = np.arange(dimx+2*padding)-padding
+    x = np.arange(dimx)
+    cutleft, cutright = 695, 712
+    # Initialize the output array (with padding)
+    bgd1d_3segmentfit = np.zeros(dimx+2*padding)
+    bgd1d_3segmentfit[padding:-padding] = np.copy(background)
+    # Fit the left side of the curve
+    maskleft = np.isfinite(background) & (x < cutleft)
+    parsleft = np.polyfit(x[maskleft], background[maskleft], 3)
+    bgd1d_3segmentfit[xpad < cutleft] = np.polyval(parsleft, xpad[xpad < cutleft])
+    # Fit the right side of the curve
+    maskright = np.isfinite(background) & (x > cutright)
+    parsright = np.polyfit(x[maskright], background[maskright], 14)
+    bgd1d_3segmentfit[xpad > cutright] = np.polyval(parsright, xpad[xpad > cutright])
+
+    # Plot the results
+    if (savetest == True) & (outdir != None):
+        plt.figure(figsize=(10,6))
+        plt.plot(bgd1d_plainmedian, label='Plain median')
+        plt.plot(bgd1d_10pct, label='10th percentile')
+        plt.plot(bgd1d_20pct, label='20th percentile')
+        plt.plot(bgd1d_30pct, label='30th percentile')
+        plt.plot(bgd1d_mediantop, label='Median of the 50 pixels at the top')
+        #plt.plot(bgd1d_savgolfit, label='Savgol fit')
+        #plt.plot(bgd1d_polyfit, label='Polynomial fit')
+        plt.plot(bgd1d_3segmentfit[padding:-padding], label='3-segment fit')
+        plt.grid()
+        plt.legend()
+        plt.savefig(outdir+'/bgd_plot.png')
+        #plt.show()
+
+    # Then project back this model across in 2D and derotate
+    dimxpad = dimx + 2*padding
+    dimypad = dimy + 2*padding
+    bgd2drotpad = np.tile(bgd1d_3segmentfit, dimypad).reshape(dimypad, dimxpad)
+    bgd2dpad = rotate(bgd2drotpad, -tilt, axes=(1, 0), order=1, reshape=False)
+    # remove the padding
+    bgd2d = np.copy(bgd2dpad[padding:-padding,padding:-padding])
+
+    if (savetest == True) & (outdir != None):
+        hdu = fits.PrimaryHDU(bgd2d)
+        hdu.writeto(outdir+'/background_fitted.fits', overwrite=True)
+
+    # Subtract background model from the input image
+    imagecorr = imagein - bgd2d
+    if (savetest == True) & (outdir != None):
+        hdu = fits.PrimaryHDU(imagecorr)
+        hdu.writeto(outdir+'/bgd_corrected.fits', overwrite=True)
+
+    return bgd2d
+
+
+
+
+def test_back_construct():
+
+    from astropy.io import fits
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from scipy.ndimage import rotate
+    from scipy.signal import savgol_filter
+
+    input_image = fits.getdata('/Users/albert/NIRISS/Commissioning/analysis/documenting_steps/T1_masked_stacked.fits')
+
+    tilt = -1.8
+
+    dimy, dimx = np.shape(input_image)
+
+    # Handle the masked pixels during rotation by rotating the mask
+    mask = ~np.isfinite(input_image)
+    badmap = input_image*0
+    badmap[mask] = 1.0
+    badmaprot = rotate(badmap, tilt, axes=(1, 0), reshape=False, order=1, cval=1)
+    hdu = fits.PrimaryHDU(badmaprot)
+    hdu.writeto('/Users/albert/NIRISS/Commissioning/analysis/documenting_steps/badmap_rotated.fits', overwrite=True)
+    mask = badmaprot > 0.05 # the smaller the threshold, the largest the mask
+
+    # Rotate the image cleaned of nans then put them back in based on above mask
+    image = np.where(np.isfinite(input_image), input_image, 0)
+    imrot = rotate(image, tilt, axes=(1, 0), order=1, reshape=False)
+    imrot[mask] = np.nan
+    hdu = fits.PrimaryHDU(imrot)
+    hdu.writeto('/Users/albert/NIRISS/Commissioning/analysis/documenting_steps/image_rotated.fits', overwrite=True)
+
+    # profile of the background - the plain median
+    bgd1d_plainmedian = np.nanmedian(imrot, axis=0)
+
+    # profile of the background - 20th percentile
+    bgd1d_10pct = np.nanpercentile(imrot, 10, axis=0)
+    bgd1d_20pct = np.nanpercentile(imrot, 20, axis=0)
+    bgd1d_30pct = np.nanpercentile(imrot, 30, axis=0)
+
+    # profile of the background - only the top of the image
+    bgd1d_mediantop = np.nanmedian(imrot[-50:,:], axis=0)
+
+    # Smooth the profile
+    bgd1d_savgolfit = savgol_filter(bgd1d_20pct, 100, 4)#, deriv=0, delta=1.0, axis=- 1, mode='interp', cval=0.0
+
+    # Polynomial fitting - Use the below version of the background
+    background = bgd1d_20pct
+    x = np.arange(dimx)
+    masknan = np.isfinite(background)
+    pars = np.polyfit(x[masknan], background[masknan], 15)
+    bgd1d_polyfit = np.polyval(pars, x)
+
+    # 3-segment fit (on each side of the step)
+    padding = 50
+    xpad = np.arange(dimx+2*padding)-padding
+    x = np.arange(dimx)
+    cutleft, cutright = 695, 712
+    # Initialize the output array (with padding)
+    bgd1d_3segmentfit = np.zeros(dimx+2*padding)
+    bgd1d_3segmentfit[padding:-padding] = np.copy(background)
+    # Fit the left side of the curve
+    maskleft = np.isfinite(background) & (x < cutleft)
+    parsleft = np.polyfit(x[maskleft], background[maskleft], 3)
+    bgd1d_3segmentfit[xpad < cutleft] = np.polyval(parsleft, xpad[xpad < cutleft])
+    # Fit the right side of the curve
+    maskright = np.isfinite(background) & (x > cutright)
+    parsright = np.polyfit(x[maskright], background[maskright], 14)
+    bgd1d_3segmentfit[xpad > cutright] = np.polyval(parsright, xpad[xpad > cutright])
+
+    # Plot the results
+    plt.plot(bgd1d_plainmedian, label='Plain median')
+    plt.plot(bgd1d_10pct, label='10th percentile')
+    plt.plot(bgd1d_20pct, label='20th percentile')
+    plt.plot(bgd1d_30pct, label='30th percentile')
+    plt.plot(bgd1d_mediantop, label='Median of the 50 pixels at the top')
+    #plt.plot(bgd1d_savgolfit, label='Savgol fit')
+    #plt.plot(bgd1d_polyfit, label='Polynomial fit')
+    plt.plot(bgd1d_3segmentfit[padding:-padding], label='3-segment fit')
+    plt.grid()
+    plt.legend()
+    plt.show()
+
+    # Then project back this model across in 2D and derotate
+    dimxpad = dimx + 2*padding
+    dimypad = dimy + 2*padding
+    bgd2drotpad = np.tile(bgd1d_3segmentfit, dimypad).reshape(dimypad, dimxpad)
+    plt.imshow(bgd2drotpad, origin='lower')
+    plt.show()
+    bgd2dpad = rotate(bgd2drotpad, -tilt, axes=(1, 0), order=1, reshape=False)
+    # remove the padding
+    bgd2d = np.copy(bgd2dpad[padding:-padding,padding:-padding])
+
+    hdu = fits.PrimaryHDU(bgd2d)
+    hdu.writeto('/Users/albert/NIRISS/Commissioning/analysis/documenting_steps/background_model_fitted.fits', overwrite=True)
+
+    # Subtract background model from the input image
+    imagecorr = input_image - bgd2d
+    hdu = fits.PrimaryHDU(imagecorr)
+    hdu.writeto('/Users/albert/NIRISS/Commissioning/analysis/documenting_steps/bgd_corrected.fits', overwrite=True)
+
+    return
+
+#a = test_back_construct()
+
+
+
+def test_back_scaling():
+
+    from astropy.io import fits, ascii
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from scipy.ndimage import rotate
+    from scipy.signal import medfilt
+
+    nestor = fits.getdata('/Users/albert/NIRISS/Commissioning/analysis/pipelineprep/calibrations/model_background256.fits')
+
+    image = fits.getdata('/Users/albert/NIRISS/Commissioning/analysis/T1/backgroundsub_jw02589001001_04101_00001-seg001_nis_customrateints_flatfieldstep/background_mask.fits')
+    image = fits.getdata('/Users/albert/NIRISS/Commissioning/analysis/T1_2/backgroundsub_jw02589002001_04101_00001-seg001_nis_customrateints_flatfieldstep/background_mask.fits')
+
+    image = np.nanmedian(image, axis=0)
+    hdu = fits.PrimaryHDU(image)
+    #hdu.writeto('/Users/albert/NIRISS/Commissioning/analysis/documenting_steps/T1_masked_stacked.fits')
+
+    # Direct scaling alone
+    ratio = image / nestor
+    #hdu = fits.PrimaryHDU(ratio)
+    #hdu.writeto('/Users/albert/NIRISS/Commissioning/analysis/documenting_steps/T1_stack_to_nestor_scaling.fits', overwrite=True)
+    # residuals shows an oversubtraction
+
+    # Try a 2-parameter fit. i.e. treat te left side of the image as a DC additive offset and
+    # skipped for now
+
+    # Try constructing a 1-D background model.
+
+    # A) Determine the step angle
+    cmin, cmax = 680, 720
+    thetalist = np.linspace(-3, -0.5, 51)
+
+    subim = image[:,cmin:cmax]
+    dimy, dimx = np.shape(subim)
+    dfdx = np.gradient(subim, axis=1)
+    hdu = fits.PrimaryHDU(dfdx)
+    hdu.writeto('/Users/albert/NIRISS/Commissioning/analysis/documenting_steps/dfdx.fits', overwrite=True)
+    # fill nans with zero
+    dfdx = np.where(np.isfinite(dfdx), dfdx, 0)
+
+
+    dfdxcube = np.zeros((np.size(thetalist), dimy, dimx))
+    tmax = np.zeros(np.size(thetalist))
+    for theta in range(np.size(thetalist)):
+        dfdxrot = rotate(dfdx, thetalist[theta], axes=(1, 0), reshape=False)
+        #hdu = fits.PrimaryHDU(dfdxrot)
+        #hdu.writeto('/Users/albert/NIRISS/Commissioning/analysis/documenting_steps/dfdxrot.fits', overwrite=True)
+        dfdxcube[theta,:,:] = np.copy(dfdxrot)
+
+        # Crunch as a single slice and measure max
+        # mask zeros back to nan
+        dfdxrot[dfdxrot < 1e-6] = np.nan
+        # crunch as a slice
+        trace = np.nanmedian(dfdxrot, axis=0)
+        tmax[theta] = np.max(medfilt(trace,5))
+        if theta % 3 == 0:
+            plt.plot(trace+0.01*theta)
+            plt.plot(medfilt(trace+0.01*theta,5))
+    plt.grid()
+    plt.show()
+    print(thetalist, tmax)
+
+    # Optimal angle is
+    #tilt = thetalist[np.argmax(medfilt(tmax,3))]
+    tilt = thetalist[np.argmax(tmax)]
+
+    print('Tilt angle is ', tilt)
+
+    plt.plot(thetalist, tmax)
+    #plt.plot(thetalist, medfilt(tmax,3))
+    plt.grid()
+    plt.show()
+
+    hdu = fits.PrimaryHDU(dfdxcube)
+    hdu.writeto('/Users/albert/NIRISS/Commissioning/analysis/documenting_steps/dfdxrot_cube.fits', overwrite=True)
+
+    return
+
+#a = test_back_scaling()
+
+
+
+
 
 
 if __name__ == "__main__":
+    input_image = '/Users/albert/NIRISS/Commissioning/analysis/T1/backgroundsub_jw02589001001_04101_00001-seg001_nis_customrateints_flatfieldstep/background_mask.fits'
+    #input_image = '/Users/albert/NIRISS/Commissioning/analysis/T1_2/backgroundsub_jw02589002001_04101_00001-seg001_nis_customrateints_flatfieldstep/background_mask.fits'
+    outdir = os.path.dirname(input_image)
+    bkg = construct_background(input_image, tilt=-1.8, isafitsfile=True, metric='10pct',
+                               savetest=True, outdir=outdir)
+    sys.exit()
+
+
     a = make_mask_02589_obs001()
     sys.exit()
     #datamodel = datamodels.open('/Users/albert/NIRISS/Commissioning/analysis/HATP14b/jw01541001001_04101_00001-seg003_nis_customrateints_flatfieldstep.fits')

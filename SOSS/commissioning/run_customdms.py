@@ -95,12 +95,16 @@ def run_stage1(exposurename, outlier_map=None):
     # Remove the DMS pipeline reference pixel correction
     #result = calwebb_detector1.refpix_step.RefPixStep.call(result, output_dir=outdir, save_results=True)
 
-    result = calwebb_detector1.linearity_step.LinearityStep.call(result, output_dir=outdir, save_results=False)
+    #result = calwebb_detector1.linearity_step.LinearityStep.call(result, output_dir=outdir, save_results=False)
+    # to test jump detection, save = True
+    result = calwebb_detector1.linearity_step.LinearityStep.call(result, output_dir=outdir, save_results=True)
 
     #result = calwebb_detector1.dark_current_step.DarkCurrentStep.call(result, output_dir=outdir, save_results=True)#,
                                                                       #override_dark=CALIBRATION_DIR+DARK)
 
-    result = calwebb_detector1.jump_step.JumpStep.call(result, output_dir=outdir, save_results=False)
+    result = calwebb_detector1.jump_step.JumpStep.call(result, output_dir=outdir, save_results=False,
+                                                       rejection_threshold=6)
+    sys.exit()
 
     stackresult, result = calwebb_detector1.ramp_fit_step.RampFitStep.call(result, output_dir=outdir, save_results=False)
 
@@ -145,8 +149,11 @@ def run_stage2(rateints, contamination_mask=None, use_atoca=False, run_outliers=
 
     # Still non-optimal
     # Custom - Background subtraction step
+    #result = commutils.background_subtraction_v1(result, aphalfwidth=[40,20,20], outdir=outdir, verbose=False,
+    #                                          override_background=CALIBRATION_DIR+BACKGROUND, applyonintegrations=True,
+    #                                          contamination_mask=contamination_mask, trace_table_ref=ATOCAREF_DIR+SPECTRACE)
+    #
     result = commutils.background_subtraction(result, aphalfwidth=[40,20,20], outdir=outdir, verbose=False,
-                                              override_background=CALIBRATION_DIR+BACKGROUND, applyonintegrations=True,
                                               contamination_mask=contamination_mask, trace_table_ref=ATOCAREF_DIR+SPECTRACE)
 
     # Clean the outlier and bad pixels based on a deep stack
@@ -322,7 +329,7 @@ if __name__ == "__main__":
         #run_stage1(dir+dataset+'_uncal.fits', outlier_map=dir+dataset+'_outliers.fits')
         #run_stage2(dir+dataset+custom_or_not+'.fits', contamination_mask=contmask, use_atoca=False)
         #run_stage1(dir+dataset+'_uncal.fits', outlier_map=dir+dataset+'_outliers.fits')
-        run_stage2(dir+dataset+custom_or_not+'.fits', contamination_mask=contmask, run_outliers=False, use_atoca=use_atoca)
+        #run_stage2(dir+dataset+custom_or_not+'.fits', contamination_mask=contmask, run_outliers=False, use_atoca=use_atoca)
 
     # Post processing analysis
     for dataset in datalist:
