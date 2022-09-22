@@ -32,8 +32,8 @@ from tqdm.notebook import tqdm as tqdm_notebook
 
 import sys
 sys.path.insert(0, '/genesis/jwst/github/jwst-mtl/')
-import spgen as spgen
-import tracepol as tp
+#import specgen.spgen as spgen
+import trace.tracepol as tp
 import csv
 
 
