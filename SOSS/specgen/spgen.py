@@ -6,8 +6,8 @@ import os #checking status of requested files
 from astropy.io import fits #astropy modules for FITS IO
 from scipy import interpolate #spline interpolation
 import scipy.signal
-import tfit5 #Fortran routine for fastest transitmodel ever
-import binmodels_py as bm #Fortran routine for speedy resampling of data
+#import tfit5 #Fortran routine for fastest transitmodel ever
+# import binmodels_py as bm #Fortran routine for speedy resampling of data
 
 import time as clocktimer
 
