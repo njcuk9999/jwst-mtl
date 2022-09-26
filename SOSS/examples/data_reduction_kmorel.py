@@ -47,7 +47,7 @@ import specgen.spgen as spgen
 import trace.tracepol as tp
 # Header and FITS writing function
 # Detector noise script
-from detector import detector
+# from detector import detector
 #import detector as toto
 
 # normalization code
@@ -77,10 +77,10 @@ simuPars.read_pars(pathPars.simulationparamfile) #read in parameter file
 f277webcal = False
 
 # Select which noise source to be corrected
-do_superbias = False
-do_oneoverf = False
-do_nonlinearity = False
-do_darkcurrent = False
+do_superbias = True
+do_oneoverf = True
+do_nonlinearity = True
+do_darkcurrent = True
 
 # Here are de paths of the reference files of the noises used for the simulations.
 # One can modify them to use their own reference file(s) for data reduction.
@@ -101,31 +101,34 @@ PROCESS THROUGH DMS
 # GR700XD+CLEAR - PROCESS THROUGH DMS LEVEL 1
 
 # Define input/output
-calwebb_input = os.path.join(pathPars.path_userland, 'IDTSOSS_clear_noisy.fits')
-calwebb_output = os.path.join(pathPars.path_userland, 'IDTSOSS_clear_noisy_rateints.fits')
+calwebb_input = os.path.join(pathPars.path_userland, 'WASP-96_data/jw02734002001_04101_00001-seg001_nis_uncal.fits')
+calwebb_output = os.path.join(pathPars.path_userland, 'jw02734002001_04101_00001-seg001_nis_KM_rateints.fits')
+
+outdir = pathPars.path_userland   # Output directory
+outputname = 'jw02734002001_04101_00001-seg001_nis_KM'
 
 # Step by step DMS processing
 result = calwebb_detector1.dq_init_step.DQInitStep.call(calwebb_input,
-            output_dir=pathPars.path_userland, output_file='IDTSOSS_clear_noisy', save_results=False)
+            output_dir=outdir, output_file=outputname, save_results=False)
 result = calwebb_detector1.saturation_step.SaturationStep.call(result,
-            output_dir=pathPars.path_userland, output_file='IDTSOSS_clear_noisy', save_results=False)
+            output_dir=outdir, output_file=outputname, save_results=False)
 
 if do_superbias is True: result = calwebb_detector1.superbias_step.SuperBiasStep.call(result,
-            output_dir=pathPars.path_userland, output_file='IDTSOSS_clear_noisy', save_results=False,
+            output_dir=outdir, output_file=outputname, save_results=False,
             override_superbias=superbias_ref_file)
 if do_oneoverf is True: result = calwebb_detector1.refpix_step.RefPixStep.call(result,
-            output_dir=pathPars.path_userland, output_file='IDTSOSS_clear_noisy', save_results=False)
+            output_dir=outdir, output_file=outputname, save_results=False)
 if do_nonlinearity is True: result = calwebb_detector1.linearity_step.LinearityStep.call(result,
-            output_dir=pathPars.path_userland, output_file='IDTSOSS_clear_noisy', save_results=False,
+            output_dir=outdir, output_file=outputname, save_results=False,
             override_linearity=linearity_ref_file)
 if do_darkcurrent is True: result = calwebb_detector1.dark_current_step.DarkCurrentStep.call(result,
-            output_dir=pathPars.path_userland, output_file='IDTSOSS_clear_noisy', save_results=False,
+            output_dir=outdir, output_file=outputname, save_results=False,
             override_dark=dark_ref_file)
 
 _, result = calwebb_detector1.ramp_fit_step.RampFitStep.call(result,
-            output_dir=pathPars.path_userland, output_file='IDTSOSS_clear_noisy', save_results=False)
+            output_dir=outdir, output_file=outputname, save_results=False)
 result = calwebb_detector1.gain_scale_step.GainScaleStep.call(result,
-            output_dir=pathPars.path_userland, output_file='IDTSOSS_clear_noisy', save_results=False)
+            output_dir=outdir, output_file=outputname, save_results=False)
 result.meta.filetype = 'countrate'
 result.write(calwebb_output)
 
@@ -136,27 +139,29 @@ if f277webcal is True:
     calwebb_input = os.path.join(pathPars.path_userland, 'IDTSOSS_f277_noisy.fits')
     calwebb_output = os.path.join(pathPars.path_userland, 'IDTSOSS_f277_noisy_rateints.fits')
 
+    outputname_f277 = 'IDTSOSS_f277_noisy'
+
     # Step by step DMS processing
     result = calwebb_detector1.dq_init_step.DQInitStep.call(calwebb_input,
-             output_dir=pathPars.path_userland, output_file='IDTSOSS_f277_noisy', save_results=False)
+             output_dir=outdir, output_file=outputname_f277, save_results=False)
     result = calwebb_detector1.saturation_step.SaturationStep.call(result,
-             output_dir=pathPars.path_userland, output_file='IDTSOSS_f277_noisy', save_results=False)
+             output_dir=outdir, output_file=outputname_f277, save_results=False)
 
     if do_superbias is True: result = calwebb_detector1.superbias_step.SuperBiasStep.call(result,
-             output_dir=pathPars.path_userland, output_file='IDTSOSS_f277_noisy', save_results=False,
+             output_dir=outdir, output_file=outputname_f277, save_results=False,
              override_superbias=superbias_ref_file)
     if do_oneoverf is True: result = calwebb_detector1.refpix_step.RefPixStep.call(result,
-             output_dir=pathPars.path_userland, output_file='IDTSOSS_f277_noisy', save_results=False)
+             output_dir=outdir, output_file=outputname_f277, save_results=False)
     if do_nonlinearity is True: result = calwebb_detector1.linearity_step.LinearityStep.call(result,
-             output_dir=pathPars.path_userland, output_file='IDTSOSS_f277_noisy', save_results=False,
+             output_dir=outdir, output_file=outputname_f277, save_results=False,
              override_linearity=linearity_ref_file)
     if do_darkcurrent is True: result = calwebb_detector1.dark_current_step.DarkCurrentStep.call(result,
-             output_dir=pathPars.path_userland, output_file='IDTSOSS_f277_noisy', save_results=False,
+             output_dir=outdir, output_file=outputname_f277, save_results=False,
              override_dark=dark_ref_file)
 
     _, result = calwebb_detector1.ramp_fit_step.RampFitStep.call(result,
-             output_dir=pathPars.path_userland, output_file='IDTSOSS_f277_noisy', save_results=False)
+             output_dir=outdir, output_file=outputname_f277, save_results=False)
     result = calwebb_detector1.gain_scale_step.GainScaleStep.call(result,
-             output_dir=pathPars.path_userland, output_file='IDTSOSS_f277_noisy', ave_results=False)
+             output_dir=outdir, output_file=outputname_f277, ave_results=False)
     result.meta.filetype = 'countrate'
     result.write(calwebb_output)

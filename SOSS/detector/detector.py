@@ -10,7 +10,6 @@ Introduce the detector response in the simulated images
 
 import argparse
 
-#import timeseries
 import timeseries
 
 
