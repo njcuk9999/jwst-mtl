@@ -2,6 +2,7 @@
 # on a timeseries
 # By K. Morel
 
+
 import matplotlib.pyplot as plt
 import numpy as np
 from astropy.io import fits

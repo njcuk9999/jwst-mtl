@@ -101,7 +101,7 @@ PROCESS THROUGH DMS
 # GR700XD+CLEAR - PROCESS THROUGH DMS LEVEL 1
 
 # Define input/output
-calwebb_input = os.path.join(pathPars.path_userland, 'WASP-96_data/jw02734002001_04101_00001-seg001_nis_uncal.fits')
+calwebb_input = os.path.join(pathPars.path_userland, 'WASP_96_data/jw02734002001_04101_00001-seg001_nis_uncal.fits')
 calwebb_output = os.path.join(pathPars.path_userland, 'jw02734002001_04101_00001-seg001_nis_KM_rateints.fits')
 
 outdir = pathPars.path_userland   # Output directory
