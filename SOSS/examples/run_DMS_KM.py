@@ -24,7 +24,7 @@ input_filetag = 'uncal'                                     #???
 # ===== Stage 1 Input Files & Parameters =====
 # For 1/f correction; outlier pixel maps (optional).
 outlier_maps = None
-# For 1/f correcton; trace mask (optional).
+# For 1/f correction; trace mask (optional).
 trace_mask = None
 # For 1/f correction; estimate of white light curve (optional).
 smoothed_wlc = None
