@@ -3,11 +3,18 @@ from astropy.io import fits
 from jwst import datamodels
 import os
 
+
+def mediandev(x, axis=None):
+    med = np.nanmedian(x, axis=axis)
+
+    return np.nanmedian(np.abs(x - med), axis=axis) / 0.67449
+
 def stack(cube): #, outlier_map=None):
 
     #if outlier_map is None:
     deepstack = np.nanmedian(cube, axis=0)
-    rms = np.nanstd(cube, axis=0)
+    #rms = np.nanstd(cube, axis=0)
+    rms = mediandev(cube, axis=0)
     #else:
     #    deepstack = np.nanmedian(cube * outlier_map, axis=0)
     #    rms = np.nanstd(cube * outlier_map, axis=0)
@@ -40,13 +47,30 @@ def applycorrection(uncal_rampmodel, output_dir=None, save_results=False, outlie
         if save_results == True: os.makedirs(output_supp)
 
     # The readout setup
+
     ngroup = uncal_rampmodel.meta.exposure.ngroups
     #nint = uncal_rampmodel.meta.exposure.nints # does not work on segments
-    nint = np.shape(uncal_rampmodel.data)[0]
+    intstart = uncal_rampmodel.meta.exposure.integration_start
+    intend = uncal_rampmodel.meta.exposure.integration_end
+    nint = intend-intstart+1
     dimx = np.shape(uncal_rampmodel.data)[-1]
 
     # Generate the deep stack and rms of it. Both 3D (ngroup, dimy, dimx)
     deepstack, rms = stack(uncal_rampmodel.data)
+
+    # Weighted average to determine the 1/F DC level
+    w = 1 / rms ** 2  # weight
+    # Make sure that constant pixels with rms=0 don't get assign a weight
+    w[rms <= 0] = 0
+    # Make sure that pixels with suspiciously small rms get zero weight as well
+    #med = np.median(rms, axis=0)
+    #dev = mediandev(rms, axis=0)
+    #pct1 = np.percentile(rms, 1, axis=(1,2))
+    #for i in range(ngroup):
+    #    w[i, rms[i,:,:] < pct1[i]] = 0
+    # Make sure that bad pixels don't have any weight
+    dq = np.median(uncal_rampmodel.groupdq, axis=0)
+    w[dq != 0] = 0
 
     # Write these on disk in a sub folder
     if save_results == True:
@@ -55,35 +79,54 @@ def applycorrection(uncal_rampmodel, output_dir=None, save_results=False, outlie
         hdu.writeto(output_supp+'/deepstack1.fits', overwrite=True)
         hdu = fits.PrimaryHDU(rms)
         hdu.writeto(output_supp+'/rms1.fits', overwrite=True)
+        hdu = fits.PrimaryHDU(w)
+        hdu.writeto(output_supp+'/weight1.fits', overwrite=True)
 
-    # Weighted average to determine the 1/F DC level
-    w = 1/rms # weight
+    # TODO: 1/rms2 should be used
+    # TODO: filter out the rms=0 pixels
+    # TODO: add odd even correction
     print(np.shape(w))
     print(np.shape(w * uncal_rampmodel.data[0]))
 
-    # Read in the outlier map -- a (nints, dimy, dimx) 3D cube
-    print('outlier_map = {:}'.format(outlier_map))
-    print('is None', (outlier_map == None))
-    print('is not a file?', (not os.path.isfile(outlier_map)))
-    if (outlier_map == None) | (not os.path.isfile(outlier_map)):
-        print('Warning - the outlier map passed as input does not exist on disk - no outlier map used!')
-        outliers = np.zeros((nint, np.shape(uncal_rampmodel.data)[-2], dimx))
-    else:
-        print('Using an existing cosmic ray outlier map named {:}'.format(outlier_map))
-        outliers = fits.getdata(outlier_map)
-    # The outlier is 0 where good and >0 otherwise
-    outliers = np.where(outliers == 0, 1, np.nan)
+    if False:
+        # Read in the outlier map -- a (nints, dimy, dimx) 3D cube
+        print('outlier_map = {:}'.format(outlier_map))
+        print('is None', (outlier_map == None))
+        print('is not a file?', (not os.path.isfile(outlier_map)))
+        if (outlier_map == None) | (not os.path.isfile(outlier_map)):
+            print('Warning - the outlier map passed as input does not exist on disk - no outlier map used!')
+            outliers = np.zeros((nint, np.shape(uncal_rampmodel.data)[-2], dimx))
+        else:
+            print('Using an existing cosmic ray outlier map named {:}'.format(outlier_map))
+            outliers = fits.getdata(outlier_map)
+        # The outlier is 0 where good and >0 otherwise
+        outliers = np.where(outliers == 0, 1, np.nan)
 
     print('Applying the 1/f correction.')
     dcmap = np.copy(uncal_rampmodel.data)
     subcorr = np.copy(uncal_rampmodel.data)
     sub = np.copy(uncal_rampmodel.data)
+    outliers = np.copy(uncal_rampmodel.data)
     for i in range(nint):
+        # The actual integration in the original time series (not in this segment)
+        actualint = intstart + i
         sub[i] = uncal_rampmodel.data[i] - deepstack
         for g in range(ngroup):
-            sub[i, g, :, :] = sub[i, g, :, :] * outliers[i]
+            # sigma map allowing for a possible median offset w.r.t. the deepstack
+            sigmap = np.abs((sub[i,g,:,:] - np.nanmedian(sub[i, g, :, :])) / rms[g,:,:])
+            outliers[i,g,:,:] = np.where(sigmap > 3, np.nan, 1)
+            sub[i, g, :, :] = sub[i, g, :, :] * outliers[i, g, :, :]
+            # Mask the noisy rolling two-rows
+            if uncal_rampmodel.meta.subarray.name == 'SUBSTRIP256':
+                noisyrows = [256 - actualint, 256 - actualint + 1]
+            if uncal_rampmodel.meta.subarray.name == 'SUBSTRIP96':
+                noisyrows = [96 - actualint, 96 - actualint + 1]
+            if uncal_rampmodel.meta.subarray.name == 'SUBSTRIP256':
+                noisyrows = [2048 - actualint, 2048 - actualint + 1]
+            sub[i, g, noisyrows[0]:noisyrows[1]+1,:] = np.nan
             # Make sure to not subtract an overall bias
-            sub[i,g,:,:] = sub[i,g, :, :] - np.nanmedian(sub[i,g,:,:])
+            # TODO: Is it legit to subtract the median??? Don't think so.
+            #sub[i,g,:,:] = sub[i,g, :, :] - np.nanmedian(sub[i,g,:,:])
         #if save_results == True:
         #    hdu = fits.PrimaryHDU(sub)
         #    hdu.writeto(output_supp+'/sub.fits', overwrite=True)
@@ -134,6 +177,8 @@ def applycorrection(uncal_rampmodel, output_dir=None, save_results=False, outlie
         hdu.writeto(output_supp+'/noisemap.fits', overwrite=True)
         hdu = fits.PrimaryHDU(rampmodel_corr.data)
         hdu.writeto(output_supp+'/corrected.fits', overwrite=True)
+        hdu = fits.PrimaryHDU(outliers)
+        hdu.writeto(output_supp+'/outliers.fits', overwrite=True)
 
     if save_results == True:
         print('Custom 1/f output name: {:}'.format(output_dir+'/'+basename+'_custom1overf.fits'))

@@ -18,6 +18,8 @@ import SOSS.dms.soss_oneoverf as soss_oneoverf
 
 import SOSS.dms.soss_outliers as soss_outliers
 
+from SOSS.dms import oneoverf_step
+
 from SOSS.dms import soss_background
 
 import sys
@@ -89,7 +91,12 @@ def run_stage1(exposurename, outlier_map=None):
     # Custom 1/f correction
     result = soss_oneoverf.applycorrection(result, output_dir=outdir, save_results=True, outlier_map=outlier_map)
 
-    result = calwebb_detector1.superbias_step.SuperBiasStep.call(result, output_dir=outdir, save_results=False)#,
+
+    # Step 1/f de Thomas - pas fonctionnel
+    #result = OneOverFStep.call(result, output_dir=outdir, save_results=True)
+    #sys.exit()
+
+    result = calwebb_detector1.superbias_step.SuperBiasStep.call(result, output_dir=outdir, save_results=True)#,
                                                                  #override_superbias=CALIBRATION_DIR+SUPERBIAS)
 
     # Remove the DMS pipeline reference pixel correction
@@ -99,12 +106,12 @@ def run_stage1(exposurename, outlier_map=None):
     # to test jump detection, save = True
     result = calwebb_detector1.linearity_step.LinearityStep.call(result, output_dir=outdir, save_results=True)
 
-    #result = calwebb_detector1.dark_current_step.DarkCurrentStep.call(result, output_dir=outdir, save_results=True)#,
+    result = calwebb_detector1.dark_current_step.DarkCurrentStep.call(result, output_dir=outdir, save_results=True)#,
                                                                       #override_dark=CALIBRATION_DIR+DARK)
 
     result = calwebb_detector1.jump_step.JumpStep.call(result, output_dir=outdir, save_results=False,
                                                        rejection_threshold=6)
-    sys.exit()
+    #sys.exit()
 
     stackresult, result = calwebb_detector1.ramp_fit_step.RampFitStep.call(result, output_dir=outdir, save_results=False)
 
@@ -240,6 +247,7 @@ if __name__ == "__main__":
             contmask = '/Users/albert/NIRISS/Commissioning/analysis/SOSSwavecal/mask_contamination.fits'
         elif hostname == 'genesis':
             dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/SOSSwavecal/'
+            contmask = None
         else:
             sys.exit()
         datalist = ['jw01092010001_03101_00001_nis'] # SS256 CLEAR 20 ints
@@ -252,6 +260,7 @@ if __name__ == "__main__":
             contmask = None
         elif hostname == 'genesis':
             dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/SOSSfluxcal/'
+            contmask = None
         else:
             sys.exit()
 
@@ -262,6 +271,11 @@ if __name__ == "__main__":
             'jw01091002001_03101_00001-seg004_nis',
             'jw01091002001_03101_00001-seg005_nis'
         ]
+        datalist = [
+            'jw01091002001_03101_00001-seg001_nis'
+        ]
+        dataset_string = 'jw01091002001_03101_00001'
+
 
     # HATP14b
     if datasetname == 'HATP14b':
@@ -328,8 +342,8 @@ if __name__ == "__main__":
         custom_or_not = '_customrateints' #'_rateints'
         #run_stage1(dir+dataset+'_uncal.fits', outlier_map=dir+dataset+'_outliers.fits')
         #run_stage2(dir+dataset+custom_or_not+'.fits', contamination_mask=contmask, use_atoca=False)
-        #run_stage1(dir+dataset+'_uncal.fits', outlier_map=dir+dataset+'_outliers.fits')
-        #run_stage2(dir+dataset+custom_or_not+'.fits', contamination_mask=contmask, run_outliers=False, use_atoca=use_atoca)
+        run_stage1(dir+dataset+'_uncal.fits', outlier_map=dir+dataset+'_outliers.fits')
+        run_stage2(dir+dataset+custom_or_not+'.fits', contamination_mask=contmask, run_outliers=True, use_atoca=use_atoca)
 
     # Post processing analysis
     for dataset in datalist:

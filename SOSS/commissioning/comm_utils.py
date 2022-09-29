@@ -1032,12 +1032,14 @@ def greyscale_rms(ts_greyscale, title=''):
     plt.legend()
     plt.xlabel('Column (pixels)')
     plt.ylabel('SNR')
-    plt.ylim((0, 750))
+    plt.ylim((0, 800))
     plt.title(title)
     plt.grid()
     plt.savefig(outdir+'/greyscale_rms.png')
     #plt.show()
     plt.close()
+
+
 
     for m in range(3):
         # White light
@@ -1560,6 +1562,26 @@ def test_back_scaling():
 
 
 if __name__ == "__main__":
+
+#    # Test 1/f step from Thomas
+#    from SOSS.dms import oneoverf_step
+#    outdir = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/'
+#    input_image = outdir+'jw01091002001_03101_00001-seg001_nis_customrateints_flatfieldstep.fits'
+
+    # Test outlier detection
+    import SOSS.dms.soss_outliers as soss_outliers
+    outdir = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/'
+    input_image = outdir+'jw01091002001_03101_00001-seg001_nis_customrateints_flatfieldstep.fits'
+    outmap = outdir+'outmap.fits'
+    result = datamodels.open(input_image)
+    result = soss_outliers.flag_outliers(result, window_size=(3, 11), n_sig=9,
+                                         verbose=True, outdir=outdir,
+                                         save_diagnostic=True)
+    result.close()
+    sys.exit()
+
+
+
     input_image = '/Users/albert/NIRISS/Commissioning/analysis/T1/backgroundsub_jw02589001001_04101_00001-seg001_nis_customrateints_flatfieldstep/background_mask.fits'
     #input_image = '/Users/albert/NIRISS/Commissioning/analysis/T1_2/backgroundsub_jw02589002001_04101_00001-seg001_nis_customrateints_flatfieldstep/background_mask.fits'
     outdir = os.path.dirname(input_image)
