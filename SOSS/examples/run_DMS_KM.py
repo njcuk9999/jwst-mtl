@@ -8,6 +8,7 @@ Created on Wed Jul 20 11:12 2022
 Script to run JWST DMS with custom reduction steps.
 """
 import numpy as np
+import sys
 
 from supreme_spoon import stage1, stage2, stage3
 from supreme_spoon import utils
@@ -19,7 +20,7 @@ root_dir = '/home/kmorel/ongenesis/jwst-user-soss/master/WASP_96/'
 # Input data file directory
 input_dir = root_dir + 'WASP_96_data/'
 # Input file tag
-input_filetag = 'uncal'                                     #???
+input_filetag = 'uncal'
 
 # ===== Stage 1 Input Files & Parameters =====
 # For 1/f correction; outlier pixel maps (optional).
@@ -30,7 +31,7 @@ trace_mask = None
 smoothed_wlc = None
 # Background model. Using STScI background model from here:
 # https://jwst-docs.stsci.edu/jwst-calibration-pipeline-caveats/jwst-time-series-observations-pipeline-caveats/niriss-time-series-observation-pipeline-caveats#NIRISSTimeSeriesObservationPipelineCaveats-SOSSskybackground
-background_file = root_dir + 'model_background256.npy'                                     # WHERE???
+background_file = root_dir + 'model_background256.npy'
 
 # ===== Stage 2 Input Parameters =====
 # Timescale on which to smooth lightcurve estimate  (optional).
@@ -54,7 +55,7 @@ soss_width = 25
 # Name tag for output file directory.
 output_tag = ''
 # Pipeline stages to run.
-run_stages = [1, 2, 3]
+run_stages = [1]
 # Type of exposure; either CLEAR or F277W.
 exposure_type = 'CLEAR'
 # Extraction method, box or atoca.
@@ -82,6 +83,7 @@ input_files = utils.unpack_input_directory(input_dir, filetag=input_filetag,
 print('\nIdentified {0} {1} exposure segments'.format(len(input_files), exposure_type))
 for file in input_files:
     print(' ' + file)
+
 
 # === Run Stage 1 ===
 if 1 in run_stages:
