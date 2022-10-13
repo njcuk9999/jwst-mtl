@@ -12,6 +12,7 @@ shifted by 1000 pixels down (to observe the background).
 
 The third iteration will be based on the flux calibration or the transit observation, whichever comes first.
 '''
+import os
 
 import numpy as np
 
@@ -23,7 +24,16 @@ from SOSS.dms.soss_ref_files import init_spec_trace, calc_2d_wave_map, init_wave
 
 import matplotlib.pyplot as plt
 
+import SOSS.dms.soss_oneoverf as soss_oneoverf
+
+from jwst import datamodels
+
+from jwst.pipeline import calwebb_detector1
+
+from scipy.optimize import curve_fit
+
 import sys
+
 
 def run_iteration1(dataset='nis18obs02', wavecaldataset=None, subarray='SUBSTRIP256'):
 
@@ -375,6 +385,263 @@ def extrapolate_to_wavegrid(w_grid, wavelength, quantity):
     return q_grid
 
 
+def linefitthruzero(x, slope):
+    # Curve fitting function passing thru zero
+    return slope * x
+
+
+def build_dark_ref_file():
+
+    # To replace the DMS ref files superbias and dark (to apply in a single step)
+    # Doing this because of 1/f residuals in the darks and superbias.
+    uncaldir = '/Users/albert/NIRISS/Commissioning/analysis/darks/'
+    uncal_list = [
+        'jw01081107001_02101_00001_nis_uncal.fits',
+        'jw01081108001_02101_00001_nis_uncal.fits',
+        'jw01081109001_02101_00001_nis_uncal.fits',
+        'jw01081110001_02101_00001_nis_uncal.fits',
+        'jw01081111001_02101_00001_nis_uncal.fits',
+        'jw01081112001_02101_00001_nis_uncal.fits',
+        'jw01081113001_02101_00001_nis_uncal.fits',
+        'jw01081114001_02101_00001_nis_uncal.fits',
+        'jw01081115001_02101_00001_nis_uncal.fits',
+        'jw01081116001_02101_00001_nis_uncal.fits'
+    ]
+    red_list = [
+        'jw01081107001_02101_00001_nis_saturationstep.fits',
+        'jw01081108001_02101_00001_nis_saturationstep.fits',
+        'jw01081109001_02101_00001_nis_saturationstep.fits',
+        'jw01081110001_02101_00001_nis_saturationstep.fits',
+        'jw01081111001_02101_00001_nis_saturationstep.fits',
+        'jw01081112001_02101_00001_nis_saturationstep.fits',
+        'jw01081113001_02101_00001_nis_saturationstep.fits',
+        'jw01081114001_02101_00001_nis_saturationstep.fits',
+        'jw01081115001_02101_00001_nis_saturationstep.fits',
+        'jw01081116001_02101_00001_nis_saturationstep.fits'
+    ]
+
+    # Process the files thru first 3 steps of the pipeline
+    if False:
+        for i in range(np.size(uncal_list)):
+        #for i in range(1):
+            exposurename = uncaldir+uncal_list[i]
+            result = calwebb_detector1.group_scale_step.GroupScaleStep.call(exposurename, output_dir=uncaldir, save_results=False)
+            result = calwebb_detector1.dq_init_step.DQInitStep.call(result, output_dir=uncaldir, save_results=False)
+            result = calwebb_detector1.saturation_step.SaturationStep.call(result, output_dir=uncaldir, save_results=True)
+            #result = calwebb_detector1.superbias_step.SuperBiasStep.call(result, output_dir=uncaldir, save_results=True)
+            #result = calwebb_detector1.refpix_step.RefPixStep.call(result, output_dir=uncaldir, save_results=True)
+            #result = calwebb_detector1.linearity_step.LinearityStep.call(result, output_dir=uncaldir, save_results=True)
+            #result = calwebb_detector1.dark_current_step.DarkCurrentStep.call(result, output_dir=uncaldir, save_results=True)
+            #result = calwebb_detector1.jump_step.JumpStep.call(result, output_dir=uncaldir, save_results=True)
+            #result = calwebb_detector1.ramp_fit_step.RampFitStep.call(result, output_dir=uncaldir, save_results=True)
+
+    if False:
+        rawcube3x50 = np.zeros((15,50,256,2048))
+        rawcube20x3 = np.zeros((100,3,256,2048))
+
+        for i in range(np.size(uncal_list)):
+            dark_i = datamodels.open(uncaldir+red_list[i])
+            if i == 0:
+                rawcube20x3 = dark_i.copy()
+                rawcube20x3.meta.exposure.ngroups = 3 # unchanged
+                rawcube20x3.meta.exposure.nints = 100
+                rawcube20x3.meta.exposure.integration_start = 1
+                rawcube20x3.meta.exposure.integration_end = 100
+                rawcube20x3.meta.exposure.filename = 'darks.fits'
+                rawcube20x3.meta.subarray.name = 'SUBSTRIP256'
+                rawcube20x3.data = np.zeros((100, 3, 256, 2048))
+                rawcube20x3.groupdq = np.zeros((100, 3, 256, 2048))
+            if i == 5:
+                rawcube3x50 = dark_i.copy()
+                rawcube3x50.meta.exposure.ngroups = 50 # unchanged
+                rawcube3x50.meta.exposure.nints = 15
+                rawcube3x50.meta.exposure.integration_start = 1
+                rawcube3x50.meta.exposure.integration_end = 15
+                rawcube3x50.meta.exposure.filename = 'darks.fits'
+                rawcube3x50.meta.subarray.name = 'SUBSTRIP256'
+                rawcube3x50.data = np.zeros((15, 50, 256, 2048))
+                rawcube3x50.groupdq = np.zeros((15, 50, 256, 2048))
+
+            if i < 5:
+                rawcube20x3.data[i*20:(i+1)*20,:,:,:] = np.copy(dark_i.data)
+                rawcube20x3.groupdq[i*20:(i+1)*20,:,:,:] = np.copy(dark_i.groupdq)
+            if i >=5:
+                j = i-5
+                rawcube3x50.data[j * 3:(j + 1) * 3, :, :, :] = np.copy(dark_i.data)
+                rawcube3x50.groupdq[j * 3:(j + 1) * 3, :, :, :] = np.copy(dark_i.groupdq)
+
+        # Save jwst models
+        rawcube20x3.save(uncaldir+'rawcube100x3_uncal.fits')
+        rawcube3x50.save(uncaldir+'rawcube15x50_uncal.fits')
+
+    if True:
+        iter=2
+        if iter == 1:
+
+            if False:
+                # Correct the darks for the 1/f noise and save
+                model20x3 = soss_oneoverf.applycorrection(rawcube20x3, output_dir = uncaldir, save_results = True)
+                model3x50 = soss_oneoverf.applycorrection(rawcube3x50, output_dir = uncaldir, save_results = True)
+
+                hdu = fits.PrimaryHDU(model20x3.data)
+                hdu.writeto(uncaldir+'dark100x3_oofcorr_pass1.fits', overwrite=True)
+                hdu = fits.PrimaryHDU(model3x50.data)
+                hdu.writeto(uncaldir+'dark15x50_oofcorr_pass1.fits', overwrite=True)
+
+                # Correct the darks for the 1/f noise and save - second pass
+                model20x3 = soss_oneoverf.applycorrection(model20x3, output_dir = uncaldir, save_results = True)
+                model3x50 = soss_oneoverf.applycorrection(model3x50, output_dir = uncaldir, save_results = False)
+
+                hdu = fits.PrimaryHDU(model20x3.data)
+                hdu.writeto(uncaldir+'dark100x3_oofcorr_pass2.fits', overwrite=True)
+                hdu = fits.PrimaryHDU(model3x50.data)
+                hdu.writeto(uncaldir+'dark15x50_oofcorr_pass2.fits', overwrite=True)
+
+
+
+            if False:
+                # Make a plot of the median dark signal versus frame number
+                dark15x50 = fits.getdata(uncaldir + 'dark15x50_oofcorr_pass2.fits')
+                stack15x50 = np.median(dark15x50, axis=0)
+                cds = stack15x50 - stack15x50[0, :, :]
+                lvl = np.nanmedian(cds, axis=(1, 2))
+                print(lvl)
+                print(np.shape(lvl))
+
+                par = np.polyfit(np.arange(50), lvl, 1)
+                dark_slope = np.copy(par[0])
+                print('dark slope = ', dark_slope)
+                yfit = np.polyval(par, np.arange(50))
+
+                # Curve fitting
+                xfit = np.arange(50)
+                params = curve_fit(linefitthruzero, xfit, lvl)
+                [slope] = params[0]
+                yfit = slope * xfit
+                print('slope = ', slope)
+
+                plt.scatter(np.arange(50), lvl, marker='.', color='black')
+                plt.plot(xfit, yfit, color='red', label='Slope = {:5f} ADU/Frame'.format(slope))
+                plt.xlabel('CDS (Read i - Read 1)')
+                plt.ylabel('Median Count [ADU]')
+                plt.legend()
+                plt.savefig(uncaldir + 'Dark_counts_with_frame.png')
+
+            if False:
+                # Average the 300 integrations (applying a blind offset between different reads of 0.92 ADU)
+                dark100x3 = fits.getdata(uncaldir + 'dark100x3_oofcorr_pass2.fits')
+                deepdark = np.zeros((300, 256, 2048))
+                deepdark[0:100, :, :] = np.copy(dark100x3[:, 0, :, :])
+                deepdark[100:200, :, :] = np.copy(dark100x3[:, 1, :, :]) - 0.92
+                deepdark[200:300, :, :] = np.copy(dark100x3[:, 2, :, :]) - (2 * 0.92)
+                deepstack = np.nanmedian(deepdark, axis=0)
+                hdu = fits.PrimaryHDU(deepstack)
+                hdu.writeto(uncaldir + 'deepdark300.fits', overwrite=True)
+
+
+        if iter == 2:
+            # Stack to generate read1 stack
+            #    read1_stack = median(100 read#1 + 100 read#2 - 1*slope + 100 read#3 - 2*slope)
+            # Create the diff image between current read and deep read 1 stack
+            #    diff_i = read2_i - read1_stack - 1*slope
+            # Correct for 1/f
+            #    diff_i_oofcorr = oof(diff_i)
+            # Recover the read2_i
+            #    read2_i_clean = diff_oofcorr + 1*slope + read1_stack
+
+            read1_stack = fits.getdata(uncaldir+'deepdark300.fits')
+            raw100x3 = datamodels.open(uncaldir+'rawcube100x3_uncal.fits')
+            raw15x50 = datamodels.open(uncaldir+'rawcube15x50_uncal.fits')
+
+            tmp_3reads = raw100x3.copy()
+            tmp_50reads = raw15x50.copy()
+            dark_slope = 0.91149684
+            # Remove dark signal
+            for i in range(3):
+                tmp_3reads.data[:,i,:,:] = tmp_3reads.data[:,i,:,:] - dark_slope * i
+            for i in range(50):
+                tmp_50reads.data[:,i,:,:] = tmp_50reads.data[:,i,:,:] - dark_slope * i
+
+            # oof correction, forcing the read 1 stack as the deepstack
+            tmp_3reads, _, _, outliers_3reads = soss_oneoverf.applycorrection(tmp_3reads, output_dir=uncaldir, save_results=False,
+                                          deepstack_custom=read1_stack, return_intermediates=True)
+            tmp_50reads, _, _, outliers_50reads = soss_oneoverf.applycorrection(tmp_50reads, output_dir=uncaldir, save_results=False,
+                                          deepstack_custom=read1_stack, return_intermediates=True)
+            # Add back dark signal
+            for i in range(3):
+                tmp_3reads.data[:,i,:,:] = tmp_3reads.data[:,i,:,:] + dark_slope*i
+            for i in range(50):
+                tmp_50reads.data[:,i,:,:] = tmp_50reads.data[:,i,:,:] + dark_slope*i
+
+            #hdu = fits.PrimaryHDU(tmp_50reads.data)
+            #hdu.writeto(uncaldir+'test.fits', overwrite=True)
+
+            # Average all integrations for each read starting with the 50-read cube
+            dark_upto50 = np.nanmedian(tmp_50reads.data * outliers_50reads, axis=0)
+            # For the first 3 reads, replace by the higher SNR 3-read cube
+            dark_upto50[:3,:,:] = np.nanmedian(tmp_3reads.data * outliers_3reads, axis=0)
+
+            ref = datamodels.open('/Users/albert/NIRISS/CRDS_CACHE/references/jwst/niriss/jwst_niriss_dark_0171.fits')
+            ref.data = np.copy(dark_upto50)
+            ref.save(uncaldir+'jwst_niriss_dark_loiccustom.fits')
+
+            #hdu = fits.PrimaryHDU(dark_upto50)
+            #hdu.writeto(uncaldir+'dark50reads_final.fits', overwrite=True)
+            cds = dark_upto50 - dark_upto50[0]
+            hdu = fits.PrimaryHDU(cds)
+            hdu.writeto(uncaldir+'dark50reads_final_cds.fits', overwrite=True)
+
+
+
+
+
+    if False:
+        # Look at the 1/f rms values, as a function of deepstack nbr of integrations
+        #dark100x3 = fits.getdata(uncaldir + 'dark100x3_oofcorr_pass2.fits')
+        dark100x3 = fits.getdata(uncaldir + 'rawcube20x3.fits')
+        plt.figure()
+        for i in range(10):
+            # Analyze read 1 only
+            stack = np.median(dark100x3[:(i+1)*10, 0, :, :], axis=0)
+            diff = dark100x3[:, 0, :, :] - stack
+            #print(np.shape(diff))
+            oof = np.nanmedian(diff, axis=1)
+            #print(np.shape(oof))
+            print(np.nanstd(oof, axis=1))
+            plt.scatter(np.ones(100)*(i+1)*10, np.nanstd(oof, axis=1), marker='.', color='black')
+        plt.xlabel('Number of Integrations Used in Deep Stack of Reads')
+        plt.ylabel('1/f rms across CDS for 100 integrations')
+        plt.show()
+
+
+    if False:
+        # Make a second pass thru 1/f correction with the corrected cube as input
+        correctedcube = datamodels.open('/Users/albert/NIRISS/Commissioning/analysis/darks/jw01081112001_02101_00001_nis_custom1overf.fits')
+        model = soss_oneoverf.applycorrection(correctedcube, output_dir = uncaldir, save_results = True)
+
+        # stack the data
+        outliers = fits.getdata('/Users/albert/NIRISS/Commissioning/analysis/darks/supplemental_jw01081112001_02101_00001_nis/outliers.fits')
+        dark = np.nanmedian(model.data * outliers, axis=0)
+        hdu = fits.PrimaryHDU(dark)
+        hdu.writeto('/Users/albert/NIRISS/Commissioning/analysis/darks/dark_loic_pass2.fits', overwrite=True)
+
+    if False:
+        # Check that all went as expected (take CDS)
+        dark = fits.getdata('/Users/albert/NIRISS/Commissioning/analysis/darks/dark_loic_pass2.fits')
+        cds = dark[1:50,:,:] - dark[0:49,:,:]
+        hdu = fits.PrimaryHDU(cds)
+        hdu.writeto('/Users/albert/NIRISS/Commissioning/analysis/darks/dark_loic_cds_pass2.fits', overwrite=True)
+
+        # For reference, produce the dark CDS diagnostic with original uncorrected data
+        rawdata = fits.getdata('/Users/albert/NIRISS/Commissioning/analysis/darks/rawcube.fits')
+        outliers = fits.getdata('/Users/albert/NIRISS/Commissioning/analysis/darks/supplemental_jw01081112001_02101_00001_nis/outliers.fits')
+        dark = np.nanmedian(rawdata * outliers, axis=0)
+        cds = dark[1:50, :, :] - dark[0:49, :, :]
+        hdu = fits.PrimaryHDU(cds)
+        hdu.writeto('/Users/albert/NIRISS/Commissioning/analysis/darks/dark_loic_cds_pass0.fits', overwrite=True)
+
+    return
+
 
 if __name__ == "__main__":
     #refdir = '/Users/albert/NIRISS/CRDS_CACHE/references/jwst/niriss/'
@@ -383,6 +650,9 @@ if __name__ == "__main__":
     #check_profile_map(refdir+'jwst_niriss_specprofile_0017.fits')
 
     if True:
+        a = build_dark_ref_file()
+
+    if False:
         dataset, dataset_dirname = '02589_obs001', 'T1'
         dataset, dataset_dirname = '02589_obs002', 'T1_2'
         subarray_list = ['FULL', 'SUBSTRIP256', 'SUBSTRIP96']

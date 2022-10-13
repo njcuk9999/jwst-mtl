@@ -9,24 +9,26 @@ def mediandev(x, axis=None):
 
     return np.nanmedian(np.abs(x - med), axis=axis) / 0.67449
 
-def stack(cube): #, outlier_map=None):
+def stack(cube, deepstack_custom=None, outliers_map=None):
 
-    #if outlier_map is None:
-    deepstack = np.nanmedian(cube, axis=0)
-    #rms = np.nanstd(cube, axis=0)
-    rms = mediandev(cube, axis=0)
-    #else:
-    #    deepstack = np.nanmedian(cube * outlier_map, axis=0)
-    #    rms = np.nanstd(cube * outlier_map, axis=0)
+    if deepstack_custom is None:
+        if outliers_map is None:
+            deepstack = np.nanmedian(cube, axis=0)
+        else:
+            deepstack = np.nanmedian(cube * outliers_map, axis=0)
+    else:
+        deepstack = np.copy(deepstack_custom)
+
+    if outliers_map is None:
+        rms = mediandev(cube - deepstack, axis=0)
+    else:
+        rms = mediandev((cube - deepstack) * outliers_map, axis=0)
 
     return deepstack, rms
 
-def makemask(stack, rms):
-    # Exact strategy TBD
 
-    return
-
-def applycorrection(uncal_rampmodel, output_dir=None, save_results=False, outlier_map=None):
+def applycorrection(uncal_rampmodel, output_dir=None, save_results=False,
+                    deepstack_custom=None, return_intermediates=None):
 
     '''
     uncal_rampmodel is a 4D ramp (not a rate)
@@ -56,7 +58,7 @@ def applycorrection(uncal_rampmodel, output_dir=None, save_results=False, outlie
     dimx = np.shape(uncal_rampmodel.data)[-1]
 
     # Generate the deep stack and rms of it. Both 3D (ngroup, dimy, dimx)
-    deepstack, rms = stack(uncal_rampmodel.data)
+    deepstack, rms = stack(uncal_rampmodel.data, deepstack_custom=deepstack_custom)
 
     # Weighted average to determine the 1/F DC level
     w = 1 / rms ** 2  # weight
@@ -186,7 +188,11 @@ def applycorrection(uncal_rampmodel, output_dir=None, save_results=False, outlie
 
     rampmodel_corr.meta.filename = uncal_rampmodel.meta.filename
 
-    return rampmodel_corr
+    # Allow returning intermediate results
+    if return_intermediates is None:
+        return rampmodel_corr
+    else:
+        return rampmodel_corr, deepstack, rms, outliers
 
 
 if __name__ == "__main__":

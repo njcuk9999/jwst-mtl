@@ -471,6 +471,17 @@ def remove_nans(datamodel):
     return modelout
 
 
+def box_extraction(datamodel, ref_spectrace, width=30):
+    '''
+    Box extraction to bypass ATOCA's
+    '''
+
+
+
+
+    return
+
+
 
 def background_subtraction(datamodel, aphalfwidth=[40,30,30], outdir=None, verbose=False,
                            contamination_mask=None, trace_table_ref=None):

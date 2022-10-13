@@ -18,6 +18,8 @@ import SOSS.dms.soss_oneoverf as soss_oneoverf
 
 import SOSS.dms.soss_outliers as soss_outliers
 
+import SOSS.dms.soss_boxextract as soss_boxextract
+
 from SOSS.dms import oneoverf_step
 
 from SOSS.dms import soss_background
@@ -89,15 +91,19 @@ def run_stage1(exposurename, outlier_map=None):
     result = calwebb_detector1.saturation_step.SaturationStep.call(result, output_dir=outdir, save_results=False)
 
     # Custom 1/f correction
-    result = soss_oneoverf.applycorrection(result, output_dir=outdir, save_results=True, outlier_map=outlier_map)
+    result = soss_oneoverf.applycorrection(result, output_dir=outdir, save_results=True)
 
 
     # Step 1/f de Thomas - pas fonctionnel
     #result = OneOverFStep.call(result, output_dir=outdir, save_results=True)
     #sys.exit()
 
-    result = calwebb_detector1.superbias_step.SuperBiasStep.call(result, output_dir=outdir, save_results=True)#,
+    #result = calwebb_detector1.superbias_step.SuperBiasStep.call(result, output_dir=outdir, save_results=True)#,
                                                                  #override_superbias=CALIBRATION_DIR+SUPERBIAS)
+
+    result = calwebb_detector1.dark_current_step.DarkCurrentStep.call(result, output_dir=outdir, save_results=True,
+                                                                      override_dark=CALIBRATION_DIR+'jwst_niriss_dark_loiccustom.fits')
+
 
     # Remove the DMS pipeline reference pixel correction
     #result = calwebb_detector1.refpix_step.RefPixStep.call(result, output_dir=outdir, save_results=True)
@@ -106,8 +112,6 @@ def run_stage1(exposurename, outlier_map=None):
     # to test jump detection, save = True
     result = calwebb_detector1.linearity_step.LinearityStep.call(result, output_dir=outdir, save_results=True)
 
-    result = calwebb_detector1.dark_current_step.DarkCurrentStep.call(result, output_dir=outdir, save_results=True)#,
-                                                                      #override_dark=CALIBRATION_DIR+DARK)
 
     result = calwebb_detector1.jump_step.JumpStep.call(result, output_dir=outdir, save_results=False,
                                                        rejection_threshold=6)
@@ -202,19 +206,25 @@ def run_stage2(rateints, contamination_mask=None, use_atoca=False, run_outliers=
                                                                   override_wavemap=ATOCAREF_DIR+WAVEMAP,
                                                                   override_specprofile=ATOCAREF_DIR+SPECPROFILE)
     else:
-        # soss_atoca=False --> box extraction only
-        # carefull to not turn it on. Woul dif soss_bad_pix='model' or soss_modelname=set_to_something
-        result = calwebb_spec2.extract_1d_step.Extract1dStep.call(result, output_dir=outdir, save_results=True,
-                                                                  soss_transform=[0, 0, 0],
-                                                                  soss_atoca=False,
-                                                                  subtract_background=False,
-                                                                  soss_bad_pix='masking',
-                                                                  soss_width=25,
-                                                                  # soss_tikfac=3.38e-15,
-                                                                  soss_modelname=None,
-                                                                  override_spectrace=ATOCAREF_DIR + SPECTRACE,
-                                                                  override_wavemap=ATOCAREF_DIR + WAVEMAP,
-                                                                  override_specprofile=ATOCAREF_DIR + SPECPROFILE)
+        if custom_extract:
+            # Run a modified atoca box extract which has no decontamination and no pixel interpolation
+            wavelengths, fluxes, fluxerrs, npixels, box_weights = soss_boxextract.extract_image(
+                result['SCI'], result['ERR'], scimask, _, ref_files, [0,0,0],
+                result.meta.subarray.name, width=40., bad_pix='masking')
+        else:
+            # soss_atoca=False --> box extraction only
+            # carefull to not turn it on. Would if soss_bad_pix='model' or soss_modelname=set_to_something
+            result = calwebb_spec2.extract_1d_step.Extract1dStep.call(result, output_dir=outdir, save_results=True,
+                                                                      soss_transform=[0, 0, 0],
+                                                                      soss_atoca=False,
+                                                                      subtract_background=False,
+                                                                      soss_bad_pix='masking',
+                                                                      soss_width=25,
+                                                                      # soss_tikfac=3.38e-15,
+                                                                      soss_modelname=None,
+                                                                      override_spectrace=ATOCAREF_DIR + SPECTRACE,
+                                                                      override_wavemap=ATOCAREF_DIR + WAVEMAP,
+                                                                      override_specprofile=ATOCAREF_DIR + SPECPROFILE)
 
 
     # Conversion to SI units
@@ -342,7 +352,7 @@ if __name__ == "__main__":
         custom_or_not = '_customrateints' #'_rateints'
         #run_stage1(dir+dataset+'_uncal.fits', outlier_map=dir+dataset+'_outliers.fits')
         #run_stage2(dir+dataset+custom_or_not+'.fits', contamination_mask=contmask, use_atoca=False)
-        run_stage1(dir+dataset+'_uncal.fits', outlier_map=dir+dataset+'_outliers.fits')
+        run_stage1(dir+dataset+'_uncal.fits')
         run_stage2(dir+dataset+custom_or_not+'.fits', contamination_mask=contmask, run_outliers=True, use_atoca=use_atoca)
 
     # Post processing analysis
