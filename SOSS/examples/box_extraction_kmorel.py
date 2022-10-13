@@ -201,6 +201,7 @@ for i in range(len(dms_files_name)):
     # Load simulation
     hdu_dms, data_dms = rateints_dms_simulation(WORKING_DIR + dms_files_name[i])
     hdu_dms_name = 'dms_calibrated'
+    print(np.shape(data_dms))
 
     """
     # Remove bad wavelengths

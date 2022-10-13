@@ -66,9 +66,9 @@ use_applesoss = True
 # Save results of each intermediate step to file.
 save_results = True
 # Force redo of steps which have already been completed.
-force_redo = False
+force_redo = True
 # Integrations of ingress and egress.
-baseline_ints = [50, -50]
+baseline_ints = [107, -70]
 # Type of occultation: 'transit' or 'eclipse'.
 occultation_type = 'transit'
 # ======================================================
