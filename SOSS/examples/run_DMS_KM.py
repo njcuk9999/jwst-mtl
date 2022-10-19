@@ -24,11 +24,14 @@ input_filetag = 'uncal'
 
 # ===== Stage 1 Input Files & Parameters =====
 # For 1/f correction; outlier pixel maps (optional).
-outlier_maps = None
+maps_dir = root_dir + 'pipeline_outputs_directory/Stage1/'
+outlier_maps = [maps_dir + 'jw02734002001_04101_00001-seg001_nis_dqpixelflags.fits', maps_dir + 'jw02734002001_04101_00001-seg002_nis_dqpixelflags.fits',
+                maps_dir + 'jw02734002001_04101_00001-seg003_nis_dqpixelflags.fits']
 # For 1/f correction; trace mask (optional).
-trace_mask = None
+trace_wlc_dir = root_dir + 'pipeline_outputs_directory/Stage2/'
+trace_mask = trace_wlc_dir + 'jw02734002001_04101_00001_nis_tracemask_width30.fits'
 # For 1/f correction; estimate of white light curve (optional).
-smoothed_wlc = None
+smoothed_wlc = trace_wlc_dir + 'jw02734002001_04101_00001_nis_lcestimate.npy'
 # Background model. Using STScI background model from here:
 # https://jwst-docs.stsci.edu/jwst-calibration-pipeline-caveats/jwst-time-series-observations-pipeline-caveats/niriss-time-series-observation-pipeline-caveats#NIRISSTimeSeriesObservationPipelineCaveats-SOSSskybackground
 background_file = root_dir + 'model_background256.npy'
@@ -55,7 +58,7 @@ soss_width = 25
 # Name tag for output file directory.
 output_tag = ''
 # Pipeline stages to run.
-run_stages = [1]
+run_stages = [1,2]
 # Type of exposure; either CLEAR or F277W.
 exposure_type = 'CLEAR'
 # Extraction method, box or atoca.
