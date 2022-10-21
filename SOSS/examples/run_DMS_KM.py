@@ -25,7 +25,8 @@ input_filetag = 'uncal'
 # ===== Stage 1 Input Files & Parameters =====
 # For 1/f correction; outlier pixel maps (optional).
 maps_dir = root_dir + 'pipeline_outputs_directory/Stage1/'
-outlier_maps = [maps_dir + 'jw02734002001_04101_00001-seg001_nis_dqpixelflags.fits', maps_dir + 'jw02734002001_04101_00001-seg002_nis_dqpixelflags.fits',
+outlier_maps = [maps_dir + 'jw02734002001_04101_00001-seg001_nis_dqpixelflags.fits',
+                maps_dir + 'jw02734002001_04101_00001-seg002_nis_dqpixelflags.fits',
                 maps_dir + 'jw02734002001_04101_00001-seg003_nis_dqpixelflags.fits']
 # For 1/f correction; trace mask (optional).
 trace_wlc_dir = root_dir + 'pipeline_outputs_directory/Stage2/'
@@ -58,7 +59,7 @@ soss_width = 25
 # Name tag for output file directory.
 output_tag = ''
 # Pipeline stages to run.
-run_stages = [1,2]
+run_stages = [1,2,3]
 # Type of exposure; either CLEAR or F277W.
 exposure_type = 'CLEAR'
 # Extraction method, box or atoca.
@@ -69,7 +70,7 @@ use_applesoss = True
 # Save results of each intermediate step to file.
 save_results = True
 # Force redo of steps which have already been completed.
-force_redo = True
+force_redo = False
 # Integrations of ingress and egress.
 baseline_ints = [107, -70]
 # Type of occultation: 'transit' or 'eclipse'.
