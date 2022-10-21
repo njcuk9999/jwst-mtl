@@ -16,7 +16,6 @@ import warnings
 from jwst import datamodels
 from jwst.pipeline import calwebb_detector1
 
-
 from supreme_spoon import utils, plotting
 
 
