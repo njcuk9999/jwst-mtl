@@ -20,8 +20,8 @@ with fits.open(spec_filename) as hdulist:
     # Convert data from fits files to float (fits precision is 1e-8)
     spectra = spectra.astype('float64', copy=False)
 
+# White light curve
 wlc = np.sum(spectra, axis=1)
-
 # Normalization
 wlc_norm = utils.normalization(wlc, baseline_ints, 'transit')
 

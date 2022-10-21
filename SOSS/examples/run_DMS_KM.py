@@ -10,7 +10,9 @@ Script to run JWST DMS with custom reduction steps.
 import numpy as np
 import sys
 
-from supreme_spoon import stage1, stage2, stage3
+import stage1_KM as stage1
+import stage2_KM as stage2
+import stage3_KM as stage3
 from supreme_spoon import utils
 
 # ================== User Input ========================
