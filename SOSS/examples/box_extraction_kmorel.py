@@ -116,7 +116,7 @@ def normalization(f_lambda, t1, t4):
     First dimension is time, second dimension is wavelengths.
     """
     out_transit = np.concatenate((f_lambda[:t1+1], f_lambda[t4:]))
-    out_transit_mean = np.mean(out_transit, axis=0)
+    out_transit_mean = np.nanmedian(out_transit, axis=0)
     return (f_lambda / out_transit_mean)
 
 def relative_difference(data, ref_data):
