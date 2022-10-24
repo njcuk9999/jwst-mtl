@@ -1,0 +1,79 @@
+import matplotlib.pyplot as plt
+import numpy as np
+from astropy.io import fits
+import sys
+import os
+
+import utils_KM as utils
+
+plt.rc('figure', figsize=(11,8))
+
+# Extracted spectra directory
+spec_dir = '/home/kmorel/ongenesis/jwst-user-soss/master/WASP_96/pipeline_outputs_directory/Stage3/'
+spec_filename = spec_dir + 'WASP-96_box_spectra_fullres.fits'
+
+# Integrations of ingress and egress.
+baseline_ints = [107, -70]
+# Integrations of in-transit
+transit_ints = [130, 187]
+
+occultation_type = 'transit'
+
+with fits.open(spec_filename) as hdulist:
+    # Order 1
+    print('Data = ', hdulist[3].header['EXTNAME'])
+    spec_ord1 = hdulist[3].data   # Extracted flux [time, wl]
+    err_ord1 = hdulist[4].data    # Error
+    # Convert data from fits files to float (fits precision is 1e-8)
+    spec_ord1 = spec_ord1.astype('float64', copy=False)
+    err_ord1 = err_ord1.astype('float64', copy=False)
+
+    print('Data = ', hdulist[1].header['EXTNAME'])
+    wl_low_ord1 = hdulist[1].data   # Order 1 wavelength bin lower limits
+    print('Data = ', hdulist[2].header['EXTNAME'])
+    wl_up_ord1 = hdulist[2].data  # Order 1 wavelength bin upper limits
+    # Convert data from fits files to float (fits precision is 1e-8)
+    wl_low_ord1 = wl_low_ord1.astype('float64', copy=False)
+    wl_up_ord1 = wl_up_ord1.astype('float64', copy=False)
+
+
+    # Order 2
+    print('Data = ', hdulist[7].header['EXTNAME'])
+    spec_ord2= hdulist[7].data   # Extracted flux [time, wl]
+    err_ord2 = hdulist[8].data    # Error
+    # Convert data from fits files to float (fits precision is 1e-8)
+    spec_ord2 = spec_ord2.astype('float64', copy=False)
+    err_ord2 = err_ord2.astype('float64', copy=False)
+
+#Normalization
+spec_ord1_norm = utils.normalization(spec_ord1, baseline_ints, occultation_type)
+
+plt.figure()
+plt.scatter(np.arange(len(spec_ord1_norm[:,1000])), spec_ord1_norm[:,1000], s=2)
+plt.savefig(spec_dir + 'spec_ord1_norm')
+
+# White light curve, order 1
+wlc = np.sum(spec_ord1, axis=1)
+err_wlc = np.sum(err_ord1, axis=1)
+# Normalization
+wlc_norm = utils.normalization(wlc, baseline_ints, 'transit')
+
+plt.figure()
+plt.errorbar(np.arange(len(wlc)), wlc, yerr=err_wlc)
+plt.savefig(spec_dir + 'wlc_norm_test')
+
+# Dispersion
+out_frames = utils.format_out_frames(baseline_ints, occultation_type)
+spec_ord1_out_frames = spec_ord1[out_frames]
+dispersion = np.std(spec_ord1_out_frames, axis=0)
+
+plt.figure()
+plt.scatter(np.arange(len(dispersion)), dispersion)
+plt.savefig(spec_dir + 'dispersion')
+
+# Transit curve
+transit_curve = utils.transit_depth(spec_ord1_norm, baseline_ints, transit_ints, occultation_type)
+
+plt.figure()
+plt.plot(np.arange(len(transit_curve)), transit_curve)
+plt.savefig(spec_dir + 'transit_curve')

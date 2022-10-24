@@ -21,7 +21,8 @@ import trace.tracepol as tp   #SOSS.
 WORKING_DIR = '/home/kmorel/ongenesis/jwst-user-soss/master/WASP_96/'
 # Simulations files names
 # simu_noiseless_filename = 'IDTSOSS_clear.fits'   # Noiseless
-dms_files_name = ['WASP_96_data/jw02734002001_04101_00001-seg001_nis_rateints.fits', 'WASP_96_data/jw02734002001_04101_00001-seg002_nis_rateints.fits',
+dms_files_name = ['WASP_96_data/jw02734002001_04101_00001-seg001_nis_rateints.fits',
+                  'WASP_96_data/jw02734002001_04101_00001-seg002_nis_rateints.fits',
                   'WASP_96_data/jw02734002001_04101_00001-seg003_nis_rateints.fits']   # After pipeline
 
 # Radius for box extraction

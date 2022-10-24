@@ -43,6 +43,42 @@ def format_out_frames(baseline_ints, occultation_type='transit'):
 
     return out_frames
 
+def format_in_frames(transit_ints, occultation_type='transit'):
+    """
+    Either in-transit integrations for transits or in-eclipse integrations
+    for eclipses.
+
+    Parameters
+    ----------
+    transit_ints : array-like[int]
+        Integration numbers t2 and t3.
+    occultation_type : str
+        Type of occultation, either 'transit' or 'eclipse'.
+
+    Returns
+    -------
+    in_frames : array-like[int]
+        Array of in-transit, or in-eclipse frames for transits and
+        eclipses respectively.
+
+    Raises
+    ------
+    ValueError
+        If an unknown occultation type is passed.
+    """
+
+    if occultation_type == 'transit':
+        # Format the in-transit integration numbers.
+        in_frames = np.arange(transit_ints[0], transit_ints[1])
+    elif occultation_type == 'eclipse':
+        msg = 'Not implemented yet for occulation type : {}'.format(occultation_type)
+        raise ValueError(msg)
+    else:
+        msg = 'Unknown Occultaton Type: {}'.format(occultation_type)
+        raise ValueError(msg)
+
+    return in_frames
+
 def normalization(lightcurve, baseline_ints, occultation_type='transit'):
     """Normalizes light curve with out of frames data.
 
@@ -63,8 +99,38 @@ def normalization(lightcurve, baseline_ints, occultation_type='transit'):
 
     # Normalizes light curve with median of out of frames data.
     out_frames = format_out_frames(baseline_ints, occultation_type)
-    lc_norm = lightcurve / np.median(lightcurve[out_frames])
+    lc_norm = lightcurve / np.nanmedian(lightcurve[out_frames], axis=0)
 
     return lc_norm
+
+def transit_depth(f_lambda, baseline_ints, transit_ints, occultation_type='transit'):
+    """
+    Parameters
+    ----------
+    f_lambda : array-like[float]
+        Flux array
+    baseline_ints : array-like[int]
+        Integration numbers of ingress and egress. (t1, t4)
+    transit_ints : array-like[int]
+        Integration numbers of complete transit (t2, t3)
+
+    Returns
+    ----------
+    depth : array_like[float]
+        Transit light curve.
+    """
+    # To make sure we measure the deep in transit mean
+    transit_ints[0] = transit_ints[0]+10
+    transit_ints[1] = transit_ints[1]-10
+
+    # Median flux value during transit for all wavelengths
+    in_frames = format_in_frames(transit_ints, occultation_type)
+    in_transit_med = np.nanmedian(f_lambda[in_frames], axis=0)
+    # Median flux value during out of transit for all wavelengths
+    out_frames = format_out_frames(baseline_ints, occultation_type)
+    out_transit_med = np.nanmedian(f_lambda[out_frames], axis=0)
+
+    depth = out_transit_med - in_transit_med
+    return depth
 
 
