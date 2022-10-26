@@ -99,7 +99,7 @@ spec_ord1_out_frames = spec_ord1[out_frames]
 dispersion_ord1 = np.std(spec_ord1_out_frames, axis=0)
 
 plt.figure()
-plt.scatter(wl_ord1[0], dispersion_ord1)
+plt.scatter(np.mean(wl_ord1,axis=0), dispersion_ord1)
 plt.xlabel(r"Wavelength [$\mu m$]")
 plt.ylabel('Dispersion')
 plt.savefig(spec_dir + 'dispersion_ord1')
@@ -108,7 +108,7 @@ plt.savefig(spec_dir + 'dispersion_ord1')
 transit_curve = utils.transit_depth(spec_ord1_norm, baseline_ints, transit_ints, occultation_type)
 
 plt.figure()
-plt.scatter(wl_ord1[0], transit_curve*1e6, s=3, color='b')
+plt.scatter(np.mean(wl_ord1,axis=0), transit_curve*1e6, s=3, color='b')
 plt.xlabel(r"Wavelength [$\mu m$]")
 plt.ylabel(r'($R_p)/R_s)^2$ [ppm]')
 plt.title('Transit spectrum')
