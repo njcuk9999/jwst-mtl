@@ -9,6 +9,62 @@ def mediandev(x, axis=None):
 
     return np.nanmedian(np.abs(x - med), axis=axis) / 0.67449
 
+def stack_multisegments(postsaturationstep_list, outdir=None, save_results=False):
+    '''
+    Read files from disk (those output by the Saturation Step) to create a time-series
+    wide deep stack of each group (frame). To minimize memory usage, allow this to
+    operate on blocks of columns rather than full image.
+    '''
+
+    nblocks = 2  # any divider of 2048 would do
+    blocksize = 2048 // nblocks
+
+    print('1/f stacking of all {:} segments in the time-series in {:} blocks of {:} columns'.format(
+        np.size(postsaturationstep_list), nblocks, blocksize))
+
+    for b in range(nblocks):
+        print('Block {:}'.format(b+1))
+        for segment in range(np.size(postsaturationstep_list)):
+            # Fill the data cube and groupdq cube for block b
+            seg = datamodels.open(postsaturationstep_list[segment])
+            i_start, i_end = seg.meta.exposure.integration_start, seg.meta.exposure.integration_end
+            if segment == 0:
+                # First segment, initialize cubes of proper size
+                _, ngroups, dimy, dimx = np.shape(seg.data)
+                nints = seg.meta.exposure.nints
+                data = np.zeros((nints, ngroups, dimy, blocksize))
+                groupdq = np.zeros((nints, ngroups, dimy, blocksize))
+            data[i_start-1:i_end, :, :, :] = np.copy(seg.data[:, :, :, b*blocksize:(b+1)*blocksize])
+            groupdq[i_start-1:i_end, :, :, :] = np.copy(seg.groupdq[:, :, :, b*blocksize:(b+1)*blocksize])
+        # Stack that block, putting all bad pixels to NaNs
+        if b == 0:
+            # First block, initialize the final products with proper size
+            deepstack = np.zeros((ngroups, dimy, dimx))
+            rms = np.zeros((ngroups, dimy, dimx))
+        mask = np.where(groupdq != 0, np.nan, 1)
+        block_stack = np.nanmedian(data * mask, axis=0)
+        block_rms = mediandev(data * mask - block_stack, axis=0)
+        deepstack[:, :, b*blocksize:(b+1)*blocksize] = np.copy(block_stack)
+        rms[:, :, b*blocksize:(b+1)*blocksize] = np.copy(block_rms)
+
+    if save_results:
+        # Recover names and directory
+        segment1name = postsaturationstep_list[0]
+        if outdir == None:
+            outdir = os.path.dirname(segment1name)
+        basename = os.path.basename(os.path.splitext(segment1name)[0])
+        basename_ts = basename.split('-seg')[0]
+        # Save as fits files
+        hdu = fits.PrimaryHDU(deepstack)
+        hdu.writeto(outdir+'/oof_deepstack_'+basename_ts+'.fits', overwrite=True)
+        hdu = fits.PrimaryHDU(rms)
+        hdu.writeto(outdir+'/oof_rms_'+basename_ts+'.fits', overwrite=True)
+
+    return deepstack, rms
+
+
+
+
 def stack(cube, deepstack_custom=None, outliers_map=None):
 
     if deepstack_custom is None:
@@ -84,8 +140,6 @@ def applycorrection(uncal_rampmodel, output_dir=None, save_results=False,
         hdu = fits.PrimaryHDU(w)
         hdu.writeto(output_supp+'/weight1.fits', overwrite=True)
 
-    # TODO: 1/rms2 should be used
-    # TODO: filter out the rms=0 pixels
     # TODO: add odd even correction
     print(np.shape(w))
     print(np.shape(w * uncal_rampmodel.data[0]))

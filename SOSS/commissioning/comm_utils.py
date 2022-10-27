@@ -8,7 +8,7 @@ import scipy.interpolate
 
 import glob
 
-from astropy.io import fits
+from astropy.io import fits, ascii
 
 from astropy.stats import sigma_clip
 
@@ -31,6 +31,13 @@ from scipy.signal import medfilt
 from jwst.datamodels import dqflags
 
 import SOSS.trace.tracepol as tracepol
+
+
+def mediandev(x, axis=None):
+    med = np.nanmedian(x, axis=axis)
+
+    return np.nanmedian(np.abs(x - med), axis=axis) / 0.67449
+
 
 def stack_rateints(rateints, outdir=None):
 
@@ -90,9 +97,11 @@ def stack_datamodel(datamodel):
     #saturated = bitfield_to_boolean_mask(datamodel.dq, ignore_flags=dqflags.pixel['SATURATED'], flip_bits=True)
     #mask = donotuse & ~saturated
     mask = donotuse # Just this is enough to not flag the saturated pixels in the trace
-    datamodel.data[mask] = np.nan
+    # Make a copy of the datamodel
+    tmpmodel = datamodel.copy()
+    tmpmodel.data[mask] = np.nan
 
-    hdu = fits.PrimaryHDU(datamodel.data)
+    hdu = fits.PrimaryHDU(tmpmodel.data)
     hdu.writeto('/Users/albert/NIRISS/Commissioning/analysis/HATP14b/test_masked.fits', overwrite=True)
 
     #plt.imshow(donotuse[8])
@@ -102,8 +111,8 @@ def stack_datamodel(datamodel):
     #plt.imshow(mask[8])
     #plt.show()
 
-    deepstack = np.nanmedian(datamodel.data, axis=0)
-    rms = np.nanstd(datamodel.data, axis=0)
+    deepstack = np.nanmedian(tmpmodel.data, axis=0)
+    rms = np.nanstd(tmpmodel.data, axis=0)
 
     #hdu = fits.PrimaryHDU(deepstack)
     #hdu.writeto('/Users/albert/NIRISS/Commissioning/analysis/HATP14b/test_pre_interpbadpstack.fits', overwrite=True)
@@ -389,6 +398,13 @@ def interp_badpix(image, noise):
 
     # Positions of the bad pixels
     bady, badx = np.where(~np.isfinite(image) & notrefpix)
+
+    ## Add bad pixels identified manually
+    #if pid != None:
+    #    manbadx, manbady = manual_badpix(pid)
+    #    badx = np.array(list(badx) + list(manbadx))
+    #    bady = np.array(list(bady) + list(manbady))
+
     nbad = np.size(badx)
     for i in range(nbad):
         image[bady[i], badx[i]] = np.nanmedian(image[bady[i]-ky:bady[i]+ky+1, badx[i]-kx:badx[i]+kx+1])
@@ -396,6 +412,33 @@ def interp_badpix(image, noise):
         noise[bady[i], badx[i]] = np.nanstd(image[bady[i]-ky:bady[i]+ky+1, badx[i]-kx:badx[i]+kx+1])
 
     return image, noise
+
+def add_manual_badpix(datamodel):
+
+    pid = datamodel.meta.observation.program_number
+
+    print('Adding bad pixels manually based on the program ID {:}'.format(pid))
+
+    if pid == '01091':
+        # manually selected bad pixels in ds9 and saved as 2-cols ascii region file
+        ds9reg = '/Users/albert/NIRISS/SOSSpipeline/jwst-mtl/SOSS/Commissioning/files/manual_badpix_01091.reg'
+        table = ascii.read(ds9reg)
+        x = np.array(table['col1'])
+        y = np.array(table['col2'])
+    else:
+        x = np.array([])
+        y = np.array([])
+
+    # Remove 1 so that first pixel is 0,0
+    xlist = list(x - 1)
+    ylist = list(y - 1)
+
+    print('x : ', x)
+    print('y : ', y)
+
+    datamodel.groupdq[:, :, ylist, xlist] = 1
+
+    return datamodel
 
 
 def soss_interp_badpix(modelin, outdir):
@@ -445,11 +488,22 @@ def soss_interp_badpix(modelin, outdir):
     return modelin
 
 
-def remove_nans(datamodel):
+def remove_nans(datamodel, outdir=None, save_results=False):
     # Checks that the JWST Data Model does not contains NaNs
+    # This is really a final check (bad pixels were already interpolated)
+    # in order to not have extract_1d crash because of NaNs
 
-    #if True:
-    #    jwstmodel = datamodels.open(jwstmodel)
+    # Forge output directory where data may be written
+    basename = os.path.splitext(datamodel.meta.filename)[0]
+    basename = basename.split('_nis')[0]+'_nis'
+    print('basename {:}'.format(basename))
+    if outdir == None:
+        outdir = os.path.curdir+'/'
+    if not os.path.exists(outdir):
+        if save_results == True: os.makedirs(outdir)
+    output_supp = outdir+'/supplemental_'+basename+'/'
+    if not os.path.exists(output_supp):
+        if save_results == True: os.makedirs(output_supp)
 
     modelout = datamodel.copy()
 
@@ -458,15 +512,13 @@ def remove_nans(datamodel):
     modelout.err[ind] = np.nanmedian(datamodel.err)*10
     modelout.dq[ind] += 1
 
-    # Replace occasional outlier by the median of the TSO at that pixel
-
-
-    # Interpolate remaining bad pixels with surrounding pixels
-    #modelout = interp_badpix(modelout, ind)
-
-
     # Check that the exposure type is NIS_SOSS
     modelout.meta.exposure.type = 'NIS_SOSS'
+
+    if save_results:
+        filename = modelout.meta.filename
+        modelout.write(output_supp+'/datamodel_nanfree_before_extract1d.fits')
+        modelout.meta.filename = filename
 
     return modelout
 
@@ -1013,10 +1065,161 @@ def combine_timeseries(wildcard, outputname):
 
     return
 
+def performance_fluxcal(spectrum_file, outdir=None, title=''):
+    '''
+    Analysis of the Flux Calibration time series to assess performance.
+    Compare flux with expected level of noise.
+    '''
+
+    print('WARNING! Please delete the old extracted_spectra_*.fits files if you are running this on new data.')
+    print('WARNING! Please delete the old extracted_spectra_*.fits files if you are running this on new data.')
+    print('WARNING! Please delete the old extracted_spectra_*.fits files if you are running this on new data.')
+    print('WARNING! Please delete the old extracted_spectra_*.fits files if you are running this on new data.')
+
+    # Start processing the spectra file
+    print('Reading the file containing the spectra Data Model...')
+    if os.path.isfile(outdir+'extracted_spectra_wavelength.fits') & \
+        os.path.isfile(outdir + 'extracted_spectra_flux.fits') & \
+        os.path.isfile(outdir + 'extracted_spectra_fluxerr.fits'):
+        print('Opening already formatted (wavelength, flux, fluxerr) fits files.')
+        wavelength = fits.getdata(outdir+'extracted_spectra_wavelength.fits')
+        flux = fits.getdata(outdir+'extracted_spectra_flux.fits')
+        fluxerr = fits.getdata(outdir + 'extracted_spectra_fluxerr.fits')
+        nint, norder, _ = np.shape(flux)
+    else:
+        multispec = datamodels.open(spectrum_file)
+
+        # spectra are stored at indice 1 (order 1), then 2 (order2) then 3 (order 3) then 4 (order 1, 2nd time step), ...
+        # TODO Manage nint and norder better
+        #nint = multispec.meta.exposure.nints
+        nint = int(np.shape(multispec.spec)[0] / norder)
+        print('nint = {:}, norder= {:}'.format(nint, norder))
+
+        # format differently
+        print('Format the data as numpy arrays...')
+        wavelength = np.zeros((nint, norder, 2048))
+        flux = np.zeros((nint, norder, 2048))
+        fluxerr = np.zeros((nint, norder, 2048))
+        for i in range(nint):
+            if i % 10 == 0: print('Reading integration {:} of {:}'.format(i+1, nint))
+            for m in range(norder):
+                nnn = i * norder + m
+                #print(i, m, nnn)
+                wavelength[i, m, :] = multispec.spec[nnn].spec_table['wavelength']
+                flux[i, m, :] = multispec.spec[nnn].spec_table['flux']
+                fluxerr[i, m, :] = multispec.spec[nnn].spec_table['flux_error']
+
+    if outdir != None:
+        if os.path.isfile(outdir + 'extracted_spectra_wavelength.fits') & \
+            os.path.isfile(outdir + 'extracted_spectra_flux.fits') & \
+            os.path.isfile(outdir + 'extracted_spectra_fluxerr.fits'):
+            print('')
+        else:
+            print('Saving properly formatted spectra.')
+            hdu = fits.PrimaryHDU(wavelength)
+            hdu.writeto(outdir+'extracted_spectra_wavelength.fits', overwrite=True)
+            hdu = fits.PrimaryHDU(flux)
+            hdu.writeto(outdir+'extracted_spectra_flux.fits', overwrite=True)
+            hdu = fits.PrimaryHDU(fluxerr)
+            hdu.writeto(outdir + 'extracted_spectra_fluxerr.fits', overwrite=True)
+
+    if False:
+        # rms across all integrations
+        rms = mediandev(flux, axis=0)
+        # error from the DMS
+        err = np.median(fluxerr, axis=0)
+        # Subtract the "white light" curve, i.e. the systematics along the TS integrations
+        systematics = np.nansum(flux, axis=2)
+        systematics /= np.nanmedian(systematics, axis=0)
+        flux_syscorr = flux - systematics[:,:,np.newaxis]
+        #flux_syscorr = np.copy(flux)
+        #for i in range(2048):
+        #    flux_syscorr[:,:,i] = flux[:,:,i] - systematics[:,:]
+        rms_syscorr = mediandev(flux_syscorr, axis=0)
+
+        fig, frames = plt.subplots(4)
+        frames[0].scatter(wavelength[0,0,:], rms[0,:], marker='.', s=2, color='black', label='Measured RMS along TS - Order 1')
+        frames[0].scatter(wavelength[0,1,:], rms[1,:], marker='.', s=2, color='blue', label='Measured RMS along TS - Order 2')
+        frames[0].scatter(wavelength[0,2,:], rms[2,:], marker='.', s=2, color='red', label='Measured RMS along TS - Order 3')
+        frames[0].scatter(wavelength[0,0,:], err[0,:], marker='.', s=2, color='grey', label='DMS RMS along TS - Order 1')
+        frames[0].scatter(wavelength[0,1,:], err[1,:], marker='.', s=2, color='cyan', label='DMS RMS along TS - Order 2')
+        frames[0].scatter(wavelength[0,2,:], err[2,:], marker='.', s=2, color='orange', label='DMS RMS along TS - Order 3')
+        frames[0].set_title('Measured and Expected Noises')
+        frames[0].set_xlabel('Wavelength [microns]')
+        frames[0].set_ylabel('Noise [e-]')
+        frames[0].grid()
+        frames[0].legend()
+        frames[1].scatter(wavelength[0,0,:], rms[0,:]/err[0,:], marker='.', s=2, color='black', label='Ratio Measured/Expected - Order 1')
+        frames[1].scatter(wavelength[0,1,:], rms[1,:]/err[1,:], marker='.', s=2, color='blue', label='Ratio Measured/Expected - Order 2')
+        frames[1].scatter(wavelength[0,2,:], rms[2,:]/err[2,:], marker='.', s=2, color='red', label='Ratio Measured/Expected - Order 3')
+        frames[1].set_ylim((0.8,4))
+        frames[1].set_title('Noise Ratio')
+        frames[1].set_xlabel('Wavelength [microns]')
+        frames[1].set_ylabel('Measured vs. Expected Noise Ratio')
+        frames[1].grid()
+        frames[1].legend()
+        frames[2].scatter(np.arange(nint), systematics[:,0], marker='.', s=2, color='black', label='Systematics - Order 1')
+        frames[2].scatter(np.arange(nint), systematics[:,1], marker='.', s=2, color='blue', label='Systematics - Order 2')
+        frames[2].scatter(np.arange(nint), systematics[:,2], marker='.', s=2, color='red', label='Systematics - Order 3')
+        frames[2].set_title('White Light systematics along Time-Series')
+        frames[2].set_xlabel('Integration Number')
+        frames[2].set_ylabel('Relative Flux')
+
+        frames[3].scatter(wavelength[0,0,:], rms_syscorr[0,:]/err[0,:], marker='.', s=2, color='black', label='Ratio Measured/Expected - Systematics corrected - Order 1')
+        frames[3].scatter(wavelength[0,1,:], rms_syscorr[1,:]/err[1,:], marker='.', s=2, color='blue', label='Ratio Measured/Expected - Systematics corrected - Order 2')
+        frames[3].scatter(wavelength[0,2,:], rms_syscorr[2,:]/err[2,:], marker='.', s=2, color='red', label='Ratio Measured/Expected - Systematics corrected - Order 3')
+        frames[3].set_title('Noise Ratio for a detrended TS')
+        frames[3].set_xlabel('Wavelength [microns]')
+        frames[3].set_ylabel('Measured vs. Expected Noise Ratio')
+        frames[3].set_ylim((0.8,4))
+        frames[3].grid()
+        frames[3].legend()
+        plt.show()
+
+    if True:
+
+        # Make a RMS vs BIN size plot
+        # Bin along the integrations axis
+        binsize = np.arange(1, nint/5, 1, dtype=int)
+        nbins = np.array(np.floor(nint / binsize), dtype=int)
+
+        ppm = np.zeros((np.size(binsize),norder))
+        for i in range(np.size(binsize)):
+            # Group the 2048 columns in bins.
+            # Reshape in 4D then sum the additional dimension.
+            print(nint, norder, binsize[i], nbins[i])
+            tmp = flux[0:binsize[i]*nbins[i],:,:].reshape((nbins[i],binsize[i],norder,2048))
+            #print(binsize[i])
+            #print(tmp.shape)
+            flux_binned = np.nansum(tmp, axis=1)
+            #print(flux_binned.shape)
+            binned_whitelight = np.nansum(flux_binned, axis=-1)
+            #print(binned_whitelight.shape)
+            dev_whitelight = mediandev(binned_whitelight, axis=0)
+            med_whitelight = np.nanmedian(binned_whitelight, axis=0)
+            ppm[i,:] = dev_whitelight/med_whitelight*1e+6
+            print('ppm = {:}'.format(ppm[i,:]))
+
+        plt.scatter(np.arange(np.size(binsize)), ppm[:,0], marker='s', color='black', label='Order 1')
+        plt.scatter(np.arange(np.size(binsize)), ppm[:,1], marker='s', color='blue', label='Order 2')
+        plt.scatter(np.arange(np.size(binsize)), ppm[:,2], marker='s', color='orange', label='Order 3')
+        plt.loglog()
+        plt.ylabel('Scatter [ppm]')
+        plt.xlabel('Bin Size [pixel columns]')
+        plt.grid()
+        plt.show()
+
+
+
+    #TODO: Here we are
+    sys.exit()
+
+    return
+
 
 def greyscale_rms(ts_greyscale, title=''):
     '''
-    Removes outliers form the greyscale and perform standard deviation
+    Removes outliers from the greyscale and perform standard deviation
     '''
 
     outdir = os.path.dirname(ts_greyscale)
@@ -1573,6 +1776,14 @@ def test_back_scaling():
 
 
 if __name__ == "__main__":
+
+    # Debuf the performance script
+
+    outdir = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/'
+    spectra = 'extracted_spectrum.fits'
+    a = performance_fluxcal(outdir+spectra, outdir=outdir)
+
+    sys.exit()
 
 #    # Test 1/f step from Thomas
 #    from SOSS.dms import oneoverf_step
