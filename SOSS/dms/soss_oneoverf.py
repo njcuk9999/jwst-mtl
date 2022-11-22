@@ -9,43 +9,71 @@ def mediandev(x, axis=None):
 
     return np.nanmedian(np.abs(x - med), axis=axis) / 0.67449
 
-def stack_multisegments(postsaturationstep_list, outdir=None, save_results=False):
+def stack_multisegments(postsaturationstep_list, outdir=None, save_results=False,
+                        stack_nblocks=None):
     '''
     Read files from disk (those output by the Saturation Step) to create a time-series
     wide deep stack of each group (frame). To minimize memory usage, allow this to
     operate on blocks of columns rather than full image.
     '''
 
-    nblocks = 2  # any divider of 2048 would do
-    blocksize = 2048 // nblocks
+    if stack_nblocks == None:
+        # any divider of 2048 would do
+        nblocks = np.size(postsaturationstep_list)*2
+    else:
+        nblocks = np.copy(stack_nblocks)
+    #nblocks = 2  # any divider of 2048 would do
+    #blocksize = 2048 // nblocks
+    blocksize = int(np.ceil(2048 / nblocks)) # no need for comon divider of 2048
 
     print('1/f stacking of all {:} segments in the time-series in {:} blocks of {:} columns'.format(
         np.size(postsaturationstep_list), nblocks, blocksize))
 
     for b in range(nblocks):
         print('Block {:}'.format(b+1))
+        # Set the x-axis limits of this block of columns
+        firstcol, lastcol = b * blocksize, (b + 1) * blocksize
+        # Check that the last column is never above 2048
+        lastcol = np.min([2048, lastcol])
+        currentblocksize = lastcol - firstcol
+        print('Curent block is between firstcol={:} and lastcol={:} and has size of {:} columns'.format(
+            firstcol, lastcol, currentblocksize))
+
+        # For each block of columns, loop over all segments
         for segment in range(np.size(postsaturationstep_list)):
             # Fill the data cube and groupdq cube for block b
             seg = datamodels.open(postsaturationstep_list[segment])
             i_start, i_end = seg.meta.exposure.integration_start, seg.meta.exposure.integration_end
+            if (i_start == None) & (i_end == None):
+                # it means that this is a time-series NOT split into segments
+                i_start, i_end = 1, seg.meta.exposure.nints
+            print('i_start = {:}, i_end = {:}'.format(i_start, i_end))
             if segment == 0:
                 # First segment, initialize cubes of proper size
                 _, ngroups, dimy, dimx = np.shape(seg.data)
                 nints = seg.meta.exposure.nints
-                data = np.zeros((nints, ngroups, dimy, blocksize))
-                groupdq = np.zeros((nints, ngroups, dimy, blocksize))
-            data[i_start-1:i_end, :, :, :] = np.copy(seg.data[:, :, :, b*blocksize:(b+1)*blocksize])
-            groupdq[i_start-1:i_end, :, :, :] = np.copy(seg.groupdq[:, :, :, b*blocksize:(b+1)*blocksize])
-        # Stack that block, putting all bad pixels to NaNs
+                data = np.zeros((nints, ngroups, dimy, currentblocksize)) * np.nan
+                mask = np.zeros((nints, ngroups, dimy, currentblocksize)) * np.nan
+
+            # the current segment data, group DQ and pixel DQ
+            data[i_start-1:i_end, :, :, :] = np.copy(seg.data[:, :, :, firstcol:lastcol])
+            gdq = np.copy(seg.groupdq[:, :, :, firstcol:lastcol])
+            pdq = np.copy(seg.pixeldq[:, firstcol:lastcol])
+            # Add to the mask the group dq (4 dimensional)
+            segmask = np.where(gdq != 0, np.nan, 1)
+            mask[i_start-1:i_end, :, :, :] = np.copy(segmask)
+            # Add to the mask the pixel dq (2 dimensional)
+            segmask = np.where(pdq != 0, np.nan, 1)
+            mask[i_start-1:i_end, :] = mask[i_start-1:i_end, :] * segmask
+        # Stack that block, all bad pixels are NaNs
         if b == 0:
             # First block, initialize the final products with proper size
-            deepstack = np.zeros((ngroups, dimy, dimx))
-            rms = np.zeros((ngroups, dimy, dimx))
-        mask = np.where(groupdq != 0, np.nan, 1)
+            deepstack = np.zeros((ngroups, dimy, dimx)) * np.nan
+            rms = np.zeros((ngroups, dimy, dimx)) * np.nan
         block_stack = np.nanmedian(data * mask, axis=0)
         block_rms = mediandev(data * mask - block_stack, axis=0)
-        deepstack[:, :, b*blocksize:(b+1)*blocksize] = np.copy(block_stack)
-        rms[:, :, b*blocksize:(b+1)*blocksize] = np.copy(block_rms)
+        deepstack[:, :, firstcol:lastcol] = np.copy(block_stack)
+        rms[:, :, firstcol:lastcol] = np.copy(block_rms)
 
     if save_results:
         # Recover names and directory
@@ -59,6 +87,9 @@ def stack_multisegments(postsaturationstep_list, outdir=None, save_results=False
         hdu.writeto(outdir+'/oof_deepstack_'+basename_ts+'.fits', overwrite=True)
         hdu = fits.PrimaryHDU(rms)
         hdu.writeto(outdir+'/oof_rms_'+basename_ts+'.fits', overwrite=True)
+        #hdu = fits.PrimaryHDU(mask)
+        #hdu.writeto(outdir+'/oof_lastblockmask_'+basename_ts+'.fits', overwrite=True)
+
 
     return deepstack, rms
 
@@ -110,6 +141,9 @@ def applycorrection(uncal_rampmodel, output_dir=None, save_results=False,
     #nint = uncal_rampmodel.meta.exposure.nints # does not work on segments
     intstart = uncal_rampmodel.meta.exposure.integration_start
     intend = uncal_rampmodel.meta.exposure.integration_end
+    if (intstart == None) & (intend == None):
+        # it means that this is a time-series NOT split into segments
+        intstart, intend = 1, uncal_rampmodel.meta.exposure.nints
     nint = intend-intstart+1
     dimx = np.shape(uncal_rampmodel.data)[-1]
 

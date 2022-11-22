@@ -103,7 +103,7 @@ def find_outliers(image, window_size, n_sig=5):
 
 
 def flag_outliers(result, nn=2, window_size=(1, 33), n_sig=5, verbose=False, outdir=None, save_diagnostic=False,
-                  kernel_enlarge=True):
+                  kernel_enlarge=True, save_results=False):
     '''
     Function that takes a timeseries of integrations and for each, finds the
     outlier pixels and flags them as such in the data quality (dq) object
@@ -247,8 +247,14 @@ def flag_outliers(result, nn=2, window_size=(1, 33), n_sig=5, verbose=False, out
         if not os.path.exists(outdir):
             os.makedirs(outdir)
 
+        if save_results:
+            result.meta.filename = basename + '_outlierstep.fits'
+            result.write(outdir + '/' + result.meta.filename)
+
+        result.meta.filename = basename
+
         hdu = fits.PrimaryHDU(cube)
-        hdu.writeto(outdir+'/'+basename+'_outliers.fits', overwrite=True)
+        hdu.writeto(outdir+'/outliers_'+basename+'.fits', overwrite=True)
 
     return result
 

@@ -570,6 +570,11 @@ def reconstruct_order(residual, cen, order, psfs, halfwidth, pad, pivot=750,
     if order == 3:
         # Hard stop for profile reuse - one half width passed where the trace
         # centroid leaves the detector.
+        #tmp = np.where(cen['order 3']['Y centroid'] >= dimy+pad)
+        #if tmp == None:
+        #    stop = np.copy(maxi)
+        #else
+        #    stop = tmp[0][0]
         stop = np.where(cen['order 3']['Y centroid'] >= dimy+pad)[0][0]
         stop += halfwidth
         wavecal_x_o2, wavecal_w_o2 = utils.get_wave_solution(order=2)

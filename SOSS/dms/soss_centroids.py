@@ -1066,7 +1066,7 @@ def calibrate_widths(width_o1, width_o2=None, width_o3=None, subarray='SUBSTRIP2
 def get_soss_centroids(image, mask=None, subarray='SUBSTRIP256', halfwidth=2,
                        poly_orders=None, apex_order1=None,
                        calibrate=True, verbose=False, outdir=None,
-                       xlim_order3=700):
+                       xlim_order3=700, xlims_order2=[700,1800]):
     """Determine the traces positions on a real image (native size) with as few
     assumptions as possible using the 'edge trigger' method.
 
@@ -1190,7 +1190,7 @@ def get_soss_centroids(image, mask=None, subarray='SUBSTRIP256', halfwidth=2,
     # B) Contaminated region (x = 0-200) - fit only the top edge.
 
     # Make a mask to isolate the uncontaminated order 2 trace and combine it with the user-specified mask.
-    mask_o2_uncont = build_mask_order2_uncontaminated(y_o1, y_o3,
+    mask_o2_uncont = build_mask_order2_uncontaminated(y_o1, y_o3, xlims=xlims_order2,
                                                       subarray=subarray, apex_order1=apex_order1)
 
     if mask is not None:

@@ -20,17 +20,17 @@ import sys
 
 from jwst import datamodels
 
-from astropy.nddata.bitmask import bitfield_to_boolean_mask
-
 from scipy.ndimage import rotate
 
 from scipy.signal import savgol_filter
 
 from scipy.signal import medfilt
 
-from jwst.datamodels import dqflags
-
 import SOSS.trace.tracepol as tracepol
+
+from astropy.nddata.bitmask import bitfield_to_boolean_mask
+
+from jwst.datamodels import dqflags
 
 
 def mediandev(x, axis=None):
@@ -84,9 +84,6 @@ def stack_datamodel(datamodel):
     Remaining NaNs on the stack really are common bad pixels for all integrations.
     '''
 
-    from astropy.nddata.bitmask import bitfield_to_boolean_mask
-
-    from jwst.datamodels import dqflags
 
     #import matplotlib.pyplot as plt
 
@@ -97,27 +94,29 @@ def stack_datamodel(datamodel):
     #saturated = bitfield_to_boolean_mask(datamodel.dq, ignore_flags=dqflags.pixel['SATURATED'], flip_bits=True)
     #mask = donotuse & ~saturated
     mask = donotuse # Just this is enough to not flag the saturated pixels in the trace
-    # Make a copy of the datamodel
-    tmpmodel = datamodel.copy()
-    tmpmodel.data[mask] = np.nan
+    # Copy the datamodel to tmp
+    #tmp_data = np.copy(datamodel.data)
+    #tmp_data[mask] = np.nan
 
-    hdu = fits.PrimaryHDU(tmpmodel.data)
-    hdu.writeto('/Users/albert/NIRISS/Commissioning/analysis/HATP14b/test_masked.fits', overwrite=True)
+    #deepstack = np.nanmedian(tmp_data, axis=0)
+    #rms = mediandev(tmp_data, axis=0)
+    #dq = np.copy(deepstack) * 0
+    #nan = ~np.isfinite(deepstack) | ~np.isfinite(rms)
+    #dq[nan] = 1
 
-    #plt.imshow(donotuse[8])
-    #plt.show()
-    #plt.imshow(saturated[8])
-    #plt.show()
-    #plt.imshow(mask[8])
-    #plt.show()
 
-    deepstack = np.nanmedian(tmpmodel.data, axis=0)
-    rms = np.nanstd(tmpmodel.data, axis=0)
+    bad = (datamodel.dq != 0) | ~np.isfinite(datamodel.dq)
+    tmp_data = datamodel.data * 1
+    tmp_data[bad] = np.nan
 
-    #hdu = fits.PrimaryHDU(deepstack)
-    #hdu.writeto('/Users/albert/NIRISS/Commissioning/analysis/HATP14b/test_pre_interpbadpstack.fits', overwrite=True)
+    deepstack = np.nanmedian(tmp_data, axis=0)
+    rms = mediandev(tmp_data, axis=0)
+    dq = np.copy(deepstack) * 0
+    nan = ~np.isfinite(deepstack) | ~np.isfinite(rms)
+    dq[nan] = 1
 
-    return deepstack, rms
+
+    return deepstack, rms, dq
 
 
 def build_mask_contamination(order, x, y, halfwidth=15, subarray='SUBSTRIP256'):
@@ -374,7 +373,7 @@ def aperture_from_scratch(datamodel, norders=3, aphalfwidth=[40,20,20], outdir=N
     return maskcube
 
 
-def interp_badpix(image, noise):
+def interp_badpix(image, noise, dq=None):
     '''
     Interpolates bad pixels of soss for a single image (e.g. a deepstack for instance)
     Define a rectangle as the kernel to determine the interpolating value from.
@@ -399,17 +398,20 @@ def interp_badpix(image, noise):
     # Positions of the bad pixels
     bady, badx = np.where(~np.isfinite(image) & notrefpix)
 
-    ## Add bad pixels identified manually
-    #if pid != None:
-    #    manbadx, manbady = manual_badpix(pid)
-    #    badx = np.array(list(badx) + list(manbadx))
-    #    bady = np.array(list(bady) + list(manbady))
+    # If an optional DQ map is passed, add it to the list of bad pixels
+    if dq != None:
+        dq_y, dq_x = np.where(dq != 0)
+        badx += dq_x
+        bady += dq_y
 
     nbad = np.size(badx)
     for i in range(nbad):
         image[bady[i], badx[i]] = np.nanmedian(image[bady[i]-ky:bady[i]+ky+1, badx[i]-kx:badx[i]+kx+1])
         # error is the standard deviations of pixels that were used in the median. Not division by sqrt(n).
-        noise[bady[i], badx[i]] = np.nanstd(image[bady[i]-ky:bady[i]+ky+1, badx[i]-kx:badx[i]+kx+1])
+        #noise[bady[i], badx[i]] = np.nanstd(image[bady[i]-ky:bady[i]+ky+1, badx[i]-kx:badx[i]+kx+1])
+        # That above yields pixels with huge errors, > x10 the surrounding pixels.
+        # Instead: Error is the median of the errors for the pixels used in the interpolation.
+        noise[bady[i], badx[i]] = np.nanmedian(noise[bady[i]-ky:bady[i]+ky+1, badx[i]-kx:badx[i]+kx+1])
 
     return image, noise
 
@@ -436,25 +438,31 @@ def add_manual_badpix(datamodel):
     print('x : ', x)
     print('y : ', y)
 
-    datamodel.groupdq[:, :, ylist, xlist] = 1
+    print('DQ before:')
+    print(datamodel.dq[0, ylist, xlist])
+    datamodel.dq[:, ylist, xlist] = 1
+    print('DQ after:')
+    print(datamodel.dq[0, ylist, xlist])
+
+
 
     return datamodel
 
 
-def soss_interp_badpix(modelin, outdir):
+def soss_interp_badpix(modelin, outdir, save_results=False):
 
     # Create a deep stack from the time series.
     # Interpolate on that deep stack.
     # Then use the deepstack as pixel replacement values in single integrations.
 
     # Create a deep stack from the time series
-    stack, stackrms = stack_datamodel(modelin)
-    hdu = fits.PrimaryHDU(stack)
+    stack, stackrms, stackdq = stack_datamodel(modelin)
+    hdu = fits.PrimaryHDU([stack, stackrms, stackdq])
     hdu.writeto(outdir+'/test_pre_interpbadpstack.fits', overwrite=True)
 
     # Interpolate the deep stack
-    clean_stack, stack_noise = interp_badpix(stack, stackrms)
-    hdu = fits.PrimaryHDU(stack)
+    cleanstack, cleanstack_rms = interp_badpix(stack, stackrms)
+    hdu = fits.PrimaryHDU([cleanstack, cleanstack_rms])
     hdu.writeto(outdir+'/test_post_interpbadpstack.fits', overwrite=True)
 
     # Apply clean stack pixel values to each integration's bad pixels
@@ -475,15 +483,23 @@ def soss_interp_badpix(modelin, outdir):
         # Mask pixels that have the DO_NOT_USE data quality flag set
         donotuse = bitfield_to_boolean_mask(modelin.dq[i], ignore_flags=dqflags.pixel['DO_NOT_USE'], flip_bits=True)
         ind = notrefpix & ((~np.isfinite(modelin.data[i])) | (~np.isfinite(modelin.err[i])) | donotuse)
-        # Replace bad pixel here by the clean stack value
-        modelin.data[i][ind] = np.copy(clean_stack[ind])
-        modelin.err[i][ind] = np.copy(stack_noise[ind])
-        # Set the DQ map to good for all pixels except NaNs
-        # TODO: this should be more clever so that ATOCA has knowledge of interpolated pixels
+        # Initial method - Replace bad pixel here by the clean stack value
+        #modelin.data[i][ind] = np.copy(cleanstack[ind])
+        #modelin.err[i][ind] = np.copy(cleanstack_rms[ind])
+        # Final method - Replace bad pixel by a realization of the clean stack
+        modelin.data[i][ind] = np.random.default_rng().normal(cleanstack[ind], cleanstack_rms[ind])
+        modelin.err[i][ind] = np.copy(cleanstack_rms[ind])
+        # Set the DQ map to good for all pixels except ref pixels
         modelin.dq[i][notrefpix] = 0
 
-    hdu = fits.PrimaryHDU(modelin.data)
-    hdu.writeto(outdir+'/test_interpolated_segment.fits', overwrite=True)
+    basename = os.path.splitext(modelin.meta.filename)[0]
+    basename = basename.split('_nis')[0] + '_nis'
+    if save_results:
+        modelin.write(outdir+'/'+basename+'_badpixinterp.fits')
+    modelin.meta.filename = basename
+
+    #hdu = fits.PrimaryHDU([modelin.data, modelin.dq])
+    #hdu.writeto(outdir+'/test_interpolated_segment.fits', overwrite=True)
 
     return modelin
 
@@ -536,11 +552,12 @@ def box_extraction(datamodel, ref_spectrace, width=30):
 
 
 def background_subtraction(datamodel, aphalfwidth=[40,30,30], outdir=None, verbose=False,
-                           contamination_mask=None, trace_table_ref=None):
+                           contamination_mask=None, trace_table_ref=None, save_results=False):
 
     nint, dimy, dimx = np.shape(datamodel.data)
 
     basename = os.path.splitext(datamodel.meta.filename)[0]
+    basename = basename.split('_nis')[0] + '_nis'
     if outdir == None:
         outdir = './'
         cntrdir = './backgroundsub_'+basename+'/'
@@ -587,8 +604,13 @@ def background_subtraction(datamodel, aphalfwidth=[40,30,30], outdir=None, verbo
     output = datamodel.copy()
     output.data = datamodel.data - background_model
 
-    hdu = fits.PrimaryHDU(output.data)
-    hdu.writeto(outdir+'/'+basename+'_backsubtracted.fits', overwrite=True)
+    if save_results:
+        output.write(outdir+'/'+basename+'_backsubstep.fits')
+        #hdu = fits.PrimaryHDU(output.data)
+        #hdu.writeto(outdir+'/'+basename+'_backsubtracted.fits', overwrite=True)
+
+    # Make sure filename is back to normal
+    output.meta.filename = basename
 
     return output
 
@@ -985,6 +1007,43 @@ def make_mask_02589_obs001():
 
     return
 
+def make_mask_02589_obs003():
+    # T1 obs 3 contamination mask
+
+    stackname = '/Users/albert/NIRISS/Commissioning/analysis/T1_4/stack_t1obs4.fits'
+    checkname = '/Users/albert/NIRISS/Commissioning/analysis/T1_4/check.fits'
+    maskname = '/Users/albert/NIRISS/Commissioning/analysis/T1_4/mask_contamination.fits'
+    stack = fits.getdata(stackname)
+    stack = stack[0] # has 2 slices in the stack
+
+
+
+    #mask = build_mask_contamination(2, -900, -140)
+    mask = build_mask_contamination(0, 1851, 181)
+    mask += build_mask_contamination(0, 1702, 164)
+    mask += build_mask_contamination(0, 1616, 132)
+    mask += build_mask_contamination(0, 2000, 225)
+    mask += build_mask_contamination(0, 1363, 78)
+    mask += build_mask_contamination(0, 1216, 183)
+    mask += build_mask_contamination(0, 1161, 183)
+    mask += build_mask_contamination(0, 1870, 2)
+    mask += build_mask_contamination(0, 1576, 174)
+    mask += build_mask_contamination(0, 948, 171)
+    mask += build_mask_contamination(0, 1111, 210)
+
+    # further mask order 2 right of x=1500
+    #mask[100:175,1500:] = 1
+
+    hdu = fits.PrimaryHDU([stack, mask])
+    hdu.writeto(checkname, overwrite=True)
+
+    hdu = fits.PrimaryHDU(mask)
+    hdu.writeto(maskname, overwrite=True)
+
+
+    return
+
+
 def combine_segments(prefix):
     print()
     return
@@ -1092,6 +1151,7 @@ def performance_fluxcal(spectrum_file, outdir=None, title=''):
         # spectra are stored at indice 1 (order 1), then 2 (order2) then 3 (order 3) then 4 (order 1, 2nd time step), ...
         # TODO Manage nint and norder better
         #nint = multispec.meta.exposure.nints
+        norder = 3
         nint = int(np.shape(multispec.spec)[0] / norder)
         print('nint = {:}, norder= {:}'.format(nint, norder))
 
@@ -1123,7 +1183,7 @@ def performance_fluxcal(spectrum_file, outdir=None, title=''):
             hdu = fits.PrimaryHDU(fluxerr)
             hdu.writeto(outdir + 'extracted_spectra_fluxerr.fits', overwrite=True)
 
-    if False:
+    if True:
         # rms across all integrations
         rms = mediandev(flux, axis=0)
         # error from the DMS
@@ -1136,6 +1196,104 @@ def performance_fluxcal(spectrum_file, outdir=None, title=''):
         #for i in range(2048):
         #    flux_syscorr[:,:,i] = flux[:,:,i] - systematics[:,:]
         rms_syscorr = mediandev(flux_syscorr, axis=0)
+
+
+        # Infer the level of noise unaccounted for
+        aperwidth = 25
+        othernoise_per_col_per_integ = np.sqrt(rms**2 - err**2)
+        othernoise_per_pixel = np.sqrt(3*5.494) * othernoise_per_col_per_integ / np.sqrt(aperwidth) / np.sqrt(3)
+        plt.scatter(wavelength[0,0,:], othernoise_per_col_per_integ[0,:])
+        plt.scatter(wavelength[0,1,:], othernoise_per_col_per_integ[1,:])
+        plt.scatter(wavelength[0,2,:], othernoise_per_col_per_integ[2,:])
+        plt.grid()
+        plt.show()
+
+        plt.scatter(wavelength[0,0,:], rms[0,:], label='rms')
+        plt.scatter(wavelength[0,0,:], err[0,:], label='err')
+        plt.scatter(wavelength[0,0,:], np.sqrt(rms[0,:]**2-err[0,:]**2), label='sqrt(rms**2-err**2)')
+        plt.ylabel('Variance')
+        plt.xlabel('Wavelength [microns]')
+        plt.legend()
+        plt.grid()
+        plt.show()
+
+
+        # Figure for the SOSS mode paper
+        rat = (rms/err)
+        norders, ncols = np.shape(rat)
+        print(norders, ncols)
+        binsize = 64
+        nbins = 2048 // binsize
+        # Group the 2048 columns in bins.
+        # Reshape in 4D then sum the additional dimension.
+        tmp = rat[:, 0:binsize * nbins].reshape((norders,nbins,binsize))
+        rat_binned = np.nanmedian(tmp, axis=-1)
+        tmp = wavelength[0,:, 0:binsize * nbins].reshape((1,norders,nbins,binsize))
+        wavelength_binned = np.nanmean(tmp, axis=-1)
+        fig = plt.figure(figsize=(6,5))
+        plt.scatter(wavelength[0,0,:], rms[0,:]/err[0,:], marker='.', s=2, color='black')#, label='Order 1')
+        plt.plot(wavelength_binned[0,0,:], rat_binned[0,:], color='black', linewidth=3, #marker='o',
+                 markerfacecolor='none', markeredgewidth=2.0, label='Order 1')
+        plt.scatter(wavelength[0,1,:], rms[1,:]/err[1,:], marker='.', s=2, color='blue')#, label='Order 2')
+        plt.plot(wavelength_binned[0,1,:], rat_binned[1,:], color='blue', linewidth=3, #marker='o',
+                 markerfacecolor='none', markeredgewidth=2.0, label='Order 2')
+        plt.scatter(wavelength[0,2,:], rms[2,:]/err[2,:], marker='.', s=2, color='orange')#, label='Order 3')
+        plt.plot(wavelength_binned[0,2,:], rat_binned[2,:], color='orange', linewidth=3, #marker='o',
+                 markerfacecolor='none', markeredgewidth=2.0, label='Order 3')
+        plt.plot([0.5,2.9],[1.0,1.0], linewidth=3, color='black', linestyle='dashed', label='Photon + Readout')
+        plt.xlabel('Wavelength [microns]')
+        plt.ylabel('Measured Scatter / DMS Expected Scatter')
+        plt.yticks(np.linspace(0.9,2.0,12))
+        plt.xticks(np.linspace(0.6,2.8,12))
+        plt.grid()
+        plt.legend()
+        plt.ylim((0.8,2.1))
+        plt.xlim((0.5,2.9))
+        #plt.show()
+        plt.savefig(outdir+'/A0_performance_square.png')
+
+        # Figure for the SOSS mode paper
+        tint = np.arange(nint) * (3+1)*5.494/3600
+        norders = 3
+        binsize = 18
+        nbins = nint // binsize
+        tmp = systematics[0:binsize * nbins, :].reshape((norders,nbins,binsize))
+        sys_binned = np.nanmedian(tmp, axis=-1)
+        print(nint, nbins, binsize)
+        print(np.shape(tmp))
+        print(np.shape(sys_binned))
+        tmp = tint[0:binsize*nbins].reshape((nbins,binsize))
+        tint_binned = np.nanmean(tmp, axis=-1)
+        print(np.shape(tint_binned))
+
+        tmp = systematics[0:binsize * nbins, :].reshape((nbins,binsize,norders))
+        sys_binned = np.nanmedian(tmp, axis=-2)
+        print(np.shape(sys_binned))
+
+        fig = plt.figure(figsize=(6,5))
+        plt.scatter(tint, (systematics[:,0]-1)*1e+6, marker='.', s=2, color='black')#, label='Order 1')
+        plt.plot(tint_binned, (sys_binned[:,0]-1)*1e+6, color='black', linewidth=3, label='Order 1', alpha=0.7)
+        plt.scatter(tint, (systematics[:,1]-1)*1e+6, marker='.', s=2, color='blue')#, label='Order 2')
+        plt.plot(tint_binned, (sys_binned[:,1]-1)*1e+6, color='blue', linewidth=3, label='Order 2', alpha=0.7)
+        #plt.scatter(tint, (systematics[:,2]-1)*1e+6, marker='.', s=2, color='orange')#, label='Order 3 x0.1')
+        #plt.plot(tint_binned, (sys_binned[:,2]-1)*1e+6, color='orange', linewidth=3, label='Order 3 x0.1', alpha=0.7)
+
+        #plt.scatter(np.arange(nint)*tint, systematics[:,2], marker='.', s=2, color='orange', label='Order 3')
+        plt.xlabel('Time (hours)')
+        plt.ylabel('White Light Trend [ppm]')
+        #plt.yticks(np.linspace(0.9,2.0,12))
+        #plt.xticks(np.linspace(0.6,2.8,12))
+        plt.grid()
+        plt.legend()
+        plt.ylim((-600,600))
+        #plt.xlim((0.5,2.9))
+        #plt.show()
+        plt.savefig(outdir+'/A0_whitelight_square.png')
+
+        sys.exit()
+
+
+
 
         fig, frames = plt.subplots(4)
         frames[0].scatter(wavelength[0,0,:], rms[0,:], marker='.', s=2, color='black', label='Measured RMS along TS - Order 1')
@@ -1777,13 +1935,18 @@ def test_back_scaling():
 
 if __name__ == "__main__":
 
-    # Debuf the performance script
+    if False:
+        # Make contamination mask for T1_4
+        a = make_mask_02589_obs003()
+        sys.exit()
 
-    outdir = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/'
-    spectra = 'extracted_spectrum.fits'
-    a = performance_fluxcal(outdir+spectra, outdir=outdir)
+    if True:
+        # Debuf the performance script
+        outdir = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/'
+        spectra = 'extracted_spectrum.fits'
+        a = performance_fluxcal(outdir+spectra, outdir=outdir)
 
-    sys.exit()
+        sys.exit()
 
 #    # Test 1/f step from Thomas
 #    from SOSS.dms import oneoverf_step

@@ -231,6 +231,11 @@ def run_iteration1(dataset='nis18obs02', wavecaldataset=None, subarray='SUBSTRIP
         trace_file = '/Users/albert/NIRISS/Commissioning/analysis/T1/ref_files/'+hdul[0].header['FILENAME']
     elif dataset == '02589_obs002':
         trace_file = '/Users/albert/NIRISS/Commissioning/analysis/T1_2/ref_files/'+hdul[0].header['FILENAME']
+    elif dataset == '01201_obs101':
+        trace_file = '/Users/albert/NIRISS/Commissioning/analysis/T1_3/ref_files/' + hdul[0].header['FILENAME']
+    else:
+        print('Add entry for this target in com_ref_files.py...')
+        sys.exit()
     hdul.writeto(trace_file, overwrite=True)
     #hdul.writeto(trace_file + '.gz', overwrite=True)
 
@@ -282,6 +287,11 @@ def run_iteration1(dataset='nis18obs02', wavecaldataset=None, subarray='SUBSTRIP
         filename = '/Users/albert/NIRISS/Commissioning/analysis/T1/ref_files/'+hdul[0].header['FILENAME']
     elif dataset == '02589_obs002':
         filename = '/Users/albert/NIRISS/Commissioning/analysis/T1_2/ref_files/'+hdul[0].header['FILENAME']
+    elif dataset == '01201_obs101':
+        filename = '/Users/albert/NIRISS/Commissioning/analysis/T1_3/ref_files/'+hdul[0].header['FILENAME']
+    else:
+        print('Add entry for this target in com_ref_files.py...')
+        sys.exit()
     hdul.writeto(filename, overwrite=True)
     #hdul.writeto(filename + '.gz', overwrite=True)
 
@@ -302,7 +312,11 @@ def run_iteration1(dataset='nis18obs02', wavecaldataset=None, subarray='SUBSTRIP
         profile_file = '/Users/albert/NIRISS/Commissioning/analysis/T1/michael_trace/applesoss_traceprofile.fits'
     if dataset == '02589_obs002':
         profile_file = '/Users/albert/NIRISS/Commissioning/analysis/T1_2/michael_trace/applesoss_traceprofile.fits'
-
+    if dataset == '01201_obs101':
+        profile_file = '/Users/albert/NIRISS/Commissioning/analysis/T1_3/michael_trace/applesoss_traceprofile.fits'
+    else:
+        print('Add entry for this target in com_ref_files.py...')
+        sys.exit()
     # Read the profile file provided by Loïc.
     #profile_2d = fits.getdata(profile_file, ext=0)
     #profile_2d = np.moveaxis(profile_2d, 0, -1)
@@ -345,7 +359,11 @@ def run_iteration1(dataset='nis18obs02', wavecaldataset=None, subarray='SUBSTRIP
         filename = '/Users/albert/NIRISS/Commissioning/analysis/T1/ref_files/'+hdul[0].header['FILENAME']
     elif dataset == '02589_obs002':
         filename = '/Users/albert/NIRISS/Commissioning/analysis/T1_2/ref_files/'+hdul[0].header['FILENAME']
-
+    elif dataset == '01201_obs101':
+        filename = '/Users/albert/NIRISS/Commissioning/analysis/T1_3/ref_files/'+hdul[0].header['FILENAME']
+    else:
+        print('Add entry for this target in com_ref_files.py...')
+        sys.exit()
     hdul.writeto(filename, overwrite=True)
     #hdul.writeto(filename + '.gz', overwrite=True)
 
@@ -642,6 +660,36 @@ def build_dark_ref_file():
 
     return
 
+def alternate_saturation_map():
+    '''
+    Creates an alternative jwst_niriss_saturation_XXXX.fits map to cut at a lower threshold
+    '''
+
+    GAIN = 1.62
+    sat_limit_electron = [35000, 40000, 45000, 50000, 55000, 60000, 65000, 70000]
+    for satlim_electron in sat_limit_electron:
+        SAT_LIMIT = satlim_electron/GAIN
+
+        crds_dir = '/Users/albert/NIRISS/CRDS_CACHE/references/jwst/niriss/'
+        satmap = datamodels.open(crds_dir+'jwst_niriss_saturation_0014.fits')
+        superbias = datamodels.open(crds_dir+'jwst_niriss_superbias_0181.fits')
+
+        #Subtract the superbias from satmap then multiply difference by a scale
+
+        newsatmap = satmap.copy()
+        tmp256 = satmap.data[-256:,:] - superbias.data
+        ind = tmp256 >= SAT_LIMIT
+        tmp256[ind] = SAT_LIMIT
+        #newsatmap.data[:256,:] = newsatmap.data[:256,:] - superbias.data
+        #newsatmap.data[:256,:] = np.where(newsatmap.data[:256,:] >= SAT_LIMIT, SAT_LIMIT, )
+        newsatmap.data[-256:,:] = tmp256 + superbias.data
+
+        newsatmap.meta.filename = 'custom_saturation_'+str(satlim_electron)+'e.fits'
+        newsatmap.write(crds_dir+newsatmap.meta.filename)
+
+    return
+
+
 
 if __name__ == "__main__":
     #refdir = '/Users/albert/NIRISS/CRDS_CACHE/references/jwst/niriss/'
@@ -650,11 +698,15 @@ if __name__ == "__main__":
     #check_profile_map(refdir+'jwst_niriss_specprofile_0017.fits')
 
     if True:
+        a = alternate_saturation_map()
+
+    if False:
         a = build_dark_ref_file()
 
     if False:
         dataset, dataset_dirname = '02589_obs001', 'T1'
         dataset, dataset_dirname = '02589_obs002', 'T1_2'
+        dataset, dataset_dirname = '01201_obs101', 'T1_3'
         subarray_list = ['FULL', 'SUBSTRIP256', 'SUBSTRIP96']
         for subarray in subarray_list:
         #if True:
