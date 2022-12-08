@@ -9,10 +9,15 @@ Created on 2022-04-12
 
 @author: cook
 """
-from astropy.table import Table
+
+# Importing ATOCA modules to get trace positions for timestamps
 from jwst import datamodels
+from jwst.extract_1d.soss_extract.soss_extract import get_trace_1d
+from jwst.extract_1d import Extract1dStep
+
 import numpy as np
 import os
+from astropy.table import Table
 from scipy.special import erf
 from typing import Dict, List, Optional, Tuple
 
@@ -78,16 +83,23 @@ class InputData:
         # print progress
         if verbose:
             cprint('Stacking multi spec')
+            
+        #Type of SUBARRAY
+        self.ny = data.meta.subarray.ysize
         # set orders
         self.orders = list(params['ORDERS'])
         # convert data into a stack
         self.spec = stack_multi_spec(data, self.orders, quantities=QUANTITIES)
         # storage for number of pixels in spectral dimensions
         self.n_wav = dict()
+        #Time of acquisition for each wavelength
+        self.lamda_mjd_dict = generate_time_array(self.filename, orders=self.orders, ny=self.ny)
         # set number of pixels in each order
         for onum in self.orders:
             # get the number of wavelengths
             self.n_wav[onum] = self.spec[onum]['WAVELENGTH'].shape[1]
+            self.spec[onum]['TIME'] = self.lamda_mjd_dict[onum]
+            
         # ---------------------------------------------------------------------
         # assign meta data for this observation
         # ---------------------------------------------------------------------
@@ -118,8 +130,8 @@ class InputData:
             # if n_wav not 2048 must check and update this value,
             #     will it always be 2048?
             pix0 = 0
-
-            time_pix = (pix0 + np.arange(n_wav) - 1024) / 2048 * time_int
+            
+            time_pix = (pix0 + np.arange(n_wav) - 1024) / 2048 * time_int 
 
             # the 2d array of time, for all integrations and all pixels
             #     (wavelengths)
@@ -239,7 +251,6 @@ class InputData:
                  indices for each bin, 3. numpy array: the end indices for
                  each bin
         """
-
         # get resolution wave min and wave max for this order
         resolution = params['BIN_RESOLUTION'][onum]
         wave_min = params['BIN_WAVE_MIN'][onum]
@@ -534,6 +545,90 @@ class InputData:
 # =============================================================================
 # Define functions
 # =============================================================================
+def generate_wave_correction(filename, orders=[1,2,3], ny=256):
+    
+        # Read the trace positions
+        print("Creating Extract1dStep objet to get trace positions")
+        step = Extract1dStep()
+        ref_files = dict()
+
+        # Get the reference files model class
+        ref_datamodel = {'spectrace': datamodels.SpecTraceModel,
+                        'wavemap': datamodels.WaveMapModel,
+                        'specprofile': datamodels.SpecProfileModel,
+                        'speckernel': datamodels.SpecKernelModel}
+
+        # Read the reference files
+        for ref_type in ['spectrace', 'wavemap', 'specprofile', 'speckernel']:
+            ref_filename = step.get_reference_file(filename, ref_type)
+            ref_files[ref_type] = ref_datamodel[ref_type](ref_filename)
+
+        # Prepare the reference file arguments.
+        transform=[0,0,0]
+        ytrace = np.empty((3,2048))
+        
+        # Get the trace positions from ATOCA
+        for order in orders:
+            spectral_order = order
+            xtrace, ytrace[order-1], _ = get_trace_1d(ref_files, transform, spectral_order)
+        
+        #create time array
+        #pixels read from y=255 to 0, then from x=2047 to 0, ds9 format
+        t_pix=10.e-6 #time to read one pixel
+        
+        ytrace = np.flip(ytrace, axis = 1) # We begin at the last pixel
+
+        t_order_array=(ny-ytrace)*t_pix+xtrace*(ny+12.25)*t_pix #12.25 delay between columns added ad hoc to give correct frame time
+        t_order_array*=(1/3600)*(1/24) #Changing seconds to days
+                
+        #Center of image
+        i_cen = 1024
+        
+        for order in orders: 
+            t_order_array[order-1] = np.flip(t_order_array[order-1]) #Flip back the y-axis
+            t_order_array[order-1] -= t_order_array[order-1][i_cen] # Zero at the center of the detector
+            
+        return t_order_array
+
+
+def generate_time_array(filename,orders=[1,2,3],ny=256):
+
+    # Extracting the datamodel
+    data = datamodels.open(filename)
+    
+    #Finding out number of integrations and number of order
+    n_order = len(orders) #Number of orders
+    n_output_spec = len(data.spec) #Number of spec objects
+    n_integ = data.meta.exposure.nints #Number of integrations
+    x_dim = 2048 # number of pixels in the x-dimension
+    
+    #Generate the correction time for each wavelength
+    t_arrays = generate_wave_correction(filename, orders = orders, ny = ny)
+
+    #Array to store time/lambda
+    wave_mjd = np.zeros((3,n_integ,x_dim))
+    wave_mjd_dict = dict()
+    
+    for spectrum in range(n_output_spec):  # for each integration
+        spec = data.spec[spectrum]
+        integ = spec.int_num
+        order = spec.spectral_order
+        
+        condition = order in orders #Check if we want this order
+        
+        if condition == False: 
+            continue
+        
+        mid_time = spec.mid_time_mjd #Get the time at the middle of the detector  
+        wave_mjd[order-1,integ-1,:] = mid_time + t_arrays[order-1] 
+            
+    
+    for onum in orders:
+        wave_mjd_dict[onum] = wave_mjd[onum-1,:,:]
+        
+    return wave_mjd_dict
+
+
 def stack_multi_spec(multi_spec, use_orders: List[int],
                      quantities: List[str]) -> Dict[int, Dict[str, np.ndarray]]:
     """
