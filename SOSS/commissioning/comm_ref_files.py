@@ -1146,10 +1146,10 @@ if __name__ == "__main__":
         # SOSS.APPLESOSS.applesoss_demo.ipynb
 
         # 4 - run soss_reffiles_maker()
-        soss_reffiles_maker(dataset='nis18obs02',
-                            wavecaldataset=None,
-                            subarray='SUBSTRIP256'
-                            )
+        # There are many hardcoded file names in soss_reffiles_maker. For example, All outputs from
+        # the previous applesoss run need to be placed manually where soss_reffiles_maker
+        # wants to.
+        soss_reffiles_maker(dataset='nis18obs02')
 
     if False:
         print()
