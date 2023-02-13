@@ -208,7 +208,15 @@ def flag_outliers(result, nn=2, window_size=(1, 33), n_sig=5, verbose=False, out
         # Add option to "enlarge" a pixel flagged as outlier with a kernel in the hope
         # of catching the wings of cosmic rays
         if kernel_enlarge:
+            # 3x3 kernel
             kernel = [[0,1,0],[1,1,1],[0,1,0]] # cross
+            # 5x5 kernel
+            kernel = [
+                [0,0,1,0,0],
+                [0,1,1,1,0],
+                [1,1,1,1,1],
+                [0,1,1,1,0],
+                [0,0,1,0,0]]
             pad = np.max(np.shape(kernel)) # roughly
             im = np.zeros((dimy, dimx))
             im[outliers] = 1
@@ -231,29 +239,22 @@ def flag_outliers(result, nn=2, window_size=(1, 33), n_sig=5, verbose=False, out
     #toto = result.copy()
     #toto.write('/Users/albert/NIRISS/Commissioning/analysis/HATP14b/result.fits')
 
+    # Save fits file of all integrations where the cosmic ray detections are set to NaN whihc
+    # will allow to use ds9 to flash through and inspect that all went fine
+    basename = os.path.splitext(result.meta.filename)[0]
+    basename = basename.split('_nis')[0] + '_nis'
+    if outdir == None:
+        outdir = './'
+    if not os.path.exists(outdir):
+        os.makedirs(outdir)
 
-    if save_diagnostic == True:
-        # Save fits file of all integrations where the cosmic ray detections are set to NaN whihc
-        # will allow to use ds9 to flash through and inspect that all went fine
-        cube = np.copy(result.dq)
-        #ind = np.bitwise_and((result.dq).astype(int), pixel['OUTLIER']).astype(bool)
-        #ind = np.bitwise_and(result.dq, pixel['OUTLIER']).astype(bool)
-        #cube[ind] = np.nan
+    if save_results:
+        result.meta.filename = basename + '_outlierstep.fits'
+        result.write(outdir + '/' + result.meta.filename)
 
-        basename = os.path.splitext(result.meta.filename)[0]
-        basename = basename.split('_nis')[0] + '_nis'
-        if outdir == None:
-            outdir = './'
-        if not os.path.exists(outdir):
-            os.makedirs(outdir)
-
-        if save_results:
-            result.meta.filename = basename + '_outlierstep.fits'
-            result.write(outdir + '/' + result.meta.filename)
-
+    if save_diagnostic:
         result.meta.filename = basename
-
-        hdu = fits.PrimaryHDU(cube)
+        hdu = fits.PrimaryHDU(result.dq)
         hdu.writeto(outdir+'/outliers_'+basename+'.fits', overwrite=True)
 
     return result

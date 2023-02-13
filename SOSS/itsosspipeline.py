@@ -888,11 +888,13 @@ def loictrace(simuPars, response, bin_models_wv, bin_starmodel_flux, bin_ld_coef
         # spectrum to seed on detector = planet Rp/Rs * stellar flux * instrument response * detector Quantum yield
         bin_models_flux = planet_flux_ratio * bin_starmodel_flux * bin_response * bin_quantum_yield
     elif transitmodelname == 'KSint':
+        print()
         #bin_models_flux has to be generated with your own function
         #Be reminded that the starmodel_flux passed on to this part of the code uses a 4-param
         #limb darkening description. You need to either work with those or convert them to 2-param
         #if that is what your modeling function uses.
-    elif transitmodelname == 'Eclipse'
+    elif transitmodelname == 'Eclipse':
+        print()
         # Louis-Philippe Coulombe could introduce something here to handle eclipses.
         # call spgen.transitmodel() probablement sans les ld_coeff[],
         #  - rdr_array sera constant plutot que chromatique

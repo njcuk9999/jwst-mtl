@@ -3,14 +3,10 @@ Script used to generate the various iterations of reference files used by ATOCA 
 It uses SOSS.dms.soss_ref_files.ipynb as a example.
 The first iteration of reference files is after the wavelength calibration observation.
     - Arpita Roy ran the wavelength calibration script and sent me the wave vs x pixel for orders 1 and 3 (not 2).
-    - I have ran the trace centroids on a depp stack.
+    - I have ran the trace centroids on a deep stack.
     - Michael Radica ran his applesoss trace profile building script and sent me the results orders 1 and 2).
     - monochromatic tilt is set to zero.
     --> There is no speckernel update, no throughput update.
-The second iteration is the same but for the observation 2 of the wavelength calibration program where the trace was
-shifted by 1000 pixels down (to observe the background).
-
-The third iteration will be based on the flux calibration or the transit observation, whichever comes first.
 '''
 import os
 
@@ -26,6 +22,8 @@ import matplotlib.pyplot as plt
 
 import SOSS.dms.soss_oneoverf as soss_oneoverf
 
+from astropy.nddata.bitmask import bitfield_to_boolean_mask
+
 from jwst import datamodels
 
 from jwst.pipeline import calwebb_detector1
@@ -33,6 +31,413 @@ from jwst.pipeline import calwebb_detector1
 from scipy.optimize import curve_fit
 
 import sys
+
+import SOSS.commissioning.comm_utils as comm_utils
+
+from jwst import datamodels
+
+from jwst.datamodels import dqflags
+
+from SOSS.dms.soss_centroids import get_soss_centroids
+
+from SOSS.commissioning.comm_utils import build_mask_contamination
+
+
+def mediandev(x, axis=None):
+    med = np.nanmedian(x, axis=axis)
+
+    return np.nanmedian(np.abs(x - med), axis=axis) / 0.67449
+
+
+def stack_datamodel(datamodel):
+
+    '''
+    Stack a time series.
+    First put all non-zero DQ pixels to NaNs.
+    Nan median and nan std along integrations axis.
+    Remaining NaNs on the stack really are common bad pixels for all integrations.
+    '''
+
+
+    #import matplotlib.pyplot as plt
+
+
+    # Mask pixels that have the DO_NOT_USE data quality flag set, EXCEPT the saturated pixels (because the ramp
+    # fitting algorithm handles saturation).
+    donotuse = bitfield_to_boolean_mask(datamodel.dq, ignore_flags=dqflags.pixel['DO_NOT_USE'], flip_bits=True)
+    saturated = bitfield_to_boolean_mask(datamodel.dq, ignore_flags=dqflags.pixel['SATURATED'], flip_bits=True)
+    #mask = donotuse & ~saturated
+    mask = donotuse # Just this is enough to not flag the saturated pixels in the trace
+    # Copy the datamodel to tmp
+    #tmp_data = np.copy(datamodel.data)
+    #tmp_data[mask] = np.nan
+
+    #deepstack = np.nanmedian(tmp_data, axis=0)
+    #rms = mediandev(tmp_data, axis=0)
+    #dq = np.copy(deepstack) * 0
+    #nan = ~np.isfinite(deepstack) | ~np.isfinite(rms)
+    #dq[nan] = 1
+
+    # prior to the HATP14b analysis, this worked:
+    #bad = (datamodel.dq != 0) | ~np.isfinite(datamodel.dq)
+    # bad if:
+    # 1) DO_NOT_USE
+    # OR
+    # 2) different than zero but allowing for saturated only
+    # OR
+    # 3) NaN
+    bad = (datamodel.dq % 2 == 1) | ((datamodel.dq != 0) & (datamodel.dq != 2)) | ~np.isfinite(datamodel.dq)
+    tmp_data = datamodel.data * 1
+    tmp_data[bad] = np.nan
+
+    deepstack = np.nanmedian(tmp_data, axis=0)
+    rms = mediandev(tmp_data, axis=0)
+    dq = np.copy(deepstack) * 0
+    nan = ~np.isfinite(deepstack) | ~np.isfinite(rms)
+    dq[nan] = 1
+
+    return deepstack, rms, dq
+
+
+
+
+def soss_reffiles_maker(dataset='nis18obs02',
+                        wavecaldataset=None,
+                        subarray='SUBSTRIP256'
+                        ):
+    '''
+    dataset is a string that is different for each observation. Why? Because the
+    x,y position of the traces changes appreciably between observations.
+
+
+    '''
+    #--------------------------------------------------------------------------
+    # DESCRIBE THE REQUIRED INPUTS TO THIS FUNCTION
+    #--------------------------------------------------------------------------
+    mypath = '/Users/albert/Space/udm/NIRISS/SOSSpipeline/jwst-mtl/SOSS/'
+    # throughput
+    throughput_order1_path = mypath+'commissioning/files/throughput_o1_commrevA.txt'
+    throughput_order2_path = mypath+'commissioning/files/throughput_o2_commrevA.txt'
+    throughput_order3_path = mypath+'commissioning/files/throughput_o3_commrevA.txt'
+    # monochromatic tilt
+    monochromatictilt_file = mypath+'dms/files/SOSS_wavelength_dependent_tilt.ecsv'
+    # Trace positions in x,y
+    # These are generated using another code (a centroid measuring code)
+    xyposition_o1_substrip256 = mypath+'commissioning/files/centroids_o1_substrip256_'+dataset+'.txt'
+    xyposition_o2_substrip256 = mypath+'commissioning/files/centroids_o2_substrip256_'+dataset+'.txt'
+    xyposition_o3_substrip256 = mypath+'commissioning/files/centroids_o3_substrip256_'+dataset+'.txt'
+    # Other inputs that are currently hard-coded
+    # wavecal_o1_'+dataset+'.txt' - wavelength calibration for each observation (each dataset)
+    # wavecal_o2_'+dataset+'.txt' - wavelength calibration for each observation (each dataset)
+    # wavecal_o3_'+dataset+'.txt' - wavelength calibration for each observation (each dataset)
+    #
+    # 'applesoss_traceprofile.fits' - a very important one. This is the trace profile generated by
+    #                                 APPLESOSS for each observation.
+
+
+    # All inputs will be modified to correspond to this wavelength grid.
+    wavemin = 0.5
+    wavemax = 5.5
+    nwave = 5001
+    wave_grid = np.linspace(wavemin, wavemax, nwave)
+    # 2D maps will have this padding and oversampling
+    padding = 20
+    oversample = 1
+
+    #--------------------------------------------------------------------------
+    # PART 1 - READ THE EXISTING END-TO-END THROUGHPUT OF EACH SOSS ORDERS
+    #--------------------------------------------------------------------------
+
+    # Read the measured throughputs (from Kevin Volk) - wave units of microns, value units of 0 to 1
+    tab1 = ascii.read(throughput_order1_path)
+    tab2 = ascii.read(throughput_order2_path)
+    tab3 = ascii.read(throughput_order3_path)
+    # Interpolate to the reference wavelength grid.
+    throughput = np.zeros((nwave, 3))
+    throughput[:, 0] = np.interp(wave_grid, tab1['col1'], tab1['col2'])
+    throughput[:, 1] = np.interp(wave_grid, tab2['col1'], tab2['col2'])
+    throughput[:, 2] = np.interp(wave_grid, tab3['col1'], tab3['col2'])
+
+    fig = plt.figure(figsize=(8,6))
+    plt.plot(wave_grid, throughput[:,0], color='black', label='Order 1 Measured')
+    plt.plot(wave_grid, throughput[:,1], color='blue', label='Order 2 Measured')
+    plt.plot(wave_grid, throughput[:,2], color='red', label='Order 3 Measured')
+    plt.legend()
+    plt.ylabel('Throughput')
+    plt.xlabel('Wavelength')
+    plt.show()
+
+    # Fix small negative throughput values.
+    throughput = np.where(throughput < 0, 0, throughput)
+
+
+    #--------------------------------------------------------------------------
+    # PART 2 - READ THE EMPIRICALLY MEASURED MONOCHROMATIC TILT FOR EACH ORDER
+    #--------------------------------------------------------------------------
+    # Read the tilt as a function of wavelength.
+    tab = ascii.read(monochromatictilt_file)
+
+    # Interpolate the tilt to the same wavelengths as the throughput.
+    # Default bounds handling (constant boundary) is fine.
+    tilt = np.zeros((nwave, 3))
+    tilt[:, 0] = np.interp(wave_grid, tab['Wavelength'], tab['order 1'])
+    tilt[:, 1] = np.interp(wave_grid, tab['Wavelength'], tab['order 2'])
+    tilt[:, 2] = np.interp(wave_grid, tab['Wavelength'], tab['order 3'])
+    # For now, set tilt to zero until we can measure it
+    ##################
+    tilt = tilt * 0.0
+    ##################
+
+
+    #--------------------------------------------------------------------------
+    # PART 3 - READ THE TRACE POSITION FOR THE 3 ORDERS
+    #--------------------------------------------------------------------------
+
+    # Warning - here it is assumed that the x,y coordinates are of SUBSTRIP256
+    o1 = ascii.read(xyposition_o1_substrip256)
+    x_o1, y_o1 = np.array(o1['x']), np.array(o1['y'])
+    o2 = ascii.read(xyposition_o2_substrip256)
+    x_o2, y_o2 = np.array(o2['x']), np.array(o2['y'])
+    o3 = ascii.read(xyposition_o2_substrip256)
+    x_o3, y_o3 = np.array(o3['x']), np.array(o3['y'])
+
+
+    #--------------------------------------------------------------------------
+    # PART 4 - READ THE WAVELENGTH CALIBRATION FOR THE 3 ORDERS
+    # THE W_01/02/03 ARE ASSUMED TO BE CORRESPONDING TO X_01/02/03 (SAME SIZE)
+    #--------------------------------------------------------------------------
+
+
+    # CUSTOM wavecal order 1 --------------------------------------------------
+    # Read the wavelength calibration files
+    if wavecaldataset == None:
+        # Defaults on the one for this data set
+        wcal_o1 = ascii.read('files/wavecal_o1_'+dataset+'.txt')
+        w_o1 = np.array(wcal_o1['wavelength'])
+    else:
+        # But could use a wavelength calibration from another data set
+        wcal_o1 = ascii.read('files/wavecal_o1_'+wavecaldataset+'.txt')
+        w_o1 = np.array(wcal_o1['wavelength'])
+    # Resample to the desired wavelength sampling
+    # Padding each ends of the array to fill the wave_grid requested
+    xtrace_order1 = extrapolate_to_wavegrid(wave_grid, w_o1, x_o1)
+    ytrace_order1 = extrapolate_to_wavegrid(wave_grid, w_o1, y_o1)
+
+    # CUSTOM wavecal order 2 --------------------------------------------------
+    # Read the wavelength calibration files
+    if wavecaldataset == None:
+        wcal_o2 = ascii.read('files/wavecal_o2_' + dataset + '.txt')
+        w_o2 = np.array(wcal_o2['wavelength'])
+    else:
+        wcal_o2 = ascii.read('files/wavecal_o2_' + wavecaldataset + '.txt')
+        w_o2 = np.array(wcal_o2['wavelength'])
+    w_o2_tmp = np.array(wcal_o2['wavelength'])
+    w_o2 = np.zeros(2048)*np.nan
+    w_o2[:1783] = w_o2_tmp
+    # Fill for column > 1783 with linear extrapolation
+    m = w_o2[1782] - w_o2[1781]
+    dx = np.arange(2048-1783)+1
+    w_o2[1783:] = w_o2[1782] + m * dx
+    xtrace_order2 = extrapolate_to_wavegrid(wave_grid, w_o2, x_o2)
+    ytrace_order2 = extrapolate_to_wavegrid(wave_grid, w_o2, y_o2)
+
+
+    # CUSTOM wavecal order 3 --------------------------------------------------
+    # only 800 columns in wavecal_o3
+    if wavecaldataset == None:
+        wcal_o3 = ascii.read('files/wavecal_o3_'+dataset+'.txt')
+    else:
+        wcal_o3 = ascii.read('files/wavecal_o3_' + wavecaldataset + '.txt')
+    w_o3_tmp = np.array(wcal_o3['wavelength'])
+    w_o3 = np.zeros(2048)*np.nan
+    w_o3[:800] = w_o3_tmp
+    # Fill for column > 800 with linear extrapolation
+    m = w_o3[799] - w_o3[798]
+    dx = np.arange(2048-800)+1
+    w_o3[800:] = w_o3[799] + m * dx
+    xtrace_order3 = extrapolate_to_wavegrid(wave_grid, w_o3, x_o3)
+    ytrace_order3 = extrapolate_to_wavegrid(wave_grid, w_o3, y_o3)
+
+    fig = plt.figure(figsize=(6,4))
+    plt.scatter(x_o1, w_o1, marker='.', color='black', label='Order 1 Measured')
+    plt.plot(xtrace_order1, wave_grid, color='red', label='Order 1 Extrapolated and Resampled')
+    plt.scatter(x_o2, w_o2, marker='.', color='blue', label='Order 2 Measured')
+    plt.plot(xtrace_order2, wave_grid, color='red', label='Order 2 Extrapolated and Resampled')
+    plt.scatter(x_o3, w_o3, marker='.', color='green', label='Order 3 Measured')
+    plt.plot(xtrace_order3, wave_grid, color='red', label='Order 3 Extrapolated and Resampled')
+    plt.legend()
+    plt.xlabel('X Position')
+    plt.ylabel('Wavelength')
+    plt.show()
+
+    #--------------------------------------------------------------------------
+    # PART 5 - WRITE THE 1ST REFERENCE FILE - THE SOSS TRACE TABLE
+    #--------------------------------------------------------------------------
+
+    xtrace = np.zeros((nwave, 3))
+    xtrace[:, 0] = xtrace_order1
+    xtrace[:, 1] = xtrace_order2
+    xtrace[:, 2] = xtrace_order3
+
+    ytrace = np.zeros((nwave, 3))
+    ytrace[:, 0] = ytrace_order1
+    ytrace[:, 1] = ytrace_order2
+    ytrace[:, 2] = ytrace_order3
+
+    # Massage inputs according to requested output subarray
+    if subarray == 'SUBSTRIP96':
+        ytrace[:, 0] = ytrace[:, 0] - 10
+        ytrace[:, 1] = ytrace[:, 1] - 10
+        ytrace[:, 2] = ytrace[:, 2] - 10
+        #print('Actually do nothing. soss_ref_files.py handles it')
+    elif subarray == 'FULL':
+        ytrace[:, 0] = ytrace[:, 0] + (2048-256)
+        ytrace[:, 1] = ytrace[:, 1] + (2048-256)
+        ytrace[:, 2] = ytrace[:, 2] + (2048-256)
+
+    # Call init_spec_trace with the cleaned input data. This will perform checks on the input and built the fits file structure.
+    hdul = init_spec_trace(wave_grid, xtrace, ytrace, tilt, throughput, subarray) #'SUBSTRIP256')
+
+    # If necessary manual changes and additions can be made here, before saving the file.
+    #filename = hdul[0].header['FILENAME']
+    if dataset == 'nis18obs02':
+        trace_file = '/Users/albert/NIRISS/Commissioning/analysis/SOSSwavecal/ref_files/'+hdul[0].header['FILENAME']
+    elif dataset == 'nis17':
+        trace_file = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/ref_files/'+hdul[0].header['FILENAME']
+    elif dataset == 'nis34':
+        trace_file = '/Users/albert/NIRISS/Commissioning/analysis/HATP14b/ref_files/'+hdul[0].header['FILENAME']
+    elif dataset == '02589_obs001':
+        trace_file = '/Users/albert/NIRISS/Commissioning/analysis/T1/ref_files/'+hdul[0].header['FILENAME']
+    elif dataset == '02589_obs002':
+        trace_file = '/Users/albert/NIRISS/Commissioning/analysis/T1_2/ref_files/'+hdul[0].header['FILENAME']
+    elif dataset == '01201_obs101':
+        trace_file = '/Users/albert/NIRISS/Commissioning/analysis/T1_3/ref_files/' + hdul[0].header['FILENAME']
+    else:
+        print('Add entry for this target in com_ref_files.py...')
+        sys.exit()
+    hdul.writeto(trace_file, overwrite=True)
+    #hdul.writeto(trace_file + '.gz', overwrite=True)
+
+    #--------------------------------------------------------------------------
+    # PART 6 - WRITE THE 2ND REFERENCE FILE - THE 2D WAVELENGTH MAP
+    #--------------------------------------------------------------------------
+
+    dimx = oversample * (2048 + 2 * padding)
+    dimy = oversample * (2048 + 2 * padding)
+
+    wave_map_2d = np.zeros((dimx, dimy, 3))
+
+    # Read the 1D trace reference file.
+    data = fits.getdata(trace_file, ext=1)
+
+    # Compute the 2D wavelength map.
+    wave_map_2d[:, :, 0] = calc_2d_wave_map(data['WAVELENGTH'], data['X'], data['Y'], data['TILT'],
+                                            oversample=oversample, padding=padding)
+
+    # Read the 1D trace reference file.
+    data = fits.getdata(trace_file, ext=2)
+
+    # Compute the 2D wavelength map.
+    wave_map_2d[:, :, 1] = calc_2d_wave_map(data['WAVELENGTH'], data['X'], data['Y'], data['TILT'],
+                                            oversample=oversample, padding=padding)
+
+    # Read the 1D trace reference file.
+    data = fits.getdata(trace_file, ext=3)
+
+    # Compute the 2D wavelength map.
+    wave_map_2d[:, :, 2] = calc_2d_wave_map(data['WAVELENGTH'], data['X'], data['Y'], data['TILT'],
+                                            oversample=oversample, padding=padding)
+
+    hdul = init_wave_map(wave_map_2d, oversample, padding, subarray)#'SUBSTRIP256')
+
+    # If necessary manual changes and additions can be made here, before saving the file.
+    if dataset == 'nis18obs02':
+        filename = '/Users/albert/NIRISS/Commissioning/analysis/SOSSwavecal/ref_files/'+hdul[0].header['FILENAME']
+    elif dataset == 'nis17':
+        filename = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/ref_files/'+hdul[0].header['FILENAME']
+    elif dataset == 'nis34':
+        filename = '/Users/albert/NIRISS/Commissioning/analysis/HATP14b/ref_files/'+hdul[0].header['FILENAME']
+    elif dataset == '02589_obs001':
+        filename = '/Users/albert/NIRISS/Commissioning/analysis/T1/ref_files/'+hdul[0].header['FILENAME']
+    elif dataset == '02589_obs002':
+        filename = '/Users/albert/NIRISS/Commissioning/analysis/T1_2/ref_files/'+hdul[0].header['FILENAME']
+    elif dataset == '01201_obs101':
+        filename = '/Users/albert/NIRISS/Commissioning/analysis/T1_3/ref_files/'+hdul[0].header['FILENAME']
+    else:
+        print('Add entry for this target in com_ref_files.py...')
+        sys.exit()
+    hdul.writeto(filename, overwrite=True)
+    #hdul.writeto(filename + '.gz', overwrite=True)
+
+
+    #--------------------------------------------------------------------------
+    # PART 7 - WRITE THE 3RD REFERENCE FILE - THE 2D TRACE PROFILE
+    #--------------------------------------------------------------------------
+
+    # We will use the following sources for this reference file. These can be modified as needed.
+    if dataset == 'nis18obs01':
+        profile_file = '/Users/albert/NIRISS/Commissioning/analysis/SOSSwavecal/michael_trace/applesoss_traceprofile.fits'
+    if dataset == 'nis18obs02':
+        profile_file = '/Users/albert/NIRISS/Commissioning/analysis/SOSSwavecal/michael_trace/applesoss_traceprofile.fits'
+    if dataset == 'nis17':
+        profile_file = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/michael_trace/applesoss_traceprofile.fits'
+    if dataset == 'nis34':
+        profile_file = '/Users/albert/NIRISS/Commissioning/analysis/HATP14b/michael_trace/applesoss_traceprofile.fits'
+    if dataset == '02589_obs001':
+        profile_file = '/Users/albert/NIRISS/Commissioning/analysis/T1/michael_trace/applesoss_traceprofile.fits'
+    if dataset == '02589_obs002':
+        profile_file = '/Users/albert/NIRISS/Commissioning/analysis/T1_2/michael_trace/applesoss_traceprofile.fits'
+    if dataset == '01201_obs101':
+        profile_file = '/Users/albert/NIRISS/Commissioning/analysis/T1_3/michael_trace/applesoss_traceprofile.fits'
+    else:
+        print('Add entry for this target in com_ref_files.py...')
+        sys.exit()
+
+    # Read the profile file provided by Michael (APPLESOSS).
+    aaa = fits.open(profile_file) # contains orders 1 and 2 only, fill order 3 with zeros
+    # set to zero x> 1780 order 2 (bad negative stuff there)
+    prof2 = aaa[2].data
+    #prof2[:, 1760:] = 0.0
+    if dataset == 'nis18obs01':
+        profile_2d = np.array([aaa[1].data, prof2, aaa[2].data*0.0])
+    else:
+        profile_2d = np.array([aaa[1].data, prof2, aaa[3].data])
+    profile_2d = np.moveaxis(profile_2d, 0, -1)
+
+    # The provided file is for SUBSTRIP256, we pad this to the FULL subarray.
+    nrows, ncols, _ = profile_2d.shape
+    dimy = oversample * (2048 + 2 * padding)
+    dimx = oversample * (2048 + 2 * padding)
+
+    tmp = np.full((dimy, dimx, 3), fill_value=np.nan)
+    tmp[-nrows:] = profile_2d
+    profile_2d = tmp
+
+    # Call init_spec_profile with the prepared input data.
+    hdul = init_spec_profile(profile_2d, oversample, padding, subarray)
+
+    # If necessary manual changes and additions can be made here, before saving the file.
+    filename = '/Users/albert/NIRISS/Commissioning/analysis/SOSSwavecal/ref_files/'+hdul[0].header['FILENAME']
+    if dataset == 'nis18_obs02':
+        filename = '/Users/albert/NIRISS/Commissioning/analysis/SOSSwavecal/ref_files/'+hdul[0].header['FILENAME']
+    elif dataset == 'nis17':
+        filename = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/ref_files/'+hdul[0].header['FILENAME']
+    elif dataset == 'nis34':
+        filename = '/Users/albert/NIRISS/Commissioning/analysis/HATP14b/ref_files/'+hdul[0].header['FILENAME']
+    elif dataset == '02589_obs001':
+        filename = '/Users/albert/NIRISS/Commissioning/analysis/T1/ref_files/'+hdul[0].header['FILENAME']
+    elif dataset == '02589_obs002':
+        filename = '/Users/albert/NIRISS/Commissioning/analysis/T1_2/ref_files/'+hdul[0].header['FILENAME']
+    elif dataset == '01201_obs101':
+        filename = '/Users/albert/NIRISS/Commissioning/analysis/T1_3/ref_files/'+hdul[0].header['FILENAME']
+    else:
+        print('Add entry for this target in com_ref_files.py...')
+        sys.exit()
+    hdul.writeto(filename, overwrite=True)
+    #hdul.writeto(filename + '.gz', overwrite=True)
+
+    return
+
 
 
 def run_iteration1(dataset='nis18obs02', wavecaldataset=None, subarray='SUBSTRIP256'):
@@ -374,6 +779,8 @@ def extrapolate_to_wavegrid(w_grid, wavelength, quantity):
     '''
     Extrapolates quantities on the right and the left of a given array of quantity
     '''
+
+    # sort in increasing wavelengths or np.interp will fail
     sorted = np.argsort(wavelength)
     q = quantity[sorted]
     w = wavelength[sorted]
@@ -692,12 +1099,76 @@ def alternate_saturation_map():
 
 
 if __name__ == "__main__":
-    #refdir = '/Users/albert/NIRISS/CRDS_CACHE/references/jwst/niriss/'
-    #check_spec_trace(refdir+'jwst_niriss_spectrace_0018.fits')
-    #check_2dwave_map(refdir+'jwst_niriss_wavemap_0014.fits')
-    #check_profile_map(refdir+'jwst_niriss_specprofile_0017.fits')
 
     if True:
+        ######################################################################
+        # Joe - I run this to generate the sequence of reference file creation
+        ######################################################################
+        outdir = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/'
+
+        # 1 - Stack a rateints.fits, cal.fits or your best shot at a reduced cube.
+        #     The stack is then used to measure the x,y of the traces.
+        bestshot_file = outdir+'supplemental_jw01091002001_03101_00001-seg001_nis/datamodel_nanfree_before_extract1d.fits'
+        datamodel = datamodels.open(bestshot_file)
+        stack, rms, dq = stack_datamodel(datamodel)
+        print('Got stack')
+
+        # 2 a) - Build a contamination mask (masking any contaminating trace's order 0-2)
+        # Getting this mask right is important and requires back and forth inspection of
+        # the created mask and the deep stack, blinking to make sure they match.
+        maskname = outdir+'thisobsmask.fits'
+        mask = build_mask_contamination(0, 1376, 111) # order 0, x, y
+        mask += build_mask_contamination(0, 1867, 75)
+        mask += build_mask_contamination(1, -680, 153) # order 1, x, y of apex
+                                                       # there is also a order 2 option
+        maskbool = mask > 0
+        hdu = fits.PrimaryHDU(mask)
+        hdu.writeto(maskname, overwrite=True)
+
+        # 2 b) - Find the x,y positions of the traces on the stack
+        cen = get_soss_centroids(stack, verbose=True,
+                                       mask=maskbool,
+                                       xlim_order3= 1100)
+        #x, y, width, thefit = get_centroids_edgetrigger(stack, verbose=True, xlim_order3= 1100)
+        print('Got xy positions')
+
+        # Save the centroids to file
+        ascii.write({'x': cen['order 1']['X centroid'], 'y': cen['order 1']['Y centroid']},
+                    outdir+'applesoss_xy_order1.txt', formats={'x': '%.2f', 'y': '%.2f'}, overwrite=True)
+        ascii.write({'x': cen['order 2']['X centroid'], 'y': cen['order 2']['Y centroid']},
+                    outdir+'applesoss_xy_order2.txt', formats={'x': '%.2f', 'y': '%.2f'}, overwrite=True)
+        ascii.write({'x': cen['order 3']['X centroid'], 'y': cen['order 3']['Y centroid']},
+                    outdir+'applesoss_xy_order3.txt', formats={'x': '%.2f', 'y': '%.2f'}, overwrite=True)
+
+        # 3 - In a separate step - run APPLESOSS's jupyter notebook to generate the trace profile 2D maps
+        # APPLESOSS will repeat the centroiding, make sure the same contamination mask
+        # params are used.
+        # SOSS.APPLESOSS.applesoss_demo.ipynb
+
+        # 4 - run soss_reffiles_maker()
+        soss_reffiles_maker(dataset='nis18obs02',
+                            wavecaldataset=None,
+                            subarray='SUBSTRIP256'
+                            )
+
+    if False:
+        print()
+        #refdir = '/Users/albert/NIRISS/CRDS_CACHE/references/jwst/niriss/'
+        #check_spec_trace(refdir+'jwst_niriss_spectrace_0018.fits')
+        #check_2dwave_map(refdir+'jwst_niriss_wavemap_0014.fits')
+        #check_profile_map(refdir+'jwst_niriss_specprofile_0017.fits')
+
+    if False:
+        # Builds a series of aperture masks for different data sets
+        if True:
+            # This is for an IDTSOSS simulation of HAT-P-14 companion
+            filename = '/Users/albert/NIRISS/SOSSpaper/companion_tohat/hatp14.fits'
+            outdir = '/Users/albert/NIRISS/SOSSpaper/companion_tohat/'
+        m = comm_utils.aperture_from_scratch(filename, norders=3, aphalfwidth=[12.5,12.5,12.5],
+                                             outdir=None, datamodel_isfits=True, verbose=True,
+                                             trace_table_ref=None)
+
+    if False:
         a = alternate_saturation_map()
 
     if False:

@@ -58,7 +58,8 @@ SPECPROFILE = 'SOSS_ref_2D_profile_SUBSTRIP256.fits'
 
 def custom_loic(exposurelist, use_atoca=False, optimal_extraction=False,
                 run_outliers=True, contamination_mask=None, extract_only=False,
-                skip_stacking=False, erase_clean=False, satmap=None):
+                skip_stacking=False, erase_clean=False, satmap=None,
+                box_width=25):
 
     # Correct the 1/f noise at the full time-series level rather than
     # segment by segment (because 1/f residuals on the stack differ
@@ -117,7 +118,6 @@ def custom_loic(exposurelist, use_atoca=False, optimal_extraction=False,
         #deepstack = fits.getdata('/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/oof_deepstack_jw01091002001_03101_00001.fits')
 
 
-
     # Proceed back on a segment by segment basis (rather than at the whole time-series level)
     for segment in range(nsegments):
         # Read back the file on disk
@@ -136,7 +136,10 @@ def custom_loic(exposurelist, use_atoca=False, optimal_extraction=False,
         if extract_only == False:
             # Custom - 1/f correction
             result = soss_oneoverf.applycorrection(
-                result, output_dir=outdir, save_results=False, deepstack_custom=deepstack)
+                result, output_dir=outdir, save_results=True,
+                deepstack_custom=deepstack,
+                outlier_map=outdir+'/outliers_'+basename+'.fits',
+                trace_table_ref=ATOCAREF_DIR+SPECTRACE)
             if segment == 0: fn.write('{:} - After 1/f \n'.format(result.meta.filename))
 
             # DMS standard - SuperBias subtraction
@@ -227,7 +230,8 @@ def custom_loic(exposurelist, use_atoca=False, optimal_extraction=False,
             # Custom - Outlier flagging
             if run_outliers:
                 result = soss_outliers.flag_outliers(
-                    result, window_size=(3,11), n_sig=9, verbose=True, outdir=outdir,
+                    #result, window_size=(3,11), n_sig=9, verbose=True, outdir=outdir,
+                    result, window_size=(3, 11), n_sig=4, verbose=True, outdir=outdir,
                     save_diagnostic=~erase_clean, save_results=False)
             f.write('DQ={:} - After outlier flagging step \n'.format(result.dq[0,88,1361]))
 
@@ -246,7 +250,7 @@ def custom_loic(exposurelist, use_atoca=False, optimal_extraction=False,
             hdu = fits.PrimaryHDU(result.dq)
             hdu.writeto(outdir+'/prestack_dq.fits', overwrite=True)
             # ici DQ est bon 1362,139 = 1
-            result = commutils.soss_interp_badpix(result, outdir, save_results=True)
+            result = commutils.soss_interp_badpix(result, outdir, save_results=False)
             f.write('DQ={:} - After bad pix interpolation step \n'.format(result.dq[0,88,1361]))
         else:
             result = datamodels.open(outdir+'/'+basename+'_badpixinterp.fits')
@@ -269,7 +273,7 @@ def custom_loic(exposurelist, use_atoca=False, optimal_extraction=False,
                                                                       #soss_transform=[None, 0, None],
                                                                       subtract_background=False,
                                                                       soss_bad_pix='model',
-                                                                      soss_width=25,
+                                                                      soss_width=box_width,
                                                                       #soss_tikfac=3.38e-15,
                                                                       soss_modelname=outdir+'/'+basename+'_atoca_model.fits',
                                                                       override_spectrace=ATOCAREF_DIR+SPECTRACE,
@@ -285,7 +289,7 @@ def custom_loic(exposurelist, use_atoca=False, optimal_extraction=False,
                                                                           subtract_background=False,
                                                                           soss_bad_pix='masking',
                                                                           soss_extraction_type='optimal',
-                                                                          soss_width=25,
+                                                                          soss_width=box_width,
                                                                           # soss_tikfac=3.38e-15,
                                                                           soss_modelname=None,
                                                                           override_spectrace=ATOCAREF_DIR + SPECTRACE,
@@ -300,7 +304,8 @@ def custom_loic(exposurelist, use_atoca=False, optimal_extraction=False,
                                                                           soss_atoca=False,
                                                                           subtract_background=False,
                                                                           soss_bad_pix='masking',
-                                                                          soss_width=25,
+                                                                          #soss_width=25,
+                                                                          soss_width=box_width,
                                                                           # soss_tikfac=3.38e-15,
                                                                           soss_modelname=None,
                                                                           override_spectrace=ATOCAREF_DIR + SPECTRACE,
@@ -310,7 +315,7 @@ def custom_loic(exposurelist, use_atoca=False, optimal_extraction=False,
 
         # DMS standard - Conversion to SI units
         result = calwebb_spec2.photom_step.PhotomStep.call(
-            result, output_dir=outdir, save_results=False)
+            result, output_dir=outdir, save_results=True)
 
         # Write results on disk
         result.close()
@@ -319,189 +324,8 @@ def custom_loic(exposurelist, use_atoca=False, optimal_extraction=False,
     return
 
 
-def run_stage1(exposurename, outlier_map=None):
-
-    '''
-    These are the default DMS steps for stage 1.
-    Default pipeline.calwebb_detector1 steps
-
-            input = self.group_scale(input)
-            input = self.dq_init(input)
-            input = self.saturation(input)
-            input = self.ipc(input)
-            input = self.superbias(input)
-            input = self.refpix(input)
-            input = self.linearity(input)
-            input = self.dark_current(input)
-            input = self.jump(input)
-            input = self.ramp_fit(input)
-            input = self.gain_scale(input)
-    '''
 
 
-    # Define input/output
-    calwebb_input = exposurename
-    outdir = os.path.dirname(exposurename)
-    basename = os.path.basename(os.path.splitext(exposurename)[0])
-    basename = basename.split('_nis')[0]+'_nis'
-
-    # Step by step DMS processing
-    result = calwebb_detector1.group_scale_step.GroupScaleStep.call(calwebb_input, output_dir=outdir, save_results=False)
-
-    result = calwebb_detector1.dq_init_step.DQInitStep.call(result, output_dir=outdir, save_results=False)#,
-                                                            #override_mask=CALIBRATION_DIR+BADPIX)
-
-    result = calwebb_detector1.saturation_step.SaturationStep.call(result, output_dir=outdir, save_results=False)
-
-    # Add some bad pixels missed by the dq init stage but seen otherwise
-    result = commutils.add_manual_badpix(result)
-
-    # Custom 1/f correction
-    result = soss_oneoverf.applycorrection(result, output_dir=outdir, save_results=True)
-
-    #result = calwebb_detector1.superbias_step.SuperBiasStep.call(result, output_dir=outdir, save_results=True)#,
-                                                                 #override_superbias=CALIBRATION_DIR+SUPERBIAS)
-
-    # The DMS dark subtraction is needed because it captures the hot pixels and their 4 neighbors
-    # that otherwise can appear as uncorrected bad pixels in final products.
-    # TODO: improve the current dark calibration file to remove the obvious 1/f noise residuals.
-    result = calwebb_detector1.dark_current_step.DarkCurrentStep.call(result, output_dir=outdir, save_results=False,
-                                                                      override_dark=CALIBRATION_DIR+'jwst_niriss_dark_loiccustom.fits')
-
-
-    # Remove the DMS pipeline reference pixel correction
-    #result = calwebb_detector1.refpix_step.RefPixStep.call(result, output_dir=outdir, save_results=True)
-
-    #result = calwebb_detector1.linearity_step.LinearityStep.call(result, output_dir=outdir, save_results=False)
-    # to test jump detection, save = True
-    result = calwebb_detector1.linearity_step.LinearityStep.call(result, output_dir=outdir, save_results=False)
-
-
-    result = calwebb_detector1.jump_step.JumpStep.call(result, output_dir=outdir, save_results=False,
-                                                       rejection_threshold=6)
-    #sys.exit()
-
-    stackresult, result = calwebb_detector1.ramp_fit_step.RampFitStep.call(result, output_dir=outdir, save_results=False)
-
-    result = calwebb_detector1.gain_scale_step.GainScaleStep.call(result, output_dir=outdir, save_results=False)
-    result.meta.filetype = 'countrate'
-    #result.meta.filename = outdir+'/'+basename+'_customrateints.fits'
-    result.write(outdir+'/'+basename+'_customrateints.fits')
-
-    # Process the stacked od all integrations as well
-    stackresult = calwebb_detector1.gain_scale_step.GainScaleStep.call(stackresult, output_dir=outdir, save_results=False)
-    stackresult.meta.filetype = 'countrate'
-    #stackresult.meta.filename = outdir+'/'+basename+'_customrate.fits'
-    stackresult.save(outdir+'/'+basename+'_customrate.fits')
-
-    return
-
-
-def run_stage2(rateints, contamination_mask=None, use_atoca=False, run_outliers=True,
-               optimal_extraction=False):
-    '''
-    These are the default DMS steps for Stage 2.
-        input = self.assign_wcs(input)
-        input = self.flat_field(input)
-        input = self.
-        input = self.extract_1d(input)
-        input = self.photom(input)
-
-    '''
-
-    calwebb_input = rateints
-    outdir = os.path.dirname(rateints)
-    basename = os.path.basename(os.path.splitext(rateints)[0])
-    basename = basename.split('_nis')[0]+'_nis'
-    stackbasename = basename+'_stack'
-
-    # Flat fielding
-    result = calwebb_spec2.flat_field_step.FlatFieldStep.call(calwebb_input, output_dir=outdir, save_results=True)#,
-                                                              #override_flat=CALIBRATION_DIR+FLAT)
-
-    # Custom - Outlier flagging
-    if run_outliers == True:
-        result = soss_outliers.flag_outliers(result, window_size=(3,11), n_sig=9, verbose=True, outdir=outdir, save_diagnostic=True)
-
-    # Still non-optimal
-    # Custom - Background subtraction step
-    #result = commutils.background_subtraction_v1(result, aphalfwidth=[40,20,20], outdir=outdir, verbose=False,
-    #                                          override_background=CALIBRATION_DIR+BACKGROUND, applyonintegrations=True,
-    #                                          contamination_mask=contamination_mask, trace_table_ref=ATOCAREF_DIR+SPECTRACE)
-    #
-    result = commutils.background_subtraction(result, aphalfwidth=[40,20,20], outdir=outdir, verbose=False,
-                                              contamination_mask=contamination_mask, trace_table_ref=ATOCAREF_DIR+SPECTRACE)
-
-    # Clean the outlier and bad pixels based on a deep stack
-    result = commutils.soss_interp_badpix(result, outdir)
-
-    # Subtract a local background below order 1 close to the trace
-    # result = commutils.localbackground_subtraction(result, ATOCAREF_DIR+SPECTRACE, width=9, back_offset=-25)
-
-    # Custom - Check that no NaNs is in the rateints data
-    result = commutils.remove_nans(result, outdir=outdir, save_results=True)
-
-    # Untested
-    # Custom - Build a rate.fits equivalent (that profits from the outlier knowledge)
-    #stackresult = commutils.stack_rateints(result, outdir=outdir)
-
-
-    # spectrum extraction - forcing no dx=0, dy=0, dtheta=0
-    print(result.meta.filename)
-
-    if use_atoca:
-        result = calwebb_spec2.extract_1d_step.Extract1dStep.call(result, output_dir=outdir, save_results=True,
-                                                                  soss_transform=[0, 0, 0],
-                                                                  soss_atoca = True,
-                                                                  #soss_transform=[None, 0, None],
-                                                                  subtract_background=False,
-                                                                  soss_bad_pix='model',
-                                                                  soss_width=25,
-                                                                  #soss_tikfac=3.38e-15,
-                                                                  soss_modelname=outdir+'/'+basename+'_atoca_model.fits',
-                                                                  override_spectrace=ATOCAREF_DIR+SPECTRACE,
-                                                                  override_wavemap=ATOCAREF_DIR+WAVEMAP,
-                                                                  override_specprofile=ATOCAREF_DIR+SPECPROFILE)
-    else:
-        if optimal_extraction:
-            # soss_atoca=False --> box extraction only
-            # carefull to not turn it on. Would if soss_bad_pix='model' or soss_modelname=set_to_something
-            result = calwebb_spec2.extract_1d_step.Extract1dStep.call(result, output_dir=outdir, save_results=True,
-                                                                      soss_transform=[0, 0, 0],
-                                                                      soss_atoca=False,
-                                                                      subtract_background=False,
-                                                                      soss_bad_pix='masking',
-                                                                      soss_extraction_type='optimal',
-                                                                      soss_width=25,
-                                                                      # soss_tikfac=3.38e-15,
-                                                                      soss_modelname=None,
-                                                                      override_spectrace=ATOCAREF_DIR + SPECTRACE,
-                                                                      override_wavemap=ATOCAREF_DIR + WAVEMAP,
-                                                                      override_specprofile=ATOCAREF_DIR + SPECPROFILE)
-
-        else:
-            # soss_atoca=False --> box extraction only
-            # carefull to not turn it on. Would if soss_bad_pix='model' or soss_modelname=set_to_something
-            result = calwebb_spec2.extract_1d_step.Extract1dStep.call(result, output_dir=outdir, save_results=True,
-                                                                      soss_transform=[0, 0, 0],
-                                                                      soss_atoca=False,
-                                                                      subtract_background=False,
-                                                                      soss_bad_pix='masking',
-                                                                      soss_width=25,
-                                                                      # soss_tikfac=3.38e-15,
-                                                                      soss_modelname=None,
-                                                                      override_spectrace=ATOCAREF_DIR + SPECTRACE,
-                                                                      override_wavemap=ATOCAREF_DIR + WAVEMAP,
-                                                                      override_specprofile=ATOCAREF_DIR + SPECPROFILE)
-
-
-    # Conversion to SI units
-    result = calwebb_spec2.photom_step.PhotomStep.call(result, output_dir=outdir, save_results=True)
-
-    # Write results on disk
-    result.close()
-
-    return
 
 
 
@@ -516,11 +340,13 @@ if __name__ == "__main__":
     #datasetname = 'SOSSwavecal'
     #datasetname = 'SOSSfluxcal'
     #datasetname = 'SOSSfluxcalss96ng3'
-    datasetname = 'HATP14b'
-    #datasetname = 'T1'
+    #datasetname = 'HATP14b'
+    datasetname = 'T1'
     #datasetname = 'T1_2'
     #datasetname = 'T1_3'
     #datasetname = 'T1_4'
+    datasetname = 'darks'
+    datasetname = 'f277w'
 
     # Wavelength calibration
     if datasetname == 'wavecal':
@@ -587,10 +413,10 @@ if __name__ == "__main__":
             sys.exit()
 
         datalist = [
-            'jw01541001001_04101_00001-seg004_nis',
             'jw01541001001_04101_00001-seg001_nis',
             'jw01541001001_04101_00001-seg002_nis',
-            'jw01541001001_04101_00001-seg003_nis'
+            'jw01541001001_04101_00001-seg003_nis',
+            'jw01541001001_04101_00001-seg004_nis'
         ]
         dataset_string = 'jw01541001001_04101_00001'
 
@@ -709,6 +535,35 @@ if __name__ == "__main__":
         ]
         dataset_string = 'jw01201002001_04101_00001'
 
+    # dark
+    if datasetname == 'darks':
+        if (hostname == 'iiwi.sf.umontreal.ca') or (hostname == 'iiwi.local'):
+            dir = '/Users/albert/NIRISS/Commissioning/analysis/darks/'
+            ATOCAREF_DIR = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/ref_files/'
+            contmask = None
+        elif hostname == 'genesis':
+            dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/darks/'
+            contmask = None
+        else:
+            sys.exit()
+
+        datalist = ['dark-seg001_nis']
+        dataset_string = 'dark'
+
+    # F277W
+    if datasetname == 'f277w':
+        if (hostname == 'iiwi.sf.umontreal.ca') or (hostname == 'iiwi.local'):
+            dir = '/Users/albert/NIRISS/Commissioning/analysis/f277w/'
+            ATOCAREF_DIR = '/Users/albert/NIRISS/Commissioning/analysis/HATP14b/ref_files/'
+            contmask = None
+        elif hostname == 'genesis':
+            dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/darks/'
+            contmask = None
+        else:
+            sys.exit()
+
+        datalist = ['jw01541001001_04102_00001-seg001_nis']
+        dataset_string = 'jw01541001001_04102_00001'
 
     '''
     RUN THE PIPELINE--------------------------------------------------------------------
@@ -720,7 +575,8 @@ if __name__ == "__main__":
     extract_only = False
     skip_stacking = False
     erase_clean = False
-    satmap = 35000 # or None
+    satmap = None #35000 # None
+    box_width = 25
 
     if True:
         # Method 1 - streamlined
@@ -729,7 +585,7 @@ if __name__ == "__main__":
         custom_loic(uncal_list, use_atoca=use_atoca, run_outliers=run_outliers,
                     optimal_extraction=optimal_extraction, contamination_mask=contmask,
                     extract_only=extract_only, skip_stacking=skip_stacking,
-                    erase_clean=erase_clean, satmap=satmap)
+                    erase_clean=erase_clean, satmap=satmap, box_width=box_width)
     else:
         # Method 2 - former way
         for dataset in datalist:

@@ -91,7 +91,7 @@ def stack_datamodel(datamodel):
     # Mask pixels that have the DO_NOT_USE data quality flag set, EXCEPT the saturated pixels (because the ramp
     # fitting algorithm handles saturation).
     donotuse = bitfield_to_boolean_mask(datamodel.dq, ignore_flags=dqflags.pixel['DO_NOT_USE'], flip_bits=True)
-    #saturated = bitfield_to_boolean_mask(datamodel.dq, ignore_flags=dqflags.pixel['SATURATED'], flip_bits=True)
+    saturated = bitfield_to_boolean_mask(datamodel.dq, ignore_flags=dqflags.pixel['SATURATED'], flip_bits=True)
     #mask = donotuse & ~saturated
     mask = donotuse # Just this is enough to not flag the saturated pixels in the trace
     # Copy the datamodel to tmp
@@ -104,8 +104,15 @@ def stack_datamodel(datamodel):
     #nan = ~np.isfinite(deepstack) | ~np.isfinite(rms)
     #dq[nan] = 1
 
-
-    bad = (datamodel.dq != 0) | ~np.isfinite(datamodel.dq)
+    # prior to the HATP14b analysis, this worked:
+    #bad = (datamodel.dq != 0) | ~np.isfinite(datamodel.dq)
+    # bad if:
+    # 1) DO_NOT_USE
+    # OR
+    # 2) different than zero but allowing for saturated only
+    # OR
+    # 3) NaN
+    bad = (datamodel.dq % 2 == 1) | ((datamodel.dq != 0) & (datamodel.dq != 2)) | ~np.isfinite(datamodel.dq)
     tmp_data = datamodel.data * 1
     tmp_data[bad] = np.nan
 
@@ -119,7 +126,8 @@ def stack_datamodel(datamodel):
     return deepstack, rms, dq
 
 
-def build_mask_contamination(order, x, y, halfwidth=15, subarray='SUBSTRIP256'):
+def build_mask_contamination(order, x, y, halfwidth=15, subarray='SUBSTRIP256',
+                             output_boolean=False):
     """Mask out a contaminating trace from a field contaminant. Based on the
     order specified, a model of it is moved by x,y for orders 1 to 3.
     In the case of order 0, x,y is the desired position to mask, not a relative offset from nominal.
@@ -187,6 +195,9 @@ def build_mask_contamination(order, x, y, halfwidth=15, subarray='SUBSTRIP256'):
 
     hdu = fits.PrimaryHDU(mask_trace)
     hdu.writeto('/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/titi.fits', overwrite=True)
+
+    if output_boolean:
+        mask_trace = mask_trace == 1
 
     return mask_trace
 
@@ -275,15 +286,18 @@ def aperture_from_scratch(datamodel, norders=3, aphalfwidth=[40,20,20], outdir=N
         os.makedirs(outdir)
 
     if datamodel_isfits == True:
+        if verbose: print('Reading a fits file')
         rateints = fits.getdata(datamodel)
         dims = np.shape(rateints)
-        if dims[-1] == 2048: subarray = 'FULL'
-        elif dims[-1] == 256: subarray = 'SUBSTRIP256'
-        elif dims[-1] == 96: subarray = 'SUBSTRIP96'
+        if dims[-2] == 2048: subarray = 'FULL'
+        elif dims[-2] == 256: subarray = 'SUBSTRIP256'
+        elif dims[-2] == 96: subarray = 'SUBSTRIP96'
         else:
             print('error should be size full ss96 or ss256')
             sys.exit()
+        if verbose: print('Subarray is ', subarray)
     else:
+        if verbose: print('A datamodel was passed.')
         rateints = datamodel.data
         subarray = datamodel.meta.subarray.name
 
@@ -424,6 +438,18 @@ def add_manual_badpix(datamodel):
     if pid == '01091':
         # manually selected bad pixels in ds9 and saved as 2-cols ascii region file
         ds9reg = '/Users/albert/NIRISS/SOSSpipeline/jwst-mtl/SOSS/Commissioning/files/manual_badpix_01091.reg'
+        table = ascii.read(ds9reg)
+        x = np.array(table['col1'])
+        y = np.array(table['col2'])
+    elif pid == '01541':
+        # manually selected bad pixels in ds9 and saved as 2-cols ascii region file
+        ds9reg = '/Users/albert/NIRISS/SOSSpipeline/jwst-mtl/SOSS/Commissioning/files/manual_badpix_01541.reg'
+        table = ascii.read(ds9reg)
+        x = np.array(table['col1'])
+        y = np.array(table['col2'])
+    elif pid == '02589':
+        # manually selected bad pixels in ds9 and saved as 2-cols ascii region file
+        ds9reg = '/Users/albert/NIRISS/SOSSpipeline/jwst-mtl/SOSS/Commissioning/files/manual_badpix_02589_obs03.reg'
         table = ascii.read(ds9reg)
         x = np.array(table['col1'])
         y = np.array(table['col2'])

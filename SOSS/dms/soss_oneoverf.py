@@ -2,6 +2,8 @@ import numpy as np
 from astropy.io import fits
 from jwst import datamodels
 import os
+import SOSS.dms.soss_centroids as soss_centroids
+
 
 
 def mediandev(x, axis=None):
@@ -114,8 +116,75 @@ def stack(cube, deepstack_custom=None, outliers_map=None):
     return deepstack, rms
 
 
+def make_trace_mask(trace_table_ref, subarray_name, aphalfwidth=[13,13,13],
+                    outdir=None):
+
+    dimx = 2048
+    norders = 3
+    if subarray_name == 'FULL': dimy = 2048
+    if subarray_name == 'SUBSTRIP256': dimy = 256
+    if subarray_name == 'SUBSTRIP96':
+        dimy = 96
+        norders = 1
+
+    # We assume that a valid trace table reference file was passed. Read it.
+    ref = fits.open(trace_table_ref)
+    x_o1, y_o1, wv_o1 = np.array(ref[1].data['X']), np.array(ref[1].data['Y']), np.array(ref[1].data['WAVELENGTH'])
+    x_o2, y_o2, wv_o2 = np.array(ref[2].data['X']), np.array(ref[2].data['Y']), np.array(ref[2].data['WAVELENGTH'])
+    x_o3, y_o3, wv_o3 = np.array(ref[3].data['X']), np.array(ref[3].data['Y']), np.array(ref[3].data['WAVELENGTH'])
+    # Assumption is made later that x are integers from 0 to 2047
+    # sort order 1
+    x = np.arange(2048)
+    sorted = np.argsort(x_o1)
+    x_o1, y_o1, wv_o1 = x_o1[sorted], y_o1[sorted], wv_o1[sorted]
+    y_o1 = np.interp(x, x_o1, y_o1)
+    wv_o1 = np.interp(x, x_o1, wv_o1)
+    x_o1 = x
+    # sort order 2
+    x = np.arange(2048)
+    sorted = np.argsort(x_o2)
+    x_o2, y_o2, wv_o2 = x_o2[sorted], y_o2[sorted], wv_o2[sorted]
+    y_o2 = np.interp(x, x_o2, y_o2)
+    w_o2 = np.interp(x, x_o2, wv_o2)
+    x_o2 = x
+    # sort order 3
+    x = np.arange(2048)
+    sorted = np.argsort(x_o3)
+    x_o3, y_o3, w_o3 = x_o3[sorted], y_o3[sorted], wv_o3[sorted]
+    y_o3 = np.interp(x, x_o3, y_o3)
+    wv_o3 = np.interp(x, x_o3, wv_o3)
+    x_o3 = x
+
+    # Create a cube containing the mask for all orders
+    maskcube = np.zeros((norders, dimy, dimx))
+
+    for m in range(norders):
+        if m == 0: ordercen = np.copy(y_o1)
+        if m == 1: ordercen = np.copy(y_o2)
+        if m == 2: ordercen = np.copy(y_o3)
+
+        mask_trace = soss_centroids.build_mask_trace(ordercen, subarray=subarray_name,
+                                                     halfwidth=aphalfwidth[m],
+                                                     extend_below=False,
+                                                     extend_above=False)
+        mask = np.zeros(np.shape(mask_trace))
+        mask[mask_trace == True] = 1
+
+        maskcube[m,:,:] = np.copy(mask_trace)
+
+    # crunch the orders into a single stack
+    trace_mask = np.nansum(maskcube, axis=0)
+    trace_mask[trace_mask >= 1] = 1
+
+    if outdir != None:
+        hdu = fits.PrimaryHDU(trace_mask)
+        hdu.writeto(outdir+'/trace_mask.fits', overwrite=True)
+
+    return trace_mask
+
 def applycorrection(uncal_rampmodel, output_dir=None, save_results=False,
-                    deepstack_custom=None, return_intermediates=None):
+                    deepstack_custom=None, return_intermediates=None,
+                    outlier_map=None, trace_mask=None, trace_table_ref=None):
 
     '''
     uncal_rampmodel is a 4D ramp (not a rate)
@@ -150,10 +219,13 @@ def applycorrection(uncal_rampmodel, output_dir=None, save_results=False,
     # Generate the deep stack and rms of it. Both 3D (ngroup, dimy, dimx)
     deepstack, rms = stack(uncal_rampmodel.data, deepstack_custom=deepstack_custom)
 
+    print('shape of rms ', np.shape(rms))
     # Weighted average to determine the 1/F DC level
-    w = 1 / rms ** 2  # weight
+    w = np.copy(uncal_rampmodel.data)
+    print('shape of w ', np.shape(w))
+    w[:] = 1 / rms ** 2  # weight
     # Make sure that constant pixels with rms=0 don't get assign a weight
-    w[rms <= 0] = 0
+    w[:, rms <= 0] = 0
     # Make sure that pixels with suspiciously small rms get zero weight as well
     #med = np.median(rms, axis=0)
     #dev = mediandev(rms, axis=0)
@@ -161,8 +233,56 @@ def applycorrection(uncal_rampmodel, output_dir=None, save_results=False,
     #for i in range(ngroup):
     #    w[i, rms[i,:,:] < pct1[i]] = 0
     # Make sure that bad pixels don't have any weight
+    print('shape of groupdq ', np.shape(uncal_rampmodel.groupdq))
     dq = np.median(uncal_rampmodel.groupdq, axis=0)
+    dq = np.copy(uncal_rampmodel.groupdq)
     w[dq != 0] = 0
+
+    # TODO: add odd even correction
+    print(np.shape(w))
+    print(np.shape(w * uncal_rampmodel.data[0]))
+
+    # DO NOT USE THIS OUTLIER MAP. PRODUCES WORST RESULTS IF USED.
+    if False:
+        # Read in the outlier map -- a (nints, dimy, dimx) 3D cube
+        print('outlier_map = {:}'.format(outlier_map))
+        print('is None', (outlier_map == None))
+        print('is not a file?', (not os.path.isfile(outlier_map)))
+        if (outlier_map == None) | (not os.path.isfile(outlier_map)):
+            print('Warning - No outlier map passed or the outlier map passed as input does not exist on disk - no outlier map used!')
+            #outliers = np.zeros((nint, np.shape(uncal_rampmodel.data)[-2], dimx))
+        else:
+            print('Using an existing cosmic ray outlier map named {:}'.format(outlier_map))
+            outliers = fits.getdata(outlier_map)
+            # The outlier is 0 where good and >0 otherwise
+            #outliers = np.where(outliers == 0, 1, np.nan)
+            # Modify the weight map with these outliers
+            wtmp = w.swapaxes(0,1)
+            print('shape of wtmp', np.shape(wtmp))
+            wtmp[:,(outliers == 0) | (outliers == 2)] = 0
+            w = wtmp.swapaxes(0,1)
+            print('shape of w', np.shape(w))
+
+
+    if False:
+        # Read the trace mask to mask the traces from the 1/f estimate
+        print('trace_mask = {:}'.format(trace_mask))
+        print('is None', (trace_mask == None))
+        print('is not a file?', (not os.path.isfile(trace_mask)))
+        if (trace_mask == None) |  (not os.path.isfile(trace_mask)):
+            print('Warning - No trace mask passed or the trace mask passed as input does not exist on disk - no trace mask used!')
+        else:
+            print('Using an existing trace mask named {:}'.format(trace_mask))
+            tmask = fits.getdata(trace_mask)
+            w[:, (tmask == 0) | (~np.isfinite(tmask))] = 0
+    else:
+        # Create a trace mask from scratch using the trace reference file
+        tmask = make_trace_mask(trace_table_ref, uncal_rampmodel.meta.subarray.name,
+                                outdir=output_supp)
+        # Update the weight based on that mask
+        print(np.shape(tmask))
+        print(np.shape(w))
+        w[:, :, (tmask == 1) | (~np.isfinite(tmask))] = 0
 
     # Write these on disk in a sub folder
     if save_results == True:
@@ -173,24 +293,6 @@ def applycorrection(uncal_rampmodel, output_dir=None, save_results=False,
         hdu.writeto(output_supp+'/rms1.fits', overwrite=True)
         hdu = fits.PrimaryHDU(w)
         hdu.writeto(output_supp+'/weight1.fits', overwrite=True)
-
-    # TODO: add odd even correction
-    print(np.shape(w))
-    print(np.shape(w * uncal_rampmodel.data[0]))
-
-    if False:
-        # Read in the outlier map -- a (nints, dimy, dimx) 3D cube
-        print('outlier_map = {:}'.format(outlier_map))
-        print('is None', (outlier_map == None))
-        print('is not a file?', (not os.path.isfile(outlier_map)))
-        if (outlier_map == None) | (not os.path.isfile(outlier_map)):
-            print('Warning - the outlier map passed as input does not exist on disk - no outlier map used!')
-            outliers = np.zeros((nint, np.shape(uncal_rampmodel.data)[-2], dimx))
-        else:
-            print('Using an existing cosmic ray outlier map named {:}'.format(outlier_map))
-            outliers = fits.getdata(outlier_map)
-        # The outlier is 0 where good and >0 otherwise
-        outliers = np.where(outliers == 0, 1, np.nan)
 
     print('Applying the 1/f correction.')
     dcmap = np.copy(uncal_rampmodel.data)
@@ -221,21 +323,21 @@ def applycorrection(uncal_rampmodel, output_dir=None, save_results=False,
         #    hdu = fits.PrimaryHDU(sub)
         #    hdu.writeto(output_supp+'/sub.fits', overwrite=True)
         if uncal_rampmodel.meta.subarray.name == 'SUBSTRIP256':
-            dc = np.nansum(w * sub[i], axis=1) / np.nansum(w, axis=1)
+            dc = np.nansum(w[i] * sub[i], axis=-2) / np.nansum(w[i], axis=-2)
             # make sure no NaN will corrupt the whole column
             dc = np.where(np.isfinite(dc), dc, 0)
             # dc is 2-dimensional - expand to the 3rd (columns) dimension
             dcmap[i, :, :, :] = np.repeat(dc, 256).reshape((ngroup, 2048, 256)).swapaxes(1,2)
             subcorr[i, :, :, :] = sub[i, :, :, :] - dcmap[i, :, :, :]
         elif uncal_rampmodel.meta.subarray.name == 'SUBSTRIP96':
-            dc = np.nansum(w * sub[i], axis=1) / np.nansum(w, axis=1)
+            dc = np.nansum(w[i] * sub[i], axis=-2) / np.nansum(w[i], axis=-2)
             # make sure no NaN will corrupt the whole column
             dc = np.where(np.isfinite(dc), dc, 0)
             # dc is 2-dimensional - expand to the 3rd (columns) dimension
             dcmap[i,:,:,:] = np.repeat(dc, 96).reshape((ngroup, 2048, 96)).swapaxes(1,2)
             subcorr[i, :, :, :] = sub[i, :, :, :] - dcmap[i, :, :, :]
         elif uncal_rampmodel.meta.subarray.name == 'SUB80':
-            dc = np.nansum(w * sub[i], axis=1) / np.nansum(w, axis=1)
+            dc = np.nansum(w[i] * sub[i], axis=-2) / np.nansum(w[i], axis=-2)
             # make sure no NaN will corrupt the whole column
             dc = np.where(np.isfinite(dc), dc, 0)
             # dc is 2-dimensional - expand to the 3rd (columns) dimension

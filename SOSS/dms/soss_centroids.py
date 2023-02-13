@@ -173,6 +173,9 @@ def get_centroids_com(image, header=None, mask=None, poly_order=11, verbose=Fals
     # If no mask was given use all pixels.
     if mask is None:
         mask = np.zeros_like(image, dtype='bool')
+    else:
+        # make sure it is boolean
+        mask = mask > 0
 
     # Call the script that determines the dimensions of the stack.
     result = get_image_dim(image, header=header, verbose=verbose)
@@ -393,14 +396,17 @@ def get_centroids_edgetrigger(image, header=None, mask=None, poly_order=11,
 
     # If no mask was given use all pixels.
     if mask is None:
-        mask = np.zeros_like(image, dtype='bool')
+        maskbool = np.zeros_like(image, dtype='bool')
+    else:
+        # make mask boolean
+        maskbool = mask > 0
 
     # Call the script that determines the dimensions of the image.
     result = get_image_dim(image, header=header, verbose=verbose)
     dimx, dimy, xos, yos, xnative, ynative, padding, refpix_mask = result
 
     # Replace masked pixel values with NaNs.
-    image_masked = np.where(mask | ~refpix_mask, np.nan, image)
+    image_masked = np.where(maskbool | ~refpix_mask, np.nan, image)
 
     # Use edge trigger to compute the edges and center of the trace.
     fkwargs = dict(halfwidth=halfwidth, yos=yos, verbose=verbose, outdir=outdir)
@@ -1122,11 +1128,12 @@ def get_soss_centroids(image, mask=None, subarray='SUBSTRIP256', halfwidth=2,
     if mask is None:
         mask_order1 = mask_256 | mask_above
     else:
-        mask_order1 = mask_256 | mask_above | mask
+        mask_order1 = mask_256 | mask_above | np.array(mask, dtype=bool)
 
     if verbose & (outdir is not None):
         hdu = fits.PrimaryHDU()
         hdu.data = np.where(mask_order1, np.nan, image)
+        print('Writing '+outdir+'/mask_order1.fits')
         hdu.writeto(outdir+'/mask_order1.fits', overwrite=True)
 
     # Get the order 1 trace position.
