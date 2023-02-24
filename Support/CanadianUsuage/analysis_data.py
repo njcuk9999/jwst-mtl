@@ -30,6 +30,10 @@ INSTIUTIONS_FILE = WORKING + 'institutions.fits'
 # set the geolocator
 geolocator = Nominatim(user_agent="geoapiExercises")
 
+# Will need make this file locally and not put it on github
+# Goto: https://console.cloud.google.com/apis/credentials?project=jwstgeolocate
+#       or create a new project and enable the Google Maps Geocoding API
+#       the only thing in this file should be the api key
 with open('api_key.txt', 'r') as f:
     api_key = f.readline()
 
