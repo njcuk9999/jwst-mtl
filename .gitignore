@@ -116,3 +116,5 @@ AMI/AMI_SIM_MTL/outputs
 # Reference files
 SOSS/extract/Ref_files/SOSS_Ref_Files/
 
+# api keys
+/Support/CanadianUsuage/api_key.txt

@@ -30,7 +30,8 @@ INSTIUTIONS_FILE = WORKING + 'institutions.fits'
 # set the geolocator
 geolocator = Nominatim(user_agent="geoapiExercises")
 
-api_key = "AIzaSyB3hx8lldaXkgvVYmC2G5PaVNgo1g6nE4Q"
+with open('api_key.txt', 'r') as f:
+    api_key = f.readline()
 
 world_file = WORKING + 'ne_110m_admin_0_countries\\ne_110m_admin_0_countries.shp'
 
