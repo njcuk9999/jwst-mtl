@@ -44,6 +44,8 @@ else:
     print('Add your local computer name in the list.')
     sys.exit()
 
+CRDSDIR = '/Users/albert/NIRISS/CRDS_CACHE/references/jwst/niriss/'
+
 FLAT = 'jwst_niriss_flat_0190.fits'
 SUPERBIAS = 'jwst_niriss_superbias_0181.fits'
 DARK = 'jwst_niriss_dark_0171.fits'
@@ -174,7 +176,8 @@ def custom_loic(exposurelist, use_atoca=False, optimal_extraction=False,
 
             # DMS standard - Jump detection
             result = calwebb_detector1.jump_step.JumpStep.call(
-                result, output_dir=outdir, rejection_threshold=6, save_results=False)
+                result, output_dir=outdir, rejection_threshold=6, save_results=False,
+                override_jumpstep=CRDSDIR+'jwst_niriss_pars-jumpstep_0020.asdf')
             if segment == 0: fn.write('{:} - After jump \n'.format(result.meta.filename))
 
             # DMS standard - Ramp fitting
@@ -250,7 +253,7 @@ def custom_loic(exposurelist, use_atoca=False, optimal_extraction=False,
             hdu = fits.PrimaryHDU(result.dq)
             hdu.writeto(outdir+'/prestack_dq.fits', overwrite=True)
             # ici DQ est bon 1362,139 = 1
-            result = commutils.soss_interp_badpix(result, outdir, save_results=False)
+            result = commutils.soss_interp_badpix(result, outdir, save_results=True)
             f.write('DQ={:} - After bad pix interpolation step \n'.format(result.dq[0,88,1361]))
         else:
             result = datamodels.open(outdir+'/'+basename+'_badpixinterp.fits')
@@ -338,15 +341,15 @@ if __name__ == "__main__":
     # data set to process:
     #datasetname = 'LTT9779'
     #datasetname = 'SOSSwavecal'
-    #datasetname = 'SOSSfluxcal'
+    datasetname = 'SOSSfluxcal'
     #datasetname = 'SOSSfluxcalss96ng3'
     #datasetname = 'HATP14b'
-    datasetname = 'T1'
+    #datasetname = 'T1'
     #datasetname = 'T1_2'
     #datasetname = 'T1_3'
     #datasetname = 'T1_4'
-    datasetname = 'darks'
-    datasetname = 'f277w'
+    #datasetname = 'darks'
+    #datasetname = 'f277w'
 
     # Wavelength calibration
     if datasetname == 'wavecal':
