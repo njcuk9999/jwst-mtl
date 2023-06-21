@@ -2,6 +2,14 @@
 
 ---
 
+
+Note these instructions do not work with David's changes.
+
+Have a look at `README_calcul_quebec.md` and use those to install the DL version of tfit on Calcul Quebec.
+You can also use these to install elsewhere.
+
+Jupiter notebooks and scripts to run the recipes using DL tfit are in the `scripts` directory.
+
 ## 1. Installation
 
 Download jwst-mtl:
