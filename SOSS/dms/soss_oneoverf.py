@@ -26,7 +26,7 @@ def stack_multisegments(postsaturationstep_list, outdir=None, save_results=False
         nblocks = np.copy(stack_nblocks)
     #nblocks = 2  # any divider of 2048 would do
     #blocksize = 2048 // nblocks
-    blocksize = int(np.ceil(2048 / nblocks)) # no need for comon divider of 2048
+    blocksize = int(np.ceil(2048 / nblocks)) # no need for common divider of 2048
 
     print('1/f stacking of all {:} segments in the time-series in {:} blocks of {:} columns'.format(
         np.size(postsaturationstep_list), nblocks, blocksize))
@@ -183,7 +183,7 @@ def make_trace_mask(trace_table_ref, subarray_name, aphalfwidth=[13,13,13],
     return trace_mask
 
 def applycorrection(uncal_rampmodel, output_dir=None, save_results=False,
-                    deepstack_custom=None, return_intermediates=None,
+                    deepstack_custom=None, return_intermediates=None, oddevenrows=True,
                     outlier_map=None, trace_mask=None, trace_table_ref=None):
 
     '''
@@ -283,6 +283,23 @@ def applycorrection(uncal_rampmodel, output_dir=None, save_results=False,
         print(np.shape(tmask))
         print(np.shape(w))
         w[:, :, (tmask == 1) | (~np.isfinite(tmask))] = 0
+        # Have a mask for odd/even rows
+        if uncal_rampmodel.meta.subarray.name == 'SUBSTRIP256':
+            row = np.arange(256)
+            ind_even = row % 2 == 0
+            w_even = np.ones((ngroup, 256, 2048))
+            w_even[:, ind_even, :] = 0
+            ind_odd = row % 2 == 1
+            w_odd = np.ones((ngroup, 256, 2048))
+            w_odd[:, ind_odd, :] = 0
+        if uncal_rampmodel.meta.subarray.name == 'SUBSTRIP96':
+            row = np.arange(96)
+            ind_even = row % 2 == 0
+            w_even = np.ones((ngroup, 96, 2048))
+            w_even[:, ind_even, :] = 0
+            ind_odd = row % 2 == 1
+            w_odd = np.ones((ngroup, 96, 2048))
+            w_odd[:, ind_odd, :] = 0
 
     # Write these on disk in a sub folder
     if save_results == True:
@@ -304,6 +321,7 @@ def applycorrection(uncal_rampmodel, output_dir=None, save_results=False,
         actualint = intstart + i
         sub[i] = uncal_rampmodel.data[i] - deepstack
         for g in range(ngroup):
+            # Detect outliers at 3-sigma in the single read
             # sigma map allowing for a possible median offset w.r.t. the deepstack
             sigmap = np.abs((sub[i,g,:,:] - np.nanmedian(sub[i, g, :, :])) / rms[g,:,:])
             outliers[i,g,:,:] = np.where(sigmap > 3, np.nan, 1)
@@ -323,12 +341,34 @@ def applycorrection(uncal_rampmodel, output_dir=None, save_results=False,
         #    hdu = fits.PrimaryHDU(sub)
         #    hdu.writeto(output_supp+'/sub.fits', overwrite=True)
         if uncal_rampmodel.meta.subarray.name == 'SUBSTRIP256':
-            dc = np.nansum(w[i] * sub[i], axis=-2) / np.nansum(w[i], axis=-2)
-            # make sure no NaN will corrupt the whole column
-            dc = np.where(np.isfinite(dc), dc, 0)
-            # dc is 2-dimensional - expand to the 3rd (columns) dimension
-            dcmap[i, :, :, :] = np.repeat(dc, 256).reshape((ngroup, 2048, 256)).swapaxes(1,2)
-            subcorr[i, :, :, :] = sub[i, :, :, :] - dcmap[i, :, :, :]
+            if oddevenrows == True:
+                dc_even = np.nansum(w[i] * w_even * sub[i], axis=-2) / \
+                          np.nansum(w[i] * w_even, axis=-2)
+                dc_odd = np.nansum(w[i] * w_odd * sub[i], axis=-2) / \
+                         np.nansum(w[i] * w_odd, axis=-2)
+                # make sure no NaN will corrupt the whole column
+                dc_even = np.where(np.isfinite(dc_even), dc_even, 0)
+                dc_odd = np.where(np.isfinite(dc_odd), dc_odd, 0)
+                # dc is 2-dimensional - expand to the 3rd (columns) dimension
+                dcmap_even = np.repeat(dc_even, 256).reshape((ngroup, 2048, 256)).swapaxes(1, 2)
+                dcmap_odd = np.repeat(dc_odd, 256).reshape((ngroup, 2048, 256)).swapaxes(1, 2)
+                print(np.shape(dcmap_odd))
+                print(np.shape(dcmap))
+                #tmp = np.copy(dcmap[i])
+                dcmap[i][:, ind_even, :] = np.copy(dcmap_even[:, ind_even, :])
+                dcmap[i][:, ind_odd, :] = np.copy(dcmap_odd[:, ind_odd, :])
+                #tmp[:, ind_even, :] = np.copy(dcmap_even[:, ind_even, :])
+                #tmp[:, ind_odd, :] = np.copy(dcmap_odd[:, ind_odd, :])
+                #print(np.shape(tmp))
+                #dcmap[i] = np.copy(tmp)
+                subcorr[i, :, :, :] = sub[i, :, :, :] - dcmap[i, :, :, :]
+            else:
+                dc = np.nansum(w[i] * sub[i], axis=-2) / np.nansum(w[i], axis=-2)
+                # make sure no NaN will corrupt the whole column
+                dc = np.where(np.isfinite(dc), dc, 0)
+                # dc is 2-dimensional - expand to the 3rd (columns) dimension
+                dcmap[i, :, :, :] = np.repeat(dc, 256).reshape((ngroup, 2048, 256)).swapaxes(1,2)
+                subcorr[i, :, :, :] = sub[i, :, :, :] - dcmap[i, :, :, :]
         elif uncal_rampmodel.meta.subarray.name == 'SUBSTRIP96':
             dc = np.nansum(w[i] * sub[i], axis=-2) / np.nansum(w[i], axis=-2)
             # make sure no NaN will corrupt the whole column

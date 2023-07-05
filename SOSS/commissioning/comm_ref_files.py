@@ -1104,11 +1104,13 @@ if __name__ == "__main__":
         ######################################################################
         # Joe - I run this to generate the sequence of reference file creation
         ######################################################################
-        outdir = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/'
+        #outdir = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/'
+        outdir = '/Users/albert/NIRISS/Commissioning/analysis/WASP107b/'
+
 
         # 1 - Stack a rateints.fits, cal.fits or your best shot at a reduced cube.
         #     The stack is then used to measure the x,y of the traces.
-        bestshot_file = outdir+'supplemental_jw01091002001_03101_00001-seg001_nis/datamodel_nanfree_before_extract1d.fits'
+        bestshot_file = outdir+'supplemental_jw01201008001_04101_00001-seg001_nis/datamodel_nanfree_before_extract1d.fits'
         datamodel = datamodels.open(bestshot_file)
         stack, rms, dq = stack_datamodel(datamodel)
         print('Got stack')

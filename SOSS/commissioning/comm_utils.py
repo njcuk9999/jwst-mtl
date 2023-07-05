@@ -6,6 +6,8 @@ import numpy as np
 
 import scipy.interpolate
 
+from scipy.signal import medfilt
+
 import glob
 
 from astropy.io import fits, ascii
@@ -31,6 +33,8 @@ import SOSS.trace.tracepol as tracepol
 from astropy.nddata.bitmask import bitfield_to_boolean_mask
 
 from jwst.datamodels import dqflags
+
+from scipy.optimize import least_squares
 
 
 def mediandev(x, axis=None):
@@ -432,12 +436,19 @@ def interp_badpix(image, noise, dq=None):
 def add_manual_badpix(datamodel):
 
     pid = datamodel.meta.observation.program_number
+    obs = datamodel.meta.observation.observation_number
 
-    print('Adding bad pixels manually based on the program ID {:}'.format(pid))
+    print('Adding bad pixels manually based on the program ID {:} and observation number {:}'.format(pid, obs))
 
     if pid == '01091':
         # manually selected bad pixels in ds9 and saved as 2-cols ascii region file
         ds9reg = '/Users/albert/NIRISS/SOSSpipeline/jwst-mtl/SOSS/Commissioning/files/manual_badpix_01091.reg'
+        table = ascii.read(ds9reg)
+        x = np.array(table['col1'])
+        y = np.array(table['col2'])
+    if pid == '01201' and obs == '008':
+        # WASP107b
+        ds9reg = '/Users/albert/NIRISS/SOSSpipeline/jwst-mtl/SOSS/Commissioning/files/manual_badpix_01201008.reg'
         table = ascii.read(ds9reg)
         x = np.array(table['col1'])
         y = np.array(table['col2'])
@@ -1119,7 +1130,7 @@ def combine_multi_spec(wildcard, outputname):
 #combined = combine_multi_spec(multi_spec_list)
 #combined.save('spec_combined.fits')
 
-def combine_timeseries(wildcard, outputname):
+def combine_timeseries(wildcard, outputname_normalized, outputname_rawflux):
 
     nisfiles= sorted(glob.glob(wildcard))
     print(nisfiles)
@@ -1138,6 +1149,9 @@ def combine_timeseries(wildcard, outputname):
         ts[:, current:current+ninteg, :] = np.copy(im)
         current += ninteg
 
+    # Save the raw flux (no normalization)
+    hdu = fits.PrimaryHDU(ts)
+    hdu.writeto(outputname_rawflux, overwrite=True)
 
     print(np.shape(ts))
     # normalize each wavelength
@@ -1146,9 +1160,81 @@ def combine_timeseries(wildcard, outputname):
     ts = ts.transpose(1, 0, 2)
 
     hdu = fits.PrimaryHDU(ts)
-    hdu.writeto(outputname, overwrite=True)
+    hdu.writeto(outputname_normalized, overwrite=True)
 
     return
+
+def median_absolute_spectrum(photomstep_spectrum, outputname):
+    # Reads the time series of spectra calibrated in absolute flux (from photomstep)
+    # and combine them to output the median, combined spectrum, along with rms.
+
+    # Start processing the spectra file
+    multispec = datamodels.open(photomstep_spectrum)
+
+    # spectra are stored at indice 1 (order 1), then 2 (order2) then 3 (order 3) then 4 (order 1, 2nd time step), ...
+    # TODO Manage nint and norder better
+    # nint = multispec.meta.exposure.nints
+    norder = 3
+    nint = int(np.shape(multispec.spec)[0] / norder)
+    # norder = int(np.shape(multispec.spec)[0] / nint)
+
+    print('nint = {:}, norder= {:}'.format(nint, norder))
+
+    # format differently
+    wavelength = np.zeros((nint, norder, 2048))
+    flux = np.zeros((nint, norder, 2048))
+    fluxerr = np.zeros((nint, norder, 2048))
+    for i in range(nint):
+        for m in range(norder):
+            nnn = i * norder + m
+            print(i, m, nnn)
+            wavelength[i, m, :] = multispec.spec[nnn].spec_table['wavelength']
+            flux[i, m, :] = multispec.spec[nnn].spec_table['flux']
+            fluxerr[i, m, :] = multispec.spec[nnn].spec_table['flux_error']
+
+    # make a quick white light to reject in-transit spectra later
+    wl = np.nansum(flux[:,0,:], axis=-1)
+    wl = wl/np.nanmedian(wl, axis=0)
+    wlmed = np.nanmedian(wl)
+    wldev = mediandev(wl)
+    print('whitelight = ', wl)
+    print('whitelight median = ', wlmed)
+    print('whitelight deviations = ', wldev)
+    oot = wl > (wlmed - 3 * wldev)
+
+    # Start building the output fits file.
+    hdul = list()
+    hdu = fits.PrimaryHDU()
+    hdu.header['DESCRIP'] = ('Median Out-of-transit spectrum', 'Desription of the file')
+    hdu.header['AUTHOR'] = ('Loic Albert', 'Author of the file')
+    hdul.append(hdu)
+
+    for m in range(norder):
+        spec_median = np.nanmedian(flux[oot,m,:], axis=0)
+        spec_rms = mediandev(flux[oot,m,:], axis=0)
+
+        # Create the order 1 extension.
+        # Order 1 table.
+        col1 = fits.Column(name='micron', format='F', array=wavelength[0, m, :])
+        col2 = fits.Column(name='spectrum', format='F', array=spec_median)
+        col3 = fits.Column(name='rms', format='F', array=spec_rms)
+        cols = fits.ColDefs([col1, col2, col3])
+
+        hdu = fits.BinTableHDU.from_columns(cols)
+        hdu.header['ORDER'] = (m+1, 'Spectral order.')
+        hdu.header['EXTNAME'] = 'ORDER {:}'.format(m+1)
+        hdul.append(hdu)
+
+    hdul = fits.HDUList(hdul)
+    hdul.writeto(outputname, overwrite=True)
+
+
+
+
+
+    return
+
+
 
 def performance_fluxcal(spectrum_file, outdir=None, title=''):
     '''
@@ -1498,8 +1584,52 @@ def test_backgrounds():
 
 #a = test_backgrounds()
 
-def measure_background_tilt(input_image, isafitsfile=True, method='stackgradients'):
-#def measure_background_tilt(isafitsfile=True, method='stackprofiles'):
+
+def robust_polyfit(x, y, order, maxiter=5, nstd=3.):
+    """Perform a robust polynomial fit.
+    Paremeters
+    ----------
+    x : array, list
+        Independent fitting variable.
+    y : array, list
+        Dependent fitting variable.
+    order : int
+        Polynomial order to fit.
+    maxiter : int
+        Number of iterations for outlier rejection.
+    nstd : float
+        Number of standard deviations to consider a value an outlier.
+    Returns
+    -------
+    res : array[float]
+        The best fitting polynomial parameters.
+    """
+
+    def _poly_res(p, x, y):
+        """Residuals from a polynomial.
+        """
+        return np.polyval(p, x) - y
+
+    mask = np.ones_like(x, dtype='bool')
+    for niter in range(maxiter):
+
+        # Fit the data and evaluate the best-fit model.
+        param = np.polyfit(x[mask], y[mask], order)
+        yfit = np.polyval(param, x)
+
+        # Compute residuals and mask ouliers.
+        res = y - yfit
+        stddev = np.std(res)
+        mask = np.abs(res) <= nstd*stddev
+
+    res = least_squares(_poly_res, param, loss='huber', f_scale=0.1,
+                        args=(x[mask], y[mask])).x
+
+    return res
+
+def measure_background_tilt(input_image, isafitsfile=True, method='halfbumpvalue',
+                            outputdir='/Users/albert/Downloads/', return_all=False,
+                            comment=''):
 
     if isafitsfile == True:
         input_image = '/Users/albert/NIRISS/Commissioning/analysis/T1/backgroundsub_jw02589001001_04101_00001-seg001_nis_customrateints_flatfieldstep/background_mask.fits'
@@ -1515,6 +1645,121 @@ def measure_background_tilt(input_image, isafitsfile=True, method='stackgradient
     #hdu = fits.PrimaryHDU(image)
     #hdu.writeto('/Users/albert/NIRISS/Commissioning/analysis/documenting_steps/T1_masked_stacked.fits')
 
+    if method == 'halfbumpvalue':
+        # Compute the background median on the left and on the right of the bump
+        # in a clean region (top rows). Then, for each row, find the x position where
+        # the value is clostest to intermediate left/right background. Each row is
+        # smoothed to improve SNR.
+
+        # Columns and angles to explore
+        cmin, cmax = 650, 750
+        rowmin, rowmax = 0, 256
+
+        # xtract a sub image
+        subim = image[rowmin:rowmax, cmin:cmax]
+        dimy, dimx = np.shape(subim)
+
+        if True:
+            # Running median of 2*medhalf+1 rows
+            medhalf = 2
+            smoothing = 5
+            rows = np.arange(dimy)
+            rows = rows[medhalf:-medhalf]
+            subimsm = np.copy(subim)*np.nan
+            val_left, val_right, val_break = [], [], []
+            c_break = []
+            allcols = np.linspace(cmin, cmax, dimx)
+
+            rown = 0
+            # Fill missed rows because of row medianing
+            for i in range(medhalf):
+                c_break.append(np.nan)
+                val_left.append(np.nan)
+                val_right.append(np.nan)
+                val_break.append(np.nan)
+            for row in rows:
+                # median 2*medhalf+1 rows
+                rowrunningmed = np.nanmedian(subim[row - medhalf:row + medhalf + 1, :], axis=0)
+                # Smooth along columns
+                subimsm[row, :] = medfilt(rowrunningmed, smoothing)
+                val_left.append(np.nanmedian(rowrunningmed[:35]))
+                val_right.append(np.nanmedian(rowrunningmed[-35:]))
+                val_break.append((val_left[rown] + val_right[rown]) / 2)
+                r = np.abs(rowrunningmed - val_break[rown])
+                ind = np.argmin(r)
+                print(ind)
+                # Remove rows where the background is definitely not pure
+                if (val_break[rown] > 5.5-2) & (val_break[rown] < 5.5+2):
+                    c_break.append(allcols[ind])
+                else:
+                    c_break.append(np.nan)
+                rown = rown+1
+            # Fill missed rows because of row medianing
+            for i in range(medhalf):
+                c_break.append(np.nan)
+                val_left.append(np.nan)
+                val_right.append(np.nan)
+                val_break.append(np.nan)
+            # convert to numpy arrays
+            c_break = np.array(c_break)
+            val_left = np.array(val_left)
+            val_right = np.array(val_right)
+
+        if False:
+            # smooth to improve SNR
+            subimsm = np.copy(subim)
+            val_left, val_right, val_break = [], [], []
+            c_break = []
+            allcols = np.linspace(cmin, cmax, dimx)
+            for i in range(dimy):
+                subimsm[i, :] = medfilt(subim[i, :], 5)
+                val_left.append(np.nanmedian(subim[i, :35]))
+                val_right.append(np.nanmedian(subim[i, -35:]))
+                val_break.append((val_left[i] + val_right[i]) / 2)
+                r = np.abs(subimsm[i, :] - val_break[i])
+                ind = np.argmin(r)
+                print(ind)
+                # Remove rows where the background is definitely not pure
+                if (val_break[i] > 5.5-2) & (val_break[i] < 5.5+2):
+                    c_break.append(allcols[ind])
+                else:
+                    c_break.append(np.nan)
+            c_break = np.array(c_break)
+            val_left = np.array(val_left)
+            val_right = np.array(val_right)
+        # Further remove rows where the background position is > 10 pixels off
+        #ind = np.abs(c_break - 697) > 10
+        #c_break[ind] = np.nan
+        cols = np.arange(dimy)
+
+        ind = np.isfinite(c_break)
+        cols = cols[ind]
+        c_break = c_break[ind]
+        val_left = val_left[ind]
+        val_right = val_right[ind]
+
+        pars = robust_polyfit(cols, c_break, 1, maxiter=5, nstd=3.)
+        print(pars)
+        tilt = np.rad2deg(np.arctan(pars[0]))
+        print('tilt = {:}'.format(tilt))
+        c_fit = np.polyval(pars, cols)
+
+        if return_all == True:
+            return tilt, pars, cols, c_break, val_left, val_right
+        else:
+            return tilt
+
+        if True:
+            plt.scatter(cols, c_break-700, label='col break')
+            plt.scatter(cols, val_left, label='val left')
+            plt.scatter(cols, val_right, label='val right')
+            plt.plot(cols, c_fit-700, label='Fit')
+            plt.title(comment)
+
+            plt.legend()
+            plt.show()
+
+
     if method == 'stackgradients':
         # The gradient is computed for all pixels of each angle.
         # For each angle, the result is crunched into a 1D slice.
@@ -1522,16 +1767,21 @@ def measure_background_tilt(input_image, isafitsfile=True, method='stackgradient
         # The best fit tilt is the angle producing maximum measurement.
 
         # Columns and angles to explore
-        cmin, cmax = 650, 730
-        rowmin, rowmax = 1100, 2044
+        cmin, cmax = 650, 740
+        #rowmin, rowmax = 1100, 2044
+        rowmin, rowmax = 0,256
         thetalist = np.linspace(-2.5, -0.5, 101)
 
         # Obtain the derivative along the columns
         subim = image[rowmin:rowmax, cmin:cmax]
+        #plt.imshow(subim)
+        #plt.show()
         dimy, dimx = np.shape(subim)
+        print(dimx, dimy)
         dfdx = np.gradient(subim, axis=1)
-        #hdu = fits.PrimaryHDU(dfdx)
-        #hdu.writeto('/Users/albert/NIRISS/Commissioning/analysis/documenting_steps/dfdx.fits', overwrite=True)
+        print(dfdx)
+        hdu = fits.PrimaryHDU(dfdx)
+        hdu.writeto(outputdir+'dfdx.fits', overwrite=True)
         # fill nans with zero
         dfdx = np.where(np.isfinite(dfdx), dfdx, 0)
 
@@ -1542,8 +1792,8 @@ def measure_background_tilt(input_image, isafitsfile=True, method='stackgradient
         # Loop over angles
         for theta in range(np.size(thetalist)):
             dfdxrot = rotate(dfdx, thetalist[theta], axes=(1, 0), reshape=False)
-            #hdu = fits.PrimaryHDU(dfdxrot)
-            #hdu.writeto('/Users/albert/NIRISS/Commissioning/analysis/documenting_steps/dfdxrot.fits', overwrite=True)
+            hdu = fits.PrimaryHDU(dfdxrot)
+            hdu.writeto(outputdir+'dfdxrot.fits', overwrite=True)
             dfdxcube[theta,:,:] = np.copy(dfdxrot)
 
             # Crunch as a single slice and measure max
@@ -1556,7 +1806,7 @@ def measure_background_tilt(input_image, isafitsfile=True, method='stackgradient
                 plt.plot(trace+0.01*theta)
                 plt.plot(medfilt(trace+0.01*theta,5))
         plt.grid()
-        plt.show()
+        #plt.show()
         print(thetalist, tmax)
 
         # Optimal angle is
@@ -1566,12 +1816,12 @@ def measure_background_tilt(input_image, isafitsfile=True, method='stackgradient
         print('Tilt angle is ', tilt)
 
         plt.plot(thetalist, tmax)
-        #plt.plot(thetalist, medfilt(tmax,3))
+        plt.plot(thetalist, medfilt(tmax,3))
         plt.grid()
-        plt.show()
+        #plt.show()
 
-        #hdu = fits.PrimaryHDU(dfdxcube)
-        #hdu.writeto('/Users/albert/NIRISS/Commissioning/analysis/documenting_steps/dfdxrot_cube.fits', overwrite=True)
+        hdu = fits.PrimaryHDU(dfdxcube)
+        hdu.writeto(outputdir+'dfdxrot_cube.fits', overwrite=True)
 
     if method == 'stackprofiles':
         # For each angle, the image is crunched into a 1D slice.
@@ -1579,8 +1829,9 @@ def measure_background_tilt(input_image, isafitsfile=True, method='stackgradient
         # The best fit tilt is the angle producing maximum measurement.
 
         # Columns and angles to explore
-        cmin, cmax = 650, 730
+        cmin, cmax = 650, 740
         rowmin, rowmax = 850, 2044
+        rowmin, rowmax = 0,256
         thetalist = np.linspace(-3, -0.5, 51)
 
         # xtract a sub image
@@ -1589,8 +1840,8 @@ def measure_background_tilt(input_image, isafitsfile=True, method='stackgradient
 
         # fill nans with zero
         subim = np.where(np.isfinite(subim), subim, 0)
-        #hdu = fits.PrimaryHDU(subim)
-        #hdu.writeto('/Users/albert/NIRISS/Commissioning/analysis/GR700XD_background/test.fits', overwrite=True)
+        hdu = fits.PrimaryHDU(subim)
+        hdu.writeto(outputdir+'test.fits', overwrite=True)
 
         # Initialize output arrays
         subimcube = np.zeros((np.size(thetalist), dimy, dimx))
@@ -1601,7 +1852,7 @@ def measure_background_tilt(input_image, isafitsfile=True, method='stackgradient
         for theta in range(np.size(thetalist)):
             subimrot = rotate(subim, thetalist[theta], axes=(1, 0), reshape=False)
             hdu = fits.PrimaryHDU(subimrot)
-            hdu.writeto('/Users/albert/NIRISS/Commissioning/analysis/documenting_steps/subimrot.fits', overwrite=True)
+            hdu.writeto(outputdir+'subimrot.fits', overwrite=True)
             subimcube[theta, :, :] = np.copy(subimrot)
 
             # Crunch as a single slice and measure max
@@ -1628,18 +1879,85 @@ def measure_background_tilt(input_image, isafitsfile=True, method='stackgradient
         print('Tilt angle is ', tilt)
 
         plt.plot(thetalist, tmax)
-        # plt.plot(thetalist, medfilt(tmax,3))
+        plt.plot(thetalist, medfilt(tmax,3))
         plt.grid()
-        plt.show()
+        #plt.show()
 
         hdu = fits.PrimaryHDU(subimcube)
-        hdu.writeto('/Users/albert/NIRISS/Commissioning/analysis/documenting_steps/subimrot_cube.fits', overwrite=True)
+        hdu.writeto(outputdir+'subimrot_cube.fits', overwrite=True)
         hdu = fits.PrimaryHDU(gradientmap)
-        hdu.writeto('/Users/albert/NIRISS/Commissioning/analysis/documenting_steps/gradientmap.fits', overwrite=True)
+        hdu.writeto(outputdir+'gradientmap.fits', overwrite=True)
 
-    return tilt
+    if method == 'crosscorel':
+        # Take the n rows at top to produce a profile. Then
+        # cross correlate those with each individual row
 
-#a = measure_background_tilt()
+        # Columns and angles to explore
+        cmin, cmax = 650, 740
+        rowmin, rowmax = 0, 256
+        thetalist = np.linspace(-3, -0.5, 51)
+
+        # xtract a sub image
+        subim = image[rowmin:rowmax, cmin:cmax]
+        dimy, dimx = np.shape(subim)
+
+        # Oversample pixels in the x direction but not in y
+        osf = 4 # oversampling factor
+        subimos = np.zeros((dimy,dimx*osf))
+        for i in range(dimy):
+            subimos[i,:] = np.interp(np.arange(dimx*osf)/osf, np.arange(dimx), subim[i,:])
+
+
+        # generate the oversampled kernel. Skip the top 5 rows (ref pixels)
+        kernel = np.nanmedian(subimos[-11:-6,:], axis=0)
+        # handle NaNs
+        replacement_NaN = np.nanmedian(subim)
+        kernel[~np.isfinite(kernel)] = replacement_NaN
+
+        #submethod = 'full' # kernel is full row
+        submethod = 'short' # kernel is a short row around the background bump
+        if submethod == 'full':
+            rows = np.arange(dimy)
+            rows = rows[2:-2]
+            ccf = np.zeros((np.size(rows),dimx*osf))
+            rown = 0
+            for row in rows:
+                # median 2*medhalf+1 rows
+                medhalf = 2
+                runningmed = np.nanmedian(subimos[row-medhalf:row+medhalf+1,:], axis=0)
+                # handle NaNs
+                runningmed[~np.isfinite(runningmed)] = replacement_NaN
+                # Do the CC
+                ccf[rown, :] = np.correlate(runningmed, kernel, mode='same')
+                # Smooth the CCF
+                #ccf[rown, :] = medfilt(ccf[rown, :], 5)
+                rown = rown + 1
+        elif submethod == 'short':
+            # select a short extract of the kernel
+            kernelshort = kernel[dimx*osf//2-(20*osf):dimx*osf//2+(20*osf)]
+            ccfdim = dimx*osf - np.size(kernelshort) + 1
+            rows = np.arange(dimy)
+            rows = rows[2:-2]
+            #ccf = np.zeros((np.size(rows),dimx*osf))
+            ccf = np.zeros((np.size(rows),ccfdim))
+
+            rown = 0
+            for row in rows:
+                # median 2*medhalf+1 rows
+                medhalf = 2
+                runningmed = np.nanmedian(subimos[row-medhalf:row+medhalf+1,:], axis=0)
+                # handle NaNs
+                runningmed[~np.isfinite(runningmed)] = replacement_NaN
+                # Do the CC
+                ccf[rown, :] = np.correlate(runningmed, kernelshort, mode='valid')
+                # Smooth the CCF
+                #ccf[rown, :] = medfilt(ccf[rown, :], 5)
+                rown = rown + 1
+
+        hdu = fits.PrimaryHDU(ccf)
+        hdu.writeto(outputdir+'testccf'+comment+'.fits', overwrite=True)
+
+
 
 
 
@@ -1955,12 +2273,220 @@ def test_back_scaling():
 #a = test_back_scaling()
 
 
+def return_ecliptic_latitude(alpha, delta):
+
+    from astropy import units as u
+    from astropy.coordinates import SkyCoord
+
+    c_icrs = SkyCoord(ra=alpha * u.degree, dec=delta * u.degree, frame='icrs')
+
+    return c_icrs.geocentricmeanecliptic.lat.value
+
+def return_ecliptic_longitude(alpha, delta):
+
+    from astropy import units as u
+    from astropy.coordinates import SkyCoord
+
+    c_icrs = SkyCoord(ra=alpha * u.degree, dec=delta * u.degree, frame='icrs')
+
+    return c_icrs.geocentricmeanecliptic.lon.value
+
+def characterize_background():
+    # Characterize the background position for a dozen SOSS TSO
+    ratelist = sorted(
+        glob.glob("/Users/albert/NIRISS/SOSSpipeline/2023_brainstorming/mastDownload/JWST/jw*-seg001_nis/*rate.fits"))
+    pwcpos, filename = [], []
+    for i in range(np.size(ratelist)):
+        a = datamodels.open(ratelist[i])
+        # a.info(max_rows=200)
+        im = a.data
+        position = a.meta.instrument.pupil_position
+        substrip = a.meta.subarray.name
+        if substrip == 'SUBSTRIP256':
+            pwcpos.append(position)
+            filename.append(ratelist[i])
+
+    filename = np.array(filename)
+    pwcpos = np.array(pwcpos)
+    print(filename, pwcpos, np.size(filename))
+
+    # good measurements
+    good = [3, 4, 5, 6, 8, 9, 10]
+
+    # Select one by one, which plot to generate
+    plot_version = 'allpositions'
+    #plot_version = 'single_breaks'
+    #plot_version = 'leftright'
+    #plot_version = 'eclipticrelation'
+
+    tilt, yintercept, obsid = [], [], []
+    eclipticlat, eclipticlon, left_level, right_level = [], [], [], []
+    for i in range(np.size(filename)):
+        a = datamodels.open(filename[i])
+        im = a.data
+        dq = a.err
+
+        # print(a.info(max_rows=1000))
+        thisobsid = a.meta.observation.visit_id
+        obsid.append(thisobsid)
+        eclipticlat.append(return_ecliptic_latitude(a.meta.target.ra, a.meta.target.dec))
+        eclipticlon.append(return_ecliptic_longitude(a.meta.target.ra, a.meta.target.dec))
+
+        # ind = ~np.isfinite(im)
+        # im[ind] = np.nanmedian(im)
+        # hdu = fits.PrimaryHDU(im)
+        # hdu.writeto('/Users/albert/NIRISS/SOSSpipeline/2023_brainstorming/test.fits', overwrite=True)
+        backtilt, pars, cols, c_break, val_left, val_right = measure_background_tilt(im,
+                                                                isafitsfile=False, method='halfbumpvalue',
+                                                                comment=thisobsid,
+                                                                outputdir='/Users/albert/NIRISS/SOSSpipeline/2023_brainstorming/',
+                                                                return_all=True)
+        tilt.append(backtilt)
+        yintercept.append(pars[1])
+        xcol = np.arange(256)
+        c_fit = np.polyval(pars, xcol)
+
+        # Establish the representative level left and right
+        left_level.append(np.nanpercentile(val_left, 10))
+        right_level.append(np.nanpercentile(val_right, 10))
+
+        if plot_version == 'allpositions':
+            if set([i]).isdisjoint(set(good)) == False:
+                plt.plot(c_fit, xcol, label=thisobsid)
+            else:
+                plt.plot(c_fit, xcol, label=thisobsid, ls='dashed')
+        if plot_version == 'single_breaks':
+            plt.scatter(c_break, cols, color='black', label='Measurements')
+            plt.plot(c_fit, xcol, color='red', label='Linear Fit')
+            plt.gca().invert_yaxis()
+            plt.xlabel('SUBSTRIP256 Row [pixel]')
+            plt.ylabel('Background Break Column [pixel]')
+            plt.legend()
+            plt.title(thisobsid)
+            plt.savefig('/Users/albert/NIRISS/SOSSpipeline/2023_brainstorming/background_'+thisobsid+'.png')
+            plt.show()
+        if plot_version == 'leftright':
+            # Do the plot
+            plt.scatter(cols, val_left, color='blue', label='Left of Break Level')
+            plt.scatter(cols, val_right, color='orange', label='Right of Break Level')
+            plt.hlines(left_level[i], 0, np.max(cols), color='cyan', label='Left 10% percentile level')
+            plt.hlines(right_level[i], 0, np.max(cols), color='red', label='Right 10% percentile level')
+            #plt.plot(c_fit, xcol, color='red', label='Linear Fit')
+            #plt.gca().invert_yaxis()
+            plt.ylabel('Background Level (e-/sec)')
+            plt.ylim((2,10))
+            plt.xlabel('Detector Row [Y-pixel]')
+            plt.legend()
+            plt.title(thisobsid)
+            plt.savefig('/Users/albert/NIRISS/SOSSpipeline/2023_brainstorming/background_leftright_'+thisobsid+'.png')
+            plt.show()
+
+    if plot_version == 'eclipticrelation':
+        plt.scatter(eclipticlat, left_level, label='Left Level')
+        plt.scatter(eclipticlat, right_level, label='Right Level')
+        plt.xlabel('Ecliptic Latitude (degrees)')
+        plt.ylabel('Background Level (e-/sec)')
+        plt.title('Background vs Ecliptic Latitude')
+        plt.legend()
+        plt.savefig('/Users/albert/NIRISS/SOSSpipeline/2023_brainstorming/background_eclipticlat_.png')
+        plt.show()
+        plt.scatter(eclipticlon, left_level, label='Left Level')
+        plt.scatter(eclipticlon, right_level, label='Right Level')
+        plt.xlabel('Ecliptic Longitude (degrees)')
+        plt.ylabel('Background Level (e-/sec)')
+        plt.title('Background vs Ecliptic Longitude')
+        plt.legend()
+        plt.savefig('/Users/albert/NIRISS/SOSSpipeline/2023_brainstorming/background_eclipticlon_.png')
+        plt.show()
 
 
+
+    tilt = np.array(tilt)
+    yintercept = np.array(yintercept)
+
+    if plot_version == 'allpositions':
+        plt.gca().invert_yaxis()
+        plt.xlabel('Pixel Columns (X)')
+        plt.ylabel('Pixel Rows (Y)')
+        plt.xlim((695, 710))
+        plt.title('Background Break Fitted Position')
+        plt.legend()
+        plt.savefig('/Users/albert/NIRISS/SOSSpipeline/2023_brainstorming/background_fitted_position.png')
+        plt.show()
+
+
+
+
+
+    # Good sample - Tilt figure
+    fig, ax = plt.subplots(1, 1, figsize=(6, 6))
+    #plt.scatter(pwcpos, tilt, label='Tilt (all Data)')
+    ax.scatter(pwcpos[good], tilt[good])#, label='Tilt (Good Data)')
+    ax.vlines(245.7616, 2.05, 1.65, ls='dashed', color='red')
+    ax.set_ylim((2.05,1.65))
+    ax.set_aspect('equal', 'box')
+    ax.set_title('SOSS Background Break Tilt')
+    ax.set_xlabel('Pupil Wheel Position (PWCPOS - degrees)')
+    ax.set_ylabel('Tilt Angle from vertical (degrees)')
+    plt.tight_layout()
+    plt.savefig('/Users/albert/NIRISS/SOSSpipeline/2023_brainstorming/background_tilt_vs_pwcpos.png')
+    plt.show()
+
+    # Good sample - Y intercept figure
+    params = np.polyfit(pwcpos[good], yintercept[good], 1)
+    pwangle = np.linspace(np.min(pwcpos), np.max(pwcpos), 100)
+    yfit = np.polyval(params, pwangle)
+
+    plt.figure(figsize=(9,6))
+    plt.scatter(pwcpos[good], yintercept[good], label='Measurements')
+    plt.plot(pwangle, yfit, label='Fit - slope = {:7.3F}'.format(params[0]))
+    plt.vlines(245.7616, 695, 699, ls='dashed', color='red', label='Nominal GR700XD')
+    plt.title('SOSS Background Break Position')
+    plt.xlabel('Pupil Wheel Position (PWCPOS - degrees)')
+    plt.ylabel('X Position at the Top of the SUBSTRIP256')
+    plt.legend()
+    plt.savefig('/Users/albert/NIRISS/SOSSpipeline/2023_brainstorming/background_yintercept_vs_pwcpos.png')
+    plt.show()
+
+    return
+
+def cds(rampmodel, outdir=None, verbose=False):
+
+    #nint, dimy, dimx = np.shape(datamodel.data)
+
+    basename = os.path.splitext(rampmodel.meta.filename)[0]
+    if outdir == None:
+        outdir = './'
+        #cntrdir = './backgroundsub_'+basename+'/'
+    #else:
+    #    cntrdir = outdir+'/backgroundsub_'+basename+'/'
+    if not os.path.exists(outdir):
+        os.makedirs(outdir)
+    #if not os.path.exists(cntrdir):
+    #    os.makedirs(cntrdir)
+
+    ngroup = rampmodel.meta.exposure.ngroups
+    intstart = rampmodel.meta.exposure.integration_start
+    intend = rampmodel.meta.exposure.integration_end
+    if (intstart == None) & (intend == None):
+        # it means that this is a time-series NOT split into segments
+        intstart, intend = 1, rampmodel.meta.exposure.nints
+    #nint = intend-intstart+1
+    #dimx = np.shape(rampmodel.data)[-1]
+
+    superbias = fits.getdata(SUPERBIAS_NAME)
+    cds = rampmodel.data[:,ngroup-1,:,:] - superbias
+
+    frametime =  rampmodel.meta.exposure.frame_time
+    exptime = ngroup * frametime
+    cds = cds / exptime
 
 
 if __name__ == "__main__":
 
+    if True:
+        characterize_background()
+        sys.exit()
     if False:
         # Make contamination mask for T1_4
         a = make_mask_02589_obs003()

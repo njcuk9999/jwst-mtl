@@ -14,7 +14,8 @@ from astropy.io import fits
 import sys
 
 # Import trace position library
-import trace.tracepol as tp
+import SOSS.trace.tracepol as tp # Adding SOSS. makes using this library outside possible
+#import trace.tracepol as tp
 
 
 
@@ -491,6 +492,41 @@ def FlambdaToFnu(wave,Flambda):
     #Convert to Jansky using 1 Jy = 10^26 W/m2/Hz
     #Jy = 1.0e+26 * Fnu_W_m2_Hz
     return(Fnu_W_m2_Hz)
+
+def JyToFlambda(wave, Jy):
+    #wave has to be in microns
+
+    #Convert to Jansky using 1 Jy = 10^26 W/m2/Hz
+    #Jy = 1.0e+26 * Fnu_W_m2_Hz
+    Fnu_W_m2_Hz = Jy * 1e-26
+
+    # Physical constants
+    c = 299792458.0  # m/sec
+    wave_m = 1.0e-6 * wave
+
+    # Convert Fnu (W/M2/Hz) to Flambda (W/M2/m)
+    Flambda_W_m2_m = Fnu_W_m2_Hz * c / np.power(wave_m, 2.0)
+
+    Flambda_W_m2_um = Flambda_W_m2_m * 1e-6
+
+    return Flambda_W_m2_um
+
+def FnuToFlambda(wave,Fnu):
+    #wave has to be in microns
+    #Fnu has to be in W/m2/hertz
+    #Physical constants
+    c = 299792458.0 #m/sec
+    wave_m = 1.0e-6*wave
+
+    #Convert Fnu (W/M2/Hz) to Flambda (W/M2/m)
+    Flambda_W_m2_m = Fnu * c / np.power(wave_m,2.0)
+    #Convert to Jansky using 1 Jy = 10^26 W/m2/Hz
+    #Jy = 1.0e+26 * Fnu_W_m2_Hz
+
+    Flambda_W_m2_um = Flambda_W_m2_m * 1e-6
+
+    return(Fnu_W_m2_um)
+
 
 
 def jansky_to_AB(jansky):

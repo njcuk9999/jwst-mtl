@@ -55,13 +55,15 @@ BACKGROUND = 'model_background256.fits'  # Nestor's
 SPECTRACE = 'SOSS_ref_trace_table_SUBSTRIP256.fits'
 WAVEMAP = 'SOSS_ref_2D_wave_SUBSTRIP256.fits'
 SPECPROFILE = 'SOSS_ref_2D_profile_SUBSTRIP256.fits'
+PHOTOM = 'jwst_niriss_photom_rev2.fits' #'jwst_niriss_photom_new.fits'
+
 
 
 
 def custom_loic(exposurelist, use_atoca=False, optimal_extraction=False,
                 run_outliers=True, contamination_mask=None, extract_only=False,
                 skip_stacking=False, erase_clean=False, satmap=None,
-                box_width=25):
+                use_cds=False, box_width=25):
 
     # Correct the 1/f noise at the full time-series level rather than
     # segment by segment (because 1/f residuals on the stack differ
@@ -139,7 +141,7 @@ def custom_loic(exposurelist, use_atoca=False, optimal_extraction=False,
             # Custom - 1/f correction
             result = soss_oneoverf.applycorrection(
                 result, output_dir=outdir, save_results=True,
-                deepstack_custom=deepstack,
+                deepstack_custom=deepstack, oddevenrows=True,
                 outlier_map=outdir+'/outliers_'+basename+'.fits',
                 trace_table_ref=ATOCAREF_DIR+SPECTRACE)
             if segment == 0: fn.write('{:} - After 1/f \n'.format(result.meta.filename))
@@ -176,21 +178,25 @@ def custom_loic(exposurelist, use_atoca=False, optimal_extraction=False,
 
             # DMS standard - Jump detection
             result = calwebb_detector1.jump_step.JumpStep.call(
-                result, output_dir=outdir, rejection_threshold=6, save_results=False,
-                override_jumpstep=CRDSDIR+'jwst_niriss_pars-jumpstep_0020.asdf')
+                result, output_dir=outdir, rejection_threshold=6, save_results=False)
             if segment == 0: fn.write('{:} - After jump \n'.format(result.meta.filename))
 
-            # DMS standard - Ramp fitting
-            stackresult, result = calwebb_detector1.ramp_fit_step.RampFitStep.call(
-                result, output_dir=outdir, save_results=False)
+            if use_cds == True:
+                print('Instead of fitting a slope to the ramp, use last read - superbias.')
+                stackresult, result = commutils.cds()
+            else:
+                # DMS standard - Ramp fitting
+                stackresult, result = calwebb_detector1.ramp_fit_step.RampFitStep.call(
+                    result, output_dir=outdir, save_results=False)
             if segment == 0: fn.write('{:} - After ramp fitting \n'.format(result.meta.filename))
         else:
-            result = datamodels.open(outdir+'/'+basename+'_1_rampfitstep.fits')
-            result.meta.filename = basename
-
+            if extract_only == False:
+                result = datamodels.open(outdir+'/'+basename+'_1_rampfitstep.fits')
+                result.meta.filename = basename
 
         f = open(outdir+'/dq_trace.txt', 'w')
-        f.write('DQ={:} - After ramp fit step \n'.format(result.dq[0,88,1361]))
+        if extract_only == False:
+            f.write('DQ={:} - After ramp fit step \n'.format(result.dq[0,88,1361]))
 
         if extract_only == False:
             # DMS standard - Gain step
@@ -257,6 +263,9 @@ def custom_loic(exposurelist, use_atoca=False, optimal_extraction=False,
             f.write('DQ={:} - After bad pix interpolation step \n'.format(result.dq[0,88,1361]))
         else:
             result = datamodels.open(outdir+'/'+basename+'_badpixinterp.fits')
+            # Need to overwrite the filename because otherwise basename+'_badpixinterp' is used
+            result.meta.filename = basename
+            print('Nom du datamodel filename = {:}'.format(result.meta.filename))
 
         # Subtract a local background below order 1 close to the trace
         # result = commutils.localbackground_subtraction(result, ATOCAREF_DIR+SPECTRACE, width=9, back_offset=-25)
@@ -302,6 +311,7 @@ def custom_loic(exposurelist, use_atoca=False, optimal_extraction=False,
             else:
                 # soss_atoca=False --> box extraction only
                 # carefull to not turn it on. Would if soss_bad_pix='model' or soss_modelname=set_to_something
+                print('Nom du datamodel filename avant extract1d = {:}'.format(result.meta.filename))
                 result = calwebb_spec2.extract_1d_step.Extract1dStep.call(result, output_dir=outdir, save_results=True,
                                                                           soss_transform=[0, 0, 0],
                                                                           soss_atoca=False,
@@ -315,10 +325,12 @@ def custom_loic(exposurelist, use_atoca=False, optimal_extraction=False,
                                                                           override_wavemap=ATOCAREF_DIR + WAVEMAP,
                                                                           override_specprofile=ATOCAREF_DIR + SPECPROFILE)
 
+        print('Nom du datamodel filename avant photom step= {:}'.format(result.meta.filename))
 
         # DMS standard - Conversion to SI units
         result = calwebb_spec2.photom_step.PhotomStep.call(
-            result, output_dir=outdir, save_results=True)
+            result, output_dir=outdir, save_results=True,
+            override_photom= CRDSDIR + PHOTOM)
 
         # Write results on disk
         result.close()
@@ -341,7 +353,7 @@ if __name__ == "__main__":
     # data set to process:
     #datasetname = 'LTT9779'
     #datasetname = 'SOSSwavecal'
-    datasetname = 'SOSSfluxcal'
+    #datasetname = 'SOSSfluxcal'
     #datasetname = 'SOSSfluxcalss96ng3'
     #datasetname = 'HATP14b'
     #datasetname = 'T1'
@@ -350,6 +362,8 @@ if __name__ == "__main__":
     #datasetname = 'T1_4'
     #datasetname = 'darks'
     #datasetname = 'f277w'
+    datasetname = 'WASP52b'
+    #datasetname = 'WASP107b'
 
     # Wavelength calibration
     if datasetname == 'wavecal':
@@ -568,52 +582,102 @@ if __name__ == "__main__":
         datalist = ['jw01541001001_04102_00001-seg001_nis']
         dataset_string = 'jw01541001001_04102_00001'
 
+    # WASP52b
+    if datasetname == 'WASP52b':
+        if (hostname == 'iiwi.sf.umontreal.ca') or (hostname == 'iiwi.local'):
+            ATOCAREF_DIR = '/Users/albert/NIRISS/Commissioning/analysis/T1_3/ref_files/'
+            dir = '/Volumes/T7/WASP52b/'
+            contmask = None
+        elif hostname == 'genesis':
+            dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/T1_2/'
+            contmask = None
+        else:
+            sys.exit()
+
+        datalist = [
+            'jw01201501001_04101_00001-seg001_nis',
+            'jw01201501001_04101_00001-seg002_nis'
+        ]
+        dataset_string = 'jw01201501001_04101_00001'
+
+    # WASP107b
+    if datasetname == 'WASP107b':
+        if (hostname == 'iiwi.sf.umontreal.ca') or (hostname == 'iiwi.local'):
+            ATOCAREF_DIR = '/Users/albert/NIRISS/Commissioning/analysis/T1_3/ref_files/'
+            dir = '/Volumes/T7/WASP107b/'
+            contmask = None
+        elif hostname == 'genesis':
+            dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/T1_2/'
+            contmask = None
+        else:
+            sys.exit()
+
+        datalist = [
+            'jw01201008001_04101_00001-seg001_nis',
+            'jw01201008001_04101_00001-seg002_nis',
+            'jw01201008001_04101_00001-seg003_nis',
+            'jw01201008001_04101_00001-seg004_nis'
+        ]
+        dataset_string = 'jw01201008001_04101_00001'
+
+
     '''
     RUN THE PIPELINE--------------------------------------------------------------------
     '''
     custom_or_not = '_rateints'
+    satmap = None  # 35000 # None
+    use_cds = False
     run_outliers = True
+    extract_only = False
     use_atoca = False
     optimal_extraction = False
-    extract_only = False
-    skip_stacking = False
+    skip_stacking = True
     erase_clean = False
-    satmap = None #35000 # None
-    box_width = 25
+    box_width = 32
+    postproc_only = False
 
-    if True:
-        # Method 1 - streamlined
+    if postproc_only == False:
+        # Run the level 1 and 2 custom pipeline
         uncal_list = []
         for oneseg in datalist: uncal_list.append(dir + oneseg + '_uncal.fits')
         custom_loic(uncal_list, use_atoca=use_atoca, run_outliers=run_outliers,
                     optimal_extraction=optimal_extraction, contamination_mask=contmask,
                     extract_only=extract_only, skip_stacking=skip_stacking,
-                    erase_clean=erase_clean, satmap=satmap, box_width=box_width)
+                    erase_clean=erase_clean, satmap=satmap, use_cds=use_cds, box_width=box_width)
+
     else:
-        # Method 2 - former way
-        for dataset in datalist:
-            use_atoca = False
-            optimal_extraction = False
+        # Post processing analysis
 
-            custom_or_not = '_customrateints' #'_rateints'
-            #run_stage1(dir+dataset+'_uncal.fits')
-            run_stage2(dir+dataset+custom_or_not+'.fits', contamination_mask=contmask, run_outliers=True,
-                       use_atoca=use_atoca, optimal_extraction=optimal_extraction)
+        for oneseg in datalist:
+            # Additional diagnostics - Subtracting the ATOCA model from the images
+            if use_atoca:
+                commutils.check_atoca_residuals(dir+oneseg+'_rateints.fits', dir+oneseg+'_atoca_model_SossExtractModel.fits')
+            spectrum_file = dir+oneseg+'_extract1dstep.fits'
+            a = commutils.plot_timeseries(spectrum_file, norder=3)
 
-    # Post processing analysis
-    for oneseg in datalist:
-        # Additional diagnostics - Subtracting the ATOCA model from the images
-        if use_atoca:
-            commutils.check_atoca_residuals(dir+oneseg+'_rateints.fits', dir+oneseg+'_atoca_model_SossExtractModel.fits')
-        spectrum_file = dir+oneseg+'_extract1dstep.fits'
-        a = commutils.plot_timeseries(spectrum_file, norder=3)
+        # Combining segments and creating timeseries greyscales
+        outdir = '/Users/albert/NIRISS/Commissioning/analysis/'+datasetname+'/'
+        outdir = dir
+        wildcard = outdir+'supplemental_'+dataset_string+'-seg???_nis/timeseries_greyscale_rawflux.fits'
+        print(wildcard)
+        a = commutils.combine_timeseries(wildcard,
+                outdir+'timeseries_greyscale_boxsize{:2.0f}.fits'.format(box_width),
+                outdir+'timeseries_greyscale_rawflux_boxsize{:2.0f}.fits'.format(box_width)
+        )
 
-    # Combining segments and creating timeseries greyscales
-    outdir = '/Users/albert/NIRISS/Commissioning/analysis/'+datasetname+'/'
-    wildcard = outdir+'supplemental_'+dataset_string+'-seg???_nis/timeseries_greyscale_rawflux.fits'
-    print(wildcard)
-    a = commutils.combine_timeseries(wildcard, outdir+'timeseries_greyscale.fits')
-    a = commutils.greyscale_rms(outdir+'timeseries_greyscale.fits', title='')
-    wildcard = outdir+dataset_string+'-seg???_nis_extract1dstep.fits'
-    print(wildcard)
-    a = commutils.combine_multi_spec(wildcard, outdir+'extracted_spectrum.fits')
+        a = commutils.greyscale_rms(outdir+'timeseries_greyscale_boxsize{:2.0f}.fits'.format(box_width), title='')
+        wildcard = outdir+dataset_string+'-seg???_nis_extract1dstep.fits'
+        print(wildcard)
+        a = commutils.combine_multi_spec(wildcard, outdir+'extracted_spectrum_boxsize{:2.0f}.fits'.format(box_width))
+        # produce the median and deviation spectrum
+        a = commutils.median_absolute_spectrum(outdir+'extracted_spectrum_boxsize{:2.0f}.fits'.format(box_width),
+                                               outdir+'extracted_oot_spectrum_boxsize{:2.0f}.fits'.format(box_width))
+
+        # Combining flux calibrated segments and preparing a median spectrum
+        outdir = '/Users/albert/NIRISS/Commissioning/analysis/'+datasetname+'/'
+        outdir = dir
+        wildcard = outdir+dataset_string+'-seg???_nis_photomstep.fits'
+        a = commutils.combine_multi_spec(wildcard, outdir+'calibrated_spectrum_boxsize{:2.0f}.fits'.format(box_width))
+        # produce the median and deviation spectrum
+        a = commutils.median_absolute_spectrum(outdir+'calibrated_spectrum_boxsize{:2.0f}.fits'.format(box_width),
+                                               outdir+'calibrated_oot_spectrum_boxsize{:2.0f}.fits'.format(box_width))
