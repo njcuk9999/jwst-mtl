@@ -1,0 +1,13 @@
+#!/bin/bash
+#SBATCH --account=def-dlafre
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=24
+#SBATCH --mem=300G
+#SBATCH --time=3-00:00
+#SBATCH --job-name WASP-52_t_logg_full
+#SBATCH --output=/home/dlafre/projects/def-dlafre/dlafre/tfit/outputs/out_sbatch_%j.txt
+#SBATCH --mail-type=FAIL
+
+source /home/dlafre/jwst39/bin/activate
+
+python -u run_mcmc_full.py "/home/dlafre/projects/def-dlafre/dlafre/tfit/outputs/wasp-52b_t_logg_sampler_trial.pickle"

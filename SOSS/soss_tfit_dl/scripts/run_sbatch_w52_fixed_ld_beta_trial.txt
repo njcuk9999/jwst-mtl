@@ -1,0 +1,13 @@
+#!/bin/bash
+#SBATCH --account=def-dlafre
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=24
+#SBATCH --mem=20G
+#SBATCH --time=1-00:00
+#SBATCH --job-name WASP-52_fixed_ld_beta
+#SBATCH --output=/home/dlafre/projects/def-dlafre/dlafre/tfit/outputs/out_sbatch_%j.txt
+#SBATCH --mail-type=FAIL
+
+source /home/dlafre/jwst39/bin/activate
+
+python -u run_beta_trial.py "/home/dlafre/projects/def-dlafre/dlafre/tfit/outputs/wasp-52b_fixed_ld_tfit.pickle"

@@ -1,0 +1,401 @@
+# =============================================================================
+# Global Parameters
+# =============================================================================
+# Some parameters are basic constant others are "param" (see below)
+#
+# - param name: name for the parameter
+#   - value: the value of the parameter [FLOAT] if None will have to be set
+#            inside the code
+#   - wfit: the wavelength dependence "bolometric" or "chromatic" [STRING]
+#   - ftype: whether we are keeping the parameter "fixed" or fitting "fit" [STRING]
+#   - prior: the prior distribution to apply
+#     - minimum: minimum value of a tophat prior [FLOAT]
+#     - maximum: maximum value of a tophat prior [FLOAT]
+#   - beta: pre-set the beta value to apply (Optional)
+
+global_params:
+  # ---------------------------------------------------------------------------
+  # Choice of transitmodel
+  # ---------------------------------------------------------------------------
+  # 0: Original transitmodel by Jason Rowe, LD coefficient sampling
+  # 1: Original, with Teff & logg (to then get q1&q2 from models)
+  # 2: Spotrod, with LD coefficient sampling
+  # 3: Spotrod, with Teff & logg sampling
+  model: 3
+
+  # Number of planets (use for N planets) [INT]
+  nplanets: 1
+  
+  # Number of spots
+  nspots: 2
+  
+  # Orders to use (list of orders)
+  orders:
+   - 1
+   - 2
+
+  # The normalization value before and after transit [days from start of observation]
+  #    setting None for before or after does not normalize by this region
+  #    setting both to None does not normalize
+  tnorm:
+    before: 59910.374
+    after: 59910.458
+
+  # Define the number of subdivisions when solving the long-integration problems
+  # Must be between 1 and 41 and odd
+  nintg: 1
+
+  # Define which way to calculate the results
+  #    current options are 'percentile', 'mode', 'all'
+  result-mode: percentile
+
+  # Define the number of samples to use for transit depth calculation
+  transit_depth_nsamples: 10000
+  
+  # Plot mode, 0: no plots, 1: to file, 2: to screen
+  plotmode:
+    - 2
+
+  # ---------------------------------------------------------------------------
+  # binning parameters
+  # ---------------------------------------------------------------------------
+  binning:
+    # binning mode should either be 'simple' or 'const_R'
+    mode: const_R
+    # parameters for binning by const R (divide into bins of equal resolution)
+    const_R:
+      # Resolution to bin at
+      #   Must define for each value of "global_params.orders"
+      bin_R:
+        1: 125
+        2: 125
+      # minimum wavelength in micron to keep for each order (use None for no limit)
+      #   Must define for each value of "global_params.orders"
+      bin_wave_min:
+        1: None
+        2: 0.6
+      # maximum wavelength in micron to keep for each order (use None for no limit)
+      #   Must define for each value of "global_params.orders"
+      bin_wave_max:
+        1: None
+        2: 0.9
+
+
+
+  # ---------------------------------------------------------------------------
+  # Input/Output parameters
+  # ---------------------------------------------------------------------------
+  # input extracted spctrum - aboslute path (must be set)
+  inspectrum: /home/dlafre/projects/def-dlafre/dlafre/jwst_reduced_timeseries/WASP-52_atoca_spectra_fullres.fits
+  # output directory for results (created if doesn't exist)
+  outdir: /home/dlafre/projects/def-dlafre/dlafre/tfit/outputs
+  # output results filename (without extension)
+  outname: wasp-52b_t_logg
+  # model file path - absolute path (set None to not plot model)
+  modelpath: None
+
+  # ---------------------------------------------------------------------------
+  # Fitting hyper parameters
+  # ---------------------------------------------------------------------------
+  # Scale to apply to photometric errors [PARAM]
+  error_scale:
+    value: 1.
+    wfit: chromatic
+    ftype: fit
+    prior:
+      minimum: 0
+      maximum: 2
+    beta: 0.25
+
+  # ---------------------------------------------------------------------------
+  # Fitting trend parameters
+  # ---------------------------------------------------------------------------
+  #
+  ntrends: 1
+  
+  #coefficient of first trend   
+  trend_c1: #slope
+    value: 0.007
+    wfit: chromatic
+    ftype: fit
+    prior:
+      minimum: -1
+      maximum: 1.
+    beta: 0.003
+
+
+# =============================================================================
+# MCMC parameters
+# =============================================================================
+# General mcmc parameters
+mcmc_params:
+  # beta parameters, for the beta_rescaling step
+  beta:
+    # Number of steps in the beta rescale
+    niter_cor: 14000
+    # burn-in for the beta rescale
+    burnin_cor: 2800
+    # maximum number of iterations for the beta rescale
+    nloopmax: 8
+    # beta acceptance rate low value
+    alow: 0.2
+    # beta acceptance rate high value
+    ahigh: 0.3
+    # parameter controlling how fast corscale changes - from Gregory 2011
+    delta: 0.01
+  # do trial mcmc run
+  trial: true
+  # do full mcmc run
+  full: true
+  # Number of walkers for MCMC
+  nwalkers: 24
+  # Total length of chain will be nwalkers*nsteps
+  nsteps:
+    trial: 100000
+    full: 1000000
+  # the number of steps we add on next loop (if convergence not met)
+  nsteps_inc:
+    trial: 0
+    full: 0
+  # burn-in fraction for evaluating convergence
+  burninf:
+    trial: 0.5
+    full: 0.5
+  # thinning, for thinning the chains, to save memory
+  thinning: 10
+  # Maximum number of times to try the MCMC (if convergence not met on a loop)
+  nloopmax:
+    trial: 1
+    full: 1
+  # Convergence criteria
+  converge_crit: 1.02
+  # Convergence criteria for buffer
+  buf_converge_crit: 1.2
+  # correction to beta term for deMCMC vector jump
+  corbeta:
+    trial: 1.0
+    full: 0.3
+  # optimization parameters
+  optimization:
+    # Threads are split as following:
+    #    N = N_walker_threads * N_fit_threads
+    # Number of walker threads
+    #      Must be equal to 1 or a multiple of the number of walkers
+    N_walker_threads: 24
+    # Number of fit threads per chain
+    #    Currently this does not work, use export OMP_NUM_THREADS=N
+    #    before running! OMP_NUM_THREADS=N_fit_threads
+    N_fit_threads: 1
+
+
+# =============================================================================
+# Star Parameters
+# =============================================================================
+# - param name: name for the parameter
+#   - value: the value of the parameter [FLOAT] if None will have to be set
+#            inside the code
+#   - wfit: the wavelength dependence "bolometric" or "chromatic" [STRING]
+#   - ftype: whether we are keeping the parameter "fixed" or fitting "fit" [STRING]
+#   - prior: the prior distribution to apply
+#     - minimum: minimum value of a tophat prior [FLOAT]
+#     - maximum: maximum value of a tophat prior [FLOAT]
+#   - beta: pre-set the beta value to apply (Optional)
+
+star:
+  # effective temperature
+  teff:
+      value: 5000.
+      wfit: bolometric
+      ftype: fit
+      prior:
+        func: tgaussian
+        mu: 5000.
+        sigma: 400.
+        vmin: 3000
+        vmax: 7000
+      beta: 25.
+  # surface gravity
+  logg:
+      value: 4.5
+      wfit: bolometric
+      ftype: fit
+      prior:
+        func: tgaussian
+        mu: 4.5
+        sigma: 0.1
+        vmin: 4.0
+        vmax: 5.0
+      beta: 0.3
+      
+  #metallicity
+  metal:
+      value: 0.1
+      wfit: bolometric
+      ftype: fixed #must be fixed!
+      prior:
+        minimum: -1.0
+        maximum: 1.0
+
+  # Out of transit baseline (set in code) [PARAM]
+  zeropoint:
+      value: 0.
+      wfit: chromatic
+      ftype: fit
+      prior:
+        minimum: -0.005
+        maximum: 0.005
+      beta: 0.0002
+
+#Star spots
+spot1:
+  x:
+      value: -0.22
+      wfit: bolometric
+      ftype: fit
+      prior:
+        minimum: -1.
+        maximum: 0.
+      beta: 0.015 
+  y:
+      value: 0.81
+      wfit: bolometric
+      ftype: fit
+      prior:
+        minimum: 0.0
+        maximum: 1.0
+      beta: 0.003
+  rad:
+      value: 0.17
+      wfit: bolometric
+      ftype: fit
+      prior:
+        minimum: 0.0
+        maximum: 1.0
+      beta: 0.006  
+  cont:
+      value: 0.7
+      wfit: chromatic
+      ftype: fit
+      prior:
+        minimum: 0.0
+        maximum: 1.0
+      beta: 0.3
+
+spot2:
+  x:
+      value: 0.37
+      wfit: bolometric
+      ftype: fit
+      prior:
+        minimum: 0.
+        maximum: 1.0
+      beta: 0.01 
+  y:
+      value: 0.46
+      wfit: bolometric
+      ftype: fit
+      prior:
+        minimum: 0.0
+        maximum: 1.0
+      beta: 0.005
+  rad:
+      value: 0.07
+      wfit: bolometric
+      ftype: fit
+      prior:
+        minimum: 0.0
+        maximum: 1.0
+      beta: 0.01  
+  cont:
+      value: 0.75
+      wfit: chromatic
+      ftype: fit
+      prior:
+        minimum: 0.0
+        maximum: 1.0
+      beta: 0.3
+
+  # update zeropoint from data
+  update_zeropoint: false
+
+# =============================================================================
+# Planet Parameters
+# =============================================================================
+# - planetN
+#   - param name: name for the parameter
+#     - value: the value of the parameter [FLOAT] if None will have to be set
+#              inside the code
+#     - wfit: the wavelength dependence "bolometric" or "chromatic"
+#     - ftype: whether we are keeping the parameter "fixed" or fitting "fit"
+#     - prior: the prior distribution to apply
+#       - minimum: minimum value of a tophat prior [FLOAT]
+#       - maximum: maximum value of a tophat prior [FLOAT]
+#   - beta: pre-set the beta value to apply (Optional)
+
+planet1:
+  # Center of transit time [PARAM]
+  t0:
+      value: 59910.41639
+      wfit: bolometric
+      ftype: fit
+      prior:
+        minimum: 59910.316
+        maximum: 59910.516
+      beta: 0.00002
+  # Orbital period [PARAM]
+  period:
+      value: 1.74978119
+      wfit: bolometric
+      ftype: fixed
+      prior:
+        minimum: 1.0
+        maximum: 2.0
+  # Impact parameter [PARAM]
+  b:
+      value: 0.6
+      wfit: bolometric
+      ftype: fit
+      prior:
+        minimum: 0.4
+        maximum: 0.8
+      beta: 0.00066
+  # Scaled planet radius [PARAM]
+  rprs:
+      value: 0.1661
+      wfit: chromatic
+      ftype: fit
+      prior:
+        minimum: 0.12
+        maximum: 0.2
+      beta: 0.001
+  # scaled semi-major axis [PARAM]
+  sma:
+      value: 7.22
+      wfit: bolometric
+      ftype: fit
+      prior:
+        minimum: 5
+        maximum: 10
+      beta: 0.005
+  # sqrt(e)cos(w) [PARAM]
+  sqrt_e_cosw:
+    value: 0
+    wfit: bolometric
+    ftype: fixed
+    prior:
+      func: gaussian
+      mu: 0.
+      sigma: 1
+    beta: 0.01
+  # sqrt(e)sin(w) [PARAM]
+  sqrt_e_sinw:
+    value: 0. #-0.0008
+    wfit: bolometric
+    ftype: fixed
+    prior:
+      func: gaussian
+      mu: 0.
+      sigma: 0.1
+    beta: 0.01
+
+# =============================================================================
