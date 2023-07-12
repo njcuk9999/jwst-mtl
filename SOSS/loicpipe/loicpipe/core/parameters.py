@@ -126,6 +126,10 @@ __key__ = 'stage1.loicpipe.fit_ramp'
 params[__key__] = Const(__key__, None, dtype=bool, path=__key__,
                         source=__NAME__)
 
+# define the dq mask values
+__key__ = 'stage1.loicpipe.dq_mask'
+params[__key__] = Const(__key__, None, dtype=list, path=__key__,
+                        source=__NAME__)
 
 # -----------------------------------------------------------------------------
 # stage 2 parameters

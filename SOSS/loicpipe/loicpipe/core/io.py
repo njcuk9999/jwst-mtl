@@ -65,6 +65,33 @@ def load_fits(filename: str) -> np.ndarray:
     return fits.getdata(filename)
 
 
+def write_dqfile(params: Parameters, results: Any):
+    # get parameters used in this function (should be done at the start)
+    outputdir = params['data.outdir']
+    # define the dq base filename
+    dq_basename = 'dq_postmanual.fits'
+    # construct filename
+    dq_filename = os.path.join(outputdir, dq_basename)
+    # create a new hdu
+    hdu = fits.PrimaryHDU(data=results.dq)
+    # save to file
+    hdu.writeto(dq_filename, overwrite=True)
+
+
+def write_rateints(params: Parameters, result: Any, filename: str):
+    # get parameters used in this function (should be done at the start)
+    outputdir = params['data.outdir']
+    # get the seg name
+    seg_name = get_seg_name(filename)
+    # suffix for rateints file
+    suffix = '_rateints.fits'
+    # construct filename
+    rateints_filename = os.path.join(outputdir, seg_name + suffix)
+    # write to file
+    result.write(rateints_filename)
+
+
+
 # =============================================================================
 # Define file naming / getting functions
 # =============================================================================
@@ -126,7 +153,6 @@ def get_output_directory(params: Parameters) -> Parameters:
     params('data.outdir').source = funcname
     # return the parameters
     return params
-
 
 
 def get_data_string(filename: str) -> str:
