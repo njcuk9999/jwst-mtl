@@ -491,7 +491,7 @@ class TransitFit:
         # get the length of the buffer
         nbuffer = len(buffer[:, 0])
         # update the position choosen by the sampler
-        self.n_tmp = -1
+        self.n_tmp = -1 #tell the accept array that we used the deMCMC sampler
         # get two random numbers
         int1, int2 = self.rng.integers(0, nbuffer, size=2)
         # calculate the vector jump
@@ -1124,7 +1124,7 @@ def de_mhg_mcmc(tfit: TransitFit, loglikelihood: Any, beta: np.ndarray,
     :param loglikelihood: The loglikelihodd function here
                           loglikelihood must have a single argument of type
                           Transit fit class
-    :param beta: ibb's factor : characteristic step size for each parameter
+    :param beta: Gibb's factor : characteristic step size for each parameter
     :param buffer: np.ndarray, previous chains used as a buffer state to
                    calculate a vector jump
     :param corbeta: float, scale factor correction to the vector jump
@@ -1158,7 +1158,10 @@ def de_mhg_mcmc(tfit: TransitFit, loglikelihood: Any, beta: np.ndarray,
     # -------------------------------------------------------------------------
     # Step 3 Compute the acceptance probability
     # -------------------------------------------------------------------------
-    alpha = min(np.exp(tfit.llx - llx0), 1.0)
+    # llx can be -np.inf --> therefore we suppress overflow warning here
+    with warnings.catch_warnings(record=True) as _:
+#         alpha = min(np.exp(tfit.llx - llx0), 1.0) #is this min() necessary?
+        alpha = np.exp(tfit.llx - llx0)
     # -------------------------------------------------------------------------
     # Step 4 Accept or reject trial
     # -------------------------------------------------------------------------
@@ -1927,7 +1930,7 @@ def calculate_acceptance_rates(rejections: np.ndarray,
         # store for later use
         acceptance_dict[p_num] = acceptance
 
-    # Question: This is only calculated for the last loop (as denprop reset
+    # Question: This is only calculated for the last loop (as de_nprop reset
     #           inside loop) is this what we want?
     # if we have deMCMC results, report the acceptance rate.
     if de_nprop > 0:
@@ -2131,8 +2134,6 @@ class Sampler:
         nwalkers = self.params['WALKERS']
         # set the burnin parameter
         burninf = self.params['BURNINF'][self.mode]
-        # convergence criteria for buffer
-        buf_converge_crit = self.params['BUFFER_CONVERGE_CRIT']
         # the number of steps we add on next loop (if convergence not met)
         nsteps_inc = self.params['NSTEPS_INC'][self.mode]
         # correction to beta term for deMCMC
@@ -2208,12 +2209,10 @@ class Sampler:
         # -----------------------------------------------------------------
         # Test criteria for success
         # -----------------------------------------------------------------
-        # criteria for accepting mcmc chains
-        #   all parameters grtest greater than or equal to
-        #   buf_converge_crit
-        # DL: shouldn't this be "converge_crit"? or perhaps depending on mode??
+        # criteria for stopping mcmc chains
         # DL: 'full'-> "converge_crit", 'trial'-> "buf_converge_crit"
-        success = (self.grtest < buf_converge_crit).all()
+        conv_crit=self.params['buffer_converge_crit'] if self.mode=='trial' else self.params['converge_crit']
+        success = (self.grtest < conv_crit).all()
         cprint(f'GR convergence test result: {success}')
         
         if success:
@@ -2639,7 +2638,7 @@ class Sampler:
         # return chains and rejects
         return chains, rejects
 
-    def dump(self, **kwargs):
+    def dump(self, suffix='', **kwargs):
         """
         Dump the sampler to a pickle file
         :param kwargs:
@@ -2650,7 +2649,7 @@ class Sampler:
             setattr(self, kwarg, kwargs[kwarg])
         # get output path
         outpath = self.params['OUTDIR']
-        outname = self.params['OUTNAME'] + '_sampler_'+self.mode+'.pickle'
+        outname = self.params['OUTNAME'] + '_sampler_'+self.mode+suffix+'.pickle'
         # deal with no output dir
         if not os.path.exists(outpath):
             os.makedirs(outpath)
@@ -2876,7 +2875,7 @@ def _multi_process_pool_old(sampler: Sampler, in_sampler: Sampler, nwalkers: int
     return wchains, wrejects, wlls
 
 def _multi_process_pool(sampler: Sampler, in_sampler: Sampler, nwalkers: int,
-                        gkwargs: dict) -> MultiReturn:
+                        gkwargs: dict, buffer_max_size=1e9) -> MultiReturn:
     """
     Multiprocessing using multiprocessing.Process
 
@@ -2903,6 +2902,12 @@ def _multi_process_pool(sampler: Sampler, in_sampler: Sampler, nwalkers: int,
         #we want the buffer to be the merged walker chains from in_sampler
         #this is already available in in_sampler.chain
         buffer=in_sampler.chain
+        
+        #now we make sure it does not exceed the max size, and thin if needed
+        sz=buffer.size*64/8
+        th=np.ceil(sz/buffer_max_size).astype(int)
+        buffer=buffer[::th,:]
+        print('Buffer shape for deMCMC:',buffer.shape,flush=True)
     else:
         buffer=None
     #if using mhg_mcmc then don't need a buffer
@@ -2926,7 +2931,7 @@ def _multi_process_pool(sampler: Sampler, in_sampler: Sampler, nwalkers: int,
         
     # get the number of threads (N_WALKER_THREADS)
     n_walker_threads = sampler.params['N_WALKER_THREADS']
-    # start parallel jobs
+    # start parallel jobs, use 'fork' to keep memory usage lower
     with get_context('fork').Pool(n_walker_threads, maxtasksperchild=1) as pool:
         results = pool.starmap(_linear_process, params_per_process)
 #     with get_context('spawn').Pool(n_walker_threads, maxtasksperchild=1) as pool:
