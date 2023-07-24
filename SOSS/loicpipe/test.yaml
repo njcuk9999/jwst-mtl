@@ -20,6 +20,9 @@ data:
     - jw01201008001_04101_00001-seg002_nis
     - jw01201008001_04101_00001-seg003_nis
     - jw01201008001_04101_00001-seg004_nis'
+  # crds directory
+  # Question: where is this dir now?
+  crds-dir: /genesis/jwst/userland-soss/loic_review/commissioning/crds_cache/
   # calibration directory
   calib-dir: /genesis/jwst/jwst-ref-soss/noise_files/
   # atoca reference file directory
@@ -35,53 +38,110 @@ data:
   custom_dark_has_superbias_included: True
   # superbias file
   superbias: jwst_niriss_superbias_0181.fits
+  # set the wave map
+  wave_map: SOSS_ref_2D_wave_SUBSTRIP256
+  # set the spec profile
+  spec_profile: SOSS_ref_2D_profile_SUBSTRIP256
+  # photom file
+  photom: jwst_niriss_photom_rev2.fits
 
 # ---------------------------------------------------------------------
-# Stage 1 parameters
+# Loicpipe parameters
 # ---------------------------------------------------------------------
-stage1:
-  loicpipe:
-    # whether to run loicpipe for stage 1
-    run: False
-    # whether to skip stacking
-    skip_stack: False
-    # saturation map file
-    satmap: None
-    # whether to erase / clean the saturation map files
-    erase_clean_sat: False
-    # whether we fit the ramp (if False uses last read)
-    fit_ramp: True
-    # define the dq mask values
-    dq_mask:
-      - 0
-      - 88
-      - 1361
-  spoon:
-    # whether to run spoon for stage 1
-    run: False
-
-# ---------------------------------------------------------------------
-# Stage 2 parameters
-# ---------------------------------------------------------------------
-stage2:
-  loicpipe:
+loicpipe:
+  # whether to only to extraction (no previous steps in stage 1 + 2)
+  extract_only: False
+  # define the dq mask values
+  dq_mask:
+    - 0
+    - 88
+    - 1361
+  # ---------------------------------------------------------------------------
+  # Stage 1 parameters
+  stage1:
+    loicpipe:
+      # whether to run loicpipe for stage 1
+      run: False
+      # whether to skip stacking
+      skip_stack: False
+      # saturation map file
+      satmap: None
+      # whether to erase / clean the saturation map files
+      erase_clean_sat: False
+      # whether we fit the ramp (if False uses last read)
+      fit_ramp: True
+  # ---------------------------------------------------------------------------
+  # Stage 2 parameters
+  stage2:
     # whether to run loicpipe for stage 2
     run: True
-    # description
+    # whether to run flat fielding
+    flat_field: True
+    # whether to erase / clean the rate int files
+    erase_clean_rateints: False
+    # whether to run custom outlier rejection
+    custom_outlier_rejection: False
+    # define custom outlier window size (rows and columns)
+    custom_outlier_window:
+      - 3
+      - 11
+    # define custom outlier n sigma for rejection
+    custom_outlier_nsig: 3
+    # erase / clean custom outlier files
+    erase_clean_custom_outlier: False
+    # define the aphalfwidth for background subtraction
+    aphalfwidth:
+      - 40
+      - 20
+      - 20
+    # erase / clean background files
+    erase_clean_background: False
+    # whether to do the background subtraction
+    background_subtract: True
+    # background contamination mask (None for no mask)
     contam_mask: None
-    # whether to only to extraction (no previous steps in stage 1 + 2)
-    extract_only: False
-  spoon:
-    # whether to run spoon for stage 2
-    run: False
-
-# ---------------------------------------------------------------------
-# Stage 3 parameters
-# ---------------------------------------------------------------------
-stage3:
-  loicpipe:
+    # whether to do the bad pixel interpolation
+    bad_pix_interp: True
+    # whether to do a local background subtraction
+    local_background_subtraction: False
+    # define the local background subtraction width
+    local_sub_width: 9
+    # define the local background offset
+    local_sub_back_offset: -25
+    # whether to remove NaNs
+    remove_nans: True
+    # extraction method: atoca, optimal, box
+    extraction_method: atoca
+    # extraction box width (used in all three methods)
+    extraction_box_width: 32
+    # extraction soss transform [three integers]
+    soss_transform:
+      - 0
+      - 0
+      - 0
+  # ---------------------------------------------------------------------------
+  # Stage 3 parameters
+  stage3:
     # whether to run loicpipe for stage 3
     run: False
-  spoon:
-    # whether to run spoon for stage 3
+
+
+# -----------------------------------------------------------------------------
+# SupremeSpoon parameters
+# ----------------------------------------------------------------------------
+SupremeSpoon:
+  # ---------------------------------------------------------------------------
+  # Stage 1 parameters
+  stage1:
+    # whether to run SupremeSpoon for stage 1
+    run: False
+  # ---------------------------------------------------------------------------
+  # Stage 2 parameters
+  stage2:
+    # whether to run SupremeSpoon for stage 2
+    run: False
+  # ---------------------------------------------------------------------------
+  # Stage 2 parameters
+  stage3:
+    # whether to run SupremeSpoon for stage 2
     run: False

@@ -15,17 +15,15 @@ Created on 2023-07-11
 @author: cook
 """
 import os
-from typing import Any
+from typing import Any, List, Optional
 
 from jwst import datamodels
 from jwst.pipeline import calwebb_detector1
-from jwst.pipeline import calwebb_spec2
 
+import SOSS.commissioning.comm_utils as soss_commutils
+import SOSS.dms.soss_oneoverf as soss_oneoverf
 from loicpipe.core import constants
 from loicpipe.core import io
-
-import SOSS.dms.soss_oneoverf as soss_oneoverf
-import SOSS.commissioning.comm_utils as commutils
 
 # =============================================================================
 # Define variables
@@ -33,6 +31,7 @@ import SOSS.commissioning.comm_utils as commutils
 __NAME__ = 'science.stage1.py'
 # get Parameters class
 Parameters = constants.Parameters
+
 
 # =============================================================================
 # Define functions
@@ -55,17 +54,19 @@ def stage1_loicpipe(params: Parameters) -> Parameters:
     # get parameters used in this function (should be done at the start)
     uncal_list = params['data.uncal_list']
     # whether to skip stacking
-    skip_stack = params['stage1.loicpipe.skip_stack']
+    skip_stack: bool = params['loicpipe.stage1.skip_stack']
     # get the saturation map file
-    satmap = params['stage1.loicpipe.satmap']
+    satmap: Optional[str] = params['loicpipe.stage1.satmap']
     # erase clean saturation files
-    erase_clean = params['stage1.loicpipe.erase_clean_sat']
+    erase_clean: bool = params['loicpipe.stage1.erase_clean_sat']
     # rejection threshold for jump step
-    jump_rej_thres = params['stage1.loicpipe.jump_rej_thres']
+    jump_rej_thres: float = params['loicpipe.stage1.jump_rej_thres']
     # whether we fit the ramp (if False uses last read)
-    fit_ramp = params['stage1.loicpipe.fit_ramp']
+    fit_ramp: bool = params['loicpipe.stage1.fit_ramp']
     # whether to only to extraction (no previous steps in stage 1 + 2)
-    extract_only = params['stage2.loicpipe.extract_only']
+    extract_only: bool = params['loicpipe.extract_only']
+    # get the dqmask
+    dqmask: List[int] = params['loicpipe.dq_mask']
     # ----------------------------------------------------------------------
     # get output directory
     params = io.get_output_directory(params)
@@ -102,11 +103,11 @@ def stage1_loicpipe(params: Parameters) -> Parameters:
             GroupScaleStep = calwebb_detector1.group_scale_step.GroupScaleStep
             result = GroupScaleStep.call(segment, **kwargs)
             # run the DMS standard - DQInitStep
-            DQInitSte = calwebb_detector1.dq_init_step.DQInitSte
-            result = DQInitSte.call(result, **kwargs)
+            DQInitStep = calwebb_detector1.dq_init_step.DQInitStep
+            result = DQInitStep.call(result, **kwargs)
             # common arguments
             kwargs = dict(outputdir=outdir, save_results=True,
-                           overwrite_saturation=satmap)
+                          overwrite_saturation=satmap)
             # run the DMS standard - SaturationStep
             SaturationStep = calwebb_detector1.saturation_step.SaturationStep
             result = SaturationStep.call(result, **kwargs)
@@ -126,8 +127,8 @@ def stage1_loicpipe(params: Parameters) -> Parameters:
     # time-series level)
     # ----------------------------------------------------------------------
     # storage of logs for output files
-    # save filenames to filenames.txt
-    filename_lines = []
+    filelog = io.LoicLog('filename.txt')
+    dqtracelog = io.LoicLog('dq_trace.txt')
     # save dq_trace to dq_trace.txt
     dq_trace_lines = []
     # loop around saturation files
@@ -152,15 +153,14 @@ def stage1_loicpipe(params: Parameters) -> Parameters:
         result = soss_oneoverf.applycorrection(result, **kwargs)
         # write to log (only for first iteration)
         if it == 0:
-            filename_lines.append(f'{result.meta.filename} - After 1/f')
+            filelog.write(f'{result.meta.filename} - After 1/f')
         # ----------------------------------------------------------------------
         # Custom Dark Current correction
         # ----------------------------------------------------------------------
         result = loic_dark_current_step(params, result)
         # write to log (only for first iteration)
         if it == 0:
-            filename_lines.append(f'{result.meta.filename} '
-                                  f'- After dark current')
+            filelog.write(f'{result.meta.filename} - After dark current')
 
         # ----------------------------------------------------------------------
         # DMS standard - RefPix correction
@@ -178,7 +178,7 @@ def stage1_loicpipe(params: Parameters) -> Parameters:
                                     save_results=False)
         # write to log (only for first iteration)
         if it == 0:
-            filename_lines.append(f'{result.meta.filename} - After linearity')
+            filelog.write(f'{result.meta.filename} - After linearity')
 
         # ---------------------------------------------------------------------
         # DMS standard - Jump detection
@@ -189,7 +189,7 @@ def stage1_loicpipe(params: Parameters) -> Parameters:
                                save_results=False)
         # write to log (only for first iteration)
         if it == 0:
-            filename_lines.append(f'{result.meta.filename} - After jump')
+            filelog.write(f'{result.meta.filename} - After jump')
         # ---------------------------------------------------------------------
         # Ramp fitting
         # ---------------------------------------------------------------------
@@ -200,15 +200,14 @@ def stage1_loicpipe(params: Parameters) -> Parameters:
         else:
             print('Instead of fitting a slope to the ramp, use last read '
                   '- superbias.')
-            stackresult, result = commutils.cds(result, outdir=outdir)
+            stackresult, result = soss_commutils.cds(result, outdir=outdir)
         # write to log (only for first iteration)
         if it == 0:
-            filename_lines.append(f'{result.meta.filename} '
-                                  f'- After ramp fitting')
+            filelog.write(f'{result.meta.filename} - After ramp fitting')
 
         # add dq trace
-        dq_values = result.dq[params['stage1.loicpipe.dq_mask']]
-        dq_trace_lines.append('DQ={0} - After ramp fit step'.format(dq_values))
+        dq_values = result.dq[dqmask]
+        dqtracelog.write('DQ={0} - After ramp fit step'.format(dq_values))
 
         # ---------------------------------------------------------------------
         # DMS standard - Gain step
@@ -218,62 +217,52 @@ def stage1_loicpipe(params: Parameters) -> Parameters:
         result = GainScaleStep.call(result, output_dir=outdir,
                                     save_results=False)
         # add dq trace
-        dq_values = result.dq[params['stage1.loicpipe.dq_mask']]
-        dq_trace_lines.append('DQ={0} - After gain step'.format(dq_values))
+        dq_values = result.dq[dqmask]
+        dqtracelog.write('DQ={0} - After gain step'.format(dq_values))
         # write to log (only for first iteration)
         if it == 0:
-            filename_lines.append(f'{result.meta.filename} - After gain scale')
+            filelog.write(f'{result.meta.filename} - After gain scale')
 
         # ---------------------------------------------------------------------
         # Custom - Flag bad pixels found manually
         # ---------------------------------------------------------------------
         # Add some bad pixels missed by the dq init stage but seen otherwise
-        result = commutils.add_manual_badpix(result)
-
+        result = soss_commutils.add_manual_badpix(result)
         # add dq trace
-        dq_values = result.dq[params['stage1.loicpipe.dq_mask']]
-        dq_trace_lines.append('DQ={0} '
-                              '- After manual bad pix step'.format(dq_values))
+        dqtracelog.write('DQ={0} - After manual bad pix '
+                         'step'.format(result.dq[dqmask]))
         # write to log (only for first iteration)
         if it == 0:
-            filename_lines.append(f'{result.meta.filename} '
-                                  f'- After manual bad pix ')
-
+            filelog.write(f'{result.meta.filename} - After manual bad pix ')
         # write to dq_postmanual.fits
         io.write_dqfile(params, result)
 
         # Question: This will always give the same results as last entry?
         # add dq trace
-        dq_values = result.dq[params['stage1.loicpipe.dq_mask']]
-        dq_trace_lines.append('DQ={0} - After saving of manual '
-                              'bad pix step'.format(dq_values))
+        dqtracelog.write('DQ={0} - After saving of manual '
+                              'bad pix step'.format(result.dq[dqmask]))
         # write to log (only for first iteration)
         if it == 0:
-            filename_lines.append(f'{result.meta.filename} '
+            filelog.write(f'{result.meta.filename} '
                                   f'- After saving of manual bad pix step')
 
         # ---------------------------------------------------------------------
         # DMS standard - Save rateints on disk to end Stage 1
         # ---------------------------------------------------------------------
         # write rateints to disk
-        io.write_rateints(params, result, satfilename)
+        rateints_filename = io.get_rateints_file(params, satfilename)
+        # write rate ints to file
+        result.write(rateints_filename)
 
         # add dq trace
-        dq_values = result.dq[params['stage1.loicpipe.dq_mask']]
-        dq_trace_lines.append('DQ={0} - After saving _rateints.fits'
-                              'bad pix step'.format(dq_values))
+        dqtracelog.write('DQ={0} - After saving _rateints.fits'
+                              'bad pix step'.format(result.dq[dqmask]))
         # write to log (only for first iteration)
         if it == 0:
-            filename_lines.append(f'{result.meta.filename} '
-                                  f'- After saving _rateints.fits')
-        # ---------------------------------------------------------------------
-        # write dq log
-
-        with open(os.path.join(outdir, 'dq_trace.txt'), 'w') as f:
-            f.write('\n'.join(dq_trace_lines))
+            filelog.write(f'{result.meta.filename} '
+                          f'- After saving _rateints.fits')
     # ----------------------------------------------------------------------
     return params
-
 
 
 def loic_dark_current_step(params: Parameters, result0: Any) -> Any:
@@ -298,7 +287,6 @@ def loic_dark_current_step(params: Parameters, result0: Any) -> Any:
     # that otherwise can appear as uncorrected bad pixels in final products.
     # Here the custom dark includes the superbias level so we skipped the superbias step.
 
-
     # first check whether subarray is in the custom dark dictionary
     if subarray in custom_dark_dict:
         custom_dark = custom_dark_dict[subarray]
@@ -313,8 +301,8 @@ def loic_dark_current_step(params: Parameters, result0: Any) -> Any:
         # run super bias step
         SuperBiasStep = calwebb_detector1.superbias_step.SuperBiasStep
         result1 = SuperBiasStep.call(result0, output_dir=outputdir,
-                                    save_results=True,
-                                    override_superbias=superbias_file)
+                                     save_results=True,
+                                     override_superbias=superbias_file)
     else:
         result1 = result0
     # -------------------------------------------------------------------------
@@ -329,9 +317,6 @@ def loic_dark_current_step(params: Parameters, result0: Any) -> Any:
     # -------------------------------------------------------------------------
     # return dark result
     return result2
-
-
-
 
 
 # =============================================================================

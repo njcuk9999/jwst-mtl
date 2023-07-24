@@ -29,6 +29,18 @@ Parameters = constants.Parameters
 
 
 # =============================================================================
+# Define classes
+# =============================================================================
+class LoicLog:
+    def __init__(self, filename):
+        self.filename = filename
+
+    def write(self, message):
+        with open(self.filename, 'a') as logfile:
+            logfile.write(message + '\n')
+
+
+# =============================================================================
 # Define genearl functions
 # =============================================================================
 def read_yaml(yaml_filename: Union[str, None]) -> Dict[str, Any]:
@@ -78,18 +90,21 @@ def write_dqfile(params: Parameters, results: Any):
     hdu.writeto(dq_filename, overwrite=True)
 
 
-def write_rateints(params: Parameters, result: Any, filename: str):
+def write_prestack(params: Parameters, results: Any):
     # get parameters used in this function (should be done at the start)
     outputdir = params['data.outdir']
-    # get the seg name
-    seg_name = get_seg_name(filename)
-    # suffix for rateints file
-    suffix = '_rateints.fits'
-    # construct filename
-    rateints_filename = os.path.join(outputdir, seg_name + suffix)
-    # write to file
-    result.write(rateints_filename)
-
+    # define the dq base filename
+    prestack_datafile = 'prestack_data.fits'
+    prestack_dqfile = 'prestack_dq.fits'
+    # construct paths
+    prestack_datapath = os.path.join(outputdir, prestack_datafile)
+    prestack_dqpath = os.path.join(outputdir, prestack_dqfile)
+    # write prestack data file
+    hdu1 = fits.PrimaryHDU(data=results.data)
+    hdu1.writeto(prestack_datapath, overwrite=True)
+    # write prestack dq file
+    hdu2 = fits.PrimaryHDU(data=results.dq)
+    hdu2.writeto(prestack_dqpath, overwrite=True)
 
 
 # =============================================================================
@@ -184,7 +199,7 @@ def get_saturation_list_files(params: Parameters) -> List[str]:
     return filelist
 
 
-def get_deepstack_file(params):
+def get_deepstack_file(params: Parameters) -> str:
     # get parameters used in this function (should be done at the start)
     outputdir = params['data.outdir']
     # get the data string
@@ -209,7 +224,7 @@ def get_seg_name(filename: str) -> str:
     return seg_name
 
 
-def get_outliermap_file(params, filename):
+def get_outliermap_file(params: Parameters, filename: str) -> str:
     # get parameters used in this function (should be done at the start)
     outputdir = params['data.outdir']
     # get the seg name
@@ -223,7 +238,7 @@ def get_outliermap_file(params, filename):
     return outliermap_file
 
 
-def get_tracetable_file(params):
+def get_tracetable_file(params: Parameters) -> str:
     # get parameters used in this function (should be done at the start)
     atoca_dir = params['data.atoca-dir']
     # get the ref trace table
@@ -234,7 +249,7 @@ def get_tracetable_file(params):
     return tracetable_file
 
 
-def get_superbias_file(params):
+def get_superbias_file(params: Parameters) -> str:
     # get parameters used in this function (should be done at the start)
     calib_dir = params['data.calib-dir']
     # get the ref trace table
@@ -243,6 +258,78 @@ def get_superbias_file(params):
     superbias_file = os.path.join(calib_dir, ref_superbias)
     # return trace table filename
     return superbias_file
+
+
+def get_rateints_file(params: Parameters, filename: str) -> str:
+    # get parameters used in this function (should be done at the start)
+    outputdir = params['data.outdir']
+    # get the seg name
+    seg_name = get_seg_name(filename)
+    # suffix for rateints file
+    suffix = '_rateints.fits'
+    # construct filename
+    rateints_filename = os.path.join(outputdir, seg_name + suffix)
+    # return rateints filename
+    return rateints_filename
+
+
+def get_rateints_after_badpix_interp(params: Parameters, filename: str) -> str:
+    # get parameters used in this function (should be done at the start)
+    outputdir = params['data.outdir']
+    # get the seg name
+    seg_name = get_seg_name(filename)
+    # suffix for rateints file
+    suffix = '_badpixinterp.fits'
+    # construct filename
+    rateints_filename = os.path.join(outputdir, seg_name + suffix)
+    # return rateints filename
+    return rateints_filename
+
+
+def get_wavemap(params: Parameters) -> str:
+    # get parameters used in this function (should be done at the start)
+    atoca_dir = params['data.atoca-dir']
+    # get the ref trace table
+    ref_wave_table = params['data.wave_map']
+    # construct filename
+    wavemap_file = os.path.join(atoca_dir, ref_wave_table)
+    # return trace table filename
+    return wavemap_file
+
+
+def get_spec_profile(params: Parameters) -> str:
+    # get parameters used in this function (should be done at the start)
+    atoca_dir = params['data.atoca-dir']
+    # get the ref trace table
+    ref_spec_profile = params['data.spec_profile']
+    # construct filename
+    spec_profile_file = os.path.join(atoca_dir, ref_spec_profile)
+    # return trace table filename
+    return spec_profile_file
+
+
+def get_soss_modelname(params: Parameters, filename: str) -> str:
+    # get parameters used in this function (should be done at the start)
+    outputdir = params['data.outdir']
+    # get the seg name
+    seg_name = get_seg_name(filename)
+    # define prefix/suffix
+    suffix = '_atoca_model.fits'
+    # construct filename
+    modelname_file = os.path.join(outputdir, seg_name + suffix)
+    # return modelname filename
+    return modelname_file
+
+
+def get_photom_file(params: Parameters) -> str:
+    # get parameters used in this function (should be done at the start)
+    crds_dir = params['data.crds-dir']
+    # get the ref trace table
+    ref_photom = params['data.photom']
+    # construct filename
+    photom_file = os.path.join(crds_dir, ref_photom)
+    # return trace table filename
+    return photom_file
 
 
 # =============================================================================
