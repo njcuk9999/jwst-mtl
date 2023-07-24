@@ -111,7 +111,7 @@ loicpipe:
     # whether to remove NaNs
     remove_nans: True
     # extraction method: atoca, optimal, box
-    extraction_method: atoca
+    extraction_method: box
     # extraction box width (used in all three methods)
     extraction_box_width: 32
     # extraction soss transform [three integers]
