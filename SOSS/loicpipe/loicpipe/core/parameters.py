@@ -35,7 +35,6 @@ __key__ = 'general.debug'
 params[__key__] = Const(__key__, None, not_none=True, dtype=str,
                         path=__key__, source=__NAME__)
 
-
 # -----------------------------------------------------------------------------
 # data parameters
 # -----------------------------------------------------------------------------
@@ -76,13 +75,26 @@ params[__key__] = Const(__key__, None, dtype=str,
 # set the ref trace table
 __key__ = 'data.ref_trace_table'
 params[__key__] = Const(__key__, None, dtype=str,
-                        path=__key__, source=__NAME__)
+                        path=__key__, source=__NAME__,
+                        directory='data.atoca-dir')
 
 # custom dark - if default is None we use the default
 #             - if subarray is named we use it, otherwise we use default
 __key__ = 'data.custom_dark'
 params[__key__] = Const(__key__, None, dtype=dict,
                         path=__key__, source=__NAME__)
+
+# custom dark default
+__key__ = 'data.custom_dark.default'
+params[__key__] = Const(__key__, None, dtype=str,
+                        path=__key__, source=__NAME__,
+                        directory='data.calib-dir')
+
+# custom dark substrip96
+__key__ = 'data.custom_dark.SUBSTRIP96'
+params[__key__] = Const(__key__, None, dtype=str,
+                        path=__key__, source=__NAME__,
+                        directory='data.calib-dir')
 
 # whether the custom dark has the super bias included
 __key__ = 'data.custom_dark_has_superbias_included'
@@ -92,7 +104,26 @@ params[__key__] = Const(__key__, False, dtype=bool,
 # define superbias file
 __key__ = 'data.superbias'
 params[__key__] = Const(__key__, None, dtype=str,
-                        path=__key__, source=__NAME__)
+                        path=__key__, source=__NAME__,
+                        directory='data.calib-dir')
+
+# set the wave map (must be in the atoca directory)
+__key__ = 'data.wave_map'
+params[__key__] = Const(__key__, None, dtype=str,
+                        path=__key__, source=__NAME__,
+                        directory='data.atoca-dir')
+
+# set the spec profile (must be in the atoca directory)
+__key__ = 'data.spec_profile'
+params[__key__] = Const(__key__, None, dtype=str,
+                        path=__key__, source=__NAME__,
+                        directory='data.atoca-dir')
+
+# photom file (must be in the crds-dir)
+__key__ = 'data.photom'
+params[__key__] = Const(__key__, None, dtype=str,
+                        path=__key__, source=__NAME__,
+                        directory='data.crds-dir')
 
 # set the list of uncal files
 __key__ = 'output.uncal_list'
@@ -120,13 +151,13 @@ params[__key__] = Const(__key__, None, dtype=list, path=__key__,
 # -----------------------------------------------------------------------------
 # whether to run loicpipe for stage 1
 __key__ = 'loicpipe.stage1.run'
-params[__key__] = Const(__key__, True, not_none=True, dtype=bool, path=__key__,
-                        source=__NAME__)
+params[__key__] = Const(__key__, True, not_none=True, dtype=bool,
+                        path=__key__, source=__NAME__)
 
 # whether to skip stacking
 __key__ = 'loicpipe.stage1.skip_stack'
-params[__key__] = Const(__key__, True, not_none=True, dtype=bool, path=__key__,
-                        source=__NAME__)
+params[__key__] = Const(__key__, False, not_none=True, dtype=bool,
+                        path=__key__,  source=__NAME__)
 
 # the saturation map file
 __key__ = 'loicpipe.stage1.satmap'
@@ -153,8 +184,8 @@ params[__key__] = Const(__key__, None, dtype=bool, path=__key__,
 # -----------------------------------------------------------------------------
 # whether to run loicpipe for stage 2
 __key__ = 'loicpipe.stage2.run'
-params[__key__] = Const(__key__, True, not_none=True, dtype=bool, path=__key__,
-                        source=__NAME__)
+params[__key__] = Const(__key__, True, not_none=True, dtype=bool,
+                        path=__key__, source=__NAME__)
 
 # whether to run flat fielding
 __key__ = 'loicpipe.stage2.flat_field'
@@ -162,7 +193,7 @@ params[__key__] = Const(__key__, True, dtype=bool, path=__key__,
                         source=__NAME__)
 
 # erase clean saturation files
-__key__ = 'loicpipe.stage1.erase_clean_rateint'
+__key__ = 'loicpipe.stage2.erase_clean_rateints'
 params[__key__] = Const(__key__, False, dtype=str, path=__key__,
                         source=__NAME__)
 
@@ -281,7 +312,6 @@ params[__key__] = Const(__key__, True, not_none=True, dtype=bool, path=__key__,
 __key__ = 'supremespoon.stage3.run'
 params[__key__] = Const(__key__, True, not_none=True, dtype=bool, path=__key__,
                         source=__NAME__)
-
 
 # =============================================================================
 # Start of code

@@ -9,6 +9,7 @@ Created on {DATE}
 
 @author: cook
 """
+import copy
 from typing import Any, Optional
 from collections import UserDict
 
@@ -24,13 +25,15 @@ __NAME__ = 'core.constants.py'
 # =============================================================================
 class Const:
     def __init__(self, key: str, value: Any, not_none: bool = False,
-                 dtype: Any = None, path: str = None, source: str = None):
+                 dtype: Any = None, path: str = None, source: str = None,
+                 directory: Optional[str] = None):
         self.key = key
         self.value = value
         self.not_none = not_none
         self.dtype = dtype
         self.path = path
         self.source = source
+        self.directory = directory
 
     def from_yaml(self, yaml_dict):
         """
@@ -84,6 +87,22 @@ class Const:
     def __getitem__(self, key):
         return self.check(self.from_yaml(key))
 
+    def __str__(self):
+        return f'Const[{self.key}]={self.value}'
+
+    def __repr__(self):
+        return self.__str__()
+
+    def copy(self):
+        new = Const(str(self.key),
+                    copy.deepcopy(self.value),
+                    bool(self.not_none),
+                    self.dtype,
+                    copy.deepcopy(self.path),
+                    copy.deepcopy(self.source),
+                    copy.deepcopy(self.directory))
+        return new
+
 
 class Parameters(UserDict):
     def __init__(self):
@@ -97,7 +116,8 @@ class Parameters(UserDict):
             return value
 
     def __setitem__(self, key, value, not_none: bool = False,
-                    dtype: Any = None, path: str = None, source: str = None):
+                    dtype: Any = None, path: str = None, source: str = None,
+                    directory: Optional[str] = None):
         # if we already have the value then just update it
         if key in self.data:
             if isinstance(self.data[key], Const):
@@ -108,11 +128,37 @@ class Parameters(UserDict):
             self.data[key] = value
         else:
             # otherwise add it as a constant
-            self.data[key] = Const(key, value, not_none, dtype, path, source)
+            self.data[key] = Const(key, value, not_none, dtype, path, source,
+                                   directory)
 
     def __call__(self, key):
         return self.data[key]
 
+    def __str__(self) -> str:
+        print_str = '=' * 50 + '\n'
+        print_str += 'Parameters:\n'
+        print_str += '=' * 50 + '\n'
+        for key in self.data:
+            if isinstance(self.data[key], Const):
+                print_str += f'C[{key}]:\t{self.data[key].value}\n'
+            else:
+                print_str += f'{key}:\t{self.data[key]}\n'
+        return print_str
+
+    def __repr__(self):
+        return self.__str__()
+
+    def copy(self):
+        new = Parameters()
+        new.data = dict()
+        # copy all keys
+        for key in self.keys():
+            if hasattr(self.data[key], 'copy'):
+                new.data[key] = self.data[key].copy()
+            else:
+                new.data[key] = copy.deepcopy(self.data[key])
+
+        return new
 
 # =============================================================================
 # Define functions

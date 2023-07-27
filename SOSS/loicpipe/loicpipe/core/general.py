@@ -10,8 +10,11 @@ Created on {DATE}
 @author: cook
 """
 import argparse
+import copy
+import os
 from typing import Any, Dict, Optional
 
+from loicpipe.core import base
 from loicpipe.core import constants
 from loicpipe.core import io
 from loicpipe.core import parameters
@@ -77,17 +80,49 @@ def load_params(yaml_file: Optional[str] = None,
     # -------------------------------------------------------------------------
     # load from yaml file
     yaml_params = io.read_yaml(yaml_file)
+    # flatten yaml
+    yaml_params = io.flatten_dict(yaml_params)
     # loop around params
     for key in params:
         # if key is in yaml_params
         if key in yaml_params:
             # set params[key] = yaml_params[key]
-            params[key] = params(key).from_yaml(yaml_params)
+            params(key).value = copy.deepcopy(yaml_params[key])
             # set the source
             params(key).source = yaml_file
     # -------------------------------------------------------------------------
     # return params
     return params
+
+
+def verify_data(params: Parameters):
+
+    # storage for files not found
+    not_found_files = []
+    # loop around all parameters
+    for parameter in params:
+        # get the directory from parameter
+        dir_param = params(parameter).directory
+        # if we have a directory parameter then we need to check it exists
+        if dir_param is not None:
+            # get directory
+            directory = params[dir_param]
+            # construct path
+            path = os.path.join(directory, params[parameter])
+            # check if path exists
+            if not os.path.exists(path):
+                not_found_files.append((parameter, path))
+            else:
+                msg = 'Found {0} = {1}'
+                margs = [parameter, path]
+                print(msg.format(*margs))
+    # deal with reporting files not found
+    if len(not_found_files) > 0:
+        emsg = 'Files not found:\n'
+        for not_found in not_found_files:
+            parameter, path = not_found
+            emsg += '\t{0} = {1}\n'.format(parameter, path)
+        raise base.LoicPipeError(emsg)
 
 
 # =============================================================================

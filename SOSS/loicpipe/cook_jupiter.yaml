@@ -13,7 +13,9 @@ general:
 # -----------------------------------------------------------------------------
 data:
   # raw data directory
-  raw: /genesis/jwst/userland-soss/loic_review/Commissioning/T1_2/
+  raw: /scratch3/jwst-soss/data/wasp107/raw
+  # data string
+  data_string: jw01201008001_04101_00001
   # files to use
   filelist:
     - jw01201008001_04101_00001-seg001_nis
@@ -21,12 +23,11 @@ data:
     - jw01201008001_04101_00001-seg003_nis
     - jw01201008001_04101_00001-seg004_nis
   # crds directory
-  # Question: where is this dir now?
-  crds-dir: /genesis/jwst/userland-soss/loic_review/commissioning/crds_cache/
+  crds-dir: /scratch3/jwst/pipeline/crds_cache/references/jwst/niriss
   # calibration directory
-  calib-dir: /genesis/jwst/jwst-ref-soss/noise_files/
+  calib-dir: /scratch3/jwst/pipeline/calib_dir
   # atoca reference file directory
-  atoca-dir: /genesis/jwst/userland-soss/loic_review/commissioning/ref_files/
+  atoca-dir: /scratch3/jwst/pipeline/atoca_dir
   # set the ref trace table (must be in the atoca directory)
   ref_trace_table: SOSS_ref_trace_table_SUBSTRIP256.fits
   # custom dark - if subarray.name is in this we switch to it otherwise we
@@ -39,9 +40,9 @@ data:
   # superbias file (must be in the calib-dir directory)
   superbias: jwst_niriss_superbias_0181.fits
   # set the wave map (must be in the atoca directory)
-  wave_map: SOSS_ref_2D_wave_SUBSTRIP256
+  wave_map: SOSS_ref_2D_wave_SUBSTRIP256.fits
   # set the spec profile (must be in the atoca directory)
-  spec_profile: SOSS_ref_2D_profile_SUBSTRIP256
+  spec_profile: SOSS_ref_2D_profile_SUBSTRIP256.fits
   # photom file (must be in the crds-dir)
   photom: jwst_niriss_photom_rev2.fits
 
@@ -59,17 +60,16 @@ loicpipe:
   # ---------------------------------------------------------------------------
   # Stage 1 parameters
   stage1:
-    loicpipe:
-      # whether to run loicpipe for stage 1
-      run: False
-      # whether to skip stacking
-      skip_stack: False
-      # saturation map file
-      satmap: None
-      # whether to erase / clean the saturation map files
-      erase_clean_sat: False
-      # whether we fit the ramp (if False uses last read)
-      fit_ramp: True
+    # whether to run loicpipe for stage 1
+    run: True
+    # whether to skip stacking
+    skip_stack: False
+    # saturation map file
+    satmap: None
+    # whether to erase / clean the saturation map files
+    erase_clean_sat: False
+    # whether we fit the ramp (if False uses last read)
+    fit_ramp: True
   # ---------------------------------------------------------------------------
   # Stage 2 parameters
   stage2:

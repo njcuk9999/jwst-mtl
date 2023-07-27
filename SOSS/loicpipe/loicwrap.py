@@ -33,6 +33,8 @@ def main():
     # ----------------------------------------------------------------------
     # load parameters
     params = general.load_params()
+    # verify data
+    general.verify_data(params)
     # ----------------------------------------------------------------------
     # run stage 1
     params = stage1.main(params)

@@ -22,6 +22,7 @@ from jwst.pipeline import calwebb_detector1
 
 import SOSS.commissioning.comm_utils as soss_commutils
 import SOSS.dms.soss_oneoverf as soss_oneoverf
+from loicpipe.core import base
 from loicpipe.core import constants
 from loicpipe.core import io
 
@@ -42,7 +43,7 @@ def main(params: Parameters) -> Parameters:
     params = io.get_uncal_files(params)
     # ----------------------------------------------------------------------
     # run loicpipe stage 1
-    if params['stage1.loicpipe.run']:
+    if params['loicpipe.stage1.run']:
         params = stage1_loicpipe(params)
     # ----------------------------------------------------------------------
     return params
@@ -52,7 +53,7 @@ def stage1_loicpipe(params: Parameters) -> Parameters:
     # set func name
     funcname = f'{__NAME__}.stage1_loicpipe()'
     # get parameters used in this function (should be done at the start)
-    uncal_list = params['data.uncal_list']
+    uncal_list = params['output.uncal_list']
     # whether to skip stacking
     skip_stack: bool = params['loicpipe.stage1.skip_stack']
     # get the saturation map file
@@ -292,6 +293,8 @@ def loic_dark_current_step(params: Parameters, result0: Any) -> Any:
         custom_dark = custom_dark_dict[subarray]
     else:
         custom_dark = custom_dark_dict['default']
+    # get the dark file
+    custom_dark = os.path.join(params['calib-dir'], custom_dark)
     # -------------------------------------------------------------------------
     # SUPERBIAS STEP
     # -------------------------------------------------------------------------

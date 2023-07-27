@@ -73,6 +73,17 @@ def read_yaml(yaml_filename: Union[str, None]) -> Dict[str, Any]:
     return settings
 
 
+def flatten_dict(d, parent_key='', sep='.'):
+    items = {}
+    for k, v in d.items():
+        new_key = f"{parent_key}{sep}{k}" if parent_key else k
+        if isinstance(v, dict):
+            items.update(flatten_dict(v, new_key, sep))
+        else:
+            items[new_key] = v
+    return items
+
+
 def load_fits(filename: str) -> np.ndarray:
     return fits.getdata(filename)
 
@@ -195,6 +206,13 @@ def get_saturation_list_files(params: Parameters) -> List[str]:
     wildcard = os.path.join(outputdir, f'{data_string}*{suffix}')
     # get all files matching wildcard
     filelist = glob.glob(wildcard)
+    # deal with no saturation files
+    if len(filelist) == 0:
+        emsg = ('No saturation files found with "{0}". '
+                'Please set skip_stack=False or update '
+                'data.outdir or data.data_string')
+        eargs = [wildcard]
+        raise base.LoicPipeError(emsg.format(*eargs))
     # return the parameters
     return filelist
 

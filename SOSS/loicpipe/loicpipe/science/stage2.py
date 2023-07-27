@@ -39,7 +39,7 @@ Parameters = constants.Parameters
 def main(params: Parameters) -> Parameters:
     # ----------------------------------------------------------------------
     # run loicpipe stage 1
-    if params['stage2.loicpipe.run']:
+    if params['loicpipe.stage2.run']:
         stage2_loicpipe(params)
     # ----------------------------------------------------------------------
     return params
@@ -49,13 +49,13 @@ def stage2_loicpipe(params: Parameters) -> Parameters:
     # set func name
     func_name = f'{__NAME__}.stage2_loicpipe()'
     # whether to only to extraction (no previous steps in stage 1 + 2)
-    extract_only: bool = params['stage2.loicpipe.extract_only']
+    extract_only: bool = params['loicpipe.extract_only']
     # get the dqmask
     dqmask: List[int] = params['loicpipe.dq_mask']
     # whether to run flat fielding
     flat_field: bool = params['loicpipe.stage2.flat_field']
     # erase clean rate int files
-    erase_clean_rateint: bool = params['loicpipe.stage2.erase_clean_rateint']
+    erase_clean_rateint: bool = params['loicpipe.stage2.erase_clean_rateints']
     # whether to run custom outlier rejection
     custom_outlier: bool = params['loicpipe.stage2.custom_outlier_rejection']
     # define custom outlier window size
@@ -87,7 +87,7 @@ def stage2_loicpipe(params: Parameters) -> Parameters:
     # extraction box width (used in all three methods)
     extraction_box_width: int = params['loicpipe.stage2.extraction_box_width']
     # extraction soss transform [three integers]
-    soss_transform: List[int] = params['loicpipe.stage2.soss_transform']
+    soss_transform: List[int] = params['loicpipe.stage2.extraction_soss_transform']
     # ----------------------------------------------------------------------
     # get output directory (may not be in params if stage 1 skipped)
     params = io.get_output_directory(params)
