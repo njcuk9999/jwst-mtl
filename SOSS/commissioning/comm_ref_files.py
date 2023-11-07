@@ -40,7 +40,7 @@ from jwst.datamodels import dqflags
 
 from SOSS.dms.soss_centroids import get_soss_centroids
 
-from SOSS.commissioning.comm_utils import build_mask_contamination
+#from SOSS.commissioning.comm_utils import build_mask_contamination
 
 
 def mediandev(x, axis=None):
@@ -97,6 +97,11 @@ def stack_datamodel(datamodel):
     dq[nan] = 1
 
     return deepstack, rms, dq
+
+
+
+
+
 
 
 
@@ -802,10 +807,12 @@ def extrapolate_to_wavegrid(w_grid, wavelength, quantity):
     # resample at the w_grid everywhere
     q_grid = np.interp(w_grid, w, q)
 
-    fig = plt.figure()
-    plt.scatter(w, q, marker='.', color='black')
-    plt.scatter(w_grid, q_grid, marker='.', color='red')
-    plt.show()
+    verbose = False
+    if verbose == True:
+        fig = plt.figure()
+        plt.scatter(w, q, marker='.', color='black')
+        plt.scatter(w_grid, q_grid, marker='.', color='red')
+        plt.show()
 
     return q_grid
 

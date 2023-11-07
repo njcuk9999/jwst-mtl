@@ -18,6 +18,10 @@ from jwst import datamodels
 
 import SOSS.dms.soss_centroids as soss_centroids
 
+from SOSS.dms.soss_ref_files import init_spec_trace
+
+from SOSS.commissioning.comm_ref_files import extrapolate_to_wavegrid
+
 import sys
 
 from jwst import datamodels
@@ -79,6 +83,10 @@ def stack_rateints(rateints, outdir=None):
     return rate
 
 
+
+
+
+
 def stack_datamodel(datamodel):
 
     '''
@@ -128,6 +136,91 @@ def stack_datamodel(datamodel):
 
 
     return deepstack, rms, dq
+
+
+
+
+def stack_ramp_multisegments(postrampfitting_list, outdir=None, save_results=False,
+                        stack_nblocks=None):
+    '''
+    Adapted from the soss_oneoverf.py stack_multisegments() function.
+
+    Read files from disk (those output by a step like rampfit (no groups anymore)
+    to create a time-series wide deep stack of each integration. To minimize memory usage,
+    allow this to operate on blocks of columns rather than full image.
+    '''
+
+    if stack_nblocks == None:
+        # any divider of 2048 would do
+        nblocks = np.size(postrampfitting_list)*2
+    else:
+        nblocks = np.copy(stack_nblocks)
+    #nblocks = 2  # any divider of 2048 would do
+    #blocksize = 2048 // nblocks
+    blocksize = int(np.ceil(2048 / nblocks)) # no need for common divider of 2048
+
+    print('Integrations stacking of all {:} segments in the time-series in {:} blocks of {:} columns'.format(
+        np.size(postrampfitting_list), nblocks, blocksize))
+
+    for b in range(nblocks):
+        print('Block {:}'.format(b+1))
+        # Set the x-axis limits of this block of columns
+        firstcol, lastcol = b * blocksize, (b + 1) * blocksize
+        # Check that the last column is never above 2048
+        lastcol = np.min([2048, lastcol])
+        currentblocksize = lastcol - firstcol
+        print('Curent block is between firstcol={:} and lastcol={:} and has size of {:} columns'.format(
+            firstcol, lastcol, currentblocksize))
+
+        # For each block of columns, loop over all segments
+        for segment in range(np.size(postrampfitting_list)):
+            # Fill the data cube and groupdq cube for block b
+            seg = datamodels.open(postrampfitting_list[segment])
+            i_start, i_end = seg.meta.exposure.integration_start, seg.meta.exposure.integration_end
+            if (i_start == None) & (i_end == None):
+                # it means that this is a time-series NOT split into segments
+                i_start, i_end = 1, seg.meta.exposure.nints
+            print('i_start = {:}, i_end = {:}'.format(i_start, i_end))
+            if segment == 0:
+                # First segment, initialize cubes of proper size
+                _, dimy, dimx = np.shape(seg.data)
+                nints = seg.meta.exposure.nints
+                data = np.zeros((nints, dimy, currentblocksize)) * np.nan
+                mask = np.zeros((nints, dimy, currentblocksize)) * np.nan
+
+            # the current segment data, group DQ and pixel DQ
+            data[i_start-1:i_end, :, :] = np.copy(seg.data[:, :, firstcol:lastcol])
+            pdq = np.copy(seg.dq[:, :, firstcol:lastcol])
+            # Add to the mask the dq (3 dimensional)
+            segmask = np.where(pdq != 0, np.nan, 1)
+            mask[i_start-1:i_end, :, :] = np.copy(segmask)
+
+        # Stack that block, all bad pixels are NaNs
+        if b == 0:
+            # First block, initialize the final products with proper size
+            deepstack = np.zeros((dimy, dimx)) * np.nan
+            rms = np.zeros((dimy, dimx)) * np.nan
+        block_stack = np.nanmedian(data * mask, axis=0)
+        block_rms = mediandev(data * mask - block_stack, axis=0)
+        deepstack[:, firstcol:lastcol] = np.copy(block_stack)
+        rms[:, firstcol:lastcol] = np.copy(block_rms)
+
+    if save_results:
+        # Recover names and directory
+        segment1name = postrampfitting_list[0]
+        if outdir == None:
+            outdir = os.path.dirname(segment1name)
+        basename = os.path.basename(os.path.splitext(segment1name)[0])
+        basename_ts = basename.split('-seg')[0]
+        # Save as fits files
+        hdu = fits.PrimaryHDU(deepstack)
+        hdu.writeto(outdir+'/ramp_deepstack_'+basename_ts+'.fits', overwrite=True)
+        hdu = fits.PrimaryHDU(rms)
+        hdu.writeto(outdir+'/ramp_rms_'+basename_ts+'.fits', overwrite=True)
+
+    return deepstack, rms
+
+
 
 
 def build_mask_contamination(order, x, y, halfwidth=15, subarray='SUBSTRIP256',
@@ -274,8 +367,9 @@ def localbackground_subtraction(datamodel, trace_table_ref_file_name, width=25, 
 
     return datamodel
 
+
 def aperture_from_scratch(datamodel, norders=3, aphalfwidth=[40,20,20], outdir=None, datamodel_isfits=False,
-                          verbose=False, trace_table_ref=None):
+                          verbose=False, trace_table_ref=None, datamodel_isarray=False):
     '''Builds a mask centered on the traces from scratch using the edge centroid and build_mask_trace
 
     INPUT : a jwst datamodel. Or, if datamodel_isfits==True: 3D rateints or CDS, or a 2D high SNR stack
@@ -300,8 +394,19 @@ def aperture_from_scratch(datamodel, norders=3, aphalfwidth=[40,20,20], outdir=N
             print('error should be size full ss96 or ss256')
             sys.exit()
         if verbose: print('Subarray is ', subarray)
+    elif datamodel_isarray == True:
+        if verbose: print('A simple numpy array was passed, not a JWST datamodel')
+        rateints = np.copy(datamodel)
+        dims = np.shape(rateints)
+        if dims[-2] == 2048: subarray = 'FULL'
+        elif dims[-2] == 256: subarray = 'SUBSTRIP256'
+        elif dims[-2] == 96: subarray = 'SUBSTRIP96'
+        else:
+            print('error should be size full ss96 or ss256')
+            sys.exit()
+        if verbose: print('Subarray is ', subarray)
     else:
-        if verbose: print('A datamodel was passed.')
+        if verbose: print('A JWST datamodel was passed.')
         rateints = datamodel.data
         subarray = datamodel.meta.subarray.name
 
@@ -464,6 +569,12 @@ def add_manual_badpix(datamodel):
         table = ascii.read(ds9reg)
         x = np.array(table['col1'])
         y = np.array(table['col2'])
+    elif pid == '02722' and obs == '003':
+        # manually selected bad pixels in ds9 and saved as 2-cols ascii region file
+        ds9reg = '/Users/albert/NIRISS/SOSSpipeline/jwst-mtl/SOSS/Commissioning/files/manual_badpix_02722_obs03.reg'
+        table = ascii.read(ds9reg)
+        x = np.array(table['col1'])
+        y = np.array(table['col2'])
     else:
         x = np.array([])
         y = np.array([])
@@ -486,16 +597,23 @@ def add_manual_badpix(datamodel):
     return datamodel
 
 
-def soss_interp_badpix(modelin, outdir, save_results=False):
+def soss_interp_badpix(modelin, outdir, save_results=False,
+                       use_whole_stack=False, whole_exposure_stack=None,
+                       whole_exposure_stackrms=None):
 
     # Create a deep stack from the time series.
     # Interpolate on that deep stack.
     # Then use the deepstack as pixel replacement values in single integrations.
 
-    # Create a deep stack from the time series
-    stack, stackrms, stackdq = stack_datamodel(modelin)
-    hdu = fits.PrimaryHDU([stack, stackrms, stackdq])
-    hdu.writeto(outdir+'/test_pre_interpbadpstack.fits', overwrite=True)
+    if use_whole_stack == True:
+        # Use the whole exposure deep stack and rms passed
+        stack, stackrms = whole_exposure_stack, whole_exposure_stackrms
+        stackdq = stack*np.nan
+    else:
+        # Create a deep stack from the time series
+        stack, stackrms, stackdq = stack_datamodel(modelin)
+        hdu = fits.PrimaryHDU([stack, stackrms, stackdq])
+        hdu.writeto(outdir+'/test_pre_interpbadpstack.fits', overwrite=True)
 
     # Interpolate the deep stack
     cleanstack, cleanstack_rms = interp_badpix(stack, stackrms)
@@ -576,19 +694,118 @@ def remove_nans(datamodel, outdir=None, save_results=False):
     return modelout
 
 
-def box_extraction(datamodel, ref_spectrace, width=30):
-    '''
-    Box extraction to bypass ATOCA's
-    '''
-
-
-
-
-    return
-
-
 
 def background_subtraction(datamodel, aphalfwidth=[40,30,30], outdir=None, verbose=False,
+                           contamination_mask=None, trace_table_ref=None, save_results=False,
+                           whole_exposure_stack=None, use_whole_exposure=False):
+
+    basename = os.path.splitext(datamodel.meta.filename)[0]
+    basename = basename.split('_nis')[0] + '_nis'
+    if outdir == None:
+        outdir = './'
+        cntrdir = './backgroundsub_'+basename+'/'
+    else:
+        cntrdir = outdir+'/backgroundsub_'+basename+'/'
+    if not os.path.exists(outdir):
+        os.makedirs(outdir)
+    if not os.path.exists(cntrdir):
+        os.makedirs(cntrdir)
+
+    nint, dimy, dimx = np.shape(datamodel.data)
+
+    # Branch depending if a segment is being analyzed, or the whole cube
+    if use_whole_exposure:
+        # Use an existing full exposure background deep stack to model the background
+        # but apply it to all incoming datamodel files.
+        print('The background construction will use a stack of all integrations in the TSO')
+        print('to construct a background model, not only this segment. This ensures that all')
+        print('segments share a common background subtraction.')
+
+        maskeddata = np.copy(whole_exposure_stack)
+
+        # Apply bad pixel masking to the input data
+        # Assume that the stack contains NaN already
+        if contamination_mask is not None:
+            print('Masking the contaminating traces from field stars (orders 0 to 2) using the passed mask.')
+            contmask = fits.getdata(contamination_mask)
+            contmask = np.where(contmask >= 1, 1, 0)
+            # add the contamintion masked pixels
+            contpix = contmask == 1
+            maskeddata[contpix] = np.nan
+
+        # Make a mask of the traces
+        print('Masking the spectral traces')
+        maskcube_3slices = aperture_from_scratch(whole_exposure_stack, datamodel_isarray=True,
+                                                 aphalfwidth=aphalfwidth, outdir=cntrdir,
+                                                 verbose=verbose, trace_table_ref=trace_table_ref)
+        # Crunch the cube (one order per slice) to a 2D mask
+        mask = np.sum(maskcube_3slices, axis=0, dtype='bool')
+
+        # Apply aperture masking to the input data
+        maskeddata[mask] = np.nan
+        hdu = fits.PrimaryHDU(maskeddata)
+        print('Saving the mask used for background estimation as background_mask')
+        hdu.writeto(cntrdir + 'background_mask.fits', overwrite=True)
+
+        # Construct the background fit
+        background_model = construct_background(maskeddata, tilt=-1.8, isafitsfile=False, metric='10pct',
+                                                savetest=True, outdir=cntrdir)
+
+    else:
+        # Models the background and applies its subtraction on a segment by segment basis
+        # Mostly there as a legacy. Was the previous default. The problem is that by doing
+        # so, the background subtracted is different between different segments.
+        print('Warning. The background construction and subtraction is performed on a segment')
+        print('by segment basis. To construct and subtract a background common to all integrations')
+        print('in the time series, it is necessary to set the whole_exposure_stack keyword')
+
+        maskeddata = np.copy(datamodel.data)
+
+        # Apply bad pixel masking to the input data
+        print('Masking the bad pixels !=0 in the DQ map')
+        maskeddata[datamodel.dq != 0] = np.nan
+        if contamination_mask is not None:
+            print('Masking the contaminating traces from field stars (orders 0 to 2) using the passed mask.')
+            contmask = fits.getdata(contamination_mask)
+            contmask = np.where(contmask >= 1, 1, 0)
+            # add the contamintion masked pixels
+            contpix = contmask == 1
+            maskeddata[:, contpix] = np.nan
+
+        # Make a mask of the traces
+        print('Masking the spectral traces')
+        maskcube_3slices = aperture_from_scratch(datamodel, aphalfwidth=aphalfwidth, outdir=cntrdir, verbose=verbose,
+                                         trace_table_ref=trace_table_ref)
+        # Crunch the cube (one order per slice) to a 2D mask
+        mask = np.sum(maskcube_3slices, axis=0, dtype='bool')
+
+        # Apply aperture masking to the input data
+        maskeddata[:, mask] = np.nan
+        hdu = fits.PrimaryHDU(maskeddata)
+        print('Saving the mask used for background estimation as background_mask')
+        hdu.writeto(cntrdir+'background_mask.fits', overwrite=True)
+
+        # Construct the background fit
+        background_model = construct_background(maskeddata, tilt=-1.8, isafitsfile=False, metric='10pct',
+                                   savetest=True, outdir=cntrdir)
+
+
+    # Perform the subtraction on the output data model
+    output = datamodel.copy()
+    output.data = datamodel.data - background_model
+
+    if save_results:
+        output.write(outdir+'/'+basename+'_backsubstep.fits')
+        #hdu = fits.PrimaryHDU(output.data)
+        #hdu.writeto(outdir+'/'+basename+'_backsubtracted.fits', overwrite=True)
+
+    # Make sure filename is back to normal
+    output.meta.filename = basename
+
+    return output
+
+
+def background_subtraction_v2(datamodel, aphalfwidth=[40,30,30], outdir=None, verbose=False,
                            contamination_mask=None, trace_table_ref=None, save_results=False):
 
     nint, dimy, dimx = np.shape(datamodel.data)
@@ -650,7 +867,6 @@ def background_subtraction(datamodel, aphalfwidth=[40,30,30], outdir=None, verbo
     output.meta.filename = basename
 
     return output
-
 
 def background_subtraction_v1(datamodel, aphalfwidth=[30,30,30], outdir=None, verbose=False,
                            applyonintegrations=False, contamination_mask=None, override_background=None,
@@ -846,7 +1062,12 @@ def plot_timeseries(spectrum_file, outdir=None, norder=3):
         os.makedirs(outdir)
 
     # Start processing the spectra file
+    print('Making timeseries greyscale fits and png using this input spectrum file:')
+    print(spectrum_file)
     multispec = datamodels.open(spectrum_file)
+
+    # Forging output names
+    outbasename = 'timeseries_greyscale_' + os.path.basename(os.path.splitext(spectrum_file)[0])
 
     # spectra are stored at indice 1 (order 1), then 2 (order2) then 3 (order 3) then 4 (order 1, 2nd time step), ...
     # TODO Manage nint and norder better
@@ -864,7 +1085,7 @@ def plot_timeseries(spectrum_file, outdir=None, norder=3):
     for i in range(nint):
         for m in range(norder):
             nnn = i * norder + m
-            print(i, m, nnn)
+            #print(i, m, nnn)
             wavelength[i, m, :] = multispec.spec[nnn].spec_table['wavelength']
             flux[i, m, :] = multispec.spec[nnn].spec_table['flux']
             fluxerr[i, m, :] = multispec.spec[nnn].spec_table['flux_error']
@@ -874,7 +1095,7 @@ def plot_timeseries(spectrum_file, outdir=None, norder=3):
 
     # Write flux vs column as a fits image
     hdu = fits.PrimaryHDU(flux.transpose(1, 0, 2))
-    hdu.writeto(outdir+'timeseries_greyscale_rawflux.fits', overwrite=True)
+    hdu.writeto(outdir+outbasename+'_rawflux.fits', overwrite=True)
 
     # Produce a wavelength calibrated spectrum time-series
     for m in range(norder):
@@ -889,6 +1110,7 @@ def plot_timeseries(spectrum_file, outdir=None, norder=3):
         vmaxall = vmax+nint*dy*yamp
         print(vmin, vmax, yamp, vmaxall)
 
+        print('Generating extractedflux.png')
         fig = plt.figure(figsize=(6,6*0.5*(1+nint*dy)))
         for i in range(nint):
             plt.plot(wavelength[i, m, :], flux[i, m, :]+i*dy*yamp, color='black')
@@ -903,27 +1125,31 @@ def plot_timeseries(spectrum_file, outdir=None, norder=3):
 
 
     # Produce that Raw extracted flux greyscale
+    print('Produce the timeseries_greyscale_rawflux png')
     for i in range(norder):
         fig = plt.figure(figsize=(8,8))
         plt.imshow(flux[:,i,:], origin='lower')
         plt.title('Order {:} Raw Extracted Flux'.format(i+1))
         plt.xlabel('Column')
         plt.ylabel('Integration Number')
-        plt.savefig(outdir+'timeseries_greyscale_rawflux_order{:}.png'.format(i+1))
+        plt.savefig(outdir+outbasename+'_rawflux_order{:}.png'.format(i+1))
         plt.close()
 
     # Write flux vs column as a fits image
+    print('Produce the timeseries_greyscale_normalizedflux fits')
+
     hdu = fits.PrimaryHDU(fluxnorm.transpose(1, 0, 2))
-    hdu.writeto(outdir+'timeseries_greyscale_normalizedflux.fits', overwrite=True)
+    hdu.writeto(outdir+outbasename+'_normalizedflux.fits', overwrite=True)
 
     # Produce that Normalized flux greyscale
+    print('Produce the timeseries_greyscale_normalizedflux png')
     for i in range(norder):
         fig = plt.figure(figsize=(8,8))
         plt.imshow(fluxnorm[:,i,:], origin='lower')
         plt.title('Order {:} Normalized Flux'.format(i+1))
         plt.xlabel('Column')
         plt.ylabel('Integration Number')
-        plt.savefig(outdir+'timeseries_greyscale_normalizedflux_order{:}.png'.format(i+1))
+        plt.savefig(outdir+outbasename+'_normalizedflux_order{:}.png'.format(i+1))
         plt.close()
 
     #plt.figure()
@@ -1081,9 +1307,242 @@ def make_mask_02589_obs003():
     return
 
 
-def combine_segments(prefix):
-    print()
-    return
+
+def soss_spectrace_reffile_maker(clean_tso_stack, outdir=None, maskname=None, mask_params=None, verbose=False,
+                                 comm_files_path='/Users/albert/Space/udm/NIRISS/SOSSpipeline/jwst-mtl/SOSS/commissioning/files/',
+                                 dms_files_path='/Users/albert/Space/udm/NIRISS/SOSSpipeline/jwst-mtl/SOSS/dms/files/'):
+    '''Only generate the spectrace reference file. The x/y trace position is
+    determined on the clean_tso_cube_fits. Adapted from the soss_reffiles_maker
+    function to make only generating the spectrace alone possible.'''
+
+    #--------------------------------------------------------------------------
+    # DESCRIBE THE REQUIRED INPUTS TO THIS FUNCTION
+    #--------------------------------------------------------------------------
+    # throughput
+    throughput_order1_path = comm_files_path+'throughput_o1_commrevA.txt'
+    throughput_order2_path = comm_files_path+'throughput_o2_commrevA.txt'
+    throughput_order3_path = comm_files_path+'throughput_o3_commrevA.txt'
+    # monochromatic tilt
+    monochromatictilt_file = dms_files_path+'SOSS_wavelength_dependent_tilt.ecsv'
+    # wavelength calibration - adopt the Commissioning one
+    wavecal_order1 = comm_files_path+'wavecal_o1_commrevA.txt'
+    wavecal_order2 = comm_files_path+'wavecal_o2_commrevA.txt'
+    wavecal_order3 = comm_files_path+'wavecal_o3_commrevA.txt'
+
+
+    #--------------------------------------------------------------------------
+    # DEFINITION OF THE COMMON GRID OF WAVELENGTH
+    #--------------------------------------------------------------------------
+    # All inputs will be modified to correspond to this wavelength grid.
+    wavemin = 0.5
+    wavemax = 5.5
+    nwave = 5001
+    wave_grid = np.linspace(wavemin, wavemax, nwave)
+
+
+    #--------------------------------------------------------------------------
+    # PART 1 - READ THE CLEAN TSO FITS FILE, MAKE DEEP STACK, MASK AND FIND
+    #          TRACE POSITIONS.
+    #--------------------------------------------------------------------------
+
+    # A) - Stack a rateints.fits, cal.fits or your best shot at a reduced cube.
+    # The stack is then used to measure the x,y of the traces.
+    #datamodel = datamodels.open(clean_tso_stack_fits)
+    #subarray = datamodel.meta.subarray.name
+    #dirname = os.path.dirname(clean_tso_stack)
+    #stack, rms, dq = stack_datamodel(datamodel)
+    stack = clean_tso_stack
+    dimy, dimx = np.shape(stack)
+    subarray = 'SUBSTRIP256'
+    if dimy == 96: subarray='SUBSTRIP96'
+    if dimy == 2048: subarray='FULL'
+    print('Input is a datamodel of subarray '+subarray)
+
+
+    print('Successfully built a stack')
+
+    # B) - Build a contamination mask (masking any contaminating trace's order 0-2)
+    # Getting this mask right is important and requires back and forth inspection of
+    # the created mask and the deep stack, blinking to make sure they match.
+    if maskname is None:
+        print('Contamination mask does not exist - build it')
+        # Establish the name of the mask file
+        #basename = os.path.basename(os.path.splitext(clean_tso_stack)[0])
+        maskname = outdir+'/spectrace_stack_contmasked.fits'
+        # Mask
+        # Initialize
+        mask = stack * 0
+        if mask_params is None:
+            nmask = 0
+        else:
+            nmask, _ = np.shape(mask_params)
+        for n in range(nmask):
+            print(mask_params[n][0], mask_params[n][1], mask_params[n][2])
+            mask += build_mask_contamination(mask_params[n][0], mask_params[n][1], mask_params[n][2])
+            #mask += build_mask_contamination(0, 1376, 111)  # order 0, x, y
+            #mask += build_mask_contamination(0, 1867, 75)
+            #mask += build_mask_contamination(1, -680, 153)  # order 1, x, y of apex
+            # there is also a order 2 option
+        maskbool = mask > 0
+        hdu = fits.PrimaryHDU(mask)
+        hdu.writeto(maskname, overwrite=True)
+    else:
+        print('Contamination  mask exists - read it')
+        mask = fits.getdata(maskname)
+        maskbool = mask > 0
+
+    # C) - Trace position
+    centroids = soss_centroids.get_soss_centroids(stack, mask=maskbool, subarray=subarray, halfwidth=2,
+                                   poly_orders=None, apex_order1=None, calibrate=True,
+                                   verbose=verbose, outdir=outdir)
+    x_o1, y_o1 = centroids['order 1']['X centroid'], centroids['order 1']['Y centroid']
+    x_o2, y_o2 = centroids['order 2']['X centroid'], centroids['order 2']['Y centroid']
+    x_o3, y_o3 = centroids['order 3']['X centroid'], centroids['order 3']['Y centroid']
+    #w_o1 = centroids['order 1']['trace widths']
+    #w_o2 = centroids['order 2']['trace widths']
+    #w_o3 = centroids['order 3']['trace widths']
+
+
+    #--------------------------------------------------------------------------
+    # PART 2 - READ THE EXISTING END-TO-END THROUGHPUT OF EACH SOSS ORDERS
+    #--------------------------------------------------------------------------
+
+    # Read the measured throughputs (from Kevin Volk) - wave units of microns, value units of 0 to 1
+    tab1 = ascii.read(throughput_order1_path)
+    tab2 = ascii.read(throughput_order2_path)
+    tab3 = ascii.read(throughput_order3_path)
+    # Interpolate to the reference wavelength grid.
+    throughput = np.zeros((nwave, 3))
+    throughput[:, 0] = np.interp(wave_grid, tab1['col1'], tab1['col2'])
+    throughput[:, 1] = np.interp(wave_grid, tab2['col1'], tab2['col2'])
+    throughput[:, 2] = np.interp(wave_grid, tab3['col1'], tab3['col2'])
+
+    fig = plt.figure(figsize=(8,6))
+    plt.plot(wave_grid, throughput[:,0], color='black', label='Order 1 Measured')
+    plt.plot(wave_grid, throughput[:,1], color='blue', label='Order 2 Measured')
+    plt.plot(wave_grid, throughput[:,2], color='red', label='Order 3 Measured')
+    plt.legend()
+    plt.ylabel('Throughput')
+    plt.xlabel('Wavelength')
+    plt.show()
+
+    # Fix small negative throughput values.
+    throughput = np.where(throughput < 0, 0, throughput)
+
+
+    #--------------------------------------------------------------------------
+    # PART 3 - READ THE EMPIRICALLY MEASURED MONOCHROMATIC TILT FOR EACH ORDER
+    #--------------------------------------------------------------------------
+    # Read the tilt as a function of wavelength.
+    tab = ascii.read(monochromatictilt_file)
+
+    # Interpolate the tilt to the same wavelengths as the throughput.
+    # Default bounds handling (constant boundary) is fine.
+    tilt = np.zeros((nwave, 3))
+    tilt[:, 0] = np.interp(wave_grid, tab['Wavelength'], tab['order 1'])
+    tilt[:, 1] = np.interp(wave_grid, tab['Wavelength'], tab['order 2'])
+    tilt[:, 2] = np.interp(wave_grid, tab['Wavelength'], tab['order 3'])
+    # For now, set tilt to zero until we can measure it
+    ##################
+    tilt = tilt * 0.0
+    ##################
+
+
+    #--------------------------------------------------------------------------
+    # PART 4 - READ THE WAVELENGTH CALIBRATION FOR THE 3 ORDERS
+    # THE W_01/02/03 ARE ASSUMED TO BE CORRESPONDING TO X_01/02/03 (SAME SIZE)
+    #--------------------------------------------------------------------------
+
+    # CUSTOM wavecal order 1 --------------------------------------------------
+    # Read the wavelength calibration files
+    wcal_o1 = ascii.read(wavecal_order1)
+    w_o1 = np.array(wcal_o1['wavelength'])
+    # Resample to the desired wavelength sampling
+    # Padding each ends of the array to fill the wave_grid requested
+    xtrace_order1 = extrapolate_to_wavegrid(wave_grid, w_o1, x_o1)
+    ytrace_order1 = extrapolate_to_wavegrid(wave_grid, w_o1, y_o1)
+
+    # CUSTOM wavecal order 2 --------------------------------------------------
+    # Read the wavelength calibration files
+    wcal_o2 = ascii.read(wavecal_order2)
+    w_o2 = np.array(wcal_o2['wavelength'])
+    w_o2_tmp = np.copy(w_o2)
+    w_o2 = np.zeros(2048)*np.nan
+    w_o2[:1783] = w_o2_tmp
+    # Fill for column > 1783 with linear extrapolation
+    m = w_o2[1782] - w_o2[1781]
+    dx = np.arange(2048-1783)+1
+    w_o2[1783:] = w_o2[1782] + m * dx
+    xtrace_order2 = extrapolate_to_wavegrid(wave_grid, w_o2, x_o2)
+    ytrace_order2 = extrapolate_to_wavegrid(wave_grid, w_o2, y_o2)
+
+
+    # CUSTOM wavecal order 3 --------------------------------------------------
+    # only 800 columns in wavecal_o3
+    wcal_o3 = ascii.read(wavecal_order3)
+    w_o3 = np.array(wcal_o3['wavelength'])
+    w_o3_tmp = np.copy(w_o3)
+    w_o3 = np.zeros(2048)*np.nan
+    w_o3[:800] = w_o3_tmp
+    # Fill for column > 800 with linear extrapolation
+    m = w_o3[799] - w_o3[798]
+    dx = np.arange(2048-800)+1
+    w_o3[800:] = w_o3[799] + m * dx
+    xtrace_order3 = extrapolate_to_wavegrid(wave_grid, w_o3, x_o3)
+    ytrace_order3 = extrapolate_to_wavegrid(wave_grid, w_o3, y_o3)
+
+    fig = plt.figure(figsize=(6,4))
+    plt.scatter(x_o1, w_o1, marker='.', color='black', label='Order 1 Measured')
+    plt.plot(xtrace_order1, wave_grid, color='red', label='Order 1 Extrapolated and Resampled')
+    plt.scatter(x_o2, w_o2, marker='.', color='blue', label='Order 2 Measured')
+    plt.plot(xtrace_order2, wave_grid, color='red', label='Order 2 Extrapolated and Resampled')
+    plt.scatter(x_o3, w_o3, marker='.', color='green', label='Order 3 Measured')
+    plt.plot(xtrace_order3, wave_grid, color='red', label='Order 3 Extrapolated and Resampled')
+    plt.legend()
+    plt.xlabel('X Position')
+    plt.ylabel('Wavelength')
+    if not os.path.exists(outdir + '/trace'):
+        plt.savefig(outdir+'/trace/tracewidth.png')
+    else:
+        plt.show()
+
+    #--------------------------------------------------------------------------
+    # PART 5 - WRITE THE 1ST REFERENCE FILE - THE SOSS TRACE TABLE
+    #--------------------------------------------------------------------------
+
+    xtrace = np.zeros((nwave, 3))
+    xtrace[:, 0] = xtrace_order1
+    xtrace[:, 1] = xtrace_order2
+    xtrace[:, 2] = xtrace_order3
+
+    ytrace = np.zeros((nwave, 3))
+    ytrace[:, 0] = ytrace_order1
+    ytrace[:, 1] = ytrace_order2
+    ytrace[:, 2] = ytrace_order3
+
+    # Massage inputs according to requested output subarray
+    if subarray == 'SUBSTRIP96':
+        ytrace[:, 0] = ytrace[:, 0] - 10
+        ytrace[:, 1] = ytrace[:, 1] - 10
+        ytrace[:, 2] = ytrace[:, 2] - 10
+        #print('Actually do nothing. soss_ref_files.py handles it')
+    elif subarray == 'FULL':
+        ytrace[:, 0] = ytrace[:, 0] + (2048-256)
+        ytrace[:, 1] = ytrace[:, 1] + (2048-256)
+        ytrace[:, 2] = ytrace[:, 2] + (2048-256)
+
+    # Call init_spec_trace with the cleaned input data. This will perform checks on the input and built the fits file structure.
+    hdul = init_spec_trace(wave_grid, xtrace, ytrace, tilt, throughput, subarray) #'SUBSTRIP256')
+
+    # If necessary manual changes and additions can be made here, before saving the file.
+    trace_file = outdir+'/'+hdul[0].header['FILENAME']
+    hdul.writeto(trace_file, overwrite=True)
+
+    return trace_file
+
+
+
+
 
 
 def combine_multi_spec(wildcard, outputname):
@@ -1119,6 +1578,7 @@ def combine_multi_spec(wildcard, outputname):
             # Append single spec to output
             combined.spec.append(single_spec_obj)
 
+    print('Combined MultiSpec spectra saved as ', outputname)
     combined.save(outputname)
 
     return
@@ -1169,6 +1629,7 @@ def median_absolute_spectrum(photomstep_spectrum, outputname):
     # and combine them to output the median, combined spectrum, along with rms.
 
     # Start processing the spectra file
+    print('Generating median_absolute_spectrum from MultiSpec ', photomstep_spectrum)
     multispec = datamodels.open(photomstep_spectrum)
 
     # spectra are stored at indice 1 (order 1), then 2 (order2) then 3 (order 3) then 4 (order 1, 2nd time step), ...
@@ -1187,7 +1648,7 @@ def median_absolute_spectrum(photomstep_spectrum, outputname):
     for i in range(nint):
         for m in range(norder):
             nnn = i * norder + m
-            print(i, m, nnn)
+            #print(i, m, nnn)
             wavelength[i, m, :] = multispec.spec[nnn].spec_table['wavelength']
             flux[i, m, :] = multispec.spec[nnn].spec_table['flux']
             fluxerr[i, m, :] = multispec.spec[nnn].spec_table['flux_error']
@@ -1197,7 +1658,7 @@ def median_absolute_spectrum(photomstep_spectrum, outputname):
     wl = wl/np.nanmedian(wl, axis=0)
     wlmed = np.nanmedian(wl)
     wldev = mediandev(wl)
-    print('whitelight = ', wl)
+    #print('whitelight = ', wl)
     print('whitelight median = ', wlmed)
     print('whitelight deviations = ', wldev)
     oot = wl > (wlmed - 3 * wldev)
@@ -1205,7 +1666,7 @@ def median_absolute_spectrum(photomstep_spectrum, outputname):
     # Start building the output fits file.
     hdul = list()
     hdu = fits.PrimaryHDU()
-    hdu.header['DESCRIP'] = ('Median Out-of-transit spectrum', 'Desription of the file')
+    hdu.header['DESCRIP'] = ('Median Out-of-transit spectrum', 'Description of the file')
     hdu.header['AUTHOR'] = ('Loic Albert', 'Author of the file')
     hdul.append(hdu)
 
@@ -1226,11 +1687,8 @@ def median_absolute_spectrum(photomstep_spectrum, outputname):
         hdul.append(hdu)
 
     hdul = fits.HDUList(hdul)
+    print('Writing the output file named ', outputname)
     hdul.writeto(outputname, overwrite=True)
-
-
-
-
 
     return
 
@@ -1496,6 +1954,7 @@ def greyscale_rms(ts_greyscale, title=''):
     a = fits.getdata(ts_greyscale)
     norder, nint, dimx = np.shape(a)
 
+    print('Generating the greyscale_rms png using as input ', ts_greyscale)
     rms = np.zeros((norder, dimx)) * np.nan
     plt.figure(figsize=(8,5))
     for m in range(3):
@@ -1524,7 +1983,7 @@ def greyscale_rms(ts_greyscale, title=''):
     plt.close()
 
 
-
+    print('Generating the whitelight png')
     for m in range(3):
         # White light
         white = np.nanmedian(a[m, :, :], axis=-1)

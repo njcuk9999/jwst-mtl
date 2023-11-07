@@ -5,6 +5,8 @@ import warnings
 
 import numpy as np
 
+import os
+
 from astropy.io import fits
 
 from SOSS.extract import soss_read_refs
@@ -58,7 +60,7 @@ def _plot_centroid(image, xtrace, ytrace):
     return
 
 
-def _plot_centroids(image, centroids):
+def _plot_centroids(image, centroids, outdir=None):
     """Visualize the trace extracted by get_soss_centroids().
 
     :param image: A 2D image of the detector.
@@ -112,7 +114,10 @@ def _plot_centroids(image, centroids):
 
     plt.tight_layout()
 
-    plt.show()
+    if outdir is not None:
+        if not os.path.exists(outdir + '/trace'): os.mkdir(outdir + '/trace')
+        plt.savefig(outdir+'/trace/trace_centroids.png')
+    #plt.show()
     plt.close()
 
     return
@@ -1107,9 +1112,13 @@ def get_soss_centroids(image, mask=None, subarray='SUBSTRIP256', halfwidth=2,
     :rtype: dict
     """
 
+    # This used to be the default until 20231009
+    #default_orders = {'order 1': 11,
+    #                  'order 2': 5,
+    #                  'order 3': 3}
     default_orders = {'order 1': 11,
                       'order 2': 5,
-                      'order 3': 3}
+                      'order 3': 2}
 
     if poly_orders is not None:
         default_orders = {**default_orders, **poly_orders}
@@ -1130,11 +1139,13 @@ def get_soss_centroids(image, mask=None, subarray='SUBSTRIP256', halfwidth=2,
     else:
         mask_order1 = mask_256 | mask_above | np.array(mask, dtype=bool)
 
-    if verbose & (outdir is not None):
+    #if verbose & (outdir is not None):
+    if outdir is not None:
         hdu = fits.PrimaryHDU()
         hdu.data = np.where(mask_order1, np.nan, image)
-        print('Writing '+outdir+'/mask_order1.fits')
-        hdu.writeto(outdir+'/mask_order1.fits', overwrite=True)
+        print('Writing '+outdir+'/trace/mask_order1.fits')
+        if not os.path.exists(outdir+'/trace'): os.mkdir(outdir+'/trace')
+        hdu.writeto(outdir+'/trace/mask_order1.fits', overwrite=True)
 
     # Get the order 1 trace position.
     result = get_centroids_edgetrigger(image, mask=mask_order1,
@@ -1155,10 +1166,8 @@ def get_soss_centroids(image, mask=None, subarray='SUBSTRIP256', halfwidth=2,
     # For SUBSTRIP96 only the order 1 can be measured.
     if subarray == 'SUBSTRIP96':
 
-        if verbose:
-
-            # Make a figure showing the order 1 trace.
-            _plot_centroids(image, centroids)
+        # Make a figure showing the order 1 trace.
+        _plot_centroids(image, centroids, outdir=outdir)
 
         return centroids
 
@@ -1171,10 +1180,12 @@ def get_soss_centroids(image, mask=None, subarray='SUBSTRIP256', halfwidth=2,
     if mask is not None:
         mask_o3 = mask_o3 | mask
 
-    if verbose & (outdir is not None):
+    #if verbose & (outdir is not None):
+    if outdir is not None:
         hdu = fits.PrimaryHDU()
         hdu.data = np.where(mask_o3, np.nan, image)
-        hdu.writeto(outdir+'/mask_o3.fits', overwrite=True)
+        if not os.path.exists(outdir+'/trace'): os.mkdir(outdir+'/trace')
+        hdu.writeto(outdir+'/trace/mask_o3.fits', overwrite=True)
 
     # Get the order 3 trace position.
     result = get_centroids_edgetrigger(image, mask=mask_o3,
@@ -1203,10 +1214,12 @@ def get_soss_centroids(image, mask=None, subarray='SUBSTRIP256', halfwidth=2,
     if mask is not None:
         mask_o2_uncont = mask_o2_uncont | mask
 
-    if verbose & (outdir is not None):
+    #if verbose & (outdir is not None):
+    if outdir is not None:
         hdu = fits.PrimaryHDU()
         hdu.data = np.where(mask_o2_uncont, np.nan, image)
-        hdu.writeto(outdir+'/mask_o2_uncont.fits', overwrite=True)
+        if not os.path.exists(outdir+'/trace'): os.mkdir(outdir+'/trace')
+        hdu.writeto(outdir+'/trace/mask_o2_uncont.fits', overwrite=True)
 
     # Get the raw trace positions for the uncontaminated part of the order 2 trace.
     result = get_centroids_edgetrigger(image, mask=mask_o2_uncont,
@@ -1232,10 +1245,12 @@ def get_soss_centroids(image, mask=None, subarray='SUBSTRIP256', halfwidth=2,
     if mask is not None:
         mask_o2_cont = mask_o2_cont | mask
 
-    if verbose & (outdir is not None):
+    #if verbose & (outdir is not None):
+    if outdir is not None:
         hdu = fits.PrimaryHDU()
         hdu.data = np.where(mask_o2_cont, np.nan, image)
-        hdu.writeto(outdir+'/mask_o2_cont.fits', overwrite=True)
+        if not os.path.exists(outdir+'/trace'): os.mkdir(outdir+'/trace')
+        hdu.writeto(outdir+'/trace/mask_o2_cont.fits', overwrite=True)
 
     # Get the raw top-edge poistions of the contaminated order 2 trace.
     result = get_centroids_edgetrigger(image, mask=mask_o2_cont,
@@ -1300,7 +1315,9 @@ def get_soss_centroids(image, mask=None, subarray='SUBSTRIP256', halfwidth=2,
 
     plt.tight_layout()
 
-    if outdir is not None: plt.savefig(outdir+'/soss_centroid_order2tracepositions.png')
+    if outdir is not None:
+        if not os.path.exists(outdir+'/trace'): os.mkdir(outdir+'/trace')
+        plt.savefig(outdir+'/trace/soss_centroid_order2tracepositions.png')
     if verbose: plt.show()
     plt.close()
 
@@ -1312,10 +1329,10 @@ def get_soss_centroids(image, mask=None, subarray='SUBSTRIP256', halfwidth=2,
     o2_dict['poly coefs'] = par_o2
     centroids['order 2'] = o2_dict
 
-    if verbose:
 
-        # Make a figure showing the trace for all orders.
-        _plot_centroids(image, centroids)
+
+    # Make a figure showing the trace for all orders.
+    _plot_centroids(image, centroids, outdir=outdir)
 
     return centroids
 

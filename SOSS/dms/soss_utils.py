@@ -125,9 +125,9 @@ def get_image_dim(image, header=None, verbose=False):
             raise ValueError(msg.format(dimx))
 
         # Check if the y-axis is consistent with the x-axis.
-        if np.int(dimy/xos) in [96, 256, 252, 2040, 2048]:
+        if int(dimy/xos) in [96, 256, 252, 2040, 2048]:
             yos = np.copy(xos)
-            ynative = np.int(dimy/yos)
+            ynative = int(dimy/yos)
 
         else:
             msg = ('Stack Y dimension ({:}) is inconsistent with '
@@ -164,7 +164,7 @@ def get_image_dim(image, header=None, verbose=False):
         if (dimy/yos - 2*padding) not in [96, 256, 2048]:
             raise ValueError('The header passed is inconsistent with the Y dimension of the stack.')
         else:
-            ynative = np.int(dimy/yos - 2*padding)
+            ynative = int(dimy/yos - 2*padding)
 
         # The trace file contains no reference pixels so all pixels are good.
         refpix_mask = np.ones_like(image, dtype='bool')
