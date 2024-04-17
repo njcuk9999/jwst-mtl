@@ -1,0 +1,80 @@
+# ---------------------------------------------------------------------
+# loic pipe test
+# ---------------------------------------------------------------------
+
+# ---------------------------------------------------------------------
+# General data parameters
+# ---------------------------------------------------------------------
+general:
+  debug: True
+
+# -----------------------------------------------------------------------------
+# data parameters
+# -----------------------------------------------------------------------------
+data:
+  # raw data directory
+  raw: /genesis/jwst/userland-soss/loic_review/Commissioning/T1_2/
+  # files to use
+  filelist:
+    - jw01201008001_04101_00001-seg001_nis
+    - jw01201008001_04101_00001-seg002_nis
+    - jw01201008001_04101_00001-seg003_nis
+    - jw01201008001_04101_00001-seg004_nis'
+  # calibration directory
+  calib-dir: /genesis/jwst/jwst-ref-soss/noise_files/
+  # atoca reference file directory
+  atoca-dir: /genesis/jwst/userland-soss/loic_review/commissioning/ref_files/
+  # set the ref trace table (must be in the atoca directory)
+  ref_trace_table: SOSS_ref_trace_table_SUBSTRIP256.fits
+  # custom dark - if subarray.name is in this we switch to it otherwise we
+  #               use the default
+  custom_dark:
+    default: jwst_niriss_dark_loiccustom.fits
+    SUBSTRIP96: jwst_niriss_dark_loiccustom_substrip96.fits
+  # whether the custom dark has the super bias included
+  custom_dark_has_superbias_included: True
+  # superbias file
+  superbias: jwst_niriss_superbias_0181.fits
+
+# ---------------------------------------------------------------------
+# Stage 1 parameters
+# ---------------------------------------------------------------------
+stage1:
+  loicpipe:
+    # whether to run loicpipe for stage 1
+    run: False
+    # whether to skip stacking
+    skip_stack: False
+    # saturation map file
+    satmap: None
+    # whether to erase / clean the saturation map files
+    erase_clean_sat: False
+    # whether we fit the ramp (if False uses last read)
+    fit_ramp: True
+  spoon:
+    # whether to run spoon for stage 1
+    run: False
+
+# ---------------------------------------------------------------------
+# Stage 2 parameters
+# ---------------------------------------------------------------------
+stage2:
+  loicpipe:
+    # whether to run loicpipe for stage 2
+    run: True
+    # description
+    contam_mask: None
+  spoon:
+    # whether to run spoon for stage 2
+    run: False
+
+# ---------------------------------------------------------------------
+# Stage 3 parameters
+# ---------------------------------------------------------------------
+stage3:
+  loicpipe:
+    # whether to run loicpipe for stage 3
+    run: False
+  spoon:
+    # whether to run spoon for stage 3
+    run: False
