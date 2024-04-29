@@ -10,9 +10,9 @@ Created on 2023-07-11
 @author: cook
 """
 from loicpipe.core import general
-from loicpipe.science import stage1
-from loicpipe.science import stage2
-from loicpipe.science import stage3
+from loicpipe.loicpipe import stage1
+from loicpipe.loicpipe import stage2
+from loicpipe.loicpipe import stage3
 
 # =============================================================================
 # Define variables
