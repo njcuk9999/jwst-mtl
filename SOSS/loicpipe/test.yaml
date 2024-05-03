@@ -58,18 +58,39 @@ loicpipe:
     - 1361
   # ---------------------------------------------------------------------------
   # Stage 1 parameters
-  stage1:
-    loicpipe:
-      # whether to run loicpipe for stage 1
-      run: False
-      # whether to skip stacking
-      skip_stack: False
-      # saturation map file
-      satmap: None
-      # whether to erase / clean the saturation map files
-      erase_clean_sat: False
-      # whether we fit the ramp (if False uses last read)
-      fit_ramp: True
+  stage1:    # whether to run loicpipe for stage 1
+    run: False
+    # whether to skip stacking (skip_stacking in Loic's code)
+    skip_stack: False
+    # saturation map file
+    satmap: None
+    # rejection threshold for jump step
+    jump_rej_thres: 3.0
+    # whether to erase / clean the saturation map files
+    erase_clean_sat: False
+    # whether we fit the ramp (if False uses last read) (use_cds in Loic's code)
+    fit_ramp: True
+    # Do group step?
+    groupstep: True
+    # Do dqinit step?
+    dqinitstep: True
+    # Do saturation step?
+    saturationstep: True
+    # Do the deepstack for the 1/f correction?
+    oofdeepstackstep: True
+    # Do the 1/f correction?
+    oofstep: True
+    # Do the dark current correction?
+    darkstep: True
+    # Do the non-linearity correction?
+    nonlinearitystep: True
+    # Do the jump detection?
+    jumpstep: True
+    # Do the gain step?
+    gainstep: True
+    # Flag bad pixels?
+    flagbadpix: True
+
   # ---------------------------------------------------------------------------
   # Stage 2 parameters
   stage2:

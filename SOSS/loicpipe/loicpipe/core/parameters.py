@@ -179,6 +179,57 @@ __key__ = 'loicpipe.stage1.fit_ramp'
 params[__key__] = Const(__key__, None, dtype=bool, path=__key__,
                         source=__NAME__)
 
+# Do group step?
+__key__ = 'loicpipe.stage1.groupstep'
+params[__key__] = Const(__key__, True, dtype=bool, path=__key__,
+                        source=__NAME__)
+
+# Do dqinit step?
+__key__ = 'loicpipe.stage1.dqinitstep'
+params[__key__] = Const(__key__, True, dtype=bool, path=__key__,
+                        source=__NAME__)
+
+# Do saturation step?
+__key__ = 'loicpipe.stage1.saturationstep'
+params[__key__] = Const(__key__, True, dtype=bool, path=__key__,
+                        source=__NAME__)
+
+# Do the deepstack for the 1/f correction?
+__key__ = 'loicpipe.stage1.oofdeepstackstep'
+params[__key__] = Const(__key__, True, dtype=bool, path=__key__,
+                        source=__NAME__)
+
+# Do the 1/f correction?
+__key__ = 'loicpipe.stage1.oofstep'
+params[__key__] = Const(__key__, True, dtype=bool, path=__key__,
+                        source=__NAME__)
+
+# Do the dark current correction?
+__key__ = 'loicpipe.stage1.darkstep'
+params[__key__] = Const(__key__, True, dtype=bool, path=__key__,
+                        source=__NAME__)
+
+# Do the non-linearity correction?
+__key__ = 'loicpipe.stage1.nonlinearitystep'
+params[__key__] = Const(__key__, True, dtype=bool, path=__key__,
+                        source=__NAME__)
+
+# Do the jump detection?
+__key__ = 'loicpipe.stage1.jumpstep'
+params[__key__] = Const(__key__, True, dtype=bool, path=__key__,
+                        source=__NAME__)
+
+# Do the gain step?
+__key__ = 'loicpipe.stage1.gainstep'
+params[__key__] = Const(__key__, True, dtype=bool, path=__key__,
+                        source=__NAME__)
+
+# Flag bad pixels?
+__key__ = 'loicpipe.stage1.flagbadpix'
+params[__key__] = Const(__key__, True, dtype=bool, path=__key__,
+                        source=__NAME__)
+
+
 # -----------------------------------------------------------------------------
 # Loicpipe stage 2 parameters
 # -----------------------------------------------------------------------------

@@ -66,6 +66,26 @@ def stage1_loicpipe(params: Parameters) -> Parameters:
     fit_ramp: bool = params['loicpipe.stage1.fit_ramp']
     # whether to only to extraction (no previous steps in stage 1 + 2)
     extract_only: bool = params['loicpipe.extract_only']
+    # Do group step?
+    groupstep: bool = params['loicpipe.stage1.groupstep']
+    # Do dqinit step?
+    dqinitstep: bool = params['loicpipe.stage1.dqinitstep']
+    # Do saturation step?
+    saturationstep: bool = params['loicpipe.stage1.saturationstep']
+    # Do the deepstack for the 1/f correction?
+    oofdeepstackstep: bool = params['loicpipe.stage1.oofdeepstackstep']
+    # Do the 1/f correction?
+    oofstep: bool = params['loicpipe.stage1.oofstep']
+    # Do the dark current correction?
+    darkstep: bool = params['loicpipe.stage1.darkstep']
+    # Do the non-linearity correction?
+    nonlinearitystep: bool = params['loicpipe.stage1.nonlinearitystep']
+    # Do the jump detection?
+    jumpstep: bool = params['loicpipe.stage1.jumpstep']
+    # Do the gain step?
+    gainstep: bool = params['loicpipe.stage1.gainstep']
+    # Flag bad pixels?
+    flagbadpix: bool = params['loicpipe.stage1.flagbadpix']
     # get the dqmask
     dqmask: List[int] = params['loicpipe.dq_mask']
     # ----------------------------------------------------------------------
@@ -74,6 +94,7 @@ def stage1_loicpipe(params: Parameters) -> Parameters:
     outdir = params['data.outdir']
     # if we have the extract only flag do not do any stage 1
     if extract_only:
+        print('Extract only - skipping stage 1')
         return params
     # ----------------------------------------------------------------------
     # Load or produce deepstack
@@ -98,31 +119,60 @@ def stage1_loicpipe(params: Parameters) -> Parameters:
         satlist = []
         # loop around uncalibrated files
         for segment in uncal_list:
+            # Read in the uncal files (to make sure that the data models 'result'
+            # exists in case groupstep is skipped
+            result = datamodels.open(segment)
             # common arguments
             kwargs = dict(outputdir=outdir, save_results=False)
-            # run the DMS standard - GroupScaleStep
-            GroupScaleStep = calwebb_detector1.group_scale_step.GroupScaleStep
-            result = GroupScaleStep.call(segment, **kwargs)
-            # run the DMS standard - DQInitStep
-            DQInitStep = calwebb_detector1.dq_init_step.DQInitStep
-            result = DQInitStep.call(result, **kwargs)
-            # common arguments
-            kwargs = dict(outputdir=outdir, save_results=True,
-                          overwrite_saturation=satmap)
-            # run the DMS standard - SaturationStep
-            SaturationStep = calwebb_detector1.saturation_step.SaturationStep
-            result = SaturationStep.call(result, **kwargs)
-            # get the saturation file from results3 meta data
-            satfile = os.path.join(outdir, result.meta.filename)
-            # append to filelist
-            satlist.append(satfile)
+            if groupstep:
+                # run the DMS standard - GroupScaleStep
+                GroupScaleStep = calwebb_detector1.group_scale_step.GroupScaleStep
+                result = GroupScaleStep.call(result, **kwargs)
+            else:
+                print(f'groupstep = {groupstep} - skipping GroupScaleStep')
+                
+            if dqinitstep:
+                # run the DMS standard - DQInitStep
+                DQInitStep = calwebb_detector1.dq_init_step.DQInitStep
+                result = DQInitStep.call(result, **kwargs)
+            else:
+                print(f'dqinitstep = {dqinitstep} - skipping DQInitStep')
+                
+            if saturationstep:
+                # common arguments
+                kwargs = dict(outputdir=outdir, save_results=True,
+                            overwrite_saturation=satmap)
+                # run the DMS standard - SaturationStep
+                SaturationStep = calwebb_detector1.saturation_step.SaturationStep
+                result = SaturationStep.call(result, **kwargs)
+                # get the saturation file from results3 meta data
+                satfile = os.path.join(outdir, result.meta.filename)
+                # append to filelist
+                satlist.append(satfile)
+            else:
+                print(f'saturationstep = {saturationstep} - skipping SaturationStep')
+                # TODO: Correct the following code to use a filelist when saturationstep is False
+                # We could put the saturation files in the params dictionary
+                # (it would then save the saturation files with the name and read them back in if the step is skipped)
+                # Old code from Loic:
+                # wildcard = outdir+'/'+basename_ts+'*_saturationstep.fits'
+                # saturationstep_list = sorted(glob.glob(wildcard))
+                # print('saturation files list: ', saturationstep_list)
+            
         # ----------------------------------------------------------------------
         # Proceed with construction of the deep stack for each group using
         # all segments available.
         # ----------------------------------------------------------------------
-        deepstack, _ = soss_oneoverf.stack_multisegments(satlist,
-                                                         outdir=outdir,
-                                                         save_results=True)
+        if oofdeepstackstep:
+            deepstack, _ = soss_oneoverf.stack_multisegments(satlist,
+                                                             outdir=outdir,
+                                                             save_results=True)
+        else:
+            print('oofdeepstackstep = {oofdeepstackstep} - skipping stack_multisegments')
+            # TODO: Correct the following code to use a deepstack when oofdeepstackstep is False
+            # We could put the deepstack filename in the params dictionary
+            # (it would then save the deepstack with the name and read it back in if the step is skipped)
+            deepstack = None
     # ----------------------------------------------------------------------
     # Proceed back on a segment by segment basis (rather than at the whole
     # time-series level)
@@ -145,23 +195,40 @@ def stage1_loicpipe(params: Parameters) -> Parameters:
         outliermap_file = io.get_outliermap_file(params, satfilename)
         # construct the trace table filename
         tracetable_file = io.get_tracetable_file(params)
-        # set up kwargs
-        kwargs = dict(outputdir=outdir, save_results=True,
-                      deepstack_custom=deepstack, oddevenrows=True,
-                      outlier_map=outliermap_file,
-                      trace_table_ref=tracetable_file)
+        
+        # ----------------------------------------------------------------------
         # Custom - 1/f correction
-        result = soss_oneoverf.applycorrection(result, **kwargs)
-        # write to log (only for first iteration)
-        if it == 0:
-            filelog.write(f'{result.meta.filename} - After 1/f')
+        # ----------------------------------------------------------------------
+        if oofstep:
+            # set up kwargs
+            kwargs = dict(outputdir=outdir, save_results=True,
+                        deepstack_custom=deepstack, oddevenrows=True,
+                        outlier_map=outliermap_file,
+                        trace_table_ref=tracetable_file)
+            # Custom - 1/f correction
+            result = soss_oneoverf.applycorrection(result, **kwargs)
+            # write to log (only for first iteration)
+            if it == 0:
+                filelog.write(f'{result.meta.filename} - After 1/f')
+        else:
+            print(f'oofstep = {oofstep} - skipping applycorrection')
+            
+        # ---------------------------------------------------------------------
+        # Superbias correction
+        # ---------------------------------------------------------------------
+        # TODO: Does nothing in the current version of the pipeline. Remove?
+            
+
         # ----------------------------------------------------------------------
         # Custom Dark Current correction
         # ----------------------------------------------------------------------
-        result = loic_dark_current_step(params, result)
-        # write to log (only for first iteration)
-        if it == 0:
-            filelog.write(f'{result.meta.filename} - After dark current')
+        if darkstep:
+            result = loic_dark_current_step(params, result)
+            # write to log (only for first iteration)
+            if it == 0:
+                filelog.write(f'{result.meta.filename} - After dark current')
+        else:
+            print(f'darkstep = {darkstep} - skipping loic_dark_current_step')
 
         # ----------------------------------------------------------------------
         # DMS standard - RefPix correction
@@ -174,23 +241,23 @@ def stage1_loicpipe(params: Parameters) -> Parameters:
         # ----------------------------------------------------------------------
         # DMS standard - Non-linearity correction
         # ----------------------------------------------------------------------
-        LinearityStep = calwebb_detector1.linearity_step.LinearityStep
-        result = LinearityStep.call(result, output_dir=outdir,
-                                    save_results=False)
-        # write to log (only for first iteration)
-        if it == 0:
-            filelog.write(f'{result.meta.filename} - After linearity')
+        if nonlinearitystep:
+            LinearityStep = calwebb_detector1.linearity_step.LinearityStep
+            result = LinearityStep.call(result, output_dir=outdir,
+                                        save_results=False)
+        else:
+            print(f'nonlinearitystep = {nonlinearitystep} - skipping LinearityStep')
 
         # ---------------------------------------------------------------------
         # DMS standard - Jump detection
         # ---------------------------------------------------------------------
-        JumpStep = calwebb_detector1.jump_step.JumpStep
-        result = JumpStep.call(result, output_dir=outdir,
-                               rejection_threshold=jump_rej_thres,
-                               save_results=False)
-        # write to log (only for first iteration)
-        if it == 0:
-            filelog.write(f'{result.meta.filename} - After jump')
+        if jumpstep:
+            JumpStep = calwebb_detector1.jump_step.JumpStep
+            result = JumpStep.call(result, output_dir=outdir,
+                                   rejection_threshold=jump_rej_thres,
+                                   save_results=False)
+        else:
+            print(f'jumpstep = {jumpstep} - skipping JumpStep')
         # ---------------------------------------------------------------------
         # Ramp fitting
         # ---------------------------------------------------------------------
@@ -202,50 +269,36 @@ def stage1_loicpipe(params: Parameters) -> Parameters:
             print('Instead of fitting a slope to the ramp, use last read '
                   '- superbias.')
             stackresult, result = soss_commutils.cds(result, outdir=outdir)
-        # write to log (only for first iteration)
-        if it == 0:
-            filelog.write(f'{result.meta.filename} - After ramp fitting')
 
-        # add dq trace
-        dq_values = result.dq[dqmask]
-        dqtracelog.write('DQ={0} - After ramp fit step'.format(dq_values))
+        # # add dq trace
+        # dq_values = result.dq[dqmask]
+        # dqtracelog.write('DQ={0} - After ramp fit step'.format(dq_values))
 
         # ---------------------------------------------------------------------
         # DMS standard - Gain step
         # ---------------------------------------------------------------------
-        # run the dms step
-        GainScaleStep = calwebb_detector1.gain_scale_step.GainScaleStep
-        result = GainScaleStep.call(result, output_dir=outdir,
-                                    save_results=False)
-        # add dq trace
-        dq_values = result.dq[dqmask]
-        dqtracelog.write('DQ={0} - After gain step'.format(dq_values))
-        # write to log (only for first iteration)
-        if it == 0:
-            filelog.write(f'{result.meta.filename} - After gain scale')
+        if gainstep:
+            # run the dms step
+            GainScaleStep = calwebb_detector1.gain_scale_step.GainScaleStep
+            result = GainScaleStep.call(result, output_dir=outdir,
+                                        save_results=False)
+        # # add dq trace
+        # dq_values = result.dq[dqmask]
+        # dqtracelog.write('DQ={0} - After gain step'.format(dq_values))
+        # # write to log (only for first iteration)
+        # if it == 0:
+        #     filelog.write(f'{result.meta.filename} - After gain scale')
 
         # ---------------------------------------------------------------------
         # Custom - Flag bad pixels found manually
         # ---------------------------------------------------------------------
-        # Add some bad pixels missed by the dq init stage but seen otherwise
-        result = soss_commutils.add_manual_badpix(result)
-        # add dq trace
-        dqtracelog.write('DQ={0} - After manual bad pix '
-                         'step'.format(result.dq[dqmask]))
-        # write to log (only for first iteration)
-        if it == 0:
-            filelog.write(f'{result.meta.filename} - After manual bad pix ')
-        # write to dq_postmanual.fits
-        io.write_dqfile(params, result)
-
-        # Question: This will always give the same results as last entry?
-        # add dq trace
-        dqtracelog.write('DQ={0} - After saving of manual '
-                              'bad pix step'.format(result.dq[dqmask]))
-        # write to log (only for first iteration)
-        if it == 0:
-            filelog.write(f'{result.meta.filename} '
-                                  f'- After saving of manual bad pix step')
+        if flagbadpix:
+            # Add some bad pixels missed by the dq init stage but seen otherwise
+            result = soss_commutils.add_manual_badpix(result)
+            # write to dq_postmanual.fits
+            io.write_dqfile(params, result)
+        else:
+            print(f'flagbadpix = {flagbadpix} - skipping add_manual_badpix')
 
         # ---------------------------------------------------------------------
         # DMS standard - Save rateints on disk to end Stage 1
@@ -258,10 +311,6 @@ def stage1_loicpipe(params: Parameters) -> Parameters:
         # add dq trace
         dqtracelog.write('DQ={0} - After saving _rateints.fits'
                               'bad pix step'.format(result.dq[dqmask]))
-        # write to log (only for first iteration)
-        if it == 0:
-            filelog.write(f'{result.meta.filename} '
-                          f'- After saving _rateints.fits')
     # ----------------------------------------------------------------------
     return params
 
