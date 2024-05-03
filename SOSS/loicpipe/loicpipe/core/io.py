@@ -144,11 +144,16 @@ def get_uncal_files(params: Parameters):
             # check if file exists
             if os.path.exists(uncalfile):
                 uncal_list.append(uncalfile)
+                print(uncalfile)
+            else:
+                emsg = 'File {0} does not exist'
+                raise base.LoicPipeError(emsg.format(uncalfile))
     # if filelist is not set take all files with _uncal.fits
     else:
         # get all uncal files
         uncal_path = os.path.join(rawpath, '*' + uncal_suffix)
         uncal_list = glob.glob(uncal_path)
+        print(uncal_list)
     # -------------------------------------------------------------------------
     # push into parameters
     params['output.uncal_list'] = uncal_list
