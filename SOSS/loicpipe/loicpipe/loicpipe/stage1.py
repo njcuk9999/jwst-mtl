@@ -123,7 +123,7 @@ def stage1_loicpipe(params: Parameters) -> Parameters:
             # exists in case groupstep is skipped
             result = datamodels.open(segment)
             # common arguments
-            kwargs = dict(outputdir=outdir, save_results=False)
+            kwargs = dict(output_dir=outdir, save_results=False)
             if groupstep:
                 # run the DMS standard - GroupScaleStep
                 GroupScaleStep = calwebb_detector1.group_scale_step.GroupScaleStep
@@ -140,7 +140,7 @@ def stage1_loicpipe(params: Parameters) -> Parameters:
                 
             if saturationstep:
                 # common arguments
-                kwargs = dict(outputdir=outdir, save_results=True,
+                kwargs = dict(output_dir=outdir, save_results=True,
                             overwrite_saturation=satmap)
                 # run the DMS standard - SaturationStep
                 SaturationStep = calwebb_detector1.saturation_step.SaturationStep
@@ -201,7 +201,7 @@ def stage1_loicpipe(params: Parameters) -> Parameters:
         # ----------------------------------------------------------------------
         if oofstep:
             # set up kwargs
-            kwargs = dict(outputdir=outdir, save_results=True,
+            kwargs = dict(output_dir=outdir, save_results=True,
                         deepstack_custom=deepstack, oddevenrows=True,
                         outlier_map=outliermap_file,
                         trace_table_ref=tracetable_file)
@@ -317,7 +317,7 @@ def stage1_loicpipe(params: Parameters) -> Parameters:
 
 def loic_dark_current_step(params: Parameters, result0: Any) -> Any:
     # get the output directory
-    outputdir = params['data.outdir']
+    output_dir = params['data.outdir']
     # get parameters used in this function (should be done at the start)
     custom_dark_dict = params['data.custom_dark']
 
@@ -352,7 +352,7 @@ def loic_dark_current_step(params: Parameters, result0: Any) -> Any:
         superbias_file = io.get_superbias_file(params)
         # run super bias step
         SuperBiasStep = calwebb_detector1.superbias_step.SuperBiasStep
-        result1 = SuperBiasStep.call(result0, output_dir=outputdir,
+        result1 = SuperBiasStep.call(result0, output_dir=output_dir,
                                      save_results=True,
                                      override_superbias=superbias_file)
     else:
@@ -363,7 +363,7 @@ def loic_dark_current_step(params: Parameters, result0: Any) -> Any:
     # TODO: improve the current dark calibration file by taking KTC noise into account.
     # run the dark current step
     DarkCurrentStep = calwebb_detector1.dark_current_step.DarkCurrentStep
-    result2 = DarkCurrentStep.call(result1, output_dir=outputdir,
+    result2 = DarkCurrentStep.call(result1, output_dir=output_dir,
                                    save_results=False,
                                    override_dark=custom_dark)
     # -------------------------------------------------------------------------
