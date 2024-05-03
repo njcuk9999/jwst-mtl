@@ -69,14 +69,16 @@ def load_params(yaml_file: Optional[str] = None,
     # set up the return dictionary
     params = parameters.params.copy()
     # -------------------------------------------------------------------------
-    # read from command line
-    args = get_args()
-    # get yaml file from cmd args
-    yaml_file = add_cmd_arg(args, 'yaml', yaml_file)
-    # get debug from cmd args
-    params['debug'] = add_cmd_arg(args, 'debug', debug)
-    # set the debug source
-    params('debug').source = 'command line'
+    # read from command line if yaml_file is None
+    if yaml_file is None:
+        print('Reading from command line')
+        args = get_args()
+        # get yaml file from cmd args
+        yaml_file = add_cmd_arg(args, 'yaml', yaml_file)
+        # get debug from cmd args
+        params['debug'] = add_cmd_arg(args, 'debug', debug)
+        # set the debug source
+        params('debug').source = 'command line'
     # -------------------------------------------------------------------------
     # load from yaml file
     yaml_params = io.read_yaml(yaml_file)
