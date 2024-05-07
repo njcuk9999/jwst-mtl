@@ -140,8 +140,10 @@ def stage1_loicpipe(params: Parameters) -> Parameters:
                 
             if saturationstep:
                 # common arguments
-                kwargs = dict(output_dir=outdir, save_results=True,
-                            overwrite_saturation=satmap)
+                kwargs = dict(output_dir=outdir, save_results=True)
+                # overwrite_saturation raises an error if given a None value
+                if satmap is not None:
+                    kwargs.update(overwrite_saturation=satmap)
                 # run the DMS standard - SaturationStep
                 SaturationStep = calwebb_detector1.saturation_step.SaturationStep
                 result = SaturationStep.call(result, **kwargs)
