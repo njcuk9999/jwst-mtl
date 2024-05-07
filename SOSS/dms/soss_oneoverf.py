@@ -153,32 +153,32 @@ def make_trace_mask(trace_table_ref=None, subarray_name=None, pwcpos=None, aphal
     orders_list = [i for i in range(1, norders+1)]
     x_o, y_o, wv_o = {}, {}, {}
     ref = None  # open the reference file only if needed during the loop.
-    for ord in orders_list:
+    for o_i in orders_list:
         if pwcpos is None:
             out_pastasoss = None
         else:
             # Note that out_pastasoss is None for ordre 3 (not implemented in pastasoss yet)
-            out_pastasoss = pastasoss.get_soss_traces(pwcpos=pwcpos, order=str(ord), interp=True)
+            out_pastasoss = pastasoss.get_soss_traces(pwcpos=pwcpos, order=str(o_i), interp=True)
         
         # Use the reference file to get the trace if it was not determined by pastasoss
         if out_pastasoss is None:
             if ref is None:
                 ref = fits.open(trace_table_ref)
-            x_o[ord], y_o[ord], wv_o[ord] = (np.array(ref[ord].data[key])
+            x_o[o_i], y_o[o_i], wv_o[o_i] = (np.array(ref[o_i].data[key])
                                              for key in ['X', 'Y', 'WAVELENGTH'])
         else:
-            x_o[ord], y_o[ord], wv_o[ord] = (getattr(out_pastasoss, key)
+            x_o[o_i], y_o[o_i], wv_o[o_i] = (getattr(out_pastasoss, key)
                                              for key in ('x', 'y', 'wavelength'))
         # Assumption is made later that x are integers from 0 to 2047, so sort the arrays
         # and interpolate them on the full 2048 columns
-        x_o[ord], y_o[ord], wv_o[ord] = get_order_sorted(x_o[ord], y_o[ord], wv_o[ord])
+        x_o[o_i], y_o[o_i], wv_o[o_i] = get_order_sorted(x_o[o_i], y_o[o_i], wv_o[o_i])
 
     # Create a cube containing the mask for all orders
     maskcube = np.zeros((norders, dimy, dimx))
 
-    for idx_ord, ord in enumerate(orders_list):
+    for idx_ord, o_i in enumerate(orders_list):
 
-        ordercen = np.copy(y_o[ord])
+        ordercen = np.copy(y_o[o_i])
         mask_trace = soss_centroids.build_mask_trace(ordercen, subarray=subarray_name,
                                                      halfwidth=aphalfwidth[idx_ord],
                                                      extend_below=False,
@@ -186,7 +186,7 @@ def make_trace_mask(trace_table_ref=None, subarray_name=None, pwcpos=None, aphal
         mask = np.zeros(np.shape(mask_trace))
         mask[mask_trace == True] = 1
 
-        maskcube[idx_ord,:,:] = np.copy(mask_trace)
+        maskcube[o_i,:,:] = np.copy(mask_trace)
 
     # crunch the orders into a single stack
     trace_mask = np.nansum(maskcube, axis=0)
