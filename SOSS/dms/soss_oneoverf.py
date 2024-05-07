@@ -1,7 +1,8 @@
 import numpy as np
 from astropy.io import fits
-from jwst import datamodels
 import os
+from jwst import datamodels
+import pastasoss
 import SOSS.dms.soss_centroids as soss_centroids
 
 
@@ -133,43 +134,59 @@ def get_order_sorted(x_order, y_order, wv_order):
     return x_order, y_order, wv_order
 
 
-def make_trace_mask(trace_table_ref, subarray_name, aphalfwidth=[13,13,13],
+def make_trace_mask(trace_table_ref=None, subarray_name=None, pwcpos=None, aphalfwidth=[13,13,13],
                     outdir=None):
 
     dimx = 2048
     norders = 3
-    if subarray_name == 'FULL': dimy = 2048
-    if subarray_name == 'SUBSTRIP256': dimy = 256
-    if subarray_name == 'SUBSTRIP96':
+
+    if subarray_name == 'FULL':
+        dimy = 2048
+    elif subarray_name == 'SUBSTRIP256':
+        dimy = 256
+    elif subarray_name == 'SUBSTRIP96':
         dimy = 96
         norders = 1
-
-    # We assume that a valid trace table reference file was passed. Read it.
-    ref = fits.open(trace_table_ref)
-    x_o1, y_o1, wv_o1 = np.array(ref[1].data['X']), np.array(ref[1].data['Y']), np.array(ref[1].data['WAVELENGTH'])
-    x_o2, y_o2, wv_o2 = np.array(ref[2].data['X']), np.array(ref[2].data['Y']), np.array(ref[2].data['WAVELENGTH'])
-    x_o3, y_o3, wv_o3 = np.array(ref[3].data['X']), np.array(ref[3].data['Y']), np.array(ref[3].data['WAVELENGTH'])
-    # Assumption is made later that x are integers from 0 to 2047
-    x_o1, y_o1, wv_o1 = get_order_sorted(x_o1, y_o1, wv_o1)
-    x_o2, y_o2, wv_o2 = get_order_sorted(x_o2, y_o2, wv_o2)
-    x_o3, y_o3, wv_o3 = get_order_sorted(x_o3, y_o3, wv_o3)
+    else:
+        raise ValueError('Unknown subarray name {:}'.format(subarray_name))
+    
+    orders_list = [i for i in range(1, norders+1)]
+    x_o, y_o, wv_o = {}, {}, {}
+    ref = None  # open the reference file only if needed during the loop.
+    for ord in orders_list:
+        if pwcpos is None:
+            out_pastasoss = None
+        else:
+            # Note that out_pastasoss is None for ordre 3 (not implemented in pastasoss yet)
+            out_pastasoss = pastasoss.get_soss_traces(pwcpos=pwcpos, order=str(ord), interp=True)
+        
+        # Use the reference file to get the trace if it was not determined by pastasoss
+        if out_pastasoss is None:
+            if ref is None:
+                ref = fits.open(trace_table_ref)
+            x_o[ord], y_o[ord], wv_o[ord] = (np.array(ref[ord].data[key])
+                                             for key in ['X', 'Y', 'WAVELENGTH'])
+        else:
+            x_o[ord], y_o[ord], wv_o[ord] = (getattr(out_pastasoss, key)
+                                             for key in ('x', 'y', 'wavelength'))
+        # Assumption is made later that x are integers from 0 to 2047, so sort the arrays
+        # and interpolate them on the full 2048 columns
+        x_o[ord], y_o[ord], wv_o[ord] = get_order_sorted(x_o[ord], y_o[ord], wv_o[ord])
 
     # Create a cube containing the mask for all orders
     maskcube = np.zeros((norders, dimy, dimx))
 
-    for m in range(norders):
-        if m == 0: ordercen = np.copy(y_o1)
-        if m == 1: ordercen = np.copy(y_o2)
-        if m == 2: ordercen = np.copy(y_o3)
+    for idx_ord, ord in enumerate(orders_list):
 
+        ordercen = np.copy(y_o[ord])
         mask_trace = soss_centroids.build_mask_trace(ordercen, subarray=subarray_name,
-                                                     halfwidth=aphalfwidth[m],
+                                                     halfwidth=aphalfwidth[idx_ord],
                                                      extend_below=False,
                                                      extend_above=False)
         mask = np.zeros(np.shape(mask_trace))
         mask[mask_trace == True] = 1
 
-        maskcube[m,:,:] = np.copy(mask_trace)
+        maskcube[idx_ord,:,:] = np.copy(mask_trace)
 
     # crunch the orders into a single stack
     trace_mask = np.nansum(maskcube, axis=0)
