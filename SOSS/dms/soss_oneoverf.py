@@ -116,6 +116,23 @@ def stack(cube, deepstack_custom=None, outliers_map=None):
     return deepstack, rms
 
 
+def get_order_sorted(x_order, y_order, wv_order):
+    """ Project the trace on the full 2048 columns of the detector.
+    Returns x, y, and wavelength arrays, sorted by increasing x (columns).
+    """
+    # sort order
+    x = np.arange(2048)
+    sorted = np.argsort(x_order)
+    x_order, y_order, wv_order = x_order[sorted], y_order[sorted], wv_order[sorted]
+
+    # interpolate
+    y_order = np.interp(x, x_order, y_order)
+    wv_order = np.interp(x, x_order, wv_order)
+    x_order = x
+
+    return x_order, y_order, wv_order
+
+
 def make_trace_mask(trace_table_ref, subarray_name, aphalfwidth=[13,13,13],
                     outdir=None):
 
@@ -133,27 +150,9 @@ def make_trace_mask(trace_table_ref, subarray_name, aphalfwidth=[13,13,13],
     x_o2, y_o2, wv_o2 = np.array(ref[2].data['X']), np.array(ref[2].data['Y']), np.array(ref[2].data['WAVELENGTH'])
     x_o3, y_o3, wv_o3 = np.array(ref[3].data['X']), np.array(ref[3].data['Y']), np.array(ref[3].data['WAVELENGTH'])
     # Assumption is made later that x are integers from 0 to 2047
-    # sort order 1
-    x = np.arange(2048)
-    sorted = np.argsort(x_o1)
-    x_o1, y_o1, wv_o1 = x_o1[sorted], y_o1[sorted], wv_o1[sorted]
-    y_o1 = np.interp(x, x_o1, y_o1)
-    wv_o1 = np.interp(x, x_o1, wv_o1)
-    x_o1 = x
-    # sort order 2
-    x = np.arange(2048)
-    sorted = np.argsort(x_o2)
-    x_o2, y_o2, wv_o2 = x_o2[sorted], y_o2[sorted], wv_o2[sorted]
-    y_o2 = np.interp(x, x_o2, y_o2)
-    w_o2 = np.interp(x, x_o2, wv_o2)
-    x_o2 = x
-    # sort order 3
-    x = np.arange(2048)
-    sorted = np.argsort(x_o3)
-    x_o3, y_o3, w_o3 = x_o3[sorted], y_o3[sorted], wv_o3[sorted]
-    y_o3 = np.interp(x, x_o3, y_o3)
-    wv_o3 = np.interp(x, x_o3, wv_o3)
-    x_o3 = x
+    x_o1, y_o1, wv_o1 = get_order_sorted(x_o1, y_o1, wv_o1)
+    x_o2, y_o2, wv_o2 = get_order_sorted(x_o2, y_o2, wv_o2)
+    x_o3, y_o3, wv_o3 = get_order_sorted(x_o3, y_o3, wv_o3)
 
     # Create a cube containing the mask for all orders
     maskcube = np.zeros((norders, dimy, dimx))
