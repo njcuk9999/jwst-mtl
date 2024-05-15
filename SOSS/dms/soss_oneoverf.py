@@ -186,7 +186,7 @@ def make_trace_mask(trace_table_ref=None, subarray_name=None, pwcpos=None, aphal
         mask = np.zeros(np.shape(mask_trace))
         mask[mask_trace == True] = 1
 
-        maskcube[o_i,:,:] = np.copy(mask_trace)
+        maskcube[idx_ord, :, :] = np.copy(mask_trace)
 
     # crunch the orders into a single stack
     trace_mask = np.nansum(maskcube, axis=0)
