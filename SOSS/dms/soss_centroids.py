@@ -593,6 +593,7 @@ def build_mask_256(subarray='SUBSTRIP256', apex_order1=None):
     # In SUBSTRIP256 the apex would be at y ~ 40.
     rowmin = np.maximum(apex_order1 - 40, 0)
     rowmax = np.minimum(apex_order1 + 216, dimy)
+    print(rowmin, rowmax)
     mask_256[rowmin:rowmax, :] = False
 
     return mask_256
@@ -1130,7 +1131,16 @@ def get_soss_centroids(image, mask=None, subarray='SUBSTRIP256', halfwidth=2,
     mask_256 = build_mask_256(subarray=subarray, apex_order1=apex_order1)
 
     # Build a mask that masks all pixels above y=100
-    mask_above = build_mask_sloped((256,2048), [0,100], [2047,100], mask_above=True)
+    if subarray == 'SUBSTRIP256':
+        mask_above = build_mask_sloped((256,2048), [0,100], [2047,100], mask_above=True)
+    elif subarray == 'SUBSTRIP96':
+        mask_above = build_mask_sloped((96,2048), [0,100-10], [2047,100-10], mask_above=True)
+    elif subarray == 'FULL':
+        mask_above = build_mask_sloped((2048,2048), [0,100+1792], [2047,100+1792], mask_above=True)
+    else:
+        print('Can not be. Abort')
+        stop
+
     mask_256 = mask_256 | mask_above
 
     # Combine the subsection mask with the user specified mask.

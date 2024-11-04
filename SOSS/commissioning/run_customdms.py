@@ -34,7 +34,7 @@ import socket
 
 
 hostname = socket.gethostname()
-if (hostname == 'iiwi.sf.umontreal.ca') or (hostname == 'iiwi.local'):
+if (hostname == 'havelock.sf.umontreal.ca') or (hostname == 'havelock.local'):
     CALIBRATION_DIR = '/Users/albert/NIRISS/Commissioning/analysis/pipelineprep/calibrations/'
     ATOCAREF_DIR = '/Users/albert/NIRISS/Commissioning/analysis/SOSSwavecal/ref_files/'
 elif hostname == 'genesis':
@@ -63,6 +63,9 @@ def custom_loic(exposurelist, use_atoca=False, optimal_extraction=False,
                 skip_stacking=False, erase_clean=False, satmap=None,
                 use_cds=False, box_width=25, cont_params=None):
 
+
+
+
     # Correct the 1/f noise at the full time-series level rather than
     # segment by segment (because 1/f residuals on the stack differ
     # between segments). That means that the DQinit and Saturation steps
@@ -83,6 +86,36 @@ def custom_loic(exposurelist, use_atoca=False, optimal_extraction=False,
         # Read in the uncal files (to make sure that the data models 'result'
         # exists in case groupstep is skipped
         result = datamodels.open(segmentname)
+
+        # Generate a mask for the identified contaminants in the image.
+        if cont_params is None and contamination_mask is None:
+            contamination_mask = None
+        if cont_params is not None:
+            print('A list of order 0,1,2 contaminating sources are passed. Generate a mask.')
+            print(result.meta.subarray.name)
+            ncont = np.shape(cont_params)[0]
+            # First contaminant initializes the image
+            contamination_mask_fromlist = commutils.build_mask_contamination(
+                cont_params[0][0], cont_params[0][1], cont_params[0][2],
+                subarray=result.meta.subarray.name)
+            for i in range(ncont - 1):
+                print(i, ncont)
+                contamination_mask_fromlist += commutils.build_mask_contamination(
+                    cont_params[i + 1][0], cont_params[i + 1][1], cont_params[i + 1][2],
+                subarray=result.meta.subarray.name)
+            if contamination_mask is not None:
+                contmask = fits.getdata(contamination_mask)
+                contmask = contmask * contamination_mask_fromlist
+            else:
+                contmask = np.copy(contamination_mask_fromlist)
+            # The mask should have NaNs where things need to be masked, 1 elsewhere.
+            contmask[contmask == 1] = np.nan
+            contmask[contmask == 0] = 1
+            # Save the new contamination mask (union of passed mask + listed contaminants)
+            outdir = os.path.dirname(exposurelist[0])
+            contamination_mask = outdir + '/contamination_mask_unified.fits'
+            hdu = fits.PrimaryHDU(contmask)
+            hdu.writeto(contamination_mask, overwrite=True)
 
         #if (extract_only == False) & (skip_stacking == False):
         if groupstep == True:
@@ -159,7 +192,9 @@ def custom_loic(exposurelist, use_atoca=False, optimal_extraction=False,
                 trace_table_ref=ATOCAREF_DIR+SPECTRACE)
             #if segment == 0: fn.write('{:} - After 1/f \n'.format(result.meta.filename))
         else:
-            print('oofstep = False, step skipped')
+            result = calwebb_detector1.refpix_step.RefPixStep.call(
+                    result, output_dir=outdir, save_results=True)
+            #print('oofstep = False, step skipped')
 
         if superbiasstep == True:
             # DMS standard - SuperBias subtraction
@@ -279,7 +314,7 @@ def custom_loic(exposurelist, use_atoca=False, optimal_extraction=False,
             # Custom - Outlier flagging
             result = soss_outliers.flag_outliers(
                 #result, window_size=(3,11), n_sig=9, verbose=True, outdir=outdir,
-                result, window_size=(3, 11), n_sig=4, verbose=True, outdir=outdir,
+                result, window_size=(3, 11), n_sig=9, verbose=True, outdir=outdir,
                 save_diagnostic=~erase_clean, save_results=True)
             #f.write('DQ={:} - After outlier flagging step \n'.format(result.dq[0,88,1361]))
 
@@ -313,6 +348,16 @@ def custom_loic(exposurelist, use_atoca=False, optimal_extraction=False,
                 verbose=False, save_results=~erase_clean, contamination_mask=contamination_mask,
                 trace_table_ref=ATOCAREF_DIR + SPECTRACE)
             #f.write('DQ={:} - After background subtraction step \n'.format(result.dq[0, 88, 1361]))
+        else:
+            # Run the step to make sure to generate _backsubstep.fits but really do nothing
+            # by using skip_background=True
+            result = commutils.background_subtraction(
+                result, use_whole_exposure=True, whole_exposure_stack=bgd_stack,
+                aphalfwidth=[40, 20, 20], outdir=outdir,
+                verbose=False, save_results=~erase_clean, contamination_mask=contamination_mask,
+                trace_table_ref=ATOCAREF_DIR + SPECTRACE,
+                skip_background=True)
+
 
     # Whole exposure deep stack of background subtracted TSO - this will be used for
     # bad pixels interpolation.
@@ -502,381 +547,14 @@ if __name__ == "__main__":
     #datasetname = '01201103'
     #datasetname = '01201104'
     #datasetname = '01201105'
+    #datasetname = 'thermalinstability' # aka K2-18b
+    #datasetname = 'L9859d'
+    #datasetname = 'WASP80b'
+    #datasetname = 'HATP18b'
+    #datasetname = 'LHS1140b'
+    #datasetname = 'LHS1140b_2'
 
-    #datasetname = 'thermalinstability'
-
-    # initialize for the default behavior
-    cont_params = None
-
-    # Wavelength calibration
-    if datasetname == 'wavecal':
-        if (hostname == 'iiwi.sf.umontreal.ca') or (hostname == 'iiwi.local') :
-            dir = '/Users/albert/NIRISS/Commissioning/analysis/SOSSwavecal/'
-            contmask = '/Users/albert/NIRISS/Commissioning/analysis/SOSSwavecal/mask_contamination.fits'
-        elif hostname == 'genesis':
-            dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/SOSSwavecal/'
-            contmask = None
-        else:
-            sys.exit()
-        datalist = ['jw01092010001_03101_00001_nis'] # SS256 CLEAR 20 ints
-
-    # Flux Calibration
-    if datasetname == 'SOSSfluxcal':
-        if (hostname == 'iiwi.sf.umontreal.ca') or (hostname == 'iiwi.local'):
-            dir = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/'
-            ATOCAREF_DIR = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/ref_files/'
-            #contmask = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/mask_contamination.fits'
-            contmask = None
-        elif hostname == 'genesis':
-            dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/SOSSfluxcal/'
-            contmask = None
-        else:
-            sys.exit()
-
-        datalist = [
-            'jw01091002001_03101_00001-seg001_nis',
-            'jw01091002001_03101_00001-seg002_nis',
-            'jw01091002001_03101_00001-seg003_nis',
-            'jw01091002001_03101_00001-seg004_nis',
-            'jw01091002001_03101_00001-seg005_nis'
-        ]
-        dataset_string = 'jw01091002001_03101_00001'
-
-    # Flux Calibration -- SUBSTRIP96 NG=3
-    if datasetname == 'SOSSfluxcalss96ng3':
-        if (hostname == 'iiwi.sf.umontreal.ca') or (hostname == 'iiwi.local'):
-            dir = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal_ss96_ng3/'
-            ATOCAREF_DIR = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/ref_files/'
-            #contmask = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/mask_contamination.fits'
-            contmask = None
-        elif hostname == 'genesis':
-            dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/SOSSfluxcal_ss96_ng3/'
-            contmask = None
-        else:
-            sys.exit()
-
-        datalist = ['jw01091001001_03102_00001_nis']
-
-        dataset_string = 'jw01091001001_03102_00001'
-
-
-    # HATP14b
-    if datasetname == 'HATP14b':
-        if (hostname == 'iiwi.sf.umontreal.ca') or (hostname == 'iiwi.local'):
-            dir = '/Users/albert/NIRISS/Commissioning/analysis/HATP14b/'
-            ATOCAREF_DIR = '/Users/albert/NIRISS/Commissioning/analysis/HATP14b/ref_files/'
-            contmask = None
-        elif hostname == 'genesis':
-            dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/HATP14b/'
-            contmask = None
-        else:
-            sys.exit()
-
-        datalist = [
-            'jw01541001001_04101_00001-seg001_nis',
-            'jw01541001001_04101_00001-seg002_nis',
-            'jw01541001001_04101_00001-seg003_nis',
-            'jw01541001001_04101_00001-seg004_nis'
-        ]
-        dataset_string = 'jw01541001001_04101_00001'
-
-    # T1
-    if datasetname == 'T1':
-        if (hostname == 'iiwi.sf.umontreal.ca') or (hostname == 'iiwi.local'):
-            dir = '/Users/albert/NIRISS/Commissioning/analysis/T1/'
-            ATOCAREF_DIR = '/Users/albert/NIRISS/Commissioning/analysis/T1/ref_files/'
-            contmask = '/Users/albert/NIRISS/Commissioning/analysis/T1/mask_contamination.fits'
-        elif hostname == 'genesis':
-            dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/T1/'
-            contmask = None
-        else:
-            sys.exit()
-
-        datalist = [
-            'jw02589001001_04101_00001-seg001_nis',
-            'jw02589001001_04101_00001-seg002_nis'
-        ]
-        dataset_string = 'jw02589001001_04101_00001'
-
-    # T1_2
-    if datasetname == 'T1_2':
-        if (hostname == 'iiwi.sf.umontreal.ca') or (hostname == 'iiwi.local'):
-            dir = '/Users/albert/NIRISS/Commissioning/analysis/T1_2/'
-            ATOCAREF_DIR = '/Users/albert/NIRISS/Commissioning/analysis/T1_2/ref_files/'
-            contmask = None
-        elif hostname == 'genesis':
-            dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/T1_2/'
-            contmask = None
-        else:
-            sys.exit()
-
-        datalist = [
-            'jw02589002001_04101_00001-seg001_nis',
-            'jw02589002001_04101_00001-seg002_nis'
-        ]
-        dataset_string = 'jw02589002001_04101_00001'
-
-    # T1_3
-    if datasetname == 'T1_3':
-        if (hostname == 'iiwi.sf.umontreal.ca') or (hostname == 'iiwi.local'):
-            dir = '/Users/albert/NIRISS/Commissioning/analysis/T1_3/'
-            ATOCAREF_DIR = '/Users/albert/NIRISS/Commissioning/analysis/T1_3/ref_files/'
-            contmask = None
-        elif hostname == 'genesis':
-            dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/T1_3/'
-            contmask = None
-        else:
-            sys.exit()
-
-        datalist = [
-            'jw01201101001_04101_00001-seg001_nis',
-            'jw01201101001_04101_00001-seg002_nis'
-        ]
-        dataset_string = 'jw01201101001_04101_00001'
-
-    # T1_4
-    if datasetname == 'T1_4':
-        if (hostname == 'iiwi.sf.umontreal.ca') or (hostname == 'iiwi.local'):
-            dir = '/Users/albert/NIRISS/Commissioning/analysis/T1_4/'
-            ATOCAREF_DIR = '/Users/albert/NIRISS/Commissioning/analysis/T1_3/ref_files/'
-            contmask = None
-        elif hostname == 'genesis':
-            dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/T1_2/'
-            contmask = None
-        else:
-            sys.exit()
-
-        datalist = [
-            'jw02589003001_04101_00001-seg001_nis',
-            'jw02589003001_04101_00001-seg002_nis',
-            'jw02589003001_04101_00001-seg003_nis'
-        ]
-        dataset_string = 'jw02589003001_04101_00001'
-
-    if datasetname == '01201101':
-        if (hostname == 'iiwi.sf.umontreal.ca') or (hostname == 'iiwi.local'):
-            dir = '/Volumes/T7/01201101/'
-            ATOCAREF_DIR = '/Users/albert/NIRISS/Commissioning/analysis/T1_3/ref_files/'
-            contmask = None
-        elif hostname == 'genesis':
-            #dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/T1_2/'
-            contmask = None
-        else:
-            sys.exit()
-
-        datalist = [
-            'jw01201101001_04101_00001-seg001_nis',
-            'jw01201101001_04101_00001-seg002_nis'
-        ]
-        dataset_string = 'jw01201101001_04101_00001'
-
-    if datasetname == '01201102':
-        if (hostname == 'iiwi.sf.umontreal.ca') or (hostname == 'iiwi.local'):
-            dir = '/Volumes/T7/01201102/'
-            ATOCAREF_DIR = '/Users/albert/NIRISS/Commissioning/analysis/T1_3/ref_files/'
-            contmask = None
-        elif hostname == 'genesis':
-            #dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/T1_2/'
-            contmask = None
-        else:
-            sys.exit()
-
-        datalist = [
-            'jw01201102001_04101_00001-seg001_nis',
-            'jw01201102001_04101_00001-seg002_nis'
-        ]
-        dataset_string = 'jw01201102001_04101_00001'
-
-    if datasetname == '01201103':
-        if (hostname == 'iiwi.sf.umontreal.ca') or (hostname == 'iiwi.local'):
-            dir = '/Volumes/T7/01201103/'
-            ATOCAREF_DIR = '/Users/albert/NIRISS/Commissioning/analysis/T1_3/ref_files/'
-            contmask = None
-        elif hostname == 'genesis':
-            #dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/T1_2/'
-            contmask = None
-        else:
-            sys.exit()
-
-        datalist = [
-            'jw01201103001_04101_00001-seg001_nis',
-            'jw01201103001_04101_00001-seg002_nis'
-        ]
-        dataset_string = 'jw01201103001_04101_00001'
-        # contamination
-        cont_params = [[0,766,130],[0,863,149],[0,1244,214],[0,1288,185],
-                       [0,1483,82],[0,1415,27],[0,1760,94],[0,1024,167],
-                       [0,1128,148],[0,972,29]]
-
-
-    if datasetname == '01201104':
-        if (hostname == 'iiwi.sf.umontreal.ca') or (hostname == 'iiwi.local'):
-            dir = '/Volumes/T7/01201104/'
-            ATOCAREF_DIR = '/Users/albert/NIRISS/Commissioning/analysis/T1_3/ref_files/'
-            contmask = None
-        elif hostname == 'genesis':
-            #dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/T1_2/'
-            contmask = None
-        else:
-            sys.exit()
-
-        datalist = [
-            'jw01201104001_04101_00001-seg001_nis',
-            'jw01201104001_04101_00001-seg002_nis'
-        ]
-        dataset_string = 'jw01201104001_04101_00001'
-
-    if datasetname == '01201105':
-        if (hostname == 'iiwi.sf.umontreal.ca') or (hostname == 'iiwi.local'):
-            dir = '/Volumes/T7/01201105/'
-            ATOCAREF_DIR = '/Users/albert/NIRISS/Commissioning/analysis/T1_3/ref_files/'
-            contmask = None
-        elif hostname == 'genesis':
-            #dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/T1_2/'
-            contmask = None
-        else:
-            sys.exit()
-
-        datalist = [
-            'jw01201105001_04101_00001-seg001_nis',
-            'jw01201105001_04101_00001-seg002_nis'
-        ]
-        dataset_string = 'jw01201105001_04101_00001'
-
-    # LTT9779 - phase curve
-    if datasetname == 'LTT9779':
-        if (hostname == 'iiwi.sf.umontreal.ca') or (hostname == 'iiwi.local'):
-            dir = '/Users/albert/NIRISS/Commissioning/analysis/LTT9779/'
-            ATOCAREF_DIR = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/ref_files/'
-            contmask = None
-        elif hostname == 'genesis':
-            dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/LTT9779//'
-            contmask = None
-        else:
-            sys.exit()
-
-        datalist = [
-            'jw01201002001_04101_00001-seg001_nis',
-            'jw01201002001_04101_00001-seg002_nis',
-            'jw01201002001_04101_00001-seg003_nis',
-            'jw01201002001_04101_00001-seg004_nis',
-            'jw01201002001_04101_00001-seg005_nis',
-            'jw01201002001_04101_00001-seg006_nis',
-            'jw01201002001_04101_00001-seg007_nis',
-            'jw01201002001_04101_00001-seg008_nis',
-            'jw01201002001_04101_00001-seg009_nis',
-            'jw01201002001_04101_00001-seg010_nis',
-            'jw01201002001_04101_00001-seg011_nis',
-            'jw01201002001_04101_00001-seg012_nis',
-            'jw01201002001_04101_00001-seg013_nis',
-            'jw01201002001_04101_00001-seg014_nis',
-            'jw01201002001_04101_00001-seg015_nis',
-            'jw01201002001_04101_00001-seg016_nis',
-            'jw01201002001_04101_00001-seg017_nis',
-            'jw01201002001_04101_00001-seg018_nis',
-            'jw01201002001_04101_00001-seg019_nis',
-            'jw01201002001_04101_00001-seg020_nis',
-            'jw01201002001_04101_00001-seg021_nis',
-            'jw01201002001_04101_00001-seg022_nis',
-            'jw01201002001_04101_00001-seg023_nis',
-            'jw01201002001_04101_00001-seg024_nis',
-            'jw01201002001_04101_00001-seg025_nis',
-            'jw01201002001_04101_00001-seg026_nis'
-        ]
-        dataset_string = 'jw01201002001_04101_00001'
-
-    # dark
-    if datasetname == 'darks':
-        if (hostname == 'iiwi.sf.umontreal.ca') or (hostname == 'iiwi.local'):
-            dir = '/Users/albert/NIRISS/Commissioning/analysis/darks/'
-            ATOCAREF_DIR = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/ref_files/'
-            contmask = None
-        elif hostname == 'genesis':
-            dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/darks/'
-            contmask = None
-        else:
-            sys.exit()
-
-        datalist = ['dark-seg001_nis']
-        dataset_string = 'dark'
-
-    # F277W
-    if datasetname == 'f277w':
-        if (hostname == 'iiwi.sf.umontreal.ca') or (hostname == 'iiwi.local'):
-            dir = '/Users/albert/NIRISS/Commissioning/analysis/f277w/'
-            ATOCAREF_DIR = '/Users/albert/NIRISS/Commissioning/analysis/HATP14b/ref_files/'
-            contmask = None
-        elif hostname == 'genesis':
-            dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/darks/'
-            contmask = None
-        else:
-            sys.exit()
-
-        datalist = ['jw01541001001_04102_00001-seg001_nis']
-        dataset_string = 'jw01541001001_04102_00001'
-
-    # WASP52b
-    if datasetname == 'WASP52b':
-        if (hostname == 'iiwi.sf.umontreal.ca') or (hostname == 'iiwi.local'):
-            ATOCAREF_DIR = '/Users/albert/NIRISS/Commissioning/analysis/T1_3/ref_files/'
-            dir = '/Volumes/T7/WASP52b/'
-            contmask = None
-        elif hostname == 'genesis':
-            dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/T1_2/'
-            contmask = None
-        else:
-            sys.exit()
-
-        datalist = [
-            'jw01201501001_04101_00001-seg001_nis',
-            'jw01201501001_04101_00001-seg002_nis'
-        ]
-        dataset_string = 'jw01201501001_04101_00001'
-
-    # WASP107b
-    if datasetname == 'WASP107b':
-        if (hostname == 'iiwi.sf.umontreal.ca') or (hostname == 'iiwi.local'):
-            ATOCAREF_DIR = '/Users/albert/NIRISS/Commissioning/analysis/T1_3/ref_files/'
-            dir = '/Volumes/T7/WASP107b/'
-            contmask = None
-        elif hostname == 'genesis':
-            dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/T1_2/'
-            contmask = None
-        else:
-            sys.exit()
-
-        datalist = [
-            'jw01201008001_04101_00001-seg001_nis',
-            'jw01201008001_04101_00001-seg002_nis',
-            'jw01201008001_04101_00001-seg003_nis',
-            'jw01201008001_04101_00001-seg004_nis'
-        ]
-        dataset_string = 'jw01201008001_04101_00001'
-
-    # K2-18b Thermal instability analysis
-    if datasetname == 'thermalinstability':
-        if (hostname == 'iiwi.sf.umontreal.ca') or (hostname == 'iiwi.local'):
-            ATOCAREF_DIR = '/Users/albert/NIRISS/Commissioning/analysis/T1b_1/ref_files/'
-            dir = '/Volumes/T7/thermalinstability/'
-            contmask = None
-        elif hostname == 'genesis':
-            dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/T1_2/'
-            contmask = None
-        else:
-            sys.exit()
-
-        datalist = [
-            'jw02722003001_04101_00001-seg001_nis',
-            'jw02722003001_04101_00001-seg002_nis',
-            'jw02722003001_04101_00001-seg003_nis',
-            'jw02722003001_04101_00001-seg004_nis'
-        ]
-        dataset_string = 'jw02722003001_04101_00001'
-
-    '''
-    RUN THE PIPELINE--------------------------------------------------------------------
-    '''
-    custom_or_not = '_rateints'
+    #custom_or_not = '_rateints'
     satmap = None  # 35000 # None
     use_cds = False
     extract_only = False
@@ -899,7 +577,8 @@ if __name__ == "__main__":
     superbiasstep = False
     darkstep = True
     nonlinearitystep = True
-    jumpstep = True
+    #jumpstep = True
+    jumpstep = False
     use_cds = False
     rampfitstep = True
     gainstep = True
@@ -907,7 +586,7 @@ if __name__ == "__main__":
     flatfieldstep = True
     outlierstep = True
     stackbackgroundstep = True
-    backgroundstep = True
+    backgroundstep = False # Hard code temporarily
     badpixinterpolationstep = True
     makespectraceref = True
     removenanstep = True
@@ -992,6 +671,480 @@ if __name__ == "__main__":
         outlierstep = False
         stackbackgroundstep = False
         backgroundstep = False
+
+
+
+
+    # initialize for the default behavior
+    cont_params = None
+
+    # Wavelength calibration
+    if datasetname == 'wavecal':
+        if (hostname == 'havelock.sf.umontreal.ca') or (hostname == 'havelock.local') :
+            dir = '/Users/albert/NIRISS/Commissioning/analysis/SOSSwavecal/'
+            contmask = '/Users/albert/NIRISS/Commissioning/analysis/SOSSwavecal/mask_contamination.fits'
+        elif hostname == 'genesis':
+            dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/SOSSwavecal/'
+            contmask = None
+        else:
+            sys.exit()
+        datalist = ['jw01092010001_03101_00001_nis'] # SS256 CLEAR 20 ints
+
+    # Flux Calibration
+    if datasetname == 'SOSSfluxcal':
+        if (hostname == 'havelock.sf.umontreal.ca') or (hostname == 'havelock.local'):
+            dir = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/'
+            ATOCAREF_DIR = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/ref_files/'
+            #contmask = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/mask_contamination.fits'
+            contmask = None
+        elif hostname == 'genesis':
+            dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/SOSSfluxcal/'
+            contmask = None
+        else:
+            sys.exit()
+
+        datalist = [
+            'jw01091002001_03101_00001-seg001_nis',
+            'jw01091002001_03101_00001-seg002_nis',
+            'jw01091002001_03101_00001-seg003_nis',
+            'jw01091002001_03101_00001-seg004_nis',
+            'jw01091002001_03101_00001-seg005_nis'
+        ]
+        dataset_string = 'jw01091002001_03101_00001'
+
+    # Flux Calibration -- SUBSTRIP96 NG=3
+    if datasetname == 'SOSSfluxcalss96ng3':
+        if (hostname == 'havelock.sf.umontreal.ca') or (hostname == 'havelock.local'):
+            dir = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal_ss96_ng3/'
+            ATOCAREF_DIR = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/ref_files/'
+            #contmask = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/mask_contamination.fits'
+            contmask = None
+        elif hostname == 'genesis':
+            dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/SOSSfluxcal_ss96_ng3/'
+            contmask = None
+        else:
+            sys.exit()
+
+        datalist = ['jw01091001001_03102_00001_nis']
+
+        dataset_string = 'jw01091001001_03102_00001'
+
+
+    # HATP14b
+    if datasetname == 'HATP14b':
+        if (hostname == 'havelock.sf.umontreal.ca') or (hostname == 'havelock.local'):
+            dir = '/Users/albert/NIRISS/Commissioning/analysis/HATP14b/'
+            ATOCAREF_DIR = '/Users/albert/NIRISS/Commissioning/analysis/HATP14b/ref_files/'
+            contmask = None
+        elif hostname == 'genesis':
+            dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/HATP14b/'
+            contmask = None
+        else:
+            sys.exit()
+
+        datalist = [
+            'jw01541001001_04101_00001-seg001_nis',
+            'jw01541001001_04101_00001-seg002_nis',
+            'jw01541001001_04101_00001-seg003_nis',
+            'jw01541001001_04101_00001-seg004_nis'
+        ]
+        dataset_string = 'jw01541001001_04101_00001'
+
+    # T1
+    if datasetname == 'T1':
+        if (hostname == 'havelock.sf.umontreal.ca') or (hostname == 'havelock.local'):
+            dir = '/Users/albert/NIRISS/Commissioning/analysis/T1/'
+            ATOCAREF_DIR = '/Users/albert/NIRISS/Commissioning/analysis/T1/ref_files/'
+            contmask = '/Users/albert/NIRISS/Commissioning/analysis/T1/mask_contamination.fits'
+        elif hostname == 'genesis':
+            dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/T1/'
+            contmask = None
+        else:
+            sys.exit()
+
+        datalist = [
+            'jw02589001001_04101_00001-seg001_nis',
+            'jw02589001001_04101_00001-seg002_nis'
+        ]
+        dataset_string = 'jw02589001001_04101_00001'
+
+    # T1_2
+    if datasetname == 'T1_2':
+        if (hostname == 'havelock.sf.umontreal.ca') or (hostname == 'havelock.local'):
+            dir = '/Users/albert/NIRISS/Commissioning/analysis/T1_2/'
+            ATOCAREF_DIR = '/Users/albert/NIRISS/Commissioning/analysis/T1_2/ref_files/'
+            contmask = None
+        elif hostname == 'genesis':
+            dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/T1_2/'
+            contmask = None
+        else:
+            sys.exit()
+
+        datalist = [
+            'jw02589002001_04101_00001-seg001_nis',
+            'jw02589002001_04101_00001-seg002_nis'
+        ]
+        dataset_string = 'jw02589002001_04101_00001'
+
+    # T1_3
+    if datasetname == 'T1_3':
+        if (hostname == 'havelock.sf.umontreal.ca') or (hostname == 'havelock.local'):
+            dir = '/Users/albert/NIRISS/Commissioning/analysis/T1_3/'
+            ATOCAREF_DIR = '/Users/albert/NIRISS/Commissioning/analysis/T1_3/ref_files/'
+            contmask = None
+        elif hostname == 'genesis':
+            dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/T1_3/'
+            contmask = None
+        else:
+            sys.exit()
+
+        datalist = [
+            'jw01201101001_04101_00001-seg001_nis',
+            'jw01201101001_04101_00001-seg002_nis'
+        ]
+        dataset_string = 'jw01201101001_04101_00001'
+
+    # T1_4
+    if datasetname == 'T1_4':
+        if (hostname == 'havelock.sf.umontreal.ca') or (hostname == 'havelock.local'):
+            dir = '/Users/albert/NIRISS/Commissioning/analysis/T1_4/'
+            ATOCAREF_DIR = '/Users/albert/NIRISS/Commissioning/analysis/T1_3/ref_files/'
+            contmask = None
+        elif hostname == 'genesis':
+            dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/T1_2/'
+            contmask = None
+        else:
+            sys.exit()
+
+        datalist = [
+            'jw02589003001_04101_00001-seg001_nis',
+            'jw02589003001_04101_00001-seg002_nis',
+            'jw02589003001_04101_00001-seg003_nis'
+        ]
+        dataset_string = 'jw02589003001_04101_00001'
+
+    if datasetname == '01201101':
+        if (hostname == 'havelock.sf.umontreal.ca') or (hostname == 'havelock.local'):
+            dir = '/Volumes/T7/01201101/'
+            ATOCAREF_DIR = '/Users/albert/NIRISS/Commissioning/analysis/T1_3/ref_files/'
+            contmask = None
+        elif hostname == 'genesis':
+            #dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/T1_2/'
+            contmask = None
+        else:
+            sys.exit()
+
+        datalist = [
+            'jw01201101001_04101_00001-seg001_nis',
+            'jw01201101001_04101_00001-seg002_nis'
+        ]
+        dataset_string = 'jw01201101001_04101_00001'
+
+    if datasetname == '01201102':
+        if (hostname == 'havelock.sf.umontreal.ca') or (hostname == 'havelock.local'):
+            dir = '/Volumes/T7/01201102/'
+            ATOCAREF_DIR = '/Users/albert/NIRISS/Commissioning/analysis/T1_3/ref_files/'
+            contmask = None
+        elif hostname == 'genesis':
+            #dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/T1_2/'
+            contmask = None
+        else:
+            sys.exit()
+
+        datalist = [
+            'jw01201102001_04101_00001-seg001_nis',
+            'jw01201102001_04101_00001-seg002_nis'
+        ]
+        dataset_string = 'jw01201102001_04101_00001'
+
+    if datasetname == '01201103':
+        if (hostname == 'havelock.sf.umontreal.ca') or (hostname == 'havelock.local'):
+            dir = '/Volumes/T7/01201103/'
+            ATOCAREF_DIR = '/Users/albert/NIRISS/Commissioning/analysis/T1_3/ref_files/'
+            contmask = None
+        elif hostname == 'genesis':
+            #dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/T1_2/'
+            contmask = None
+        else:
+            sys.exit()
+
+        datalist = [
+            'jw01201103001_04101_00001-seg001_nis',
+            'jw01201103001_04101_00001-seg002_nis'
+        ]
+        dataset_string = 'jw01201103001_04101_00001'
+        # contamination
+        cont_params = [[0,766,130],[0,863,149],[0,1244,214],[0,1288,185],
+                       [0,1483,82],[0,1415,27],[0,1760,94],[0,1024,167],
+                       [0,1128,148],[0,972,29]]
+
+
+    if datasetname == '01201104':
+        if (hostname == 'havelock.sf.umontreal.ca') or (hostname == 'havelock.local'):
+            dir = '/Volumes/T7/01201104/'
+            ATOCAREF_DIR = '/Users/albert/NIRISS/Commissioning/analysis/T1_3/ref_files/'
+            contmask = None
+        elif hostname == 'genesis':
+            #dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/T1_2/'
+            contmask = None
+        else:
+            sys.exit()
+
+        datalist = [
+            'jw01201104001_04101_00001-seg001_nis',
+            'jw01201104001_04101_00001-seg002_nis'
+        ]
+        dataset_string = 'jw01201104001_04101_00001'
+
+    if datasetname == '01201105':
+        if (hostname == 'havelock.sf.umontreal.ca') or (hostname == 'havelock.local'):
+            dir = '/Volumes/T7/01201105/'
+            ATOCAREF_DIR = '/Users/albert/NIRISS/Commissioning/analysis/T1_3/ref_files/'
+            contmask = None
+        elif hostname == 'genesis':
+            #dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/T1_2/'
+            contmask = None
+        else:
+            sys.exit()
+
+        datalist = [
+            'jw01201105001_04101_00001-seg001_nis',
+            'jw01201105001_04101_00001-seg002_nis'
+        ]
+        dataset_string = 'jw01201105001_04101_00001'
+
+    # LTT9779 - phase curve
+    if datasetname == 'LTT9779':
+        if (hostname == 'havelock.sf.umontreal.ca') or (hostname == 'havelock.local'):
+            dir = '/Users/albert/NIRISS/Commissioning/analysis/LTT9779/'
+            ATOCAREF_DIR = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/ref_files/'
+            contmask = None
+        elif hostname == 'genesis':
+            dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/LTT9779//'
+            contmask = None
+        else:
+            sys.exit()
+
+        datalist = [
+            'jw01201002001_04101_00001-seg001_nis',
+            'jw01201002001_04101_00001-seg002_nis',
+            'jw01201002001_04101_00001-seg003_nis',
+            'jw01201002001_04101_00001-seg004_nis',
+            'jw01201002001_04101_00001-seg005_nis',
+            'jw01201002001_04101_00001-seg006_nis',
+            'jw01201002001_04101_00001-seg007_nis',
+            'jw01201002001_04101_00001-seg008_nis',
+            'jw01201002001_04101_00001-seg009_nis',
+            'jw01201002001_04101_00001-seg010_nis',
+            'jw01201002001_04101_00001-seg011_nis',
+            'jw01201002001_04101_00001-seg012_nis',
+            'jw01201002001_04101_00001-seg013_nis',
+            'jw01201002001_04101_00001-seg014_nis',
+            'jw01201002001_04101_00001-seg015_nis',
+            'jw01201002001_04101_00001-seg016_nis',
+            'jw01201002001_04101_00001-seg017_nis',
+            'jw01201002001_04101_00001-seg018_nis',
+            'jw01201002001_04101_00001-seg019_nis',
+            'jw01201002001_04101_00001-seg020_nis',
+            'jw01201002001_04101_00001-seg021_nis',
+            'jw01201002001_04101_00001-seg022_nis',
+            'jw01201002001_04101_00001-seg023_nis',
+            'jw01201002001_04101_00001-seg024_nis',
+            'jw01201002001_04101_00001-seg025_nis',
+            'jw01201002001_04101_00001-seg026_nis'
+        ]
+        dataset_string = 'jw01201002001_04101_00001'
+
+    # dark
+    if datasetname == 'darks':
+        if (hostname == 'havelock.sf.umontreal.ca') or (hostname == 'havelock.local'):
+            dir = '/Users/albert/NIRISS/Commissioning/analysis/darks/'
+            ATOCAREF_DIR = '/Users/albert/NIRISS/Commissioning/analysis/SOSSfluxcal/ref_files/'
+            contmask = None
+        elif hostname == 'genesis':
+            dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/darks/'
+            contmask = None
+        else:
+            sys.exit()
+
+        datalist = ['dark-seg001_nis']
+        dataset_string = 'dark'
+
+    # F277W
+    if datasetname == 'f277w':
+        if (hostname == 'havelock.sf.umontreal.ca') or (hostname == 'havelock.local'):
+            dir = '/Users/albert/NIRISS/Commissioning/analysis/f277w/'
+            ATOCAREF_DIR = '/Users/albert/NIRISS/Commissioning/analysis/HATP14b/ref_files/'
+            contmask = None
+        elif hostname == 'genesis':
+            dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/darks/'
+            contmask = None
+        else:
+            sys.exit()
+
+        datalist = ['jw01541001001_04102_00001-seg001_nis']
+        dataset_string = 'jw01541001001_04102_00001'
+
+    # WASP52b
+    if datasetname == 'WASP52b':
+        if (hostname == 'havelock.sf.umontreal.ca') or (hostname == 'havelock.local'):
+            ATOCAREF_DIR = '/Users/albert/NIRISS/Commissioning/analysis/T1_3/ref_files/'
+            dir = '/Volumes/T7/WASP52b/'
+            contmask = None
+        elif hostname == 'genesis':
+            dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/T1_2/'
+            contmask = None
+        else:
+            sys.exit()
+
+        datalist = [
+            'jw01201501001_04101_00001-seg001_nis',
+            'jw01201501001_04101_00001-seg002_nis'
+        ]
+        dataset_string = 'jw01201501001_04101_00001'
+
+    # WASP107b
+    if datasetname == 'WASP107b':
+        if (hostname == 'havelock.sf.umontreal.ca') or (hostname == 'havelock.local'):
+            ATOCAREF_DIR = '/Users/albert/NIRISS/Commissioning/analysis/T1_3/ref_files/'
+            dir = '/Volumes/T7/WASP107b/'
+            dir = '/Users/albert/NIRISS/Commissioning/analysis/WASP107b/'
+            contmask = None
+        elif hostname == 'genesis':
+            dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/T1_2/'
+            contmask = None
+        else:
+            sys.exit()
+
+        datalist = [
+            'jw01201008001_04101_00001-seg001_nis',
+            'jw01201008001_04101_00001-seg002_nis',
+            'jw01201008001_04101_00001-seg003_nis',
+            'jw01201008001_04101_00001-seg004_nis'
+        ]
+        dataset_string = 'jw01201008001_04101_00001'
+
+    # K2-18b Thermal instability analysis
+    if datasetname == 'thermalinstability':
+        if (hostname == 'havelock.sf.umontreal.ca') or (hostname == 'havelock.local'):
+            ATOCAREF_DIR = '/Users/albert/NIRISS/Commissioning/analysis/T1b_1/ref_files/'
+            dir = '/Volumes/T7/thermalinstability/'
+            contmask = None
+        elif hostname == 'genesis':
+            dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/T1_2/'
+            contmask = None
+        else:
+            sys.exit()
+
+        datalist = [
+            'jw02722003001_04101_00001-seg001_nis',
+            'jw02722003001_04101_00001-seg002_nis',
+            'jw02722003001_04101_00001-seg003_nis',
+            'jw02722003001_04101_00001-seg004_nis'
+        ]
+        dataset_string = 'jw02722003001_04101_00001'
+
+    # L98-59d
+    if datasetname == 'L9859d':
+        if (hostname == 'havelock.sf.umontreal.ca') or (hostname == 'havelock.local'):
+            ATOCAREF_DIR = '/Users/albert/NIRISS/Commissioning/analysis/T1b_1/ref_files/'
+            dir = '/Volumes/T7/L9859d/'
+            contmask = None
+        elif hostname == 'genesis':
+            dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/T1_2/'
+            contmask = None
+        else:
+            sys.exit()
+
+        datalist = [
+            'jw01201311001_04101_00001-seg001_nis']
+        dataset_string = 'jw01201311001_04101_00001'
+
+    # WASP80b
+    if datasetname == 'WASP80b':
+        if (hostname == 'havelock.sf.umontreal.ca') or (hostname == 'havelock.local'):
+            ATOCAREF_DIR = '/Users/albert/NIRISS/Commissioning/analysis/T1_3/ref_files/'
+            dir = '/Volumes/T7/WASP80b/'
+            contmask = None
+        elif hostname == 'genesis':
+            dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/T1_2/'
+            contmask = None
+        else:
+            sys.exit()
+
+        datalist = [
+            'jw01201007001_04101_00001-seg001_nis',
+            'jw01201007001_04101_00001-seg002_nis',
+            'jw01201007001_04101_00001-seg003_nis',
+            'jw01201007001_04101_00001-seg004_nis'
+        ]
+        dataset_string = 'jw01201007001_04101_00001'
+        # contamination
+        cont_params = [[0,1730,133],[0,1830,183],[0,1472,135],[0,1333,184],[0,1153,70],
+                       [1,40,178]]
+
+    if datasetname == 'HATP18b':
+        if (hostname == 'havelock.sf.umontreal.ca') or (hostname == 'havelock.local'):
+            ATOCAREF_DIR = '/Users/albert/NIRISS/Commissioning/analysis/T1_3/ref_files/'
+            dir = '/Volumes/T7/HATP18b/'
+            contmask = None
+        elif hostname == 'genesis':
+            dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/T1_2/'
+            contmask = None
+        else:
+            sys.exit()
+
+        datalist = [
+            'jw02734001001_04101_00001-seg001_nis',
+            'jw02734001001_04101_00001-seg002_nis',
+            'jw02734001001_04101_00001-seg003_nis',
+            'jw02734001001_04101_00001-seg004_nis'
+        ]
+        dataset_string = 'jw02734001001_04101_00001'
+
+    if datasetname == 'LHS1140b':
+        if (hostname == 'havelock.sf.umontreal.ca') or (hostname == 'havelock.local'):
+            ATOCAREF_DIR = '/Users/albert/NIRISS/Commissioning/analysis/T1_3/ref_files/'
+            dir = '/Volumes/T7/LHS1140b/'
+            contmask = None
+        elif hostname == 'genesis':
+            dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/T1_2/'
+            contmask = None
+        else:
+            sys.exit()
+
+        datalist = [
+            'jw06543001001_04101_00001-seg001_nis',
+            'jw06543001001_04101_00001-seg002_nis',
+            'jw06543001001_04101_00001-seg003_nis',
+            'jw06543001001_04101_00001-seg004_nis',
+            'jw06543001001_04101_00001-seg005_nis'
+        ]
+        dataset_string = 'jw06543001001_04101_00001'
+
+    if datasetname == 'LHS1140b_2':
+        if (hostname == 'havelock.sf.umontreal.ca') or (hostname == 'havelock.local'):
+            ATOCAREF_DIR = '/Users/albert/NIRISS/Commissioning/analysis/T1_3/ref_files/'
+            dir = '/Volumes/T7/LHS1140b_2/'
+            contmask = None
+        elif hostname == 'genesis':
+            dir = '/genesis/jwst/userland-soss/loic_review/Commissioning/T1_2/'
+            contmask = None
+        else:
+            sys.exit()
+
+        datalist = [
+            'jw06543002001_04101_00001-seg001_nis',
+            'jw06543002001_04101_00001-seg002_nis',
+            'jw06543002001_04101_00001-seg003_nis',
+            'jw06543002001_04101_00001-seg004_nis',
+            'jw06543002001_04101_00001-seg005_nis'
+        ]
+        dataset_string = 'jw06543002001_04101_00001'
+
+    '''
+    RUN THE PIPELINE--------------------------------------------------------------------
+    '''
 
     if postproc_only == False:
         # Run the level 1 and 2 custom pipeline

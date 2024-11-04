@@ -40,6 +40,10 @@ from jwst.datamodels import dqflags
 
 from scipy.optimize import least_squares
 
+from scipy.optimize import curve_fit
+
+import batman
+
 
 def mediandev(x, axis=None):
     med = np.nanmedian(x, axis=axis)
@@ -597,6 +601,15 @@ def add_manual_badpix(datamodel):
     return datamodel
 
 
+def soss_interp_badpix_sliding(modelin, outdir, save_results=False,
+                       use_whole_stack=False, whole_exposure_stack=None,
+                       whole_exposure_stackrms=None):
+    # A sliding median requires to have the whole TSO in memory. Do it piece by piece like the deep stack
+    # see: stack_ramp_multisegments()
+
+    return
+
+
 def soss_interp_badpix(modelin, outdir, save_results=False,
                        use_whole_stack=False, whole_exposure_stack=None,
                        whole_exposure_stackrms=None):
@@ -646,6 +659,8 @@ def soss_interp_badpix(modelin, outdir, save_results=False,
         modelin.err[i][ind] = np.copy(cleanstack_rms[ind])
         # Set the DQ map to good for all pixels except ref pixels
         modelin.dq[i][notrefpix] = 0
+        # Set the ref pixels to NaNs
+        modelin.data[i][~notrefpix] = np.nan
 
     basename = os.path.splitext(modelin.meta.filename)[0]
     basename = basename.split('_nis')[0] + '_nis'
@@ -694,10 +709,36 @@ def remove_nans(datamodel, outdir=None, save_results=False):
     return modelout
 
 
+def guess_mask_value(mask, goodvalue=0, maskedvalue=1):
+    # Given that an image representing a mask can use either Nans, 1 or 0 as the
+    # arbitrary convention for bad pixels or mask, guess what that convention is.
+
+    count_zeros = np.shape(np.argwhere(mask == 0))[0]
+    count_ones = np.shape(np.argwhere(mask == 1))[0]
+    count_nans = np.shape(np.argwhere(np.isfinite(mask) == False))[0]
+    counts = [count_zeros, count_ones, count_nans]
+    masktype = [0, 1, np.nan]
+    indsorted = np.argsort(counts)
+    # good pixels are the type with highest count
+    # masked pixels are the type with second highest count
+    MASKED_PIXELS_VALUE = masktype[indsorted[1]]
+    UNMASKED_PIXELS_VALUE = masktype[indsorted[2]]
+
+    print('Guessing what convention for the mask value:')
+    print('Masked pixels value:', MASKED_PIXELS_VALUE)
+    print('Unmasked pixels value:', UNMASKED_PIXELS_VALUE)
+
+    mask_newconvention = np.copy(mask)
+    #TODO: HERE HERE HERE
+    #mask_newconvention[]
+
+
+    return MASKED_PIXELS_VALUE, UNMASKED_PIXELS_VALUE
+
 
 def background_subtraction(datamodel, aphalfwidth=[40,30,30], outdir=None, verbose=False,
                            contamination_mask=None, trace_table_ref=None, save_results=False,
-                           whole_exposure_stack=None, use_whole_exposure=False):
+                           whole_exposure_stack=None, use_whole_exposure=False, skip_background=False):
 
     basename = os.path.splitext(datamodel.meta.filename)[0]
     basename = basename.split('_nis')[0] + '_nis'
@@ -728,6 +769,7 @@ def background_subtraction(datamodel, aphalfwidth=[40,30,30], outdir=None, verbo
         if contamination_mask is not None:
             print('Masking the contaminating traces from field stars (orders 0 to 2) using the passed mask.')
             contmask = fits.getdata(contamination_mask)
+            contmask_0good_1bad, MASK_VALUE, GOOD_VALUE = guess_mask_value(contmask)
             contmask = np.where(contmask >= 1, 1, 0)
             # add the contamintion masked pixels
             contpix = contmask == 1
@@ -748,8 +790,8 @@ def background_subtraction(datamodel, aphalfwidth=[40,30,30], outdir=None, verbo
         hdu.writeto(cntrdir + 'background_mask.fits', overwrite=True)
 
         # Construct the background fit
-        background_model = construct_background(maskeddata, tilt=-1.8, isafitsfile=False, metric='10pct',
-                                                savetest=True, outdir=cntrdir)
+        background_model = construct_background(maskeddata, tilt=-1.76, isafitsfile=False, metric='10pct',
+                                                savetest=True, outdir=cntrdir, skip_background=skip_background)
 
     else:
         # Models the background and applies its subtraction on a segment by segment basis
@@ -786,8 +828,8 @@ def background_subtraction(datamodel, aphalfwidth=[40,30,30], outdir=None, verbo
         hdu.writeto(cntrdir+'background_mask.fits', overwrite=True)
 
         # Construct the background fit
-        background_model = construct_background(maskeddata, tilt=-1.8, isafitsfile=False, metric='10pct',
-                                   savetest=True, outdir=cntrdir)
+        background_model = construct_background(maskeddata, tilt=-1.76, isafitsfile=False, metric='10pct',
+                                   savetest=True, outdir=cntrdir, skip_background=skip_background)
 
 
     # Perform the subtraction on the output data model
@@ -850,7 +892,7 @@ def background_subtraction_v2(datamodel, aphalfwidth=[40,30,30], outdir=None, ve
     hdu.writeto(cntrdir+'background_mask.fits', overwrite=True)
 
     # Construct the background fit
-    background_model = construct_background(maskeddata, tilt=-1.8, isafitsfile=False, metric='10pct',
+    background_model = construct_background(maskeddata, tilt=-1.76, isafitsfile=False, metric='10pct',
                                savetest=True, outdir=cntrdir)
 
 
@@ -1072,7 +1114,10 @@ def plot_timeseries(spectrum_file, outdir=None, norder=3):
     # spectra are stored at indice 1 (order 1), then 2 (order2) then 3 (order 3) then 4 (order 1, 2nd time step), ...
     # TODO Manage nint and norder better
     #nint = multispec.meta.exposure.nints
-    norder = 3
+    if multispec.meta.subarray.name == 'SUBSTRIP96':
+        norder = 2  # extract1d extracts both orders, for some reason...
+    else:
+        norder = 3
     nint = int(np.shape(multispec.spec)[0] / norder)
     #norder = int(np.shape(multispec.spec)[0] / nint)
 
@@ -1090,11 +1135,73 @@ def plot_timeseries(spectrum_file, outdir=None, norder=3):
             flux[i, m, :] = multispec.spec[nnn].spec_table['flux']
             fluxerr[i, m, :] = multispec.spec[nnn].spec_table['flux_error']
 
+    # Normalize the flux by fitting a transit and recovering the baseline
+    pguess = np.linspace(1,30,31) # Guess for the period (in days)
+    success = False
+    for period in pguess:
+        if not success:
+            try:
+                baseline_ind1, baseline_ind2 = fit_transit_get_baseline(flux, period, outdir+outbasename+'_whitelight_transit_fit.png')
+            except:
+                print('Failed transit fit with guess period = {:} days...'.format(period))
+                continue
+            success = True
+    if success:
+        baseline = np.concatenate((baseline_ind1, baseline_ind2))
+    else:
+        print('Could not fit a transit light curve automatically.')
+        print('Pick minimum integration in light curve and assume')
+        print('that the transit lasts 1/3 of the total time.')
+        tso = np.nansum(flux[:, 0, :], axis=-1)  # of order 1 only
+        indmin = np.where(tso == np.nanmin(tso))[0][0]
+        print('indmin = ', indmin)
+        w = nint // 6
+        ind1 = np.max([indmin - w, 0])
+        ind2 = np.min([indmin + w, nint])
+        baseline_ind1 = np.arange(0, ind1)
+        print(baseline_ind1)
+        baseline_ind2 = np.arange(ind2, nint)
+        print(baseline_ind2)
+        baseline = np.concatenate((baseline_ind1, baseline_ind2))
+
+    if False:
+        #else:
+        print('Could not fit a transit light curve automatically.')
+        print('Revert to using th 75th percentile for baseline height.')
+        print('Actually aim for 30th pct to keep only transit pts.')
+        tso = np.nansum(flux[:,0,:], axis=-1) # of order 1 only
+        #plt.plot(tso)
+        threshold = np.nanpercentile(tso, 35)  # this is a very good estimate
+        print('threshold =', threshold)
+        #plt.hlines(threshold,0,nint, color='red',label='75th pct')
+        #plt.hlines(np.nanpercentile(tso, 90),0,nint, color='blue',label='90th pct')
+        #plt.hlines(np.nanpercentile(tso, 50),0,nint, color='brown',label='50th pct')
+        #plt.hlines(np.nanpercentile(tso, 35),0,nint, color='cyan',label='35th pct')
+        #plt.legend()
+        #plt.show()
+        #plt.close()
+        intransit_bolean = tso < threshold
+        intransit = np.arange(nint)
+        intransit = intransit[intransit_bolean]
+
+        print(intransit)
+        baseline_ind1 = np.arange(0, min(intransit))
+        print(baseline_ind1)
+        baseline_ind2 = np.arange(max(intransit), nint)
+        print(baseline_ind2)
+        baseline = np.concatenate((baseline_ind1, baseline_ind2))
+
     # Normalize each wavelength
-    fluxnorm = flux / np.nanmedian(flux, axis=0)
+    print('Flux normalization baseline')
+    print('Baseline indices = ', baseline)
+    print('Shape of the flux = ', np.shape(flux))
+    baseline_level = np.nanmedian(flux[baseline, :, :], axis=0)
+    fluxnorm = flux / baseline_level
 
     # Write flux vs column as a fits image
     hdu = fits.PrimaryHDU(flux.transpose(1, 0, 2))
+    hdu.header.append(('TRINDING', np.max(baseline_ind1), 'Integration at the start of ingress'), end=True)
+    hdu.header.append(('TRINDEG', np.min(baseline_ind2), 'Integration at the end of egress'), end=True)
     hdu.writeto(outdir+outbasename+'_rawflux.fits', overwrite=True)
 
     # Produce a wavelength calibrated spectrum time-series
@@ -1139,6 +1246,8 @@ def plot_timeseries(spectrum_file, outdir=None, norder=3):
     print('Produce the timeseries_greyscale_normalizedflux fits')
 
     hdu = fits.PrimaryHDU(fluxnorm.transpose(1, 0, 2))
+    hdu.header.append(('TRINDING', np.max(baseline_ind1), 'Integration at the start of ingress'), end=True)
+    hdu.header.append(('TRINDEG', np.min(baseline_ind2), 'Integration at the end of egress'), end=True)
     hdu.writeto(outdir+outbasename+'_normalizedflux.fits', overwrite=True)
 
     # Produce that Normalized flux greyscale
@@ -1159,6 +1268,81 @@ def plot_timeseries(spectrum_file, outdir=None, norder=3):
 
     return
 
+
+def run_batman(t, t0, per, rp, a, inc, u1, u2):
+    params = batman.TransitParams()
+    params.t0 = np.copy(t0)  # time of inferior conjunction
+    params.per = np.copy(per)  # orbital period
+    params.rp = np.copy(rp)  # planet radius (in units of stellar radii)
+    params.a = np.copy(a)  # semi-major axis (in units of stellar radii)
+    params.inc = np.copy(inc)  # orbital inclination (in degrees)
+    params.ecc = 0 #np.copy(ecc)  # eccentricity
+    params.w = 90 #np.copy(w)  # longitude of periastron (in degrees)
+    params.u = [np.copy(u1), np.copy(u2)]  # limb darkening coefficients [u1, u2]
+    params.limb_dark = "quadratic"  # limb darkening model
+
+    m = batman.TransitModel(params, t)  # initializes model
+    flux = m.light_curve(params)
+
+    return flux
+
+def transit_duration(per, rp, a, i):
+    # per : orbital period (days)
+    # rp : planet radius (in units of stellar radii)
+    # a : semi-major axis (in units of stellar radii)
+    # i : orbital inclination (in degrees)
+    b = a * np.cos(np.deg2rad(i))
+    tdur = per/np.pi * np.arcsin(np.sqrt((1+rp)**2-b**2)/a)
+    return tdur
+
+
+def fit_transit_get_baseline(flux, period, plotname, a=None, rprs=None):
+    # flux = fits.getdata('/Volumes/T7/WASP107b/timeseries_greyscale_extracted_spectrum_boxsize32_rawflux.fits')
+    # Guess which dimension is what (smallest is norder, largest is dimx, the other is nints)
+    shape = np.shape(flux)
+    ind = np.argsort(shape)
+    norder, nints, dimx = np.array(shape)[ind]
+
+    # Fit a transit light curve to order 1 with batman
+    ft = np.nansum(flux, axis=(1, 2))
+    ft = ft / np.nanpercentile(ft, 75)
+    t = (np.arange(nints) - nints // 2) * 30. / (3600 * 24)
+    if a is None:
+        a = period * np.pi
+    if rprs is None:
+        rprs = np.sqrt(0.02)
+
+    plt.figure(figsize=(10, 8))
+    plt.scatter(t, ft)
+
+    popt, pcov = curve_fit(run_batman, t, ft, p0=(0, period, rprs, a, 90, 0.1, 0.3))
+    # print(popt)
+    ft_model = run_batman(t, *popt)
+    plt.plot(t, ft_model, color='red')
+
+    tdur = transit_duration(popt[1], popt[2], popt[3], popt[4])
+    tingress, tegress = popt[0] - tdur / 2, popt[0] + tdur / 2
+    indleft = np.where(t < tingress)[0]
+    indright = np.where(t > tegress)[0]
+    plt.vlines(tingress, np.min(ft_model), np.max(ft_model), colors='red', linestyles='dotted')
+    plt.vlines(tegress, np.min(ft_model), np.max(ft_model), colors='red', linestyles='dotted')
+
+    z = plt.scatter([0], [1], marker='o', color='white')
+    plt.legend([z, z, z, z, z, z, z, z, z], ['t0 = {:F} days'.format(popt[0]),
+                                             'per = {:F} days'.format(popt[1]),
+                                             'rp = {:F} Rstar'.format(popt[2]),
+                                             'a = {:F} Rstar'.format(popt[3]),
+                                             'inc = {:F} deg'.format(popt[4]),
+                                             'u1 = {:F}'.format(popt[5]),
+                                             'u2 = {:F}'.format(popt[6]),
+                                             'ind_left = [{:},{:}]'.format(np.min(indleft), np.max(indleft)),
+                                             'ind_right = [{:},{:}]'.format(np.min(indright), np.max(indright))
+                                             ])
+    # plt.show()
+    plt.savefig(plotname)
+    plt.close()
+
+    return indleft, indright
 
 def check_atoca_residuals(fedto_atoca_filename, atoca_model_filename, outdir=None):
     '''
@@ -1396,8 +1580,9 @@ def soss_spectrace_reffile_maker(clean_tso_stack, outdir=None, maskname=None, ma
                                    poly_orders=None, apex_order1=None, calibrate=True,
                                    verbose=verbose, outdir=outdir)
     x_o1, y_o1 = centroids['order 1']['X centroid'], centroids['order 1']['Y centroid']
-    x_o2, y_o2 = centroids['order 2']['X centroid'], centroids['order 2']['Y centroid']
-    x_o3, y_o3 = centroids['order 3']['X centroid'], centroids['order 3']['Y centroid']
+    if subarray != 'SUBSTRIP96':
+        x_o2, y_o2 = centroids['order 2']['X centroid'], centroids['order 2']['Y centroid']
+        x_o3, y_o3 = centroids['order 3']['X centroid'], centroids['order 3']['Y centroid']
     #w_o1 = centroids['order 1']['trace widths']
     #w_o2 = centroids['order 2']['trace widths']
     #w_o3 = centroids['order 3']['trace widths']
@@ -1463,41 +1648,44 @@ def soss_spectrace_reffile_maker(clean_tso_stack, outdir=None, maskname=None, ma
     ytrace_order1 = extrapolate_to_wavegrid(wave_grid, w_o1, y_o1)
 
     # CUSTOM wavecal order 2 --------------------------------------------------
-    # Read the wavelength calibration files
-    wcal_o2 = ascii.read(wavecal_order2)
-    w_o2 = np.array(wcal_o2['wavelength'])
-    w_o2_tmp = np.copy(w_o2)
-    w_o2 = np.zeros(2048)*np.nan
-    w_o2[:1783] = w_o2_tmp
-    # Fill for column > 1783 with linear extrapolation
-    m = w_o2[1782] - w_o2[1781]
-    dx = np.arange(2048-1783)+1
-    w_o2[1783:] = w_o2[1782] + m * dx
-    xtrace_order2 = extrapolate_to_wavegrid(wave_grid, w_o2, x_o2)
-    ytrace_order2 = extrapolate_to_wavegrid(wave_grid, w_o2, y_o2)
+    if subarray != 'SUBSTRIP96':
+        # Read the wavelength calibration files
+        wcal_o2 = ascii.read(wavecal_order2)
+        w_o2 = np.array(wcal_o2['wavelength'])
+        w_o2_tmp = np.copy(w_o2)
+        w_o2 = np.zeros(2048)*np.nan
+        w_o2[:1783] = w_o2_tmp
+        # Fill for column > 1783 with linear extrapolation
+        m = w_o2[1782] - w_o2[1781]
+        dx = np.arange(2048-1783)+1
+        w_o2[1783:] = w_o2[1782] + m * dx
+        xtrace_order2 = extrapolate_to_wavegrid(wave_grid, w_o2, x_o2)
+        ytrace_order2 = extrapolate_to_wavegrid(wave_grid, w_o2, y_o2)
 
 
     # CUSTOM wavecal order 3 --------------------------------------------------
-    # only 800 columns in wavecal_o3
-    wcal_o3 = ascii.read(wavecal_order3)
-    w_o3 = np.array(wcal_o3['wavelength'])
-    w_o3_tmp = np.copy(w_o3)
-    w_o3 = np.zeros(2048)*np.nan
-    w_o3[:800] = w_o3_tmp
-    # Fill for column > 800 with linear extrapolation
-    m = w_o3[799] - w_o3[798]
-    dx = np.arange(2048-800)+1
-    w_o3[800:] = w_o3[799] + m * dx
-    xtrace_order3 = extrapolate_to_wavegrid(wave_grid, w_o3, x_o3)
-    ytrace_order3 = extrapolate_to_wavegrid(wave_grid, w_o3, y_o3)
+    if subarray != 'SUBSTRIP96':
+        # only 800 columns in wavecal_o3
+        wcal_o3 = ascii.read(wavecal_order3)
+        w_o3 = np.array(wcal_o3['wavelength'])
+        w_o3_tmp = np.copy(w_o3)
+        w_o3 = np.zeros(2048)*np.nan
+        w_o3[:800] = w_o3_tmp
+        # Fill for column > 800 with linear extrapolation
+        m = w_o3[799] - w_o3[798]
+        dx = np.arange(2048-800)+1
+        w_o3[800:] = w_o3[799] + m * dx
+        xtrace_order3 = extrapolate_to_wavegrid(wave_grid, w_o3, x_o3)
+        ytrace_order3 = extrapolate_to_wavegrid(wave_grid, w_o3, y_o3)
 
     fig = plt.figure(figsize=(6,4))
     plt.scatter(x_o1, w_o1, marker='.', color='black', label='Order 1 Measured')
     plt.plot(xtrace_order1, wave_grid, color='red', label='Order 1 Extrapolated and Resampled')
-    plt.scatter(x_o2, w_o2, marker='.', color='blue', label='Order 2 Measured')
-    plt.plot(xtrace_order2, wave_grid, color='red', label='Order 2 Extrapolated and Resampled')
-    plt.scatter(x_o3, w_o3, marker='.', color='green', label='Order 3 Measured')
-    plt.plot(xtrace_order3, wave_grid, color='red', label='Order 3 Extrapolated and Resampled')
+    if subarray != 'SUBSTRIP96':
+        plt.scatter(x_o2, w_o2, marker='.', color='blue', label='Order 2 Measured')
+        plt.plot(xtrace_order2, wave_grid, color='red', label='Order 2 Extrapolated and Resampled')
+        plt.scatter(x_o3, w_o3, marker='.', color='green', label='Order 3 Measured')
+        plt.plot(xtrace_order3, wave_grid, color='red', label='Order 3 Extrapolated and Resampled')
     plt.legend()
     plt.xlabel('X Position')
     plt.ylabel('Wavelength')
@@ -1512,19 +1700,21 @@ def soss_spectrace_reffile_maker(clean_tso_stack, outdir=None, maskname=None, ma
 
     xtrace = np.zeros((nwave, 3))
     xtrace[:, 0] = xtrace_order1
-    xtrace[:, 1] = xtrace_order2
-    xtrace[:, 2] = xtrace_order3
+    if subarray != 'SUBSTRIP96':
+        xtrace[:, 1] = xtrace_order2
+        xtrace[:, 2] = xtrace_order3
 
     ytrace = np.zeros((nwave, 3))
     ytrace[:, 0] = ytrace_order1
-    ytrace[:, 1] = ytrace_order2
-    ytrace[:, 2] = ytrace_order3
+    if subarray != 'SUBSTRIP96':
+        ytrace[:, 1] = ytrace_order2
+        ytrace[:, 2] = ytrace_order3
 
     # Massage inputs according to requested output subarray
     if subarray == 'SUBSTRIP96':
         ytrace[:, 0] = ytrace[:, 0] - 10
-        ytrace[:, 1] = ytrace[:, 1] - 10
-        ytrace[:, 2] = ytrace[:, 2] - 10
+        #ytrace[:, 1] = ytrace[:, 1] - 10
+        #ytrace[:, 2] = ytrace[:, 2] - 10
         #print('Actually do nothing. soss_ref_files.py handles it')
     elif subarray == 'FULL':
         ytrace[:, 0] = ytrace[:, 0] + (2048-256)
@@ -1635,7 +1825,11 @@ def median_absolute_spectrum(photomstep_spectrum, outputname):
     # spectra are stored at indice 1 (order 1), then 2 (order2) then 3 (order 3) then 4 (order 1, 2nd time step), ...
     # TODO Manage nint and norder better
     # nint = multispec.meta.exposure.nints
-    norder = 3
+    print('subarray name = ', multispec.meta.subarray.name)
+    if multispec.meta.subarray.name == 'SUBSTRIP96':
+        norder = 2  # extract1d extracts both orders, for some reason...
+    else:
+        norder = 3
     nint = int(np.shape(multispec.spec)[0] / norder)
     # norder = int(np.shape(multispec.spec)[0] / nint)
 
@@ -1952,12 +2146,15 @@ def greyscale_rms(ts_greyscale, title=''):
 
     outdir = os.path.dirname(ts_greyscale)
     a = fits.getdata(ts_greyscale)
+    hdu = fits.open(ts_greyscale)
+    hdr = hdu[0].header
+    a = hdu[0].data
     norder, nint, dimx = np.shape(a)
 
     print('Generating the greyscale_rms png using as input ', ts_greyscale)
     rms = np.zeros((norder, dimx)) * np.nan
     plt.figure(figsize=(8,5))
-    for m in range(3):
+    for m in range(norder):
         # For each order, generate the median profile (to account for the transit)
         transit_profile = np.nanmedian(a[m, :, :], axis=-1)
         for x in range(dimx):
@@ -1984,7 +2181,7 @@ def greyscale_rms(ts_greyscale, title=''):
 
 
     print('Generating the whitelight png')
-    for m in range(3):
+    for m in range(norder):
         # White light
         white = np.nanmedian(a[m, :, :], axis=-1)
         dev = white[1:] - white[:-1]
@@ -1997,7 +2194,96 @@ def greyscale_rms(ts_greyscale, title=''):
         plt.savefig(outdir+'/whitelight_order{:}.png'.format(m+1))
         plt.close()
 
+    print('Generating spectroscopic light curves')
+    #Spectral pixels binning
+    specpixbin = 64
+    nlightcurves = dimx//specpixbin
+    for m in range(norder):
+        plt.figure(figsize=(10,50))
+        # Estimate the transit bottom and oot baseline levels
+        ind1 = int(hdr['TRINDING'])
+        ind2 = int(hdr['TRINDEG'])
+        indc = (ind1 + ind2) // 2
+        indbot = (ind2 - ind1) // 2
+        ind = np.arange(nint)
+        indbaseline = (ind < ind1) | (ind > ind2)
+
+        # Bottom is during the bottom 50% of transit duration
+        transit_min = np.nanmedian(a[m, indc-indbot:indc+indbot, :])
+        transit_max = np.nanmedian(a[m, indbaseline, :])
+        #transit_min, transit_max = np.nanpercentile(a[m,:,:],5), np.nanpercentile(a[m,:,:], 95)
+        transit_amp = transit_max - transit_min
+        print('transit_amp', transit_amp)
+        print('transit_min', transit_min)
+        print('transit_max', transit_max)
+
+        if m == 0:
+            # Adopt the y limits of order 1 across other orders
+            yscale = 1.5
+            ylimits = (transit_min-0.01, transit_max + yscale * transit_amp * nlightcurves)
+            plt.ylim(ylimits)
+            print('nlightcurves = ', nlightcurves)
+
+        # Manage colours
+        cmap = plt.get_cmap('brg_r', nlightcurves*2)
+        #cmap = plt.get_cmap('winter', nlightcurves)
+
+
+        for lc in range(nlightcurves):
+            colour = cmap(nlightcurves+lc)
+            #colour = cmap(lc)
+
+
+            x = np.arange(nint)
+            y = np.nanmedian(a[m,:,lc*specpixbin:((lc+1)*specpixbin)],axis=-1)
+            #print(1.0 * transit_amp * lc)
+            #print(np.nanmedian(y))
+            plt.scatter(x, y + yscale * transit_amp * lc, marker='.', alpha=0.3, color=colour)
+            plt.hlines(transit_min + yscale * transit_amp * lc, 0, nint, linestyles='dashed', color=colour)
+            #plt.hlines(transit_max + yscale * transit_amp * lc, 0, nint, linestyles='dashed', color='blue')
+            plt.hlines(transit_max + yscale * transit_amp * lc, 0, nint, linestyles='dashed', color='black')
+
+            # Estimate the transit bottom and oot baseline levels
+            ind1 = int(hdr['TRINDING'])
+            ind2 = int(hdr['TRINDEG'])
+            indc = (ind1 + ind2)//2
+            indbot = (ind2 - ind1)//2
+            transit_bottom = np.nanmedian(y[indc-indbot:indc+indbot])
+            print('lc = {:}, transit_bottom ={:}'.format(lc, transit_bottom))
+            plt.text(indc, 1.0 + yscale * transit_amp * lc, 'Flux Bottom = {:.6F}'.format(transit_bottom),
+                     ha='center', color=colour)
+
+            if False:
+                # By fitting 2 gaussians along the distribution
+                print(y)
+                y05, y95 = np.nanpercentile(y, 5), np.nanpercentile(y, 95)
+                print('5th pct, 95th pct = ', y05, y95)
+                ddd = (y95-y05)
+                ydata, bin_edges = np.histogram(y, bins=50, range=(y05-ddd*0.3, y95+ddd*0.3))
+                xdata = (bin_edges[1:]+bin_edges[0:-1])/2
+                print('ydata = ', ydata)
+                print('xdata = ', xdata)
+                popt, pcov = curve_fit(two_gaussians, xdata, ydata, p0=(10,y05,0.01,10,y95,0.01))
+                print('popt = ', popt)
+                if False:
+                    plt.plot(xdata, ydata)
+                    plt.plot(xdata, two_gaussians(xdata, *popt), color='red')
+                    plt.show()
+
+        plt.savefig(outdir+'/spectroscopiclightcurve_order{:}.png'.format(m+1))
+        plt.close()
+
+
     return
+
+
+def two_gaussians(x, a1, b1, c1, a2, b2, c2):
+    # unpack parameters of the gaussians
+    #a1, b1, c1, a2, b2, c2 = params
+    # make a distribution from the data
+    z = a1 * np.exp((-(x-b1)**2)/(2*c1**2)) + a2 * np.exp((-(x-b2)**2)/(2*c2**2))
+    return z
+
 
 def test_backgrounds():
     from astropy.io import fits, ascii
@@ -2420,8 +2706,8 @@ def measure_background_tilt(input_image, isafitsfile=True, method='halfbumpvalue
 
 
 
-def construct_background(input_image, tilt=-1.8, isafitsfile=False, metric='10pct',
-                         savetest=False, outdir=None):
+def construct_background(input_image, tilt=-1.76, isafitsfile=False, metric='10pct',
+                         savetest=False, outdir=None, skip_background=False):
 
     if isafitsfile == True:
         imagein = fits.getdata(input_image)
@@ -2531,6 +2817,9 @@ def construct_background(input_image, tilt=-1.8, isafitsfile=False, metric='10pc
     # remove the padding
     bgd2d = np.copy(bgd2dpad[padding:-padding,padding:-padding])
 
+    if skip_background:
+        bgd2d = bgd2d * 0.0
+
     if (savetest == True) & (outdir != None):
         hdu = fits.PrimaryHDU(bgd2d)
         hdu.writeto(outdir+'/background_fitted.fits', overwrite=True)
@@ -2556,7 +2845,7 @@ def test_back_construct():
 
     input_image = fits.getdata('/Users/albert/NIRISS/Commissioning/analysis/documenting_steps/T1_masked_stacked.fits')
 
-    tilt = -1.8
+    tilt = -1.76
 
     dimy, dimx = np.shape(input_image)
 
@@ -2944,6 +3233,18 @@ def cds(rampmodel, outdir=None, verbose=False):
 if __name__ == "__main__":
 
     if True:
+        a = build_mask_contamination(1,40,178)
+        hdu = fits.PrimaryHDU(a)
+        hdu.writeto('/Volumes/T7/WASP80b/test.fits', overwrite=True)
+        sys.exit()
+
+    if True:
+        greyscale_rms('/Volumes/T7/LHS1140b/timeseries_greyscale_extracted_spectrum_boxsize32_normalizedflux.fits', title='toto')
+
+
+        sys.exit()
+
+    if True:
         characterize_background()
         sys.exit()
     if False:
@@ -2981,7 +3282,7 @@ if __name__ == "__main__":
     input_image = '/Users/albert/NIRISS/Commissioning/analysis/T1/backgroundsub_jw02589001001_04101_00001-seg001_nis_customrateints_flatfieldstep/background_mask.fits'
     #input_image = '/Users/albert/NIRISS/Commissioning/analysis/T1_2/backgroundsub_jw02589002001_04101_00001-seg001_nis_customrateints_flatfieldstep/background_mask.fits'
     outdir = os.path.dirname(input_image)
-    bkg = construct_background(input_image, tilt=-1.8, isafitsfile=True, metric='10pct',
+    bkg = construct_background(input_image, tilt=-1.76, isafitsfile=True, metric='10pct',
                                savetest=True, outdir=outdir)
     sys.exit()
 
