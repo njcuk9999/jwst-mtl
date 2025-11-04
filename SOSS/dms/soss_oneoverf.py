@@ -3,7 +3,8 @@ from astropy.io import fits
 from jwst import datamodels
 import os
 import SOSS.dms.soss_centroids as soss_centroids
-
+import SOSS.commissioning.comm_utils as comm_utils
+#from SOSS.examples.example1_investigateNoise import subarray
 
 
 def mediandev(x, axis=None):
@@ -21,7 +22,17 @@ def stack_multisegments(postsaturationstep_list, outdir=None, save_results=False
 
     if stack_nblocks == None:
         # any divider of 2048 would do
-        nblocks = np.size(postsaturationstep_list)*2
+        # Number of blocks depends on number of segments but also subarray size
+        seg = datamodels.open(postsaturationstep_list[0])
+        if seg.meta.subarray.name == 'FULL':
+            nblocks = np.size(postsaturationstep_list) * 2 * 8
+        elif seg.meta.subarray.name == 'SUBSTRIP256':
+            nblocks = np.size(postsaturationstep_list) * 2
+        elif seg.meta.subarray.name == 'SUBSTRIP96':
+            nblocks = np.size(postsaturationstep_list) * 2
+        else:
+            print('SUBARRAY is not supported. Try something.')
+            nblocks = np.size(postsaturationstep_list)*2
     else:
         nblocks = np.copy(stack_nblocks)
     #nblocks = 2  # any divider of 2048 would do
@@ -56,7 +67,6 @@ def stack_multisegments(postsaturationstep_list, outdir=None, save_results=False
                 nints = seg.meta.exposure.nints
                 data = np.zeros((nints, ngroups, dimy, currentblocksize)) * np.nan
                 mask = np.zeros((nints, ngroups, dimy, currentblocksize)) * np.nan
-
             # the current segment data, group DQ and pixel DQ
             data[i_start-1:i_end, :, :, :] = np.copy(seg.data[:, :, :, firstcol:lastcol])
             gdq = np.copy(seg.groupdq[:, :, :, firstcol:lastcol])
@@ -67,6 +77,7 @@ def stack_multisegments(postsaturationstep_list, outdir=None, save_results=False
             # Add to the mask the pixel dq (2 dimensional)
             segmask = np.where(pdq != 0, np.nan, 1)
             mask[i_start-1:i_end, :] = mask[i_start-1:i_end, :] * segmask
+
         # Stack that block, all bad pixels are NaNs
         if b == 0:
             # First block, initialize the final products with proper size
@@ -77,37 +88,47 @@ def stack_multisegments(postsaturationstep_list, outdir=None, save_results=False
         deepstack[:, :, firstcol:lastcol] = np.copy(block_stack)
         rms[:, :, firstcol:lastcol] = np.copy(block_rms)
 
+        del seg, segmask, gdq, pdq
+        del data, mask, block_stack
+
     if save_results:
         # Recover names and directory
         segment1name = postsaturationstep_list[0]
         if outdir == None:
             outdir = os.path.dirname(segment1name)
-        basename = os.path.basename(os.path.splitext(segment1name)[0])
-        basename_ts = basename.split('-seg')[0]
+        #basename = os.path.basename(os.path.splitext(segment1name)[0])
+        basename_ts = comm_utils.tsobasename(segment1name)
         # Save as fits files
+        deepstackname = outdir+'/oof_deepstack_'+basename_ts+'.fits'
+        rmsname = outdir+'/oof_rms_'+basename_ts+'.fits'
+
         hdu = fits.PrimaryHDU(deepstack)
-        hdu.writeto(outdir+'/oof_deepstack_'+basename_ts+'.fits', overwrite=True)
+        hdu.writeto(deepstackname, overwrite=True)
         hdu = fits.PrimaryHDU(rms)
-        hdu.writeto(outdir+'/oof_rms_'+basename_ts+'.fits', overwrite=True)
+        hdu.writeto(rmsname, overwrite=True)
         #hdu = fits.PrimaryHDU(mask)
         #hdu.writeto(outdir+'/oof_lastblockmask_'+basename_ts+'.fits', overwrite=True)
 
 
-    return deepstack, rms
+
+    return deepstackname
 
 
 
 
-def stack(cube, deepstack_custom=None, outliers_map=None):
+def stack(cube, deepstack_custom_name=None, outliers_map=None):
 
-    if deepstack_custom is None:
+    if deepstack_custom_name is None:
         if outliers_map is None:
             deepstack = np.nanmedian(cube, axis=0)
         else:
             deepstack = np.nanmedian(cube * outliers_map, axis=0)
     else:
-        deepstack = np.copy(deepstack_custom)
+        print('reading the oof stack...')
+        deepstack = fits.getdata(deepstack_custom_name)
+        #deepstack = np.copy(deepstack_custom)
 
+    print('generating oof rms...')
     if outliers_map is None:
         rms = mediandev(cube - deepstack, axis=0)
     else:
@@ -183,7 +204,7 @@ def make_trace_mask(trace_table_ref, subarray_name, aphalfwidth=[13,13,13],
     return trace_mask
 
 def applycorrection(uncal_rampmodel, output_dir=None, save_results=False,
-                    deepstack_custom=None, return_intermediates=None, oddevenrows=True,
+                    deepstack_custom_name=None, return_intermediates=None, oddevenrows=True,
                     outlier_map=None, trace_mask=None, trace_table_ref=None):
 
     '''
@@ -217,7 +238,7 @@ def applycorrection(uncal_rampmodel, output_dir=None, save_results=False,
     dimx = np.shape(uncal_rampmodel.data)[-1]
 
     # Generate the deep stack and rms of it. Both 3D (ngroup, dimy, dimx)
-    deepstack, rms = stack(uncal_rampmodel.data, deepstack_custom=deepstack_custom)
+    deepstack, rms = stack(uncal_rampmodel.data, deepstack_custom_name=deepstack_custom_name)
 
     print('shape of rms ', np.shape(rms))
     # Weighted average to determine the 1/F DC level
@@ -331,7 +352,7 @@ def applycorrection(uncal_rampmodel, output_dir=None, save_results=False,
                 noisyrows = [256 - actualint, 256 - actualint + 1]
             if uncal_rampmodel.meta.subarray.name == 'SUBSTRIP96':
                 noisyrows = [96 - actualint, 96 - actualint + 1]
-            if uncal_rampmodel.meta.subarray.name == 'SUBSTRIP256':
+            if uncal_rampmodel.meta.subarray.name == 'FULL':
                 noisyrows = [2048 - actualint, 2048 - actualint + 1]
             sub[i, g, noisyrows[0]:noisyrows[1]+1,:] = np.nan
             # Make sure to not subtract an overall bias
@@ -398,7 +419,10 @@ def applycorrection(uncal_rampmodel, output_dir=None, save_results=False,
 
     # Subtract the DC map from a copy of the data model
     rampmodel_corr = uncal_rampmodel.copy()
-    rampmodel_corr.data = uncal_rampmodel.data - dcmap
+    if nint >= 3:
+        rampmodel_corr.data = uncal_rampmodel.data - dcmap
+    else:
+        print('Too few integrations in this segment to apply 1/f correction from a deep stack.')
 
     if save_results == True:
         hdu = fits.PrimaryHDU(sub)

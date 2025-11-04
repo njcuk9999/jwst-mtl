@@ -704,11 +704,12 @@ def syntMag(lba,Flba,filterlist,path_filter_transmission=None,
         path_filter_transmission = '/Users/albert/filterSVO/'
     
     # Initialize array of output magnitudes
-    mag = np.arange(np.size(filterlist), dtype=np.float)
+    mag = np.arange(np.size(filterlist), dtype=float)
 
     # Read the Vega and AB spectra first, so it is done only once
     wave_Vega, Flambda_Vega = readVega(wave_sampling=lba, path_vega_spectrum=path_vega_spectrum)
     wave_AB, Flambda_AB = readAB(wave_sampling=lba)
+
 
     # Each wavelength sample has a width, determined here: 
     dlba = sample_width(lba)

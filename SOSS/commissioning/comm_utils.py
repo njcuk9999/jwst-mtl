@@ -4,6 +4,8 @@ import matplotlib.pyplot as plt
 
 import numpy as np
 
+import pastasoss
+
 import scipy.interpolate
 
 from scipy.signal import medfilt
@@ -43,6 +45,12 @@ from scipy.optimize import least_squares
 from scipy.optimize import curve_fit
 
 import batman
+
+from scipy import interpolate
+
+from scipy.signal import medfilt2d
+
+from scipy.interpolate import griddata
 
 
 def mediandev(x, axis=None):
@@ -526,13 +534,21 @@ def interp_badpix(image, noise, dq=None):
     bady, badx = np.where(~np.isfinite(image) & notrefpix)
 
     # If an optional DQ map is passed, add it to the list of bad pixels
-    if dq != None:
-        dq_y, dq_x = np.where(dq != 0)
-        badx += dq_x
-        bady += dq_y
+    if dq is not None:
+        tmp = dq[ymin:ymax,:]
+        dq_y, dq_x = np.where(tmp != 0)
+        badx = np.array(list(badx)+list(dq_x))
+        bady = np.array(list(bady)+list(dq_y))
 
     nbad = np.size(badx)
     for i in range(nbad):
+        #if i % 10000 == 0:
+        #        print()
+        #        print(i)
+        #        print(bady[i], badx[i])
+        #        print(image[bady[i], badx[i]])
+        #        print(image[bady[i]-ky:bady[i]+ky+1, badx[i]-kx:badx[i]+kx+1])
+        #        print(np.nanmedian(image[bady[i]-ky:bady[i]+ky+1, badx[i]-kx:badx[i]+kx+1]))
         image[bady[i], badx[i]] = np.nanmedian(image[bady[i]-ky:bady[i]+ky+1, badx[i]-kx:badx[i]+kx+1])
         # error is the standard deviations of pixels that were used in the median. Not division by sqrt(n).
         #noise[bady[i], badx[i]] = np.nanstd(image[bady[i]-ky:bady[i]+ky+1, badx[i]-kx:badx[i]+kx+1])
@@ -610,6 +626,50 @@ def soss_interp_badpix_sliding(modelin, outdir, save_results=False,
     return
 
 
+def soss_interp_badpix_8neighbors(modelin, outdir, save_results=False):
+    '''
+    Simply use the 8 neighbor pixels of the integration to correct that integration.
+    Iterate for all integrations and bad pixels
+    '''
+
+    # Apply clean stack pixel values to each integration's bad pixels
+    #
+    # Use only light sensitive pixels
+    nint, dimy, dimx = np.shape(modelin.data)
+    if dimy == 96:
+        ymin, ymax = 0, 96
+    elif dimy == 2048:
+        ymin, ymax = 5, 2043
+    else:
+        ymin, ymax = 0, 251
+    x, y = np.meshgrid(np.arange(dimx), np.arange(dimy))
+    notrefpix = ~((x <= 5) | (x >=2043) | (y <= ymin) | (y >= ymax))
+    #print('How many not notrefpix? {:}'.format((~notrefpix).sum()))
+    #
+    # Loop over all integrations
+    for i in range(nint):
+        # Mask pixels that have the DO_NOT_USE data quality flag set
+        donotuse = bitfield_to_boolean_mask(modelin.dq[i], ignore_flags=dqflags.pixel['DO_NOT_USE'], flip_bits=True)
+        #print('How many do not use? {:}'.format(donotuse.sum()))
+        ind = notrefpix & ((~np.isfinite(modelin.data[i])) | (~np.isfinite(modelin.err[i])) | donotuse)
+        #print('How many ind? {:}'.format(ind.sum()))
+        # Put all bad pixels to NaNs before calling the interpolator
+        modelin.data[i][ind] = np.nan
+        # Replace each bad pixel with neighbors
+        modelin.data[i], modelin.err[i] = interp_badpix(modelin.data[i], modelin.err[i], dq=modelin.dq[i])
+        # Set the DQ map to good for all pixels except ref pixels
+        modelin.dq[i][notrefpix] = 0
+        # Set the ref pixels to NaNs
+        modelin.data[i][~notrefpix] = np.nan
+
+    basename = os.path.splitext(modelin.meta.filename)[0]
+    basename = basename.split('_nis')[0] + '_nis'
+    if save_results:
+        modelin.write(outdir + '/' + basename + '_badpixinterp.fits')
+    modelin.meta.filename = basename
+
+    return modelin
+
 def soss_interp_badpix(modelin, outdir, save_results=False,
                        use_whole_stack=False, whole_exposure_stack=None,
                        whole_exposure_stackrms=None):
@@ -674,6 +734,302 @@ def soss_interp_badpix(modelin, outdir, save_results=False,
     return modelin
 
 
+
+def soss_correct_badpix(postrampfitting_list, filepath, save_results=False,
+                        nblocks=None, ddx2_nsigma=10, ddy2_nsigma=10):
+
+    # Two steps:
+    # 1) use the method of Louis-Philippe Coulombe (second derivative deviants)
+    # 2) include the DQ map which should mostly come from the flat field bad pixels (if cosmic rays were handled prior)
+    # 3) Read a text file that user can edit to add pixels
+
+    # Expect the list of fits files for all segments in a TSO. The analysis
+    # will be performed block by block, i.e. the detector will be divided in
+    # nblocks and for each, a all integrations of the TSO across segments will
+    # be read and used for the analysis.
+
+    print('soss_correct_badpix - flagging bad pixels using thresholds ddx2_nsigma = {:}, ddy2_nsigma={:}'.format(ddx2_nsigma, ddy2_nsigma))
+
+    #Establish what the directory is and the basename for the files
+    # as well as the names of temporary block files.
+    outdir = filepath
+
+    nsegments = np.size(postrampfitting_list)
+    segment_basename_list = []
+    for i in range(nsegments):
+        tmp = os.path.splitext(postrampfitting_list[i])[0]
+        tmp = os.path.basename(postrampfitting_list[i])
+        tmp = tmp.split('_nis')[0] + '_nis'
+        segment_basename_list.append(tmp)
+        tso_basename = tmp.split('-seg')[0]
+
+    if nblocks == None:
+        # any divider of 2048 would do
+        nblok = np.size(postrampfitting_list)*2
+    else:
+        nblok = np.copy(nblocks)
+    #nblocks = 2  # any divider of 2048 would do
+    #blocksize = 2048 // nblocks
+    blocksize = int(np.ceil(2048 / nblok)) # no need for common divider of 2048
+
+    # Set the name of temporary fits files where each corrected block is saved
+    block_name_list = []
+    bpblock_name_list = []
+    for i in range(nblok):
+        block_name_list.append(outdir + '/block_{:.0F}_'.format(i + 1) + tso_basename + '.fits')
+        bpblock_name_list.append(outdir + '/block_badpix_{:.0F}_'.format(i + 1) + tso_basename + '.fits')
+
+    print('soss_correct_badpix - Integrations stacking of all {:} segments in the time-series in {:} blocks of {:} columns'.format(
+        np.size(postrampfitting_list), nblok, blocksize))
+
+    # Open each file in the list to directly measure the total number of integrations
+    # rather than relying on the .meta.exposure.nints has a sneaky user could forge
+    # their input segments making the meta structure unreliable...
+    segments_nints = [0]
+    nints = 0
+    for segment in range(np.size(postrampfitting_list)):
+        tmp = datamodels.open(postrampfitting_list[segment])
+        segments_nints.append(np.shape(tmp.data)[0])
+        nints += np.shape(tmp.data)[0]
+        tmp.close()
+    del tmp
+
+    # Loop for each image block
+    for b in range(nblok):
+        print('soss_correct_badpix - sub image block {:} of {:}'.format(b+1, nblok))
+        # Set the x-axis limits of this block of columns
+        firstcol, lastcol = b * blocksize, (b + 1) * blocksize
+        # Check that the last column is never above 2048
+        lastcol = np.min([2048, lastcol])
+        currentblocksize = lastcol - firstcol
+        print('soss_correct_badpix - curent block is between firstcol={:} and lastcol={:} and has size of {:} columns'.format(
+            firstcol, lastcol, currentblocksize))
+
+        # For each block of columns, loop over all segments
+        for segment in range(np.size(postrampfitting_list)):
+            # Fill the data cube and groupdq cube for block b
+            seg = datamodels.open(postrampfitting_list[segment])
+            #i_start, i_end = seg.meta.exposure.integration_start, seg.meta.exposure.integration_end
+            i_start = (np.cumsum(segments_nints[:segment+1])+1)[segment]
+            i_end = (np.cumsum(segments_nints[:segment+2]))[segment+1]
+            #if (i_start == None) & (i_end == None):
+            if np.size(postrampfitting_list) == 1:
+                # it means that this is a time-series NOT split into segments
+                #i_start, i_end = 1, seg.meta.exposure.nints
+                i_start, i_end = 1, nints
+            print('soss_correct_badpix - integration_start = {:}, integration_end = {:}'.format(i_start, i_end))
+            if segment == 0:
+                # First segment, initialize cubes of proper size
+                _, dimy, dimx = np.shape(seg.data)
+                #nints = seg.meta.exposure.nints
+                #nints = sum(segments_nints[1:])
+                #print('nints = {:}'.format(nints))
+                data = np.zeros((nints, dimy, currentblocksize)) * np.nan
+                dq = np.zeros((nints, dimy, currentblocksize))
+                #print('shape data = ', np.shape(data))
+
+            # the current segment data and pixel DQ
+            #print('shape seg.data = ', np.shape(data))
+            data[i_start-1:i_end, :, :] = np.copy(seg.data[:, :, firstcol:lastcol])
+            dq[i_start-1:i_end, :, :] = np.copy(seg.dq[:, :, firstcol:lastcol])
+
+        # Now run the bad pixel flagging on the block containing all integrations
+        # in the TSO for these pixels.
+        bp = badpixel_flag_seconderivative(data, ddx2_nsigma=ddx2_nsigma, ddy2_nsigma=ddy2_nsigma)
+        # Check also the input DQ map
+        bp[dq != 0] = 1
+        # Check also for the presence of any NaN
+        bp[~np.isfinite(data)] = 1
+        # Write the bad pixel files on disk
+        hdu = fits.PrimaryHDU(bp)
+        hdu.writeto(bpblock_name_list[b], overwrite=True)
+
+        # Now correct the bad pixels
+        datacorr = interpolate_badpixels_cubic(data, bp, outdir, integ_halfwidth=4)
+
+        # Now save this block on disk in nblok separate files.
+        # Later stage will merge those into segment files.
+        hdu = fits.PrimaryHDU(datacorr)
+        hdu.writeto(block_name_list[b], overwrite=True)
+
+        # Delete big arrays to reduce memory usage
+        del bp, data, dq, datacorr
+
+    # Blocks have all been ran. Time to reconstruct corrected segments
+    # from corrected blocks saved on this
+    print('soss_correct_badpix - Now save the corrected segments...')
+    for segment in range(np.size(postrampfitting_list)):
+        print('soss_correct_badpix - segment {:2.0F} of {:2.0F}'.format(segment+1, np.size(postrampfitting_list)))
+        seg = datamodels.open(postrampfitting_list[segment])
+        #i_start, i_end = seg.meta.exposure.integration_start, seg.meta.exposure.integration_end
+        i_start = (np.cumsum(segments_nints[:segment + 1]) + 1)[segment]
+        i_end = (np.cumsum(segments_nints[:segment + 2]))[segment + 1]
+        # create a file to store this segment's bad pixels
+        badpix_segment = seg.data*0
+        # Go
+        #if (i_start == None) & (i_end == None):
+        if np.size(postrampfitting_list) == 1:
+            # it means that this is a time-series NOT split into segments
+            #i_start, i_end = 1, seg.meta.exposure.nints
+            i_start, i_end = 1, nints
+
+        for b in range(nblok):
+            print('soss_correct_badpix - sub image block {:} of {:}'.format(b + 1, nblok))
+            thisblock = fits.getdata(block_name_list[b])
+            # Set the x-axis limits of this block of columns
+            firstcol, lastcol = b * blocksize, (b + 1) * blocksize
+            # Check that the last column is never above 2048
+            lastcol = np.min([2048, lastcol])
+            currentblocksize = lastcol - firstcol
+            seg.data[:,:,firstcol:lastcol] = thisblock[i_start - 1:i_end, :, :]*1
+            # Assign corrected pixels with a DQ = 0
+            seg.dq[:,:,firstcol:lastcol] = 0
+            # Do the same for the bad pixel file
+            thisblock = fits.getdata(bpblock_name_list[b])
+            badpix_segment[:,:,firstcol:lastcol] = thisblock[i_start - 1:i_end, :, :]*1
+
+        if save_results:
+            seg.meta.filename = segment_basename_list[segment] + '_badpixinterp.fits'
+            seg.write(outdir + '/' + seg.meta.filename)
+            print('soss_correct_badpix - saving ', seg.meta.filename)
+            hdu = fits.PrimaryHDU(badpix_segment)
+            hdu.writeto(outdir + '/' + segment_basename_list[segment] + '_badpixelmask.fits', overwrite=True)
+        else:
+            # still have to save it because can't return the list of opened datamodel
+            # segments
+            print('soss_correct_badpix - Only option is to save outputs. save_results must be True')
+            seg.meta.filename = segment_basename_list[segment] + '_badpixinterp.fits'
+            seg.write(outdir + '/' + seg.meta.filename)
+            print('soss_correct_badpix - saving ', seg.meta.filename)
+            hdu = fits.PrimaryHDU(badpix_segment)
+            hdu.writeto(outdir + '/' + segment_basename_list[segment] + '_badpixelmask.fits', overwrite=True)
+
+        # TODO: Erase the temporary block files from disk once this has been debugged
+
+    return
+
+
+
+
+
+def badpixel_flag_seconderivative(data, ddx2_nsigma=10, ddy2_nsigma=10):
+
+    '''
+    Accepts a cube of data (nints, dimy, dimx) and returns a cube of same size
+    with 0 for good pixels, 1 for bad pixels.
+    '''
+
+    # Expect data to be 3-dimensional (integrations, y, x)
+    nint, dimy, dimx = np.shape(data)
+
+    # Initialize the corrected data
+    # data_corr = data * 1
+    # Initialize the array of bad pixel flags
+    flags = data*0
+    # make sure there is no NaN, if so flag them as bad pixels
+    flags[~np.isfinite(flags)] = 1
+
+    # Compute the second derivative in x and y for all integrations at once
+    ddx = np.gradient(data, axis=-1)
+    ddx2 = -np.gradient(ddx, axis=-1)
+    ddy = np.gradient(data, axis=-2)
+    ddy2 = -np.gradient(ddy, axis=-2)
+    # Compute the median and median deviation along the integrations axis
+    ddx2_med = np.median(ddx2, axis=0)
+    ddx2_mdv = mediandev(ddx2, axis=0)
+    ddy2_med = np.median(ddy2, axis=0)
+    ddy2_mdv = mediandev(ddy2, axis=0)
+    # Smooth a little the scatter map to make bad pixels wash out from the
+    # stats
+    ddx2_med = medfilt2d(ddx2_med, kernel_size=3)
+    ddx2_mdv = medfilt2d(ddx2_mdv, kernel_size=3)
+    ddy2_med = medfilt2d(ddy2_med, kernel_size=3)
+    ddy2_mdv = medfilt2d(ddy2_mdv, kernel_size=3)
+
+    # Identify 5-sigma outliers as bad pixels then interpolate to correct
+    for i in range(nint):
+        ddx2_nsig = np.abs((ddx2[i] - ddx2_med)) / ddx2_mdv
+        ddy2_nsig = np.abs((ddy2[i] - ddy2_med)) / ddy2_mdv
+        # Use 5 sigma as threshold because a normal distribution
+        # yields less than 1 such random outlier for 2048x256 pixels
+        badpixels = (ddx2_nsig > ddx2_nsigma) & (ddy2_nsig > ddy2_nsigma)
+        flags[i][badpixels] = 1
+        if i == 3:
+            print('ddx2_nsigma = ', ddx2_nsigma)
+            print('ddy2_nsigma = ', ddy2_nsigma)
+            hdu = fits.PrimaryHDU([data[i], flags[i], ddx2_nsig, ddx2_med, ddx2_mdv, ddy2_nsig, ddy2_med, ddy2_mdv])
+            outdir = '/Users/albert/NIRISS/sossisse/sossisse/sossiopath/JWST.NIRISS.SOSS/01201_101/loic_processing'
+            hdu.writeto(outdir + '/toto_secondderivatives.fits', overwrite=True)
+
+    return flags
+
+def interpolate_badpixels_cubic(image3D, flag3D, outdir, integ_halfwidth=4):
+    '''
+    Squeeze the integ_halfwidth*2+1 integrations into a 2D median of higher SNR.
+    Then interpolate the bad pixels using that median.
+    
+    flag3D is 0 for good pixels, 1 or more for bad pixels
+    '''
+
+    image3Dcorr = np.copy(image3D)
+
+    nint = np.shape(image3D)[0]
+
+    for i in range(nint):
+        print('interpolate_badpixels_cubic - integration {:} of {:}'.format(i+1, nint))
+        # Determine the integration indices to retain in the medianing
+        imin = max([0, i - integ_halfwidth])
+        imax = min([nint-1, i + integ_halfwidth])
+        icur = i - imin
+
+        # Create temporary cubes for only the nearby integrations
+        data = image3D[imin:imax+1, :, :] * 1
+        goodpix = flag3D[imin:imax+1, :, :] * 1
+        datacorr = np.copy(data)
+    
+        # Make sure that the data has all bad pixels set to NaN
+        data[~(goodpix == 0)] = np.nan
+
+        # Create a high SNR representative integration centered on the current integration
+        integ_median = np.nanmedian(data, axis=0)
+        print('interpolate_badpixels_cubic - number of NaNs in the image to interpolate from', (~np.isfinite(integ_median)).sum())
+    
+        # Expect a tuple of 2 x 1D arrays for the good pixels
+        # usually obyained points = np.where(np.isfinite(im))
+        # points (pairs of x,y)
+        points = np.where(np.isfinite(integ_median))
+        values = integ_median[points]
+    
+        badpix_y, badpix_x = np.where(~np.isfinite(integ_median))
+
+        val_best = griddata(points, values, (badpix_y, badpix_x), method='cubic')
+        # Replace bad pixels by best interpolation method (cubic)
+        # If some NaNs remain, replace using the back up method (nearest)
+        if (~np.isfinite(val_best)).sum() >= 1:
+            # Interpolation using the method nearest that works all the time
+            val_safe = griddata(points, values, (badpix_y, badpix_x), method='nearest')
+            ind = np.where(~np.isfinite(val_best))
+            toto = val_best * 1
+            toto[ind] = val_safe[ind] * 1
+            print('interpolate_badpixels_cubic - remaining number of bad pixels after griddata correction:', (~np.isfinite(val_best)).sum())
+            datacorr[icur, badpix_y, badpix_x] = toto * 1
+        else:
+            print('interpolate_badpixels_cubic - no NaN remaining after griddata correction')
+            print(val_best)
+            datacorr[icur, badpix_y, badpix_x] = val_best * 1
+    
+        print('interpolate_badpixels_cubic - remaining number of bad pixels in the end: ', (~np.isfinite(datacorr[icur, :, :])).sum())
+    
+        image3Dcorr[i] = datacorr[icur]*1
+    
+    del data, datacorr, goodpix, badpix_y, badpix_x
+
+    # TODO: padd the blocks to prevent border effects
+
+    return image3Dcorr
+
+
+
 def remove_nans(datamodel, outdir=None, save_results=False):
     # Checks that the JWST Data Model does not contains NaNs
     # This is really a final check (bad pixels were already interpolated)
@@ -712,6 +1068,10 @@ def remove_nans(datamodel, outdir=None, save_results=False):
 def guess_mask_value(mask, goodvalue=0, maskedvalue=1):
     # Given that an image representing a mask can use either Nans, 1 or 0 as the
     # arbitrary convention for bad pixels or mask, guess what that convention is.
+    #
+    # Returns a mask with 0 for good and 1 for bad. But also return the value for
+    # for good and the value for bad.
+
 
     count_zeros = np.shape(np.argwhere(mask == 0))[0]
     count_ones = np.shape(np.argwhere(mask == 1))[0]
@@ -730,16 +1090,18 @@ def guess_mask_value(mask, goodvalue=0, maskedvalue=1):
 
     mask_newconvention = np.copy(mask)
     #TODO: HERE HERE HERE
-    #mask_newconvention[]
+    mask_newconvention[mask == MASKED_PIXELS_VALUE] = 0
+    mask_newconvention[mask == UNMASKED_PIXELS_VALUE] = 1
 
 
-    return MASKED_PIXELS_VALUE, UNMASKED_PIXELS_VALUE
+    return mask_newconvention, MASKED_PIXELS_VALUE, UNMASKED_PIXELS_VALUE
 
 
 def background_subtraction(datamodel, aphalfwidth=[40,30,30], outdir=None, verbose=False,
                            contamination_mask=None, trace_table_ref=None, save_results=False,
                            whole_exposure_stack=None, use_whole_exposure=False, skip_background=False):
 
+    input_filename = datamodel.meta.filename
     basename = os.path.splitext(datamodel.meta.filename)[0]
     basename = basename.split('_nis')[0] + '_nis'
     if outdir == None:
@@ -753,6 +1115,7 @@ def background_subtraction(datamodel, aphalfwidth=[40,30,30], outdir=None, verbo
         os.makedirs(cntrdir)
 
     nint, dimy, dimx = np.shape(datamodel.data)
+    headermeta = datamodel.meta
 
     # Branch depending if a segment is being analyzed, or the whole cube
     if use_whole_exposure:
@@ -771,7 +1134,7 @@ def background_subtraction(datamodel, aphalfwidth=[40,30,30], outdir=None, verbo
             contmask = fits.getdata(contamination_mask)
             contmask_0good_1bad, MASK_VALUE, GOOD_VALUE = guess_mask_value(contmask)
             contmask = np.where(contmask >= 1, 1, 0)
-            # add the contamintion masked pixels
+            # add the contamination masked pixels
             contpix = contmask == 1
             maskeddata[contpix] = np.nan
 
@@ -790,7 +1153,7 @@ def background_subtraction(datamodel, aphalfwidth=[40,30,30], outdir=None, verbo
         hdu.writeto(cntrdir + 'background_mask.fits', overwrite=True)
 
         # Construct the background fit
-        background_model = construct_background(maskeddata, tilt=-1.76, isafitsfile=False, metric='10pct',
+        background_model = construct_background(maskeddata, headermeta, tilt=-1.76, isafitsfile=False, metric='10pct',
                                                 savetest=True, outdir=cntrdir, skip_background=skip_background)
 
     else:
@@ -828,7 +1191,7 @@ def background_subtraction(datamodel, aphalfwidth=[40,30,30], outdir=None, verbo
         hdu.writeto(cntrdir+'background_mask.fits', overwrite=True)
 
         # Construct the background fit
-        background_model = construct_background(maskeddata, tilt=-1.76, isafitsfile=False, metric='10pct',
+        background_model = construct_background(maskeddata, headermeta, tilt=-1.76, isafitsfile=False, metric='10pct',
                                    savetest=True, outdir=cntrdir, skip_background=skip_background)
 
 
@@ -837,12 +1200,14 @@ def background_subtraction(datamodel, aphalfwidth=[40,30,30], outdir=None, verbo
     output.data = datamodel.data - background_model
 
     if save_results:
-        output.write(outdir+'/'+basename+'_backsubstep.fits')
+        output.meta.filename = basename + '_backsubstep.fits'
+        print('Saving results to ' + output.meta.filename)
+        output.write(outdir + '/' + output.meta.filename)
         #hdu = fits.PrimaryHDU(output.data)
         #hdu.writeto(outdir+'/'+basename+'_backsubtracted.fits', overwrite=True)
-
-    # Make sure filename is back to normal
-    output.meta.filename = basename
+    else:
+        # Make sure filename is back to normal if it was not saved
+        output.meta.filename = input_filename
 
     return output
 
@@ -892,7 +1257,7 @@ def background_subtraction_v2(datamodel, aphalfwidth=[40,30,30], outdir=None, ve
     hdu.writeto(cntrdir+'background_mask.fits', overwrite=True)
 
     # Construct the background fit
-    background_model = construct_background(maskeddata, tilt=-1.76, isafitsfile=False, metric='10pct',
+    background_model = construct_background(maskeddata, headermeta, tilt=-1.76, isafitsfile=False, metric='10pct',
                                savetest=True, outdir=cntrdir)
 
 
@@ -1227,7 +1592,8 @@ def plot_timeseries(spectrum_file, outdir=None, norder=3):
         plt.ylabel('extracted Flux (DN/sec)')
         plt.savefig(outdir+'extractedflux{:}.png'.format(i+1))
         #plt.show()
-        plt.close()
+        for i in range(nint):
+            plt.close()
 
 
 
@@ -1240,7 +1606,7 @@ def plot_timeseries(spectrum_file, outdir=None, norder=3):
         plt.xlabel('Column')
         plt.ylabel('Integration Number')
         plt.savefig(outdir+outbasename+'_rawflux_order{:}.png'.format(i+1))
-        plt.close()
+        plt.close(fig)
 
     # Write flux vs column as a fits image
     print('Produce the timeseries_greyscale_normalizedflux fits')
@@ -1259,7 +1625,7 @@ def plot_timeseries(spectrum_file, outdir=None, norder=3):
         plt.xlabel('Column')
         plt.ylabel('Integration Number')
         plt.savefig(outdir+outbasename+'_normalizedflux_order{:}.png'.format(i+1))
-        plt.close()
+        plt.close(fig)
 
     #plt.figure()
     #for i in range(nint):
@@ -1609,7 +1975,9 @@ def soss_spectrace_reffile_maker(clean_tso_stack, outdir=None, maskname=None, ma
     plt.legend()
     plt.ylabel('Throughput')
     plt.xlabel('Wavelength')
-    plt.show()
+    #plt.show()
+    plt.savefig(outdir + '/traces_throughput.png')
+    plt.close()
 
     # Fix small negative throughput values.
     throughput = np.where(throughput < 0, 0, throughput)
@@ -1689,10 +2057,11 @@ def soss_spectrace_reffile_maker(clean_tso_stack, outdir=None, maskname=None, ma
     plt.legend()
     plt.xlabel('X Position')
     plt.ylabel('Wavelength')
-    if not os.path.exists(outdir + '/trace'):
-        plt.savefig(outdir+'/trace/tracewidth.png')
-    else:
-        plt.show()
+    #if not os.path.exists(outdir + '/trace'):
+    plt.savefig(outdir+'/trace_tracewidth.png')
+    #else:
+    #    plt.show()
+    plt.close
 
     #--------------------------------------------------------------------------
     # PART 5 - WRITE THE 1ST REFERENCE FILE - THE SOSS TRACE TABLE
@@ -1732,6 +2101,60 @@ def soss_spectrace_reffile_maker(clean_tso_stack, outdir=None, maskname=None, ma
 
 
 
+def compare_tracetable_pastasoss(pwcpos, spec_trace_ref_name, outdir):
+
+    # Read the Trace table reference file
+    ref = fits.open(spec_trace_ref_name)
+
+    fig, ax = plt.subplots(2, 2)
+    fig.set_size_inches(8, 6)
+    colors = ['red', 'blue', 'black', 'brown']
+    for m in [1,2]:
+        traces = pastasoss.get_soss_traces(pwcpos, order=str(m))
+        xpts, ypts, wavepts = traces.x, traces.y, traces.wavelength
+        xref, yref, waveref = ref[m].data['X'], ref[m].data['Y'], ref[m].data['WAVELENGTH']
+
+        # ref and pastasoss have different ranges of x,y,wavelength.
+        xrefnew = xpts
+        f = interpolate.interp1d(xref, yref)
+        yrefnew = f(xrefnew)
+
+        ax[0,0].plot(xpts, ypts, color=colors[0], alpha=0.5, label='m={:}, PASTASOSS'.format(m))
+        ax[0,0].plot(xrefnew, yrefnew, color=colors[1], alpha=0.5, label='m={:}, Trace Reference File'.format(m))
+        ax[1,0].plot(xrefnew, ypts-yrefnew, color=colors[m+1], alpha=0.5, label='m={:}, Y PASTASOSS - Y Reference'.format(m))
+
+        waverefnew = wavepts
+        f = interpolate.interp1d(waveref, xref)
+        xrefnew = f(waverefnew)
+
+        ax[0,1].plot(wavepts, xpts, color=colors[0], alpha=0.5, label='m={:}, PASTASOSS'.format(m))
+        ax[0,1].plot(waverefnew, xrefnew, color=colors[1], alpha=0.5, label='m={:}, Trace Reference File'.format(m))
+        ax[1,1].plot(waverefnew, xpts-xrefnew, color=colors[m+1], alpha=0.5, label='m={:}, X PASTASOSS - X Reference'.format(m))
+
+    ax[0,0].legend()
+    ax[0,0].set_xlim((0,2047))
+    ax[0,0].set_ylim((0,255))
+    ax[0,0].set_xlabel('X Position')
+    ax[0,0].set_ylabel('Y Position')
+    ax[1,0].legend()
+    ax[1,0].set_xlabel('X Position')
+    ax[1,0].set_ylabel('Y Subtraction Residuals')
+
+    ax[0,1].legend()
+    #ax[0,1].set_xlim((0,2047))
+    ax[0,1].set_ylim((0,2047))
+    ax[0,1].set_xlabel('Wavelength')
+    ax[0,1].set_ylabel('X Position')
+    ax[1,1].legend()
+    ax[1,1].set_xlabel('Wavelength')
+    ax[1,1].set_ylabel('X Subtraction Residuals')
+
+    fig.suptitle('Comparison between the Reference file and pastasoss trace position solutions')
+    plt.savefig(outdir + '/traces_comparison_pastasoss_reffile.png')
+    plt.close()
+    #plt.show()
+
+    return
 
 
 
@@ -1814,13 +2237,115 @@ def combine_timeseries(wildcard, outputname_normalized, outputname_rawflux):
 
     return
 
+
+def correct_wavelengthsolution(result, outdir=None, save_results=True):
+
+    print('Correct wavelength solution using pastasoss...')
+    # Use pastasoss to update the wavelength arrays of the extracted spectra
+    pwcpos = result.meta.instrument.pupil_position
+    # Here is the x, y, wavelength for orders 1 and 2. Order 3 not supported yet by pastasoss.
+    rezz = pastasoss.get_soss_traces(pwcpos, order='1')
+    x1, y1, wave1 = rezz.x, rezz.y, rezz.wavelength
+    rezz = pastasoss.get_soss_traces(pwcpos, order='2')
+    x2, y2, wave2 = rezz.x, rezz.y, rezz.wavelength
+
+    # Pastasoss is defined for pixels 4 to 2043 in order 1,
+    # pixels 600 to 1750 in order 2.
+    # (using the first pixel = 0 and last pixel = 2047 convention).
+    # The DMS spectra are defined as arrays with length 2048 for all 3 orders.
+    # Therefore, here, we fill what's missing in pastasoss with linear extrapolations.
+    #
+    # ORDER 1 - Fill pixels 0 to 3 and 2044 to 2047
+    x1_left = [0,1,2,3]
+    dy_dx_left = (y1[1] - y1[0])/1
+    dw_dx_left = (wave1[1] - wave1[0])/1
+    y1_left = (x1_left - x1[0])*dy_dx_left + y1[0]
+    w1_left = (x1_left - x1[0])*dw_dx_left + wave1[0]
+    x1_right = [2044,2045,2046,2047]
+    dy_dx_right = (y1[-1] - y1[-2])/1
+    dw_dx_right = (wave1[-1] - wave1[-2])/1
+    y1_right = (x1_right - x1[-1])*dy_dx_right + y1[-1]
+    w1_right = (x1_right - x1[-1])*dw_dx_right + wave1[-1]
+    # Concatenate lists
+    x1 = np.array(list(x1_left)+list(x1)+list(x1_right))
+    y1 = np.array(list(y1_left)+list(y1)+list(y1_right))
+    wave1 = np.array(list(w1_left)+list(wave1)+list(w1_right))
+    #
+    # ORDER 2 - Fill pixels 0 to 599 and 1751 to 2047
+    x2_left = np.arange(600)
+    dy_dx_left = (y2[1] - y2[0])/1
+    dw_dx_left = (wave2[1] - wave2[0])/1
+    y2_left = (x2_left - x2[0])*dy_dx_left + y2[0]
+    w2_left = (x2_left - x2[0])*dw_dx_left + wave2[0]
+    x2_right = np.arange(2047-1750)+1751
+    dy_dx_right = (y2[-1] - y2[-2])/1
+    dw_dx_right = (wave2[-1] - wave2[-2])/1
+    y2_right = (x2_right - x2[-1])*dy_dx_right + y2[-1]
+    w2_right = (x2_right - x2[-1])*dw_dx_right + wave2[-1]
+    # Concatenate lists
+    x2 = np.array(list(x2_left)+list(x2)+list(x2_right))
+    y2 = np.array(list(y2_left)+list(y2)+list(y2_right))
+    wave2 = np.array(list(w2_left)+list(wave2)+list(w2_right))
+
+    # Determine how many fits extensions to expect in the extract1d result file
+    # based on subarray
+    subarray = result.meta.subarray.name
+    if subarray == 'SUBSTRIP96':
+        norders = 1
+    elif subarray == 'SUBSTRIP256':
+        norders = 3
+    else:
+        norders = 3
+    #
+    # The number of integrations in this segment file is ninteg
+    ninteg = result.meta.exposure.integration_end - result.meta.exposure.integration_start + 1
+    # The extension numbers for each diffraction order are
+    ext_m1 = np.arange(ninteg, dtype='int') * norders
+    ext_m2 = np.arange(ninteg, dtype='int') * norders + 1
+    ext_m3 = np.arange(ninteg, dtype='int') * norders + 2
+
+    # Replace the extract1d wavelength by the pastasoss ones
+    print('Correcting order 1 solution...')
+    for ext in ext_m1:
+        result.spec[ext].spec_table['wavelength'] = np.copy(wave1)
+    print('Correcting order 2 solution...')
+    for ext in ext_m2:
+        result.spec[ext].spec_table['wavelength'] = np.copy(wave2)
+    # Do nothing for order 3
+    print('Not correcting order 2 solution until pastasoss supports it.')
+    # TODO: Update when pastasoss supports order 3
+
+    if save_results:
+        basename = os.path.splitext(result.meta.filename)[0]
+        basename = basename.split('_nis')[0] + '_nis'
+        result.write(outdir+'/'+basename+'_extract1dpastasoss.fits')
+        # Make sure filename is back to normal
+        result.meta.filename = basename
+
+    return result
+
+
 def median_absolute_spectrum(photomstep_spectrum, outputname):
+
+    '''
+    The datamodel header will look for which type of input this is:
+    Either post extract1dstep (uncalibrated) or post photomstep (calibrated).
+    '''
+
     # Reads the time series of spectra calibrated in absolute flux (from photomstep)
     # and combine them to output the median, combined spectrum, along with rms.
 
     # Start processing the spectra file
     print('Generating median_absolute_spectrum from MultiSpec ', photomstep_spectrum)
+
+    # Determine if the input type is post extract1d only (uncalibrated) or if
+    # it went through the photom step (calibrated)
     multispec = datamodels.open(photomstep_spectrum)
+    if multispec.meta.cal_step.photom == 'COMPLETE':
+        input_type = 'calibrated'
+    else:
+        input_type = 'uncalibrated'
+    print('median_absolute_spectrum - input_type is ', input_type)
 
     # spectra are stored at indice 1 (order 1), then 2 (order2) then 3 (order 3) then 4 (order 1, 2nd time step), ...
     # TODO Manage nint and norder better
@@ -1850,39 +2375,189 @@ def median_absolute_spectrum(photomstep_spectrum, outputname):
     # make a quick white light to reject in-transit spectra later
     wl = np.nansum(flux[:,0,:], axis=-1)
     wl = wl/np.nanmedian(wl, axis=0)
-    wlmed = np.nanmedian(wl)
-    wldev = mediandev(wl)
-    #print('whitelight = ', wl)
-    print('whitelight median = ', wlmed)
-    print('whitelight deviations = ', wldev)
-    oot = wl > (wlmed - 3 * wldev)
 
-    # Start building the output fits file.
-    hdul = list()
-    hdu = fits.PrimaryHDU()
-    hdu.header['DESCRIP'] = ('Median Out-of-transit spectrum', 'Description of the file')
-    hdu.header['AUTHOR'] = ('Loic Albert', 'Author of the file')
-    hdul.append(hdu)
 
-    for m in range(norder):
-        spec_median = np.nanmedian(flux[oot,m,:], axis=0)
-        spec_rms = mediandev(flux[oot,m,:], axis=0)
 
-        # Create the order 1 extension.
-        # Order 1 table.
-        col1 = fits.Column(name='micron', format='F', array=wavelength[0, m, :])
-        col2 = fits.Column(name='spectrum', format='F', array=spec_median)
-        col3 = fits.Column(name='rms', format='F', array=spec_rms)
-        cols = fits.ColDefs([col1, col2, col3])
+    # Expect a 1 column file listing the integrations retained (0-indexed)
+    # Forge that file name: replace the output file's name suffix for '_integrations.txt'
+    outputname_retainedinteg = os.path.splitext(outputname)[0] + '_integrations.txt'
+    # The file will be non existent if it's the first time running that dataset
+    integcount = np.arange(np.size(wl))
+    if os.path.isfile(outputname_retainedinteg):
+        retained_int = np.loadtxt(outputname_retainedinteg)
+        # out of transit bolean indices
+        oot = []
+        for i in integcount:
+            if i in list(retained_int):
+                oot.append(True)
+            else:
+                oot.append(False)
+    else:
+        # A few iteration of outlier rejection
+        wltmp = np.copy(wl)
+        for ite in range(3):
+            wlmed = np.nanmedian(wltmp)
+            wldev = mediandev(wltmp)
+            #print('whitelight = ', wl)
+            print('whitelight median = ', wlmed)
+            print('whitelight deviations = ', wldev)
+            oot = wl > (wlmed - 3 * wldev)
+            print('Number of retained integrations = ', oot.sum())
+            wltmp = wl[oot]
 
-        hdu = fits.BinTableHDU.from_columns(cols)
-        hdu.header['ORDER'] = (m+1, 'Spectral order.')
-        hdu.header['EXTNAME'] = 'ORDER {:}'.format(m+1)
+        # Save this list in a text file for future iteration
+        integcount_retained = integcount[oot]
+        with open(outputname_retainedinteg, 'w') as myfile:
+            for i in range(np.size(integcount_retained)):
+                myfile.write('{:}\n'.format(integcount_retained[i]))
+
+    # Make a diagnostic plot of the retained integrations
+    integcount = np.arange(np.size(wl))
+
+    plt.scatter(integcount, wl, marker='o', color='b', label='All integrations')
+    plt.scatter(integcount[oot], wl[oot], marker='o', color='red', label='Retained integrations')
+    plt.legend()
+    plt.text(1, (np.max(wl)+np.min(wl))/2, 'To manually change the retained integrations, edit the file\n'+
+                                              '(*_integrations.txt) whose single column has the\n'+
+                                              'integration numbers (0 indexed) needed and place it in same dir\n'+
+                                              'as the uncal files. And rerun.')
+    plt.grid()
+    # Forge the white light file name: replace the output file's name suffix for .png
+    outputname_png = os.path.splitext(outputname)[0]+'_integrations.png'
+    plt.savefig(outputname_png)
+    #plt.show()
+    plt.close()
+
+    # Save and make plot according to the input_type
+    if input_type == 'calibrated':
+        # Start building the output fits file.
+        hdul = list()
+        hdu = fits.PrimaryHDU()
+        hdu.header['DESCRIP'] = ('Median Out-of-transit spectrum', 'Description of the file')
+        hdu.header['AUTHOR'] = ('Loic Albert', 'Author of the file')
         hdul.append(hdu)
 
-    hdul = fits.HDUList(hdul)
-    print('Writing the output file named ', outputname)
-    hdul.writeto(outputname, overwrite=True)
+        for m in range(norder):
+            spec_median = np.nanmedian(flux[oot,m,:], axis=0)
+            spec_rms = mediandev(flux[oot,m,:], axis=0)
+
+            Fnu_Jy = np.copy(spec_median)
+            Fnu_Jy_err = np.copy(spec_rms)
+            # Convert to various other units
+            Fnu_erg_s_cm2_Hz = Fnu_Jy * 1e-23
+            Fnu_erg_s_cm2_Hz_err = np.copy(spec_rms)
+            c_m_s = 299792458.0  # m/s
+            c_um_s = c_m_s * 1e+6  # micron/s
+            Flambda_erg_s_cm2_micron = Fnu_erg_s_cm2_Hz * c_um_s / wavelength[0, m, :] ** 2
+            Flambda_erg_s_cm2_micron_err = Fnu_erg_s_cm2_Hz_err * c_um_s / wavelength[0, m, :] ** 2
+            # convert to per angstrom
+            Flambda_erg_s_cm2_ang = Flambda_erg_s_cm2_micron * 1e-4
+            Flambda_erg_s_cm2_ang_err = Flambda_erg_s_cm2_micron_err * 1e-4
+            # or convert to W/m2/micron (1J = 1e-7 erg, 1 m2 = 1e+4 cm2)
+            Flambda_watt_m2_micron = Flambda_erg_s_cm2_micron * 1e-7 * 1e+4
+            Flambda_watt_m2_micron_err = Flambda_erg_s_cm2_micron_err * 1e-7 * 1e+4
+
+            # Create the order 1 extension.
+            # Order 1 table.
+            col1 = fits.Column(name='micron', format='F', array=wavelength[0, m, :])
+            col2 = fits.Column(name='Fnu_Jy', format='F', array=Fnu_Jy)
+            col3 = fits.Column(name='Fnu_Jy_rms', format='F', array=Fnu_Jy_err)
+            col4 = fits.Column(name='Fnu_erg_s_cm2_Hz', format='F', array=Fnu_erg_s_cm2_Hz)
+            col5 = fits.Column(name='Fnu_erg_s_cm2_Hz_rms', format='F', array=Fnu_erg_s_cm2_Hz_err)
+            col6 = fits.Column(name='Flambda_erg_s_cm2_micron', format='F', array=Flambda_erg_s_cm2_micron)
+            col7 = fits.Column(name='Flambda_erg_s_cm2_micron_rms', format='F', array=Flambda_erg_s_cm2_micron_err)
+            col8 = fits.Column(name='Flambda_erg_s_cm2_ang', format='F', array=Flambda_erg_s_cm2_ang)
+            col9 = fits.Column(name='Flambda_erg_s_cm2_ang_rms', format='F', array=Flambda_erg_s_cm2_ang_err)
+            col10 = fits.Column(name='Flambda_watt_m2_micron', format='F', array=Flambda_watt_m2_micron)
+            col11 = fits.Column(name='Flambda_watt_m2_micron_rms', format='F', array=Flambda_watt_m2_micron_err)
+
+            cols = fits.ColDefs([col1, col2, col3, col4, col5, col6, col7, col8, col9, col10, col11])
+
+            hdu = fits.BinTableHDU.from_columns(cols)
+            hdu.header['ORDER'] = (m+1, 'Spectral order.')
+            hdu.header['EXTNAME'] = 'ORDER {:}'.format(m+1)
+            hdul.append(hdu)
+
+        hdul = fits.HDUList(hdul)
+        print('Writing the output file named ', outputname)
+        hdul.writeto(outputname, overwrite=True)
+
+        # Making a png version for each unit choice
+        a = fits.open(outputname)
+
+        outputname_units = os.path.splitext(outputname)[0] + '_Jy.png'
+        plt.plot(a[1].data['micron'], a[1].data['Fnu_Jy'], label='order=1')
+        plt.plot(a[2].data['micron'], a[2].data['Fnu_Jy'], label='order=2')
+        plt.ylabel('Fnu [Jy]')
+        plt.xlabel('Wavelength [micron]')
+        u,v = np.copy(wavelength[0, 0, :]), np.copy(a[1].data['Fnu_Jy'])
+        plt.ylim(0, 1.1*np.nanmax(v[(u>1.0) & (u<2.0)]))
+        plt.legend()
+        plt.savefig(outputname_units)
+        plt.close()
+
+        outputname_units = os.path.splitext(outputname)[0] + '_watt_m2_micron.png'
+        plt.plot(a[1].data['micron'], a[1].data['Flambda_watt_m2_micron'], label='order=1')
+        plt.plot(a[2].data['micron'], a[2].data['Flambda_watt_m2_micron'], label='order=2')
+        plt.ylabel('Flambda [W/m2/micron]')
+        plt.xlabel('Wavelength [micron]')
+        u,v = np.copy(wavelength[0, 0, :]), np.copy(a[1].data['Flambda_watt_m2_micron'])
+        plt.ylim(0, 1.1*np.nanmax(v[(u>1.0) & (u<2.0)]))
+        plt.legend()
+        plt.savefig(outputname_units)
+        plt.close()
+
+        outputname_units = os.path.splitext(outputname)[0] + '_erg_s_cm2_Hz.png'
+        plt.plot(a[1].data['micron'], a[1].data['Fnu_erg_s_cm2_Hz'], label='order=1')
+        plt.plot(a[2].data['micron'], a[2].data['Fnu_erg_s_cm2_Hz'], label='order=2')
+        plt.ylabel('Fnu [erg/s/cm2/Hz]')
+        plt.xlabel('Wavelength [micron]')
+        u,v = np.copy(wavelength[0, 0, :]), np.copy(a[1].data['Fnu_erg_s_cm2_Hz'])
+        plt.ylim(0, 1.1*np.nanmax(v[(u>1.0) & (u<2.0)]))
+        plt.legend()
+        plt.savefig(outputname_units)
+        plt.close()
+
+    elif input_type == 'uncalibrated':
+        # Start building the output fits file.
+        hdul = list()
+        hdu = fits.PrimaryHDU()
+        hdu.header['DESCRIP'] = ('Median Out-of-transit spectrum', 'Description of the file')
+        hdu.header['AUTHOR'] = ('Loic Albert', 'Author of the file')
+        hdul.append(hdu)
+
+        for m in range(norder):
+            spec_median = np.nanmedian(flux[oot, m, :], axis=0)
+            spec_rms = mediandev(flux[oot, m, :], axis=0)
+
+            # Create the order 1 extension.
+            # Order 1 table.
+            col1 = fits.Column(name='micron', format='F', array=wavelength[0, m, :])
+            col2 = fits.Column(name='DN_s', format='F', array=spec_median)
+            col3 = fits.Column(name='DN_s_rms', format='F', array=spec_rms)
+
+            cols = fits.ColDefs([col1, col2, col3])
+
+            hdu = fits.BinTableHDU.from_columns(cols)
+            hdu.header['ORDER'] = (m + 1, 'Spectral order.')
+            hdu.header['EXTNAME'] = 'ORDER {:}'.format(m + 1)
+            hdul.append(hdu)
+
+        hdul = fits.HDUList(hdul)
+        print('Writing the output file named ', outputname)
+        hdul.writeto(outputname, overwrite=True)
+
+        # Making a png version for each unit choice
+        a = fits.open(outputname)
+        outputname_units = os.path.splitext(outputname)[0] + '_DN_s.png'
+        plt.plot(a[1].data['micron'], a[1].data['DN_s'], label='order=1')
+        plt.plot(a[2].data['micron'], a[2].data['DN_s'], label='order=2')
+        plt.ylabel('Uncalibrated [DN/s]')
+        plt.xlabel('Wavelength [micron]')
+        plt.legend()
+        plt.savefig(outputname_units)
+        plt.plot()
+        plt.close()
 
     return
 
@@ -2706,7 +3381,7 @@ def measure_background_tilt(input_image, isafitsfile=True, method='halfbumpvalue
 
 
 
-def construct_background(input_image, tilt=-1.76, isafitsfile=False, metric='10pct',
+def construct_background(input_image, headermeta, tilt=-1.76, isafitsfile=False, metric='10pct',
                          savetest=False, outdir=None, skip_background=False):
 
     if isafitsfile == True:
@@ -2794,6 +3469,10 @@ def construct_background(input_image, tilt=-1.76, isafitsfile=False, metric='10p
     bgd1d_3segmentfit[xpad > cutright] = np.polyval(parsright, xpad[xpad > cutright])
 
     # Plot the results
+    title = 'PID{:} Visit{:} - {:}: {:}'.format(headermeta.observation.program_number,
+                                       headermeta.observation.observation_number,
+                                       headermeta.target.catalog_name,
+                                       headermeta.observation.observation_label)
     if (savetest == True) & (outdir != None):
         plt.figure(figsize=(10,6))
         plt.plot(bgd1d_plainmedian, label='Plain median')
@@ -2806,8 +3485,21 @@ def construct_background(input_image, tilt=-1.76, isafitsfile=False, metric='10p
         plt.plot(bgd1d_3segmentfit[padding:-padding], label='3-segment fit')
         plt.grid()
         plt.legend()
+        plt.title(title)
         plt.savefig(outdir+'/bgd_plot.png')
         #plt.show()
+        plt.close()
+
+
+        with open(outdir+'/bgd_plot.txt', 'w') as f:
+            for i in range(np.size(bgd1d_10pct)):
+                if i == 0:
+                    f.write('# {:}\n'.format(title))
+                    f.write('#\n')
+                    f.write('# column, median, 10pct, 20pct, 30pct, mediantop, 3segmentfit\n')
+                f.write('{:}, {:}, {:}, {:}, {:}, {:}, {:}\n'.format(i, bgd1d_plainmedian[i], bgd1d_10pct[i],
+                                                                     bgd1d_20pct[i], bgd1d_30pct[i], bgd1d_mediantop[i],
+                                                                     bgd1d_3segmentfit[padding+i]))
 
     # Then project back this model across in 2D and derotate
     dimxpad = dimx + 2*padding
@@ -3228,6 +3920,88 @@ def cds(rampmodel, outdir=None, verbose=False):
     frametime =  rampmodel.meta.exposure.frame_time
     exptime = ngroup * frametime
     cds = cds / exptime
+
+
+def tsobasename(jwst_file_list):
+
+    '''
+    From the input list of file names (jwst fits files)
+    Determine the file's basename or directory or tso common name, etc
+    Properly handle list containing a single file (no segment) or multi segments
+    '''
+
+    # Checks that it is the expected size=1 single file name
+    if np.size(jwst_file_list) > 1:
+        onefile = jwst_file_list[0]
+    else:
+        onefile = jwst_file_list
+    dirname = os.path.dirname(onefile)
+    basename = os.path.basename(os.path.splitext(onefile)[0])
+
+    # Handle the case where there is a single segment (no -seg in the name)
+    # like the case of SIMP0136 (PID 01209)
+    # jw01209001001_03101_00001_nis_uncal.fits
+    # as well as the more ussual case of several segments
+    # jw01201003001_04101_00001-seg001_nis_uncal.fits
+    parts = basename.split('_')
+    # does parts[2] contain -seg in it?
+    subpart2 = parts[2].split('-seg')
+    basename_tso = parts[0]+'_'+parts[1]+'_'+subpart2[0]
+
+    return basename_tso
+
+
+def split_tso(inputname, nints_fullmax=21):
+    print('split_tso started')
+
+    outdir = os.path.dirname(inputname) + '/'
+    basename_ts = tsobasename(inputname)
+    print('split_tso : outdir = {:}'.format(outdir))
+    print('split_tso : basename_ts = {:}'.format(basename_ts))
+
+    jwstmodel = datamodels.open(inputname)
+    jwstmodel.info()
+
+    '''
+    Things to change in the meta section, assuming we keeping the 21 first integrations
+    a.meta.exposure.integration_start = 1
+    a.meta.exposure.integration_end = 21
+    a.meta.exposure.segment_number = 1
+    a.meta.exposure.segment_total = 4
+    a.data = a.data[:21,:,:]
+    a.group = a.group[:210]
+    a.int_times = a.int_times[:21]
+    a.meta.filename = 'XXX-seg001_nis_uncal.fits'
+    '''
+
+    # Determine how many segments the TSO will be split into
+    nints = jwstmodel.meta.exposure.nints
+    if nints % nints_fullmax == 0:
+        nseg = nints // nints_fullmax
+    else:
+        nseg = nints // nints_fullmax + 1
+    print('split_tso : nints = {:}, nints_fullmax = {:}'.format(nints, nints_fullmax))
+
+    # Generate segment files on disk
+    for segment in range(nseg):
+        intstart, intend = segment * nints_fullmax, np.min([(segment + 1) * nints_fullmax, nints])
+        tmp = jwstmodel.copy()
+        tmp.data = tmp.data[intstart:intend, :, :, :]
+        tmp.int_times = tmp.int_times[intstart:intend]
+        ng = jwstmodel.meta.exposure.ngroups
+        tmp.group = tmp.group[intstart * ng:intend * ng]
+        tmp.meta.exposure.integration_start = intstart + 1
+        tmp.meta.exposure.integration_end = intend
+        tmp.meta.exposure.segment_number = segment + 1
+        tmp.meta.exposure.segment_total = nseg
+        segmentname = outdir + basename_ts + '-seg{:003.0F}_nis_uncal.fits'.format(segment + 1)
+        print('split_tso : saving ' + segmentname)
+        tmp.meta.filename = segmentname
+        tmp.save(segmentname)
+
+    return
+
+
 
 
 if __name__ == "__main__":

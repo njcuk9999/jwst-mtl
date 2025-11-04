@@ -1,3 +1,5 @@
+import sys
+
 import numpy as np
 from astropy.io import fits
 from scipy import ndimage
@@ -6,7 +8,16 @@ from jwst.datamodels.dqflags import pixel
 import os
 
 
+def mediandev(x, axis=None):
+    med = np.nanmedian(x, axis=axis)
 
+    #print('-- mediandev --')
+    #print(axis)
+    #print(med.shape)
+    #print(x.shape)
+    #print('---------------')
+
+    return np.nanmedian(np.abs(x - med), axis=axis) / 0.67449
 
 def unfold_frame(image, window_size):
     '''
@@ -46,7 +57,7 @@ def unfold_frame(image, window_size):
     return image_unfolded
 
 
-def find_outliers(image, window_size, n_sig=5):
+def find_outliers(image, window_size, n_sig=5, save_diagnostic=False):
     '''
     Finds the outliers in a single medianCombined frame
     Identifies the outliers in two ways
@@ -58,6 +69,8 @@ def find_outliers(image, window_size, n_sig=5):
     image       : (array) Detector 2D image (usually the medianCombined frame)
     window_size : (tuple) The size of the box to slide across the image. (rows, cols)
     n_sig       : (int)   Number of standard deviations away from the median to be called outlier
+                          Important note: these stats are from a single window. So if window_size = (5,5)
+                          then std is based on 25 samples, therefore, nsig needs to be very low, like 2.
 
     Returns:
     ========
@@ -66,44 +79,67 @@ def find_outliers(image, window_size, n_sig=5):
 
     '''
 
-    # Row outliers-----------------------------------------------------------
-    # first, find full row outliers, i.e. pixels that are 5sigma away from the
-    # median of the entire rows
-    # Compute the median and standard dev. for the full rows
-    row_median = np.nanmedian(image, axis=-1)
-    row_std = np.nanstd(image, axis=-1)
+    filter_row = False
 
-    # outliers are pixels with higher values than (median + 5 sigmas)
-    row_threshold = row_median + n_sig * row_std
+    if filter_row is True:
+        # Row outliers-----------------------------------------------------------
+        # first, find full row outliers, i.e. pixels that are 5sigma away from the
+        # median of the entire rows
+        # Compute the median and standard dev. for the full rows
+        row_median = np.nanmedian(image, axis=-1)
+        row_std = np.nanstd(image, axis=-1)
 
-    # get the outliers mask (broadcast threshold to image shape)
-    row_outliers = image > row_threshold[:, None]
-    # Row outliers-----------------------------------------------------------
+        # outliers are pixels with higher values than (median + 5 sigmas)
+        row_threshold = row_median + n_sig * row_std
+
+        # get the outliers mask (broadcast threshold to image shape)
+        row_outliers = image > row_threshold[:, None]
+        # Row outliers-----------------------------------------------------------
 
     # Window outliers--------------------------------------------------------
     # unfold the image to obtain all the views of the windows around each pixel
     # reshape to have these windows flattened
     unfolded = unfold_frame(image, window_size).reshape(image.shape[0], image.shape[1], -1)
+    # Reshape so first dim has size of window_shape(e.g. 3x11 yields 33)
+    unfolded = np.transpose(unfolded, (-1, 0, 1))
+
+    #print('shape of image:', image.shape)
+    #print('shape of unfolded:', unfolded.shape)
 
     # obtain median and std. dev. of each window
-    median_map = np.nanmedian(unfolded, axis=-1)
-    std_map = np.nanstd(unfolded, axis=-1)
+    #median_map = np.nanmedian(unfolded, axis=-1)
+    #std_map = np.nanstd(unfolded, axis=-1)
+    median_map = np.nanmedian(unfolded, axis=0)
+    std_map = np.nanstd(unfolded, axis=0)
+    mdev_map = mediandev(unfolded, axis=0)
 
     # threshold is the same as before, except with different values at each pixels now
-    threshold_map = median_map + n_sig * std_map
+    #threshold_map = median_map + n_sig * std_map
+    threshold_map = median_map + n_sig * mdev_map
 
     # get the window outliers mask
     window_outliers = image > threshold_map
     # Window outliers--------------------------------------------------------
 
     # Combine both masks to obtain all the outliers
-    outliers = row_outliers + window_outliers
+    if filter_row is True:
+        outliers = row_outliers + window_outliers
+    else:
+        outliers = window_outliers
+
+    if save_diagnostic:
+        tmp = image*1
+        tmp[outliers] = np.nan
+        hdu = fits.PrimaryHDU([median_map,std_map,mdev_map, tmp])
+        hdu.writeto('outlier_median_std_mdev_rej_diagnostic.fits', overwrite=True)
+        hdu = fits.PrimaryHDU(unfolded)
+        hdu.writeto('outlier_unfoldedmap_diagnostic.fits', overwrite=True)
 
     return outliers
 
 
-def flag_outliers(result, nn=2, window_size=(1, 33), n_sig=5, verbose=False, outdir=None, save_diagnostic=False,
-                  kernel_enlarge=True, save_results=False):
+def flag_outliers(result, nn=2, window_size=(5, 5), n_sig=3, verbose=False, outdir=None, save_diagnostic=False,
+                  kernel_enlarge=False, save_results=False):
     '''
     Function that takes a timeseries of integrations and for each, finds the
     outlier pixels and flags them as such in the data quality (dq) object
@@ -119,7 +155,7 @@ def flag_outliers(result, nn=2, window_size=(1, 33), n_sig=5, verbose=False, out
                             scanning for outliers (rows, cols), should keep odd so there is a clear center pixel
     n_sig       : (int) Number of standard deviations away from the median to be called outlier
     verbose     : (bool) If True, activates print statements
-    kernel_enlarge : (bool) If True, convolve the outlier map with a kernel to enlarge the flagginf into wings
+    kernel_enlarge : (bool) If '3x3' or '5x5', convolve the outlier map with a kernel to enlarge the flagginf into wings
 
     Returns:
     ========
@@ -128,6 +164,12 @@ def flag_outliers(result, nn=2, window_size=(1, 33), n_sig=5, verbose=False, out
 
     # load shape of the data set
     nb_int, dimy, dimx = result.data.shape
+
+    # Create a diagnostic cube of the outliers detection.
+    # A sample of maximum 5 integrations to save space.
+    # 3 products: difference image, masked with nans, masked with nans after kernel_enlarge
+    save_nints = 5
+    imdiff = np.zeros((3, save_nints, dimy, dimx))
 
     if nb_int < (nn*2+1):
         print('Warning: Outlier flagging was skipped - not enough integrations.')
@@ -204,40 +246,61 @@ def flag_outliers(result, nn=2, window_size=(1, 33), n_sig=5, verbose=False, out
 
         # From here, we identify the outliers in the medianCombined image
         outliers = find_outliers(medianCombined, window_size, n_sig)
+        print('first pass through find_outliers, n = ', outliers.sum)
+
+        # Prepare saving the difference image showing outliers
+        if i < save_nints:
+            imdiff[0,i,:,:] = np.copy(medianCombined)
+            tmp = medianCombined*1
+            tmp[outliers] = np.nan
+            imdiff[1,i,:,:] = np.copy(tmp)
 
         # Add option to "enlarge" a pixel flagged as outlier with a kernel in the hope
         # of catching the wings of cosmic rays
-        if kernel_enlarge:
-            # 3x3 kernel
-            kernel = [[0,1,0],[1,1,1],[0,1,0]] # cross
-            # 5x5 kernel
-            kernel = [
-                [0,0,1,0,0],
-                [0,1,1,1,0],
-                [1,1,1,1,1],
-                [0,1,1,1,0],
-                [0,0,1,0,0]]
+        print('going to enlarge kernel. kernel_enlarge = ',kernel_enlarge)
+        print('is kernel_enlarge not False? ', kernel_enlarge == True)
+        if kernel_enlarge is not False:
+            if kernel_enlarge == '3x3':
+                # 3x3 kernel
+                print('enlarge outliers with 3x3 kernel')
+                kernel = [[0,1,0],[1,1,1],[0,1,0]] # cross
+            elif kernel_enlarge == '5x5':
+                # 5x5 kernel
+                print('enlarge outliers with 5x5 kernel')
+                kernel = [
+                    [0,0,1,0,0],
+                    [0,1,1,1,0],
+                    [1,1,1,1,1],
+                    [0,1,1,1,0],
+                    [0,0,1,0,0]]
+            else:
+                print('kernel_enlarge is either 3x3 or 5x5')
+                sys.exit()
             pad = np.max(np.shape(kernel)) # roughly
             im = np.zeros((dimy, dimx))
             im[outliers] = 1
             impadded = np.zeros((dimy+2*pad, dimx+2*pad))
             impadded[pad:-pad,pad:-pad] = np.copy(im)
+            print('apply convolution...')
             imconvolved = ndimage.convolve(impadded, kernel, mode='constant', cval=0.0)
             im = imconvolved[pad:-pad,pad:-pad]
             outliers = im > 0
+        else:
+            print('kernel_enlarge was set to False')
+
+        # Difference image diagnostic - after kernel_enlarge
+        if i < save_nints:
+            tmp = medianCombined*1
+            tmp[outliers] = np.nan
+            imdiff[2,i,:,:] = np.copy(tmp)
 
         # update the dq map with the new outliers
         result.dq[i][outliers] += pixel['OUTLIER']
         result.dq[i][outliers] += pixel['DO_NOT_USE']
         result.err[i][outliers] = np.nanmedian(result.err[i])*100 # assign high value for error
 
-
-
         if verbose: print(
             'Processing integration {} : Identified {} outlier pixels\n'.format(i, np.count_nonzero(outliers)))
-
-    #toto = result.copy()
-    #toto.write('/Users/albert/NIRISS/Commissioning/analysis/HATP14b/result.fits')
 
     # Save fits file of all integrations where the cosmic ray detections are set to NaN whihc
     # will allow to use ds9 to flash through and inspect that all went fine
@@ -256,6 +319,10 @@ def flag_outliers(result, nn=2, window_size=(1, 33), n_sig=5, verbose=False, out
         result.meta.filename = basename
         hdu = fits.PrimaryHDU(result.dq)
         hdu.writeto(outdir+'/outliers_'+basename+'.fits', overwrite=True)
+
+    # Save imdiff diagnostic cube
+    hdu = fits.PrimaryHDU(imdiff)
+    hdu.writeto(outdir+'/imdiff_outliers_'+basename+'.fits', overwrite=True)
 
     return result
 
